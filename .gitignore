@@ -107,7 +107,6 @@ out/
 
 # Kiro specific - exclude all spec files and directories
 .kiro/
-
 # Python cache (for build scripts)
 __pycache__/
 *.py[cod]
