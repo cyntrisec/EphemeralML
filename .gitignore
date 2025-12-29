@@ -105,9 +105,8 @@ enclave.dockerfile
 build/
 out/
 
-# Kiro specific (keep specs but ignore temp files)
-.kiro/temp/
-.kiro/cache/
+# Kiro specific - exclude all spec files and directories
+.kiro/
 
 # Python cache (for build scripts)
 __pycache__/

@@ -1,4 +1,4 @@
-# EphemeralNet Quick Start Guide
+# EphemeralML Quick Start Guide
 
 ## Prerequisites
 
@@ -8,7 +8,7 @@
 ## Project Structure
 
 ```
-EphemeralNet/
+EphemeralML/
 ├── client/          # Client-side model decomposition and secure communication
 ├── host/            # Host proxy for weight storage and communication
 ├── enclave/         # Enclave-based ephemeral assembly and inference
