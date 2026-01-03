@@ -1,16 +1,28 @@
 use ephemeral_ml_enclave::{
     mock::{MockEnclaveServer, MockAttestationProvider, MockEphemeralAssembler},
-    AttestationProvider, EphemeralAssembler, current_timestamp,
+    AttestationProvider, EphemeralAssembler, DefaultAttestationProvider, current_timestamp,
 };
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("EphemeralNet Enclave (Mock Mode)");
     
-    // Test attestation generation
-    let attestation_provider = MockAttestationProvider::new();
-    let attestation = attestation_provider.generate_attestation(b"test_nonce")?;
-    println!("Generated mock attestation for module: {}", attestation.module_id);
+    // Test new DefaultAttestationProvider (uses mock in development)
+    let default_provider = DefaultAttestationProvider::new()?;
+    let nonce = b"test_nonce_for_demo_12345678901234567890";
+    let attestation = default_provider.generate_attestation(nonce)?;
+    println!("Generated attestation for module: {}", attestation.module_id);
+    println!("HPKE public key: {:?}", hex::encode(default_provider.get_hpke_public_key()));
+    println!("Receipt signing key: {:?}", hex::encode(default_provider.get_receipt_public_key()));
+    
+    // Test PCR measurements
+    let pcrs = default_provider.get_pcr_measurements()?;
+    println!("PCR measurements valid: {}", pcrs.is_valid());
+    
+    // Test legacy mock provider for compatibility
+    let mock_provider = MockAttestationProvider::new();
+    let mock_attestation = mock_provider.generate_attestation(b"test_nonce")?;
+    println!("Generated mock attestation for module: {}", mock_attestation.module_id);
     
     // Test model assembly
     let mut assembler = MockEphemeralAssembler::new();

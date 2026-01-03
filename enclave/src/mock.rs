@@ -162,6 +162,14 @@ impl AttestationProvider for MockAttestationProvider {
             pcr2: hex::decode(pcr2).unwrap_or_else(|_| vec![0x03; 48]),
         })
     }
+    
+    fn get_hpke_public_key(&self) -> [u8; 32] {
+        self.hpke_keypair.public_key
+    }
+    
+    fn get_receipt_public_key(&self) -> [u8; 32] {
+        self.receipt_keypair.public_key
+    }
 }
 
 /// Mock ephemeral assembler for local development

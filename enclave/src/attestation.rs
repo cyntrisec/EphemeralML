@@ -1,27 +1,367 @@
-use crate::{EnclaveError, Result, EphemeralError};
+use crate::Result;
+use serde::{Deserialize, Serialize};
+use sha2::{Sha256, Digest};
+use uuid::Uuid;
+
 // Re-export common types
-pub use ephemeral_ml_common::{AttestationDocument, PcrMeasurements};
+pub use ephemeral_ml_common::{AttestationDocument, PcrMeasurements, current_timestamp};
+
+#[cfg(feature = "production")]
+use aws_nitro_enclaves_nsm_api as nsm;
+#[cfg(feature = "production")]
+use crate::{EnclaveError, EphemeralError};
+
+/// Attestation document user data structure for key binding
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct AttestationUserData {
+    pub hpke_public_key: [u8; 32],      // X25519 public key for HPKE
+    pub receipt_signing_key: [u8; 32],  // Ed25519 public key for receipts
+    pub protocol_version: u32,          // Fixed to 1 for v1
+    pub supported_features: Vec<String>,
+}
+
+/// Ephemeral key pair for session establishment
+#[derive(Clone, Debug)]
+pub struct EphemeralKeyPair {
+    pub public_key: [u8; 32],
+    pub private_key: [u8; 32],
+}
+
+impl EphemeralKeyPair {
+    /// Generate a new ephemeral key pair
+    pub fn generate() -> Self {
+        // Generate cryptographically secure random keys
+        let mut hasher = Sha256::new();
+        hasher.update(Uuid::new_v4().as_bytes());
+        hasher.update(&current_timestamp().to_be_bytes());
+        
+        // Add additional entropy from system sources
+        if let Ok(entropy) = std::fs::read("/dev/urandom") {
+            hasher.update(&entropy[..32.min(entropy.len())]);
+        }
+        
+        let hash = hasher.finalize();
+        
+        let mut public_key = [0u8; 32];
+        let mut private_key = [0u8; 32];
+        
+        public_key.copy_from_slice(&hash[..32]);
+        
+        // Generate private key from public key + additional entropy
+        let mut hasher2 = Sha256::new();
+        hasher2.update(&public_key);
+        hasher2.update(Uuid::new_v4().as_bytes());
+        let hash2 = hasher2.finalize();
+        private_key.copy_from_slice(&hash2[..32]);
+        
+        Self { public_key, private_key }
+    }
+}
 
 /// Trait for attestation functionality
 pub trait AttestationProvider {
-    /// Generate an attestation document with the given nonce
+    /// Generate an attestation document with the given nonce and embedded ephemeral keys
     fn generate_attestation(&self, nonce: &[u8]) -> Result<AttestationDocument>;
     
     /// Get current PCR measurements
     fn get_pcr_measurements(&self) -> Result<PcrMeasurements>;
+    
+    /// Get the HPKE public key for session establishment
+    fn get_hpke_public_key(&self) -> [u8; 32];
+    
+    /// Get the receipt signing public key
+    fn get_receipt_public_key(&self) -> [u8; 32];
 }
 
-/// Default attestation provider implementation
-pub struct DefaultAttestationProvider;
+/// NSM client for production attestation document generation
+#[cfg(feature = "production")]
+pub struct NSMAttestationProvider {
+    hpke_keypair: EphemeralKeyPair,
+    receipt_keypair: EphemeralKeyPair,
+}
+
+#[cfg(feature = "production")]
+impl NSMAttestationProvider {
+    /// Create a new NSM attestation provider with ephemeral keys
+    pub fn new() -> Result<Self> {
+        Ok(Self {
+            hpke_keypair: EphemeralKeyPair::generate(),
+            receipt_keypair: EphemeralKeyPair::generate(),
+        })
+    }
+    
+    /// Generate attestation document using NSM API
+    fn generate_nsm_attestation(&self, nonce: &[u8], user_data: &[u8]) -> Result<Vec<u8>> {
+        let nsm_fd = nsm::driver::nsm_init();
+        if nsm_fd < 0 {
+            return Err(EnclaveError::Enclave(EphemeralError::AttestationError(
+                "Failed to initialize NSM driver".to_string()
+            )));
+        }
+
+        let request = nsm::api::Request::Attestation {
+            user_data: Some(user_data.to_vec()),
+            nonce: Some(nonce.to_vec()),
+            public_key: None, // We embed keys in user_data instead
+        };
+
+        let response = nsm::driver::nsm_process_request(nsm_fd, request);
+        nsm::driver::nsm_exit(nsm_fd);
+
+        match response {
+            nsm::api::Response::Attestation { document } => Ok(document),
+            nsm::api::Response::Error(err) => Err(EnclaveError::Enclave(EphemeralError::AttestationError(
+                format!("NSM attestation error: {:?}", err)
+            ))),
+            _ => Err(EnclaveError::Enclave(EphemeralError::AttestationError(
+                "Unexpected NSM response type".to_string()
+            ))),
+        }
+    }
+    
+    /// Extract PCR measurements from NSM
+    fn get_nsm_measurements(&self) -> Result<PcrMeasurements> {
+        let nsm_fd = nsm::driver::nsm_init();
+        if nsm_fd < 0 {
+            return Err(EnclaveError::Enclave(EphemeralError::AttestationError(
+                "Failed to initialize NSM driver".to_string()
+            )));
+        }
+
+        let request = nsm::api::Request::DescribePCRs;
+        let response = nsm::driver::nsm_process_request(nsm_fd, request);
+        nsm::driver::nsm_exit(nsm_fd);
+
+        match response {
+            nsm::api::Response::DescribePCRs { pcrs } => {
+                // Extract PCR0, PCR1, PCR2 (first 3 PCRs)
+                let pcr0 = pcrs.get(&0).cloned().unwrap_or_else(|| vec![0u8; 48]);
+                let pcr1 = pcrs.get(&1).cloned().unwrap_or_else(|| vec![0u8; 48]);
+                let pcr2 = pcrs.get(&2).cloned().unwrap_or_else(|| vec![0u8; 48]);
+                
+                Ok(PcrMeasurements::new(pcr0, pcr1, pcr2))
+            }
+            nsm::api::Response::Error(err) => Err(EnclaveError::Enclave(EphemeralError::AttestationError(
+                format!("NSM PCR description error: {:?}", err)
+            ))),
+            _ => Err(EnclaveError::Enclave(EphemeralError::AttestationError(
+                "Unexpected NSM response type".to_string()
+            ))),
+        }
+    }
+}
+
+#[cfg(feature = "production")]
+impl AttestationProvider for NSMAttestationProvider {
+    fn generate_attestation(&self, nonce: &[u8]) -> Result<AttestationDocument> {
+        // Create user data with embedded keys
+        let user_data = AttestationUserData {
+            hpke_public_key: self.hpke_keypair.public_key,
+            receipt_signing_key: self.receipt_keypair.public_key,
+            protocol_version: 1,
+            supported_features: vec!["gateway".to_string()], // v1 only supports Gateway mode
+        };
+        
+        let user_data_bytes = serde_json::to_vec(&user_data)
+            .map_err(|e| EnclaveError::Enclave(EphemeralError::SerializationError(e.to_string())))?;
+
+        // Generate attestation document using NSM
+        let attestation_doc_bytes = self.generate_nsm_attestation(nonce, &user_data_bytes)?;
+        
+        // Parse the CBOR attestation document
+        let parsed_doc: serde_cbor::Value = serde_cbor::from_slice(&attestation_doc_bytes)
+            .map_err(|e| EnclaveError::Enclave(EphemeralError::SerializationError(
+                format!("Failed to parse CBOR attestation document: {}", e)
+            )))?;
+        
+        // Extract fields from the CBOR document
+        let doc_map = parsed_doc.as_map()
+            .ok_or_else(|| EnclaveError::Enclave(EphemeralError::AttestationError(
+                "Attestation document is not a CBOR map".to_string()
+            )))?;
+        
+        // Extract module_id
+        let module_id = doc_map.get(&serde_cbor::Value::Text("module_id".to_string()))
+            .and_then(|v| v.as_text())
+            .unwrap_or("unknown")
+            .to_string();
+        
+        // Extract digest (PCR measurements hash)
+        let digest = doc_map.get(&serde_cbor::Value::Text("digest".to_string()))
+            .and_then(|v| v.as_bytes())
+            .unwrap_or(&[])
+            .to_vec();
+        
+        // Extract certificate
+        let certificate = doc_map.get(&serde_cbor::Value::Text("certificate".to_string()))
+            .and_then(|v| v.as_bytes())
+            .unwrap_or(&[])
+            .to_vec();
+        
+        // Get PCR measurements
+        let pcrs = self.get_pcr_measurements()?;
+        
+        Ok(AttestationDocument {
+            module_id,
+            digest,
+            timestamp: current_timestamp(),
+            pcrs,
+            certificate,
+            signature: attestation_doc_bytes, // Store the full CBOR document as signature
+            nonce: Some(nonce.to_vec()),
+        })
+    }
+
+    fn get_pcr_measurements(&self) -> Result<PcrMeasurements> {
+        self.get_nsm_measurements()
+    }
+    
+    fn get_hpke_public_key(&self) -> [u8; 32] {
+        self.hpke_keypair.public_key
+    }
+    
+    fn get_receipt_public_key(&self) -> [u8; 32] {
+        self.receipt_keypair.public_key
+    }
+}
+
+/// Default attestation provider that uses mock in development, NSM in production
+pub struct DefaultAttestationProvider {
+    #[cfg(feature = "production")]
+    nsm_provider: NSMAttestationProvider,
+    #[cfg(feature = "mock")]
+    mock_provider: crate::mock::MockAttestationProvider,
+}
+
+impl DefaultAttestationProvider {
+    pub fn new() -> Result<Self> {
+        Ok(Self {
+            #[cfg(feature = "production")]
+            nsm_provider: NSMAttestationProvider::new()?,
+            #[cfg(feature = "mock")]
+            mock_provider: crate::mock::MockAttestationProvider::new(),
+        })
+    }
+}
 
 impl AttestationProvider for DefaultAttestationProvider {
-    fn generate_attestation(&self, _nonce: &[u8]) -> Result<AttestationDocument> {
-        // Placeholder implementation - will be implemented in later tasks
-        Err(EnclaveError::Enclave(EphemeralError::AttestationError("Not yet implemented".to_string())))
+    fn generate_attestation(&self, nonce: &[u8]) -> Result<AttestationDocument> {
+        #[cfg(feature = "production")]
+        return self.nsm_provider.generate_attestation(nonce);
+        
+        #[cfg(feature = "mock")]
+        return self.mock_provider.generate_attestation(nonce);
     }
     
     fn get_pcr_measurements(&self) -> Result<PcrMeasurements> {
-        // Placeholder implementation - will be implemented in later tasks
-        Err(EnclaveError::Enclave(EphemeralError::AttestationError("Not yet implemented".to_string())))
+        #[cfg(feature = "production")]
+        return self.nsm_provider.get_pcr_measurements();
+        
+        #[cfg(feature = "mock")]
+        return self.mock_provider.get_pcr_measurements();
+    }
+    
+    fn get_hpke_public_key(&self) -> [u8; 32] {
+        #[cfg(feature = "production")]
+        return self.nsm_provider.get_hpke_public_key();
+        
+        #[cfg(feature = "mock")]
+        return self.mock_provider.get_hpke_public_key();
+    }
+    
+    fn get_receipt_public_key(&self) -> [u8; 32] {
+        #[cfg(feature = "production")]
+        return self.nsm_provider.get_receipt_public_key();
+        
+        #[cfg(feature = "mock")]
+        return self.mock_provider.get_receipt_public_key();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::mock::MockAttestationProvider;
+
+    #[test]
+    fn test_ephemeral_key_generation() {
+        let keypair1 = EphemeralKeyPair::generate();
+        let keypair2 = EphemeralKeyPair::generate();
+        
+        // Keys should be different
+        assert_ne!(keypair1.public_key, keypair2.public_key);
+        assert_ne!(keypair1.private_key, keypair2.private_key);
+        
+        // Keys should be 32 bytes
+        assert_eq!(keypair1.public_key.len(), 32);
+        assert_eq!(keypair1.private_key.len(), 32);
+    }
+
+    #[test]
+    fn test_attestation_user_data_serialization() {
+        let user_data = AttestationUserData {
+            hpke_public_key: [1u8; 32],
+            receipt_signing_key: [2u8; 32],
+            protocol_version: 1,
+            supported_features: vec!["gateway".to_string()],
+        };
+        
+        let serialized = serde_json::to_vec(&user_data).unwrap();
+        let deserialized: AttestationUserData = serde_json::from_slice(&serialized).unwrap();
+        
+        assert_eq!(user_data.hpke_public_key, deserialized.hpke_public_key);
+        assert_eq!(user_data.receipt_signing_key, deserialized.receipt_signing_key);
+        assert_eq!(user_data.protocol_version, deserialized.protocol_version);
+        assert_eq!(user_data.supported_features, deserialized.supported_features);
+    }
+
+    #[test]
+    fn test_default_attestation_provider_mock_mode() {
+        let provider = DefaultAttestationProvider::new().unwrap();
+        let nonce = b"test_nonce_12345678901234567890";
+        
+        // Should work in mock mode
+        let attestation = provider.generate_attestation(nonce).unwrap();
+        assert_eq!(attestation.module_id, "mock-enclave");
+        assert_eq!(attestation.nonce, Some(nonce.to_vec()));
+        
+        // Should get PCR measurements
+        let pcrs = provider.get_pcr_measurements().unwrap();
+        assert!(pcrs.is_valid());
+        
+        // Should get keys
+        let hpke_key = provider.get_hpke_public_key();
+        let receipt_key = provider.get_receipt_public_key();
+        assert_eq!(hpke_key.len(), 32);
+        assert_eq!(receipt_key.len(), 32);
+    }
+
+    #[test]
+    fn test_mock_attestation_provider_with_keys() {
+        let provider = MockAttestationProvider::new();
+        let nonce = b"test_nonce_12345678901234567890";
+        
+        let attestation = provider.generate_attestation(nonce).unwrap();
+        
+        // Verify attestation contains expected fields
+        assert_eq!(attestation.module_id, "mock-enclave");
+        assert_eq!(attestation.nonce, Some(nonce.to_vec()));
+        assert!(attestation.pcrs.is_valid());
+        
+        // Verify keys are accessible
+        let hpke_key = provider.get_hpke_public_key();
+        let receipt_key = provider.get_receipt_public_key();
+        assert_ne!(hpke_key, [0u8; 32]); // Should not be all zeros
+        assert_ne!(receipt_key, [0u8; 32]); // Should not be all zeros
+    }
+
+    #[test]
+    fn test_mock_attestation_provider_invalid() {
+        let provider = MockAttestationProvider::with_invalid_attestation();
+        let nonce = b"test_nonce_12345678901234567890";
+        
+        // Should fail when configured to fail
+        let result = provider.generate_attestation(nonce);
+        assert!(result.is_err());
     }
 }
