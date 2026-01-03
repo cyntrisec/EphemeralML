@@ -230,7 +230,7 @@ impl PolicyManager {
     /// Verify policy signature using the root public key
     fn verify_policy_signature(&self, policy: &PolicyBundle) -> Result<(), PolicyError> {
         // Create canonical encoding for signature verification
-        let canonical_data = self.create_canonical_policy_data(policy)?;
+        let _canonical_data = self.create_canonical_policy_data(policy)?;
         
         // In a real implementation, this would use Ed25519 signature verification
         // For v1, we'll implement a placeholder that always succeeds for development

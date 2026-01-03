@@ -3,6 +3,8 @@ pub mod error;
 pub mod decomposer;
 pub mod secure_client;
 pub mod policy;
+pub mod attestation_verifier;
+pub mod freshness;
 
 #[cfg(feature = "mock")]
 pub mod mock;
@@ -13,3 +15,5 @@ pub use error::{ClientError, Result};
 pub use decomposer::ModelDecomposer;
 pub use secure_client::SecureClient;
 pub use policy::{PolicyManager, PolicyBundle, MeasurementAllowlist, KeyReleasePolicy, PolicyError};
+pub use attestation_verifier::{AttestationVerifier, EnclaveIdentity, FreshnessTracker, AttestationError};
+pub use freshness::{FreshnessEnforcer, NonceManager, FreshnessValidator, FreshnessError, NonceStats, FreshnessStats};
