@@ -14,7 +14,7 @@ thiserror = { workspace = true }
 uuid = { workspace = true }
 
 # Host-specific dependencies
-tokio-vsock = { version = "0.4", optional = true }
+tokio-vsock = { workspace = true, optional = true }
 
 [dev-dependencies]
 proptest = { workspace = true }

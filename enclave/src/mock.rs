@@ -9,6 +9,45 @@ use sha2::{Sha256, Digest};
 use uuid::Uuid;
 use tokio::net::{TcpListener, TcpStream};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use serde::{Deserialize, Serialize};
+
+/// Mock attestation document with user data for key binding
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct MockAttestationUserData {
+    pub hpke_public_key: [u8; 32],      // X25519 public key for HPKE
+    pub receipt_signing_key: [u8; 32],  // Ed25519 public key for receipts
+    pub protocol_version: u32,          // Fixed to 1 for v1
+    pub supported_features: Vec<String>,
+}
+
+/// Mock key pair for testing
+#[derive(Clone, Debug)]
+pub struct MockKeyPair {
+    pub public_key: [u8; 32],
+    pub private_key: [u8; 32],
+}
+
+impl MockKeyPair {
+    pub fn generate() -> Self {
+        // Generate deterministic keys for testing
+        let mut hasher = Sha256::new();
+        hasher.update(uuid::Uuid::new_v4().as_bytes());
+        let hash = hasher.finalize();
+        
+        let mut public_key = [0u8; 32];
+        let mut private_key = [0u8; 32];
+        
+        public_key.copy_from_slice(&hash[..32]);
+        
+        // Generate private key from public key for deterministic testing
+        let mut hasher2 = Sha256::new();
+        hasher2.update(&public_key);
+        let hash2 = hasher2.finalize();
+        private_key.copy_from_slice(&hash2[..32]);
+        
+        Self { public_key, private_key }
+    }
+}
 
 // Helper functions to convert errors
 fn io_error_to_enclave_error(err: std::io::Error) -> EnclaveError {
@@ -22,19 +61,81 @@ fn serde_error_to_enclave_error(err: serde_json::Error) -> EnclaveError {
 /// Mock attestation provider for local development
 pub struct MockAttestationProvider {
     pub valid_attestation: bool,
+    pub hpke_keypair: MockKeyPair,
+    pub receipt_keypair: MockKeyPair,
 }
 
 impl MockAttestationProvider {
     pub fn new() -> Self {
         Self {
             valid_attestation: true,
+            hpke_keypair: MockKeyPair::generate(),
+            receipt_keypair: MockKeyPair::generate(),
         }
     }
 
     pub fn with_invalid_attestation() -> Self {
         Self {
             valid_attestation: false,
+            hpke_keypair: MockKeyPair::generate(),
+            receipt_keypair: MockKeyPair::generate(),
         }
+    }
+    
+    /// Generate mock attestation document with embedded keys
+    pub fn generate_attestation_with_keys(&self, nonce: &[u8]) -> Result<AttestationDocument> {
+        if !self.valid_attestation {
+            return Err(EnclaveError::Enclave(EphemeralError::AttestationError("Mock attestation configured to fail".to_string())));
+        }
+
+        // Create user data with embedded keys
+        let user_data = MockAttestationUserData {
+            hpke_public_key: self.hpke_keypair.public_key,
+            receipt_signing_key: self.receipt_keypair.public_key,
+            protocol_version: 1,
+            supported_features: vec!["gateway".to_string()], // v1 only supports Gateway mode
+        };
+        
+        let user_data_bytes = serde_json::to_vec(&user_data)
+            .map_err(|e| EnclaveError::Enclave(EphemeralError::SerializationError(e.to_string())))?;
+
+        let mut hasher = Sha256::new();
+        hasher.update(b"mock_enclave_image");
+        hasher.update(nonce);
+        hasher.update(&user_data_bytes);
+        let digest_bytes = hasher.finalize();
+        
+        let mut digest = vec![0u8; 48];
+        digest[..32].copy_from_slice(&digest_bytes);
+        
+        // Create deterministic PCR measurements for mock mode
+        let pcr0 = "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f202122232425262728292a2b2c2d2e2f";
+        let pcr1 = "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f202122232425262728292a2b2c2d2e2f";
+        let pcr2 = "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f202122232425262728292a2b2c2d2e2f";
+        
+        Ok(AttestationDocument {
+            module_id: "mock-enclave".to_string(),
+            digest,
+            timestamp: current_timestamp(),
+            pcrs: PcrMeasurements {
+                pcr0: hex::decode(pcr0).unwrap_or_else(|_| vec![0x01; 48]),
+                pcr1: hex::decode(pcr1).unwrap_or_else(|_| vec![0x02; 48]),
+                pcr2: hex::decode(pcr2).unwrap_or_else(|_| vec![0x03; 48]),
+            },
+            certificate: b"mock_certificate".to_vec(),
+            signature: b"mock_signature".to_vec(),
+            nonce: Some(nonce.to_vec()),
+        })
+    }
+    
+    /// Get HPKE public key for session establishment
+    pub fn get_hpke_public_key(&self) -> [u8; 32] {
+        self.hpke_keypair.public_key
+    }
+    
+    /// Get receipt signing public key
+    pub fn get_receipt_public_key(&self) -> [u8; 32] {
+        self.receipt_keypair.public_key
     }
 }
 
@@ -46,38 +147,19 @@ impl Default for MockAttestationProvider {
 
 impl AttestationProvider for MockAttestationProvider {
     fn generate_attestation(&self, nonce: &[u8]) -> Result<AttestationDocument> {
-        if !self.valid_attestation {
-            return Err(EnclaveError::Enclave(EphemeralError::AttestationError("Mock attestation configured to fail".to_string())));
-        }
-
-        let mut hasher = Sha256::new();
-        hasher.update(b"mock_enclave_image");
-        hasher.update(nonce);
-        let digest_bytes = hasher.finalize();
-        
-        let mut digest = vec![0u8; 48];
-        digest[..32].copy_from_slice(&digest_bytes);
-        
-        Ok(AttestationDocument {
-            module_id: "mock-enclave".to_string(),
-            digest,
-            timestamp: current_timestamp(),
-            pcrs: PcrMeasurements {
-                pcr0: vec![0x01; 48], // Mock PCR0
-                pcr1: vec![0x02; 48], // Mock PCR1
-                pcr2: vec![0x03; 48], // Mock PCR2
-            },
-            certificate: b"mock_certificate".to_vec(),
-            signature: b"mock_signature".to_vec(),
-            nonce: Some(nonce.to_vec()),
-        })
+        self.generate_attestation_with_keys(nonce)
     }
 
     fn get_pcr_measurements(&self) -> Result<PcrMeasurements> {
+        // Return consistent mock measurements
+        let pcr0 = "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f202122232425262728292a2b2c2d2e2f";
+        let pcr1 = "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f202122232425262728292a2b2c2d2e2f";
+        let pcr2 = "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f202122232425262728292a2b2c2d2e2f";
+        
         Ok(PcrMeasurements {
-            pcr0: vec![0x01; 48],
-            pcr1: vec![0x02; 48],
-            pcr2: vec![0x03; 48],
+            pcr0: hex::decode(pcr0).unwrap_or_else(|_| vec![0x01; 48]),
+            pcr1: hex::decode(pcr1).unwrap_or_else(|_| vec![0x02; 48]),
+            pcr2: hex::decode(pcr2).unwrap_or_else(|_| vec![0x03; 48]),
         })
     }
 }

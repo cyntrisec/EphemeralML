@@ -5,6 +5,7 @@
 
 pub mod error;
 pub mod types;
+pub mod validation;
 
 // Re-export commonly used types and errors
 pub use error::{
@@ -26,6 +27,10 @@ pub use types::{
     
     // Session and audit types
     SessionInfo, SessionStatus, AuditLogEntry, AuditEventType, AuditSeverity,
+};
+
+pub use validation::{
+    ValidationLimits, ValidationError, InputValidator,
 };
 
 /// Version information for the common crate

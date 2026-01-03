@@ -4,8 +4,9 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-# Workspace dependencies (ML dependencies will be added back when implementing ML functionality)
-# candle-core = { workspace = true }
+# Workspace dependencies
+candle-core = { workspace = true }
+safetensors = { workspace = true }
 ephemeral-ml-common = { path = "../common" }
 serde = { workspace = true }
 serde_json = { workspace = true }
@@ -17,7 +18,8 @@ sha2 = { workspace = true }
 
 # Enclave-specific dependencies
 aws-nitro-enclaves-nsm-api = { workspace = true, optional = true }
-tokio-vsock = { version = "0.4", optional = true }
+tokio-vsock = { workspace = true, optional = true }
+hex = "0.4"
 
 [dev-dependencies]
 proptest = { workspace = true }

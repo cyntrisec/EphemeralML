@@ -7,6 +7,8 @@ use crate::{
 use std::path::Path;
 use uuid::Uuid;
 use sha2::{Sha256, Digest};
+use tokio::net::TcpStream;
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
 /// Mock model decomposer for local development and testing
 pub struct MockModelDecomposer;
@@ -77,22 +79,36 @@ impl ModelDecomposer for MockModelDecomposer {
 /// Mock secure client for local development and testing
 pub struct MockSecureClient {
     pub mock_attestation_valid: bool,
+    pub tcp_host: String,
+    pub tcp_port: u16,
 }
 
 impl MockSecureClient {
     pub fn new() -> Self {
         Self {
             mock_attestation_valid: true,
+            tcp_host: "127.0.0.1".to_string(),
+            tcp_port: 8080,
+        }
+    }
+    
+    pub fn with_tcp_endpoint(host: String, port: u16) -> Self {
+        Self {
+            mock_attestation_valid: true,
+            tcp_host: host,
+            tcp_port: port,
         }
     }
 
     pub fn with_invalid_attestation() -> Self {
         Self {
             mock_attestation_valid: false,
+            tcp_host: "127.0.0.1".to_string(),
+            tcp_port: 8080,
         }
     }
 
-    /// Generate a mock attestation document for testing
+    /// Generate a mock attestation document for testing with embedded keys
     pub fn generate_mock_attestation() -> AttestationDocument {
         let mut hasher = Sha256::new();
         hasher.update(b"mock_enclave_image");
@@ -101,19 +117,44 @@ impl MockSecureClient {
         let mut digest = vec![0u8; 48];
         digest[..32].copy_from_slice(&digest_bytes);
         
+        // Use consistent PCR measurements that match the policy
+        let pcr0 = "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f202122232425262728292a2b2c2d2e2f";
+        let pcr1 = "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f202122232425262728292a2b2c2d2e2f";
+        let pcr2 = "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f202122232425262728292a2b2c2d2e2f";
+        
         AttestationDocument {
             module_id: "mock-enclave".to_string(),
             digest,
             timestamp: current_timestamp(),
             pcrs: PcrMeasurements {
-                pcr0: vec![0x01; 48], // Mock PCR0
-                pcr1: vec![0x02; 48], // Mock PCR1
-                pcr2: vec![0x03; 48], // Mock PCR2
+                pcr0: hex::decode(pcr0).unwrap_or_else(|_| vec![0x01; 48]),
+                pcr1: hex::decode(pcr1).unwrap_or_else(|_| vec![0x02; 48]),
+                pcr2: hex::decode(pcr2).unwrap_or_else(|_| vec![0x03; 48]),
             },
             certificate: b"mock_certificate".to_vec(),
             signature: b"mock_signature".to_vec(),
             nonce: Some(b"mock_nonce".to_vec()),
         }
+    }
+    
+    /// Send TCP request to mock host/enclave
+    pub async fn send_tcp_request(&self, payload: &[u8]) -> Result<Vec<u8>> {
+        let mut stream = TcpStream::connect(format!("{}:{}", self.tcp_host, self.tcp_port))
+            .await
+            .map_err(|e| ClientError::Client(EphemeralError::CommunicationError(format!("Failed to connect to mock endpoint: {}", e))))?;
+        
+        // Send payload
+        stream.write_all(payload).await
+            .map_err(|e| ClientError::Client(EphemeralError::CommunicationError(format!("Failed to send data: {}", e))))?;
+        stream.flush().await
+            .map_err(|e| ClientError::Client(EphemeralError::CommunicationError(format!("Failed to flush stream: {}", e))))?;
+        
+        // Read response
+        let mut response = Vec::new();
+        stream.read_to_end(&mut response).await
+            .map_err(|e| ClientError::Client(EphemeralError::CommunicationError(format!("Failed to read response: {}", e))))?;
+        
+        Ok(response)
     }
 }
 
