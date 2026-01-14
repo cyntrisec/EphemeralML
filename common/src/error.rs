@@ -10,6 +10,9 @@ pub enum EphemeralError {
     #[error("ONNX validation failed: {0}")]
     ValidationError(String),
     
+    #[error("Validation error: {0}")]
+    Validation(#[from] crate::ValidationError),
+
     #[error("Unsupported operator: {0}")]
     UnsupportedOperatorError(String),
     

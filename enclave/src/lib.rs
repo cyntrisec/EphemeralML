@@ -1,5 +1,6 @@
 pub mod error;
 pub mod attestation;
+pub mod kms_client;
 pub mod assembly;
 pub mod inference;
 

@@ -8,6 +8,7 @@ pub mod types;
 pub mod validation;
 pub mod hpke_session;
 pub mod receipt_signing;
+pub mod vsock;
 
 // Re-export commonly used types and errors
 pub use error::{
@@ -38,6 +39,10 @@ pub use hpke_session::{
 pub use receipt_signing::{
     ReceiptSigningKey, AttestationUserData, AttestationReceipt, SecurityMode,
     EnclaveMeasurements, ReceiptBinding, ReceiptVerifier,
+};
+
+pub use vsock::{
+    VSockMessage, MessageType,
 };
 
 pub use validation::{

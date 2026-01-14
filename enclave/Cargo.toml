@@ -21,6 +21,8 @@ aws-nitro-enclaves-nsm-api = { workspace = true, optional = true }
 tokio-vsock = { workspace = true, optional = true }
 hex = "0.4"
 serde_cbor = "0.11"
+aws-sdk-kms = "1.97.0"
+aws-config = "1.8.12"
 
 [dev-dependencies]
 proptest = { workspace = true }

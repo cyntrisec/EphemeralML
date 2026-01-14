@@ -34,7 +34,7 @@ impl Default for ValidationLimits {
 }
 
 /// Validation errors for input validation
-#[derive(Error, Debug)]
+#[derive(Error, Debug, Clone)]
 pub enum ValidationError {
     #[error("Ciphertext size {size} exceeds maximum {max}")]
     CiphertextTooLarge { size: usize, max: usize },
@@ -68,6 +68,12 @@ pub enum ValidationError {
     
     #[error("Excessive allocation detected: {reason}")]
     ExcessiveAllocation { reason: String },
+
+    #[error("Message size limit exceeded: {0}")]
+    SizeLimitExceeded(String),
+
+    #[error("Invalid format: {0}")]
+    InvalidFormat(String),
 }
 
 /// Input validator for enforcing security limits
