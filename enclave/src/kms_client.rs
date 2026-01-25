@@ -1,38 +1,32 @@
 use crate::{EnclaveError, Result, EphemeralError};
-use serde::{Deserialize, Serialize};
-
-/// KMS Request types (matching Host definition)
-#[derive(Debug, Serialize, Deserialize)]
-#[serde(tag = "op", content = "payload")]
-pub enum KmsRequest {
-    Decrypt {
-         ciphertext_blob: Vec<u8>,
-         key_id: Option<String>,
-         encryption_context: Option<std::collections::HashMap<String, String>>,
-         grant_tokens: Option<Vec<String>>,
-         recipient: Option<Vec<u8>>,
-    },
-    GenerateDataKey {
-        key_id: String,
-        key_spec: String,
-    }
-}
+use crate::kms_proxy_client::KmsProxyClient;
+use ephemeral_ml_common::{KmsRequest, KmsResponse};
+use serde_json;
 
 /// KMS Stub Client for Enclave
 pub struct KmsClient<A: crate::attestation::AttestationProvider> {
     attestation_provider: A,
+    proxy_client: KmsProxyClient,
 }
 
 impl<A: crate::attestation::AttestationProvider> KmsClient<A> {
     pub fn new(attestation_provider: A) -> Self {
-         Self { attestation_provider }
+         Self { 
+             attestation_provider,
+             proxy_client: KmsProxyClient::new(),
+         }
+    }
+
+    pub fn new_with_proxy(attestation_provider: A, proxy_client: KmsProxyClient) -> Self {
+        Self {
+            attestation_provider,
+            proxy_client,
+        }
     }
 
     /// Request decryption of a ciphertext using attestation binding
     pub async fn decrypt(&self, ciphertext: &[u8]) -> Result<Vec<u8>> {
-        // 1. Generate attestation document (nonce usually comes from KMS challenge, but for static decrypt we generate one)
-        // In real flow, we might need a fresh nonce. For DEK decrypt, the nonce is less critical than the public key binding.
-        // We use a zero nonce or random one for now as the goal is to get the Public Key into the document.
+        // 1. Generate attestation document
         let nonce = [0u8; 16]; 
         let attestation_doc = self.attestation_provider.generate_attestation(&nonce)?;
         
@@ -47,46 +41,31 @@ impl<A: crate::attestation::AttestationProvider> KmsClient<A> {
             recipient: Some(recipient_bytes),
         };
 
-        // 3. Serialize
-        let _request_bytes = serde_json::to_vec(&request)
-            .map_err(|e| EnclaveError::Enclave(EphemeralError::SerializationError(e.to_string())))?;
-
-        // MOCK: In production, send over VSock and await response
-        // In our Host Mock, if recipient is set, it reverses the ciphertext bytes
-        // In a real scenario, this response would be HPKE encrypted
+        // 3. Send via Proxy
+        let response = self.proxy_client.send_request(request).await?;
         
-        // 4. Decrypt response
-        // Since we are mocking, we just assume the response body is the "plaintext" which is actually "encrypted key"
-        // And our mock just reverses it directly.
-        // In real logic:
-        // let response_payload = vsock_send(request_bytes).await?;
-        // let hpke_ciphertext = response_payload.ciphertext;
-        // let dek = self.attestation_provider.decrypt_hpke(hpke_ciphertext)?;
-        
-        // Simulating the reversal done by Host Mock:
-        let deferred_mock_kms_response: Vec<u8> = ciphertext.iter().rev().cloned().collect();
-        
-        // Validating that we could indeed perform HPKE if we had real data
-        let _my_pub_key = self.attestation_provider.get_hpke_public_key();
-        
-        Ok(deferred_mock_kms_response)
+        // 4. Handle response
+        match response {
+            KmsResponse::Decrypt { ciphertext_for_recipient, plaintext, .. } => {
+                if let Some(enc_key) = ciphertext_for_recipient {
+                    // Decrypt using our private key
+                    self.attestation_provider.decrypt_hpke(&enc_key)
+                } else if let Some(pt) = plaintext {
+                    // Host returned plaintext (unsafe, but maybe allowed if recipient was None, or Mock)
+                    Ok(pt)
+                } else {
+                    Err(EnclaveError::Enclave(EphemeralError::KmsError("No key returned in response".to_string())))
+                }
+            }
+            KmsResponse::Error(e) => Err(EnclaveError::Enclave(EphemeralError::KmsError(e))),
+            _ => Err(EnclaveError::Enclave(EphemeralError::KmsError("Unexpected response type".to_string()))),
+        }
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[tokio::test]
-    async fn test_client_decrypt() {
-        let provider = crate::attestation::DefaultAttestationProvider::new().unwrap();
-        let client = KmsClient::new(provider);
-        let ciphertext = vec![1, 2, 3, 4];
-        let plaintext = client.decrypt(&ciphertext).await.unwrap();
-        
-        // Our mock reverses the input
-        assert_eq!(plaintext, vec![4, 3, 2, 1]);
-    }
 
     #[test]
     fn test_request_serialization() {

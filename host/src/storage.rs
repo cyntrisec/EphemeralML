@@ -3,11 +3,11 @@ use std::collections::HashMap;
 
 /// Trait for weight storage functionality
 pub trait WeightStorage {
-    /// Store weights for a model
-    fn store(&mut self, model_id: &str, weights: &[f32]) -> Result<()>;
+    /// Store weights for a model (encrypted)
+    fn store(&mut self, model_id: &str, weights: &[u8]) -> Result<()>;
     
-    /// Retrieve weights for a model
-    fn retrieve(&self, model_id: &str) -> Result<Vec<f32>>;
+    /// Retrieve weights for a model (encrypted)
+    fn retrieve(&self, model_id: &str) -> Result<Vec<u8>>;
     
     /// Check if weights exist for a model
     fn exists(&self, model_id: &str) -> bool;
@@ -18,7 +18,7 @@ pub trait WeightStorage {
 
 /// In-memory weight storage implementation
 pub struct InMemoryWeightStorage {
-    storage: HashMap<String, Vec<f32>>,
+    storage: HashMap<String, Vec<u8>>,
 }
 
 impl InMemoryWeightStorage {
@@ -36,12 +36,12 @@ impl Default for InMemoryWeightStorage {
 }
 
 impl WeightStorage for InMemoryWeightStorage {
-    fn store(&mut self, model_id: &str, weights: &[f32]) -> Result<()> {
+    fn store(&mut self, model_id: &str, weights: &[u8]) -> Result<()> {
         self.storage.insert(model_id.to_string(), weights.to_vec());
         Ok(())
     }
     
-    fn retrieve(&self, model_id: &str) -> Result<Vec<f32>> {
+    fn retrieve(&self, model_id: &str) -> Result<Vec<u8>> {
         self.storage
             .get(model_id)
             .cloned()

@@ -7,8 +7,12 @@ pub mod error;
 pub mod types;
 pub mod validation;
 pub mod hpke_session;
+pub mod kms_proxy;
+pub mod model_manifest;
+pub mod protocol;
 pub mod receipt_signing;
 pub mod vsock;
+
 
 // Re-export commonly used types and errors
 pub use error::{
@@ -35,6 +39,9 @@ pub use types::{
 pub use hpke_session::{
     HPKESession, HPKESessionManager, HPKEConfig, EncryptedMessage, SessionId,
 };
+
+pub use kms_proxy::{KmsRequest, KmsResponse};
+pub use model_manifest::ModelManifest;
 
 pub use receipt_signing::{
     ReceiptSigningKey, AttestationUserData, AttestationReceipt, SecurityMode,
@@ -66,15 +73,15 @@ pub fn current_timestamp() -> u64 {
 }
 
 /// Generate a random nonce for cryptographic operations
-pub fn generate_nonce() -> [u8; 32] {
+pub fn generate_nonce() -> [u8; 12] {
     use sha2::{Sha256, Digest};
     let mut hasher = Sha256::new();
     hasher.update(uuid::Uuid::new_v4().as_bytes());
     hasher.update(&current_timestamp().to_be_bytes());
     
     let hash = hasher.finalize();
-    let mut nonce = [0u8; 32];
-    nonce.copy_from_slice(&hash);
+    let mut nonce = [0u8; 12];
+    nonce.copy_from_slice(&hash[0..12]);
     nonce
 }
 
@@ -135,6 +142,6 @@ mod tests {
         assert!(timestamp > 0);
         
         let nonce = generate_nonce();
-        assert_eq!(nonce.len(), 32);
+        assert_eq!(nonce.len(), 12);
     }
 }

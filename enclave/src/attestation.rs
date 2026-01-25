@@ -2,6 +2,7 @@ use crate::Result;
 use serde::{Deserialize, Serialize};
 use sha2::{Sha256, Digest};
 use uuid::Uuid;
+use hpke::{aead::ChaCha20Poly1305, kem::X25519HkdfSha256, OpModeR, Serializable, Deserializable};
 
 // Re-export common types
 pub use ephemeral_ml_common::{AttestationDocument, PcrMeasurements, current_timestamp};
@@ -36,8 +37,12 @@ impl EphemeralKeyPair {
         hasher.update(&current_timestamp().to_be_bytes());
         
         // Add additional entropy from system sources
-        if let Ok(entropy) = std::fs::read("/dev/urandom") {
-            hasher.update(&entropy[..32.min(entropy.len())]);
+        if let Ok(mut file) = std::fs::File::open("/dev/urandom") {
+            use std::io::Read;
+            let mut entropy = [0u8; 32];
+            if file.read_exact(&mut entropy).is_ok() {
+                hasher.update(&entropy);
+            }
         }
         
         let hash = hasher.finalize();
@@ -71,6 +76,9 @@ pub trait AttestationProvider {
     
     /// Get the receipt signing public key
     fn get_receipt_public_key(&self) -> [u8; 32];
+
+    /// Decrypt ciphertext encrypted with the enclave's HPKE public key
+    fn decrypt_hpke(&self, ciphertext: &[u8]) -> Result<Vec<u8>>;
 }
 
 /// NSM client for production attestation document generation
@@ -223,6 +231,32 @@ impl AttestationProvider for NSMAttestationProvider {
     fn get_receipt_public_key(&self) -> [u8; 32] {
         self.receipt_keypair.public_key
     }
+
+    fn decrypt_hpke(&self, ciphertext: &[u8]) -> Result<Vec<u8>> {
+        if ciphertext.len() < 32 {
+             return Err(EnclaveError::Enclave(EphemeralError::DecryptionError("Ciphertext too short".to_string())));
+        }
+        
+        let (encapped_key_bytes, cipher_text) = ciphertext.split_at(32);
+        
+        let kem_priv = <X25519HkdfSha256 as hpke::Kem>::PrivateKey::from_bytes(&self.hpke_keypair.private_key)
+             .map_err(|e| EnclaveError::Enclave(EphemeralError::DecryptionError(format!("Invalid private key: {}", e))))?;
+
+        let encapped_key = <X25519HkdfSha256 as hpke::Kem>::EncappedKey::from_bytes(encapped_key_bytes)
+             .map_err(|e| EnclaveError::Enclave(EphemeralError::DecryptionError(format!("Invalid encapped key: {}", e))))?;
+             
+        let mut receiver_ctx = hpke::setup_receiver::<
+            ChaCha20Poly1305,
+            hpke::kdf::HkdfSha256,
+            X25519HkdfSha256,
+        >(&OpModeR::Base, &kem_priv, &encapped_key, b"KMS_DEK")
+        .map_err(|e| EnclaveError::Enclave(EphemeralError::DecryptionError(format!("HPKE setup failed: {}", e))))?;
+        
+        let plaintext = receiver_ctx.open(cipher_text, b"")
+            .map_err(|e| EnclaveError::Enclave(EphemeralError::DecryptionError(format!("HPKE open failed: {}", e))))?;
+            
+        Ok(plaintext)
+    }
 }
 
 /// Default attestation provider that uses mock in development, NSM in production
@@ -275,6 +309,14 @@ impl AttestationProvider for DefaultAttestationProvider {
         
         #[cfg(feature = "mock")]
         return self.mock_provider.get_receipt_public_key();
+    }
+
+    fn decrypt_hpke(&self, ciphertext: &[u8]) -> Result<Vec<u8>> {
+        #[cfg(feature = "production")]
+        return self.nsm_provider.decrypt_hpke(ciphertext);
+        
+        #[cfg(feature = "mock")]
+        return self.mock_provider.decrypt_hpke(ciphertext);
     }
 }
 

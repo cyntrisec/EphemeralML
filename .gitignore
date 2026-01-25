@@ -168,3 +168,5 @@ coverage.xml
 # Lock files (keep Cargo.lock for applications, ignore for libraries)
 # Uncomment the next line if this is a library
 # Cargo.lock
+# local-only
+GEMINI.md

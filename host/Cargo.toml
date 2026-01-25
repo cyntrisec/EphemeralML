@@ -12,6 +12,9 @@ tokio = { workspace = true }
 anyhow = { workspace = true }
 thiserror = { workspace = true }
 uuid = { workspace = true }
+rand = { workspace = true }
+serde_cbor = { workspace = true }
+hpke = { workspace = true, features = ["std", "x25519"] }
 
 # Host-specific dependencies
 tokio-vsock = { workspace = true, optional = true }

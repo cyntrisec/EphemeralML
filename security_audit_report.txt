@@ -1,0 +1,7 @@
+Report: PASS
+
+Findings:
+1. `enclave/src/main.rs`: PASS. The `println!` statement leaking inference results has been removed.
+2. `enclave/src/session_manager.rs`: PASS. All `lock().unwrap()` calls on the session mutex have been replaced with proper error mapping or `if let Ok` checks.
+3. `common/src/lib.rs`: PASS. `generate_nonce` now returns `[u8; 12]`, which is the correct size for AES-GCM nonces.
+4. `host/src/proxy.rs`: PASS. The proxy now handles weights as raw bytes (`Vec<u8>`) instead of plaintext floats (`Vec<f32>`), appropriate for encrypted blobs.

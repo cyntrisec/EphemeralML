@@ -1,6 +1,7 @@
 pub mod error;
-pub mod proxy;
 pub mod aws_proxy;
+pub mod kms_proxy_server;
+pub mod proxy;
 pub mod storage;
 
 #[cfg(feature = "mock")]

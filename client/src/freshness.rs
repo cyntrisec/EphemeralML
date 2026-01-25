@@ -53,7 +53,7 @@ impl NonceManager {
             used_nonces: HashMap::new(),
             max_nonce_age,
             max_entries,
-            nonce_size: 32, // 256-bit nonces
+            nonce_size: 12, // 96-bit nonces for ChaCha20Poly1305
         }
     }
     
@@ -311,7 +311,7 @@ mod tests {
         
         // Generate nonce
         let nonce = manager.generate_nonce("test").unwrap();
-        assert_eq!(nonce.len(), 32);
+        assert_eq!(nonce.len(), 12);
         
         // Should be valid
         assert!(manager.is_nonce_valid(&nonce));

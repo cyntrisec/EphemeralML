@@ -3,13 +3,16 @@ use crate::{
     EphemeralError, current_timestamp,
 };
 // Re-export common types
-pub use ephemeral_ml_common::{AttestationDocument, PcrMeasurements};
+pub use ephemeral_ml_common::{AttestationDocument, PcrMeasurements, VSockMessage, MessageType};
 use crate::assembly::{TopologyKey, CandleModel};
+use crate::session_manager::{SessionManager, EnclaveSession};
+use crate::inference_handler::InferenceHandler;
 use sha2::{Sha256, Digest};
 use uuid::Uuid;
 use tokio::net::{TcpListener, TcpStream};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 
 /// Mock attestation document with user data for key binding
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -29,21 +32,21 @@ pub struct MockKeyPair {
 
 impl MockKeyPair {
     pub fn generate() -> Self {
-        // Generate deterministic keys for testing
+        use hpke::{kem::X25519HkdfSha256, Kem, Serializable};
+        
+        // Generate deterministic keys using a fixed seed
         let mut hasher = Sha256::new();
-        hasher.update(uuid::Uuid::new_v4().as_bytes());
+        hasher.update(b"deterministic_seed_for_mock_keypair");
         let hash = hasher.finalize();
+        
+        // Use the hash as Input Key Material (IKM)
+        let (private_key_obj, public_key_obj) = X25519HkdfSha256::derive_keypair(&hash);
         
         let mut public_key = [0u8; 32];
         let mut private_key = [0u8; 32];
         
-        public_key.copy_from_slice(&hash[..32]);
-        
-        // Generate private key from public key for deterministic testing
-        let mut hasher2 = Sha256::new();
-        hasher2.update(&public_key);
-        let hash2 = hasher2.finalize();
-        private_key.copy_from_slice(&hash2[..32]);
+        public_key.copy_from_slice(&public_key_obj.to_bytes());
+        private_key.copy_from_slice(&private_key_obj.to_bytes());
         
         Self { public_key, private_key }
     }
@@ -52,10 +55,6 @@ impl MockKeyPair {
 // Helper functions to convert errors
 fn io_error_to_enclave_error(err: std::io::Error) -> EnclaveError {
     EnclaveError::Enclave(EphemeralError::IoError(err.to_string()))
-}
-
-fn serde_error_to_enclave_error(err: serde_json::Error) -> EnclaveError {
-    EnclaveError::Enclave(EphemeralError::SerializationError(err.to_string()))
 }
 
 /// Mock attestation provider for local development
@@ -82,6 +81,14 @@ impl MockAttestationProvider {
         }
     }
     
+    pub fn new_copy(&self) -> Self {
+        Self {
+            valid_attestation: self.valid_attestation,
+            hpke_keypair: self.hpke_keypair.clone(),
+            receipt_keypair: self.receipt_keypair.clone(),
+        }
+    }
+
     /// Generate mock attestation document with embedded keys
     pub fn generate_attestation_with_keys(&self, nonce: &[u8]) -> Result<AttestationDocument> {
         if !self.valid_attestation {
@@ -107,35 +114,44 @@ impl MockAttestationProvider {
         
         let mut digest = vec![0u8; 48];
         digest[..32].copy_from_slice(&digest_bytes);
-        
+
         // Create deterministic PCR measurements for mock mode
         let pcr0 = "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f202122232425262728292a2b2c2d2e2f";
         let pcr1 = "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f202122232425262728292a2b2c2d2e2f";
         let pcr2 = "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f202122232425262728292a2b2c2d2e2f";
+
+        let pcr0_bytes = hex::decode(pcr0).unwrap_or_else(|_| vec![0x01; 48]);
+        let pcr1_bytes = hex::decode(pcr1).unwrap_or_else(|_| vec![0x02; 48]);
+        let pcr2_bytes = hex::decode(pcr2).unwrap_or_else(|_| vec![0x03; 48]);
         
+        // Create a mock CBOR document that resembles the real one for the host to verify
+        use std::collections::BTreeMap;
+        let mut map = BTreeMap::new();
+        map.insert(serde_cbor::Value::Text("module_id".to_string()), serde_cbor::Value::Text("mock-enclave".to_string()));
+        map.insert(serde_cbor::Value::Text("user_data".to_string()), serde_cbor::Value::Bytes(user_data_bytes));
+        
+        let mut pcrs_map = BTreeMap::new();
+        pcrs_map.insert(serde_cbor::Value::Integer(0), serde_cbor::Value::Bytes(pcr0_bytes.clone()));
+        pcrs_map.insert(serde_cbor::Value::Integer(1), serde_cbor::Value::Bytes(pcr1_bytes.clone()));
+        pcrs_map.insert(serde_cbor::Value::Integer(2), serde_cbor::Value::Bytes(pcr2_bytes.clone()));
+        map.insert(serde_cbor::Value::Text("pcrs".to_string()), serde_cbor::Value::Map(pcrs_map));
+
+        let signature_bytes = serde_cbor::to_vec(&serde_cbor::Value::Map(map))
+             .map_err(|e| EnclaveError::Enclave(EphemeralError::SerializationError(e.to_string())))?;
+
         Ok(AttestationDocument {
             module_id: "mock-enclave".to_string(),
             digest,
             timestamp: current_timestamp(),
             pcrs: PcrMeasurements {
-                pcr0: hex::decode(pcr0).unwrap_or_else(|_| vec![0x01; 48]),
-                pcr1: hex::decode(pcr1).unwrap_or_else(|_| vec![0x02; 48]),
-                pcr2: hex::decode(pcr2).unwrap_or_else(|_| vec![0x03; 48]),
+                pcr0: pcr0_bytes,
+                pcr1: pcr1_bytes,
+                pcr2: pcr2_bytes,
             },
             certificate: b"mock_certificate".to_vec(),
-            signature: b"mock_signature".to_vec(),
+            signature: signature_bytes,
             nonce: Some(nonce.to_vec()),
         })
-    }
-    
-    /// Get HPKE public key for session establishment
-    pub fn get_hpke_public_key(&self) -> [u8; 32] {
-        self.hpke_keypair.public_key
-    }
-    
-    /// Get receipt signing public key
-    pub fn get_receipt_public_key(&self) -> [u8; 32] {
-        self.receipt_keypair.public_key
     }
 }
 
@@ -151,7 +167,6 @@ impl AttestationProvider for MockAttestationProvider {
     }
 
     fn get_pcr_measurements(&self) -> Result<PcrMeasurements> {
-        // Return consistent mock measurements
         let pcr0 = "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f202122232425262728292a2b2c2d2e2f";
         let pcr1 = "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f202122232425262728292a2b2c2d2e2f";
         let pcr2 = "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f202122232425262728292a2b2c2d2e2f";
@@ -170,17 +185,45 @@ impl AttestationProvider for MockAttestationProvider {
     fn get_receipt_public_key(&self) -> [u8; 32] {
         self.receipt_keypair.public_key
     }
+
+    fn decrypt_hpke(&self, ciphertext: &[u8]) -> Result<Vec<u8>> {
+        use hpke::{aead::ChaCha20Poly1305, kem::X25519HkdfSha256, OpModeR, Serializable, Deserializable};
+        
+        if ciphertext.len() < 32 {
+             return Err(EnclaveError::Enclave(EphemeralError::DecryptionError("Ciphertext too short".to_string())));
+        }
+        
+        let (encapped_key_bytes, cipher_text) = ciphertext.split_at(32);
+        
+        let kem_priv = <X25519HkdfSha256 as hpke::Kem>::PrivateKey::from_bytes(&self.hpke_keypair.private_key)
+             .map_err(|e| EnclaveError::Enclave(EphemeralError::DecryptionError(format!("Invalid private key: {}", e))))?;
+
+        let encapped_key = <X25519HkdfSha256 as hpke::Kem>::EncappedKey::from_bytes(encapped_key_bytes)
+             .map_err(|e| EnclaveError::Enclave(EphemeralError::DecryptionError(format!("Invalid encapped key: {}", e))))?;
+             
+        let mut receiver_ctx = hpke::setup_receiver::<
+            ChaCha20Poly1305,
+            hpke::kdf::HkdfSha256,
+            X25519HkdfSha256,
+        >(&OpModeR::Base, &kem_priv, &encapped_key, b"KMS_DEK")
+        .map_err(|e| EnclaveError::Enclave(EphemeralError::DecryptionError(format!("HPKE setup failed: {}", e))))?;
+        
+        let plaintext = receiver_ctx.open(cipher_text, b"")
+            .map_err(|e| EnclaveError::Enclave(EphemeralError::DecryptionError(format!("HPKE open failed: {}", e))))?;
+            
+        Ok(plaintext)
+    }
 }
 
 /// Mock ephemeral assembler for local development
 pub struct MockEphemeralAssembler {
-    pub assembled_models: std::collections::HashMap<String, CandleModel>,
+    pub assembled_models: HashMap<String, CandleModel>,
 }
 
 impl MockEphemeralAssembler {
     pub fn new() -> Self {
         Self {
-            assembled_models: std::collections::HashMap::new(),
+            assembled_models: HashMap::new(),
         }
     }
 }
@@ -200,34 +243,21 @@ impl EphemeralAssembler for MockEphemeralAssembler {
         };
         
         self.assembled_models.insert(model.id.clone(), model.clone());
-        println!("Mock: Assembled model {} with {} weights", model.id, weights.len());
-        
         Ok(model)
     }
 
-    fn execute_inference(&self, model: &CandleModel, input: &[f32]) -> Result<Vec<f32>> {
-        // Mock inference - just return a simple transformation of input
-        let output: Vec<f32> = input.iter().map(|x| x * 2.0 + 1.0).collect();
-        println!("Mock: Executed inference on model {} with {} inputs, got {} outputs", 
-                 model.id, input.len(), output.len());
+    fn execute_inference(&self, model: &CandleModel, input: &[u8]) -> Result<Vec<f32>> {
+        let output: Vec<f32> = input.iter().map(|&x| (x as f32) * 2.0 + 1.0).collect();
         Ok(output)
     }
 
     fn destroy_model(&mut self, model: CandleModel) -> Result<()> {
         self.assembled_models.remove(&model.id);
-        println!("Mock: Destroyed model {}", model.id);
-        
-        // Mock secure memory clearing
-        std::sync::atomic::fence(std::sync::atomic::Ordering::SeqCst);
         Ok(())
     }
 
     fn secure_memory_clear(&mut self) -> Result<()> {
         self.assembled_models.clear();
-        println!("Mock: Cleared all models from memory");
-        
-        // Mock memory fence
-        std::sync::atomic::fence(std::sync::atomic::Ordering::SeqCst);
         Ok(())
     }
 }
@@ -248,68 +278,73 @@ impl Default for MockInferenceEngine {
 }
 
 impl InferenceEngine for MockInferenceEngine {
-    fn execute(&self, model: &CandleModel, input: &[f32]) -> Result<Vec<f32>> {
-        // Mock inference execution
-        let output: Vec<f32> = input.iter().enumerate().map(|(i, x)| {
+    fn execute(&self, model: &CandleModel, input: &[u8]) -> Result<Vec<f32>> {
+        // Interpret input bytes as f32s for mock backwards compatibility if needed, 
+        // or just treat as raw data.
+        if model.weights.is_empty() {
+            return Err(EnclaveError::Enclave(EphemeralError::Internal("Model weights are empty".to_string())));
+        }
+        let output: Vec<f32> = input.iter().enumerate().map(|(i, &x)| {
             let weight_factor = model.weights.get(i % model.weights.len()).unwrap_or(&1.0);
-            x * weight_factor + 0.1
+            (x as f32) * weight_factor + 0.1
         }).collect();
-        
-        println!("Mock inference: processed {} inputs to {} outputs", input.len(), output.len());
         Ok(output)
     }
 
-    fn validate_input(&self, model: &CandleModel, input: &[f32]) -> Result<()> {
+    fn validate_input(&self, _model: &CandleModel, input: &[u8]) -> Result<()> {
         if input.is_empty() {
             return Err(EnclaveError::Enclave(EphemeralError::InferenceError("Input cannot be empty".to_string())));
         }
-        
-        // Mock validation based on model input shapes
-        if let Some(input_shape) = model.topology.input_shapes.first() {
-            let expected_size: usize = input_shape.dimensions.iter().product();
-            if input.len() != expected_size {
-                return Err(EnclaveError::Enclave(EphemeralError::InferenceError(
-                    format!("Input size {} doesn't match expected size {}", input.len(), expected_size)
-                )));
-            }
-        }
-        
         Ok(())
     }
 }
 
-/// Mock enclave server for TCP communication
+/// Mock enclave server for TCP communication with full secure protocol
 pub struct MockEnclaveServer {
     pub port: u16,
+    pub session_manager: SessionManager,
+    pub inference_handler: InferenceHandler<MockAttestationProvider, MockInferenceEngine>,
     pub attestation_provider: MockAttestationProvider,
-    pub assembler: MockEphemeralAssembler,
-    pub inference_engine: MockInferenceEngine,
 }
 
 impl MockEnclaveServer {
     pub fn new(port: u16) -> Self {
+        let session_manager = SessionManager::new(100);
+        let attestation_provider = MockAttestationProvider::new();
+        let inference_engine = MockInferenceEngine::new();
+        let inference_handler = InferenceHandler::new(
+            session_manager.clone(),
+            attestation_provider.new_copy(),
+            inference_engine,
+        );
+        
         Self {
             port,
-            attestation_provider: MockAttestationProvider::new(),
-            assembler: MockEphemeralAssembler::new(),
-            inference_engine: MockInferenceEngine::new(),
+            session_manager,
+            inference_handler,
+            attestation_provider,
         }
     }
 
-    pub async fn start(&mut self) -> Result<()> {
+    pub async fn start(&self) -> Result<()> {
         let listener = TcpListener::bind(format!("127.0.0.1:{}", self.port))
             .await
             .map_err(|e| EnclaveError::Enclave(EphemeralError::CommunicationError(format!("Failed to bind: {}", e))))?;
 
-        println!("Mock enclave server listening on port {}", self.port);
+        println!("Mock secure enclave server listening on port {}", self.port);
 
         loop {
             match listener.accept().await {
                 Ok((stream, addr)) => {
-                    println!("Mock enclave: Connection from {}", addr);
-                    if let Err(e) = self.handle_connection(stream).await {
-                        eprintln!("Error handling connection: {}", e);
-                    }
+                    let handler = self.inference_handler.clone();
+                    let attestation = self.attestation_provider.new_copy();
+                    let session_mgr = self.session_manager.clone();
+                    
+                    tokio::spawn(async move {
+                        if let Err(e) = Self::handle_secure_connection(stream, handler, attestation, session_mgr).await {
+                            eprintln!("Error handling connection from {}: {}", addr, e);
+                        }
+                    });
                 }
                 Err(e) => {
                     eprintln!("Failed to accept connection: {}", e);
@@ -318,24 +353,134 @@ impl MockEnclaveServer {
         }
     }
 
-    async fn handle_connection(&mut self, mut stream: TcpStream) -> Result<()> {
-        let mut buffer = vec![0u8; 4096];
-        let bytes_read = stream.read(&mut buffer).await.map_err(io_error_to_enclave_error)?;
-        
-        if bytes_read == 0 {
-            return Ok(());
+    async fn handle_secure_connection(
+        mut stream: TcpStream,
+        handler: InferenceHandler<MockAttestationProvider, MockInferenceEngine>,
+        attestation_provider: MockAttestationProvider,
+        session_manager: SessionManager,
+    ) -> Result<()> {
+        use ephemeral_ml_common::protocol::{ClientHello, ServerHello};
+        use ephemeral_ml_common::{HPKESession, ReceiptSigningKey};
+
+        loop {
+            let mut len_buf = [0u8; 4];
+            if stream.read_exact(&mut len_buf).await.is_err() {
+                break; // Connection closed
+            }
+            let total_len = u32::from_be_bytes(len_buf) as usize;
+            
+            // FIX: Enforce MAX_MESSAGE_SIZE limit before allocation to prevent OOM
+            if total_len > ephemeral_ml_common::vsock::MAX_MESSAGE_SIZE {
+                eprintln!("Message too large: {} bytes (max {})", total_len, ephemeral_ml_common::vsock::MAX_MESSAGE_SIZE);
+                break;
+            }
+
+            let mut body = vec![0u8; total_len];
+            stream.read_exact(&mut body).await.map_err(io_error_to_enclave_error)?;
+            
+            let mut full_buf = Vec::with_capacity(4 + total_len);
+            full_buf.extend_from_slice(&len_buf);
+            full_buf.extend_from_slice(&body);
+            
+            let msg = VSockMessage::decode(&full_buf)
+                .map_err(|e| EnclaveError::Enclave(e))?;
+
+            match msg.msg_type {
+                MessageType::Hello => {
+                    let client_hello: ClientHello = serde_json::from_slice(&msg.payload)
+                        .map_err(|e| EnclaveError::Enclave(EphemeralError::SerializationError(e.to_string())))?;
+                    
+                    client_hello.validate().map_err(|e| EnclaveError::Enclave(e))?;
+
+                    // Establish Session
+                    let session_id = Uuid::new_v4().to_string();
+                    let attestation_doc = attestation_provider.generate_attestation(&client_hello.client_nonce)?;
+                    
+                    let mut hasher = Sha256::new();
+                    hasher.update(&attestation_doc.signature);
+                    let attestation_hash = hasher.finalize().into();
+
+                    let mut hpke = HPKESession::new(
+                        session_id.clone(),
+                        1,
+                        attestation_hash,
+                        attestation_provider.get_hpke_public_key(),
+                        client_hello.client_nonce,
+                        3600,
+                    ).map_err(|e| EnclaveError::Enclave(e))?;
+                    
+                    hpke.establish(&attestation_provider.hpke_keypair.private_key)
+                        .map_err(|e| EnclaveError::Enclave(e))?;
+
+                    let receipt_key = ReceiptSigningKey::generate().map_err(|e| EnclaveError::Enclave(e))?;
+                    let receipt_pk = receipt_key.public_key_bytes();
+
+                    let session = EnclaveSession::new(
+                        session_id.clone(),
+                        hpke,
+                        receipt_key,
+                        attestation_hash,
+                        client_hello.client_id,
+                    );
+                    session_manager.add_session(session)?;
+
+                    let server_hello = ServerHello::new(
+                        vec!["gateway".to_string()],
+                        serde_json::to_vec(&attestation_doc).unwrap(),
+                        attestation_provider.get_hpke_public_key().to_vec(),
+                        receipt_pk.to_vec(),
+                    ).map_err(|e| EnclaveError::Enclave(e))?;
+
+                    let response_payload = serde_json::to_vec(&server_hello).unwrap();
+                    let response_msg = VSockMessage::new(MessageType::Hello, msg.sequence, response_payload)
+                        .map_err(|e| EnclaveError::Enclave(e))?;
+                    
+                    stream.write_all(&response_msg.encode()).await.map_err(io_error_to_enclave_error)?;
+                }
+                MessageType::Data => {
+                    let encrypted_request: ephemeral_ml_common::EncryptedMessage = serde_json::from_slice(&msg.payload)
+                        .map_err(|e| EnclaveError::Enclave(EphemeralError::SerializationError(e.to_string())))?;
+                    
+                    let encrypted_response = handler.handle_request(&encrypted_request)?;
+                    
+                    let response_payload = serde_json::to_vec(&encrypted_response).unwrap();
+                    let response_msg = VSockMessage::new(MessageType::Data, msg.sequence, response_payload)
+                        .map_err(|e| EnclaveError::Enclave(e))?;
+                    
+                    stream.write_all(&response_msg.encode()).await.map_err(io_error_to_enclave_error)?;
+                }
+                _ => {
+                    return Err(EnclaveError::Enclave(EphemeralError::ProtocolError(format!("Unsupported message type: {:?}", msg.msg_type))));
+                }
+            }
+            stream.flush().await.map_err(io_error_to_enclave_error)?;
         }
-
-        let request = String::from_utf8_lossy(&buffer[..bytes_read]);
-        println!("Mock enclave received: {}", request);
-
-        // Generate mock attestation
-        let attestation = self.attestation_provider.generate_attestation(b"mock_nonce")?;
-        let response = serde_json::to_string(&attestation).map_err(serde_error_to_enclave_error)?;
-        
-        stream.write_all(response.as_bytes()).await.map_err(io_error_to_enclave_error)?;
-        stream.flush().await.map_err(io_error_to_enclave_error)?;
-        
         Ok(())
+    }
+}
+
+impl Clone for MockInferenceEngine {
+    fn clone(&self) -> Self {
+        Self
+    }
+}
+
+impl<A: AttestationProvider + NewCopyBridge, I: InferenceEngine + Clone> Clone for InferenceHandler<A, I> {
+    fn clone(&self) -> Self {
+        Self {
+            session_manager: self.session_manager.clone(),
+            attestation_provider: self.attestation_provider.new_copy_bridge(),
+            inference_engine: self.inference_engine.clone(),
+        }
+    }
+}
+
+trait NewCopyBridge {
+    fn new_copy_bridge(&self) -> Self where Self: Sized;
+}
+
+impl NewCopyBridge for MockAttestationProvider {
+    fn new_copy_bridge(&self) -> Self {
+        self.new_copy()
     }
 }

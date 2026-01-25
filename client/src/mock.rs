@@ -156,16 +156,9 @@ impl MockSecureClient {
         
         Ok(response)
     }
-}
 
-impl Default for MockSecureClient {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-impl SecureClient for MockSecureClient {
-    fn establish_attested_channel(&mut self, enclave_endpoint: &str) -> Result<SecureChannel> {
+    // Helper for old sync API
+    pub fn establish_attested_channel(&mut self, enclave_endpoint: &str) -> Result<SecureChannel> {
         if !self.mock_attestation_valid {
             return Err(ClientError::Client(EphemeralError::AttestationError("Mock attestation failed".to_string())));
         }
@@ -179,7 +172,7 @@ impl SecureClient for MockSecureClient {
         Ok(channel)
     }
 
-    fn encrypt_inference_request(&self, topology: &TopologyKey, data: &[f32]) -> Result<EncryptedPayload> {
+    pub fn encrypt_inference_request(&self, topology: &TopologyKey, data: &[f32]) -> Result<EncryptedPayload> {
         // Mock encryption - just serialize and "encrypt" with XOR
         let mut payload_data = Vec::new();
         let topology_bytes = serde_json::to_vec(topology)
@@ -199,7 +192,28 @@ impl SecureClient for MockSecureClient {
         })
     }
 
-    fn verify_enclave_attestation(&self, _attestation_doc: &[u8]) -> Result<bool> {
+    pub fn verify_enclave_attestation(&self, _attestation_doc: &[u8]) -> Result<bool> {
         Ok(self.mock_attestation_valid)
+    }
+}
+
+impl Default for MockSecureClient {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+#[async_trait::async_trait]
+impl SecureClient for MockSecureClient {
+    async fn establish_channel(&mut self, _addr: &str) -> Result<()> {
+        if !self.mock_attestation_valid {
+            return Err(ClientError::Client(EphemeralError::AttestationError("Mock attestation failed".to_string())));
+        }
+        Ok(())
+    }
+
+    async fn execute_inference(&mut self, _addr: &str, _model_id: &str, input_tensor: Vec<f32>) -> Result<Vec<f32>> {
+        // Return dummy result
+        Ok(input_tensor.iter().map(|x| x + 0.1).collect())
     }
 }

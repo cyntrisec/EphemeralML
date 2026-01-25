@@ -10,7 +10,10 @@ resolver = "2"
 [workspace.dependencies]
 # Core ML framework dependencies
 candle-core = "0.9"
+candle-nn = "0.9"
+candle-transformers = "0.9"
 safetensors = "0.7"
+tokenizers = "0.21"
 
 # Serialization and async runtime
 serde = { version = "1.0", features = ["derive"] }

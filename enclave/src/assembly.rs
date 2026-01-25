@@ -16,7 +16,7 @@ pub trait EphemeralAssembler {
     fn assemble_model(&mut self, topology: &TopologyKey, weights: &[f32]) -> Result<CandleModel>;
     
     /// Execute inference on the assembled model
-    fn execute_inference(&self, model: &CandleModel, input: &[f32]) -> Result<Vec<f32>>;
+    fn execute_inference(&self, model: &CandleModel, input: &[u8]) -> Result<Vec<f32>>;
     
     /// Destroy the model and clear memory
     fn destroy_model(&mut self, model: CandleModel) -> Result<()>;
@@ -34,7 +34,7 @@ impl EphemeralAssembler for DefaultEphemeralAssembler {
         Err(EnclaveError::Enclave(EphemeralError::AssemblyError("Not yet implemented".to_string())))
     }
     
-    fn execute_inference(&self, _model: &CandleModel, _input: &[f32]) -> Result<Vec<f32>> {
+    fn execute_inference(&self, _model: &CandleModel, _input: &[u8]) -> Result<Vec<f32>> {
         // Placeholder implementation - will be implemented in later tasks
         Err(EnclaveError::Enclave(EphemeralError::InferenceError("Not yet implemented".to_string())))
     }

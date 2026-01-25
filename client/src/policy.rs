@@ -4,7 +4,7 @@ use thiserror::Error;
 
 /// Static policy root key for v1 (checked into client config)
 /// In production, this would be a well-known public key for policy verification
-pub const POLICY_ROOT_PUBLIC_KEY: &str = "ed25519:AAAC3NzaC1lZDI1NTE5AAAAIKqP7B8nKMvvYoVjvLqzQzQzQzQzQzQzQzQzQzQzQzQz";
+pub const POLICY_ROOT_PUBLIC_KEY: &str = "ed25519:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=";
 
 /// Policy root key management errors
 #[derive(Error, Debug)]
@@ -229,23 +229,53 @@ impl PolicyManager {
     
     /// Verify policy signature using the root public key
     fn verify_policy_signature(&self, policy: &PolicyBundle) -> Result<(), PolicyError> {
-        // Create canonical encoding for signature verification
-        let _canonical_data = self.create_canonical_policy_data(policy)?;
-        
-        // In a real implementation, this would use Ed25519 signature verification
-        // For v1, we'll implement a placeholder that always succeeds for development
         #[cfg(feature = "mock")]
-        {
-            // Mock mode: always accept signatures for development
+        if policy.signature.is_empty() {
             return Ok(());
         }
+
+        // Create canonical encoding for signature verification
+        let canonical_data = self.create_canonical_policy_data(policy)?;
         
-        #[cfg(not(feature = "mock"))]
-        {
-            // Production mode: implement actual Ed25519 verification
-            // This would use a crate like `ed25519-dalek` for signature verification
-            todo!("Implement Ed25519 signature verification for production")
+        // Parse the root public key
+        // Format expected: "ed25519:<base64_encoded_key>"
+        let key_parts: Vec<&str> = self.root_public_key.split(':').collect();
+        if key_parts.len() != 2 || key_parts[0] != "ed25519" {
+             #[cfg(feature = "mock")]
+             return Ok(()); // In mock mode, if key is invalid/placeholder, we might skip
+             
+             #[cfg(not(feature = "mock"))]
+             return Err(PolicyError::RootKeyNotFound); // Or invalid format
         }
+        
+        use base64::{Engine as _, engine::general_purpose::STANDARD};
+        let public_key_bytes = STANDARD.decode(key_parts[1])
+            .map_err(|_| PolicyError::InvalidFormat { reason: "Invalid base64 in root key".to_string() })?;
+            
+        use ed25519_dalek::{Verifier, VerifyingKey, Signature};
+        
+        if public_key_bytes.len() != 32 {
+             #[cfg(feature = "mock")]
+             return Ok(()); // Allow placeholder keys in mock
+             
+             #[cfg(not(feature = "mock"))]
+             return Err(PolicyError::InvalidFormat { reason: "Invalid public key length".to_string() });
+        }
+        
+        // For tests where we use a placeholder key that isn't valid, we might want to skip logic if mock
+        // BUT if we want to test the VERIFICATION logic, we need a valid key.
+        // We will try to verify. If it fails and we are in mock mode, maybe we allow it?
+        // Better: Make the test provide a valid key.
+        
+        let verifying_key = VerifyingKey::from_bytes(public_key_bytes.as_slice().try_into().unwrap())
+            .map_err(|_| PolicyError::InvalidFormat { reason: "Invalid public key bytes".to_string() })?;
+            
+        let signature = Signature::from_bytes(policy.signature.as_slice().try_into().map_err(|_| 
+            PolicyError::InvalidSignature
+        )?);
+        
+        verifying_key.verify(&canonical_data, &signature)
+            .map_err(|_| PolicyError::InvalidSignature)
     }
     
     /// Create canonical encoding of policy data for signature verification
@@ -415,5 +445,43 @@ mod tests {
         // Should succeed in mock mode
         assert!(manager.load_policy(&policy_data).is_ok());
         assert!(manager.current_policy().is_some());
+    }
+
+    #[test]
+    fn test_signed_policy_verification() {
+        use ed25519_dalek::{SigningKey, Signer};
+        use rand::rngs::OsRng;
+        use base64::{Engine as _, engine::general_purpose::STANDARD};
+
+        // Generate key pair
+        let mut csprng = OsRng;
+        let signing_key = SigningKey::generate(&mut csprng);
+        let verifying_key = signing_key.verifying_key();
+        
+        let root_key_str = format!("ed25519:{}", STANDARD.encode(verifying_key.to_bytes()));
+        
+        let mut manager = PolicyManager::with_root_key(root_key_str);
+        let mut policy = PolicyManager::create_default_policy();
+        
+        // Canonicalize and sign
+        let canonical_bytes = manager.create_canonical_policy_data(&policy).unwrap();
+        let signature = signing_key.sign(&canonical_bytes);
+        policy.signature = signature.to_bytes().to_vec();
+        
+        let policy_data = serde_json::to_vec(&policy).unwrap();
+        
+        // Load should succeed
+        assert!(manager.load_policy(&policy_data).is_ok());
+        
+        // Tamper
+        let mut bad_policy = policy.clone();
+        bad_policy.version = 2; // Change data
+        let bad_policy_data = serde_json::to_vec(&bad_policy).unwrap();
+        
+        // Verification should fail (signature mismatch with data)
+        // Note: verify_policy_signature is called inside load_policy.
+        // But in mock mode, it might pass if we don't ensure verify_policy_signature enforces it?
+        // My implementation checks signature first.
+        assert!(manager.load_policy(&bad_policy_data).is_err());
     }
 }

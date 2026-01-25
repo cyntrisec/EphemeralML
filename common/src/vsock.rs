@@ -18,6 +18,8 @@ pub enum MessageType {
     Heartbeat = 0x04,
     /// Shutdown signal
     Shutdown = 0x05,
+    /// KMS Proxy traffic
+    KmsProxy = 0x06,
 }
 
 impl TryFrom<u8> for MessageType {
@@ -30,6 +32,7 @@ impl TryFrom<u8> for MessageType {
             0x03 => Ok(MessageType::Error),
             0x04 => Ok(MessageType::Heartbeat),
             0x05 => Ok(MessageType::Shutdown),
+            0x06 => Ok(MessageType::KmsProxy),
             _ => Err(EphemeralError::Validation(crate::ValidationError::InvalidFormat(
                 format!("Unknown message type: 0x{:02x}", value)
             ))),
@@ -160,5 +163,43 @@ mod tests {
         let data = vec![0, 0, 0, 5, 0xFF, 0, 0, 0, 0]; 
         let result = VSockMessage::decode(&data);
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_truncated_header() {
+        // Only 3 bytes of length prefix
+        let data = vec![0, 0, 1];
+        assert!(VSockMessage::decode(&data).is_err());
+        
+        // Only 4 bytes of length prefix (total_len = 5) but missing body
+        let data = vec![0, 0, 0, 5];
+        assert!(VSockMessage::decode(&data).is_err());
+    }
+
+    #[test]
+    fn test_zero_length_prefix() {
+        // total_len = 0
+        let data = vec![0, 0, 0, 0];
+        let result = VSockMessage::decode(&data);
+        assert!(result.is_err());
+        assert!(format!("{:?}", result.err().unwrap()).contains("Frame too short for header"));
+    }
+
+    #[test]
+    fn test_huge_length_claimed() {
+        // Claim 16MB but give 10 bytes
+        let mut data = vec![0u8; 10];
+        BigEndian::write_u32(&mut data[0..4], 16 * 1024 * 1024);
+        assert!(VSockMessage::decode(&data).is_err());
+    }
+
+    #[test]
+    fn test_length_exceeds_max() {
+        // Claim MAX + 1
+        let mut data = vec![0u8; 100];
+        BigEndian::write_u32(&mut data[0..4], (MAX_MESSAGE_SIZE + 1) as u32);
+        // It might fail either at data.len() check or at MAX_MESSAGE_SIZE check if data was provided.
+        // If we provide 100 bytes but claim huge, it fails data.len() check first.
+        assert!(VSockMessage::decode(&data).is_err());
     }
 }

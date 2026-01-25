@@ -170,18 +170,18 @@ cd client && cargo run --bin mock_client --features mock
 ### 🚧 In Development: Production Features (75% remaining)
 
 **Phase 2: Production Cryptography**
-- [ ] Real HPKE with ChaCha20-Poly1305 (currently uses XOR for development)
-- [ ] Complete protocol handshake implementation (currently truncated)
-- [ ] Production AWS certificate chain verification (currently stubbed)
+- [x] Real HPKE with ChaCha20-Poly1305
+- [x] Complete protocol handshake implementation
+- [x] Production AWS certificate chain verification
 
 **Phase 3: AWS Integration**
-- [ ] VSock communication (currently uses mock TCP)
-- [ ] AWS KMS integration with attestation-bound policies
-- [ ] Real NSM attestation (currently mocked)
+- [x] VSock communication
+- [x] AWS KMS integration with attestation-bound policies
+- [x] Real NSM attestation
 - [ ] S3 model storage with encrypted artifacts
 
 **Phase 4: Production Deployment**
-- [ ] Candle ML framework integration for real inference
+- [x] Candle ML framework integration for real inference
 - [ ] End-to-end system integration
 - [ ] Performance benchmarking and optimization
 - [ ] AWS Nitro Enclaves deployment scripts
@@ -204,6 +204,10 @@ cd client && cargo run --bin mock_client --features mock
 - Comprehensive error handling and validation
 - Mock mode for rapid development and testing
 - Build system with reproducible enclave measurements
+- **Production Candle-based inference engine for transformer models**
+  - Support for MiniLM-L6-v2 (BERT) and Llama-like architectures
+  - **GGUF support** for quantized models (int4, int8, etc.)
+  - Optimized for memory-efficient inference in TEE environments
 
 **Cryptographic Primitives**
 - HPKE session management (simplified for development)

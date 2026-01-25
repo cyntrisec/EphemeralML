@@ -215,7 +215,7 @@ impl WeightArrays {
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 pub struct EncryptedTopologyKey {
     pub encrypted_data: Vec<u8>,
-    pub nonce: [u8; 32],
+    pub nonce: [u8; 12],
     pub key_id: String, // KMS key identifier
 }
 
@@ -224,7 +224,7 @@ pub struct EncryptedTopologyKey {
 pub struct EncryptedTensor {
     pub encrypted_data: Vec<u8>,
     pub shape: TensorShape,
-    pub nonce: [u8; 32],
+    pub nonce: [u8; 12],
     pub key_id: String, // KMS key identifier
 }
 
@@ -232,7 +232,7 @@ pub struct EncryptedTensor {
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 pub struct EncryptedPayload {
     pub data: Vec<u8>,
-    pub nonce: [u8; 32],
+    pub nonce: [u8; 12],
     pub key_id: String, // KMS key identifier
     pub payload_type: PayloadType,
 }
@@ -254,7 +254,7 @@ pub struct InferenceRequest {
     pub topology_key: EncryptedTopologyKey,
     pub input_data: EncryptedTensor,
     pub model_id: String,
-    pub nonce: [u8; 32],
+    pub nonce: [u8; 12],
     pub timestamp: u64,
 }
 

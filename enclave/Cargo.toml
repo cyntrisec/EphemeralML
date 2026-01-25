@@ -6,6 +6,9 @@ edition = "2021"
 [dependencies]
 # Workspace dependencies
 candle-core = { workspace = true }
+candle-nn = { workspace = true }
+candle-transformers = { workspace = true }
+tokenizers = { workspace = true }
 safetensors = { workspace = true }
 ephemeral-ml-common = { path = "../common" }
 serde = { workspace = true }
@@ -21,13 +24,20 @@ aws-nitro-enclaves-nsm-api = { workspace = true, optional = true }
 tokio-vsock = { workspace = true, optional = true }
 hex = "0.4"
 serde_cbor = "0.11"
+hpke = { workspace = true, features = ["std", "x25519"] }
+chacha20poly1305 = { workspace = true }
 aws-sdk-kms = "1.97.0"
 aws-config = "1.8.12"
+byteorder = "1.5.0"
 
 [dev-dependencies]
 proptest = { workspace = true }
+rand = { workspace = true }
+ed25519-dalek = { workspace = true }
+serde_bytes = "0.11"
 
 [features]
 default = ["mock"]
 mock = []
 production = ["aws-nitro-enclaves-nsm-api", "tokio-vsock"]
+cuda = ["candle-core/cuda", "candle-nn/cuda", "candle-transformers/cuda"]

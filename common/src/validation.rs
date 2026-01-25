@@ -74,6 +74,12 @@ pub enum ValidationError {
 
     #[error("Invalid format: {0}")]
     InvalidFormat(String),
+
+    #[error("Invalid signature: {0}")]
+    InvalidSignature(String),
+
+    #[error("Integrity check failed: {0}")]
+    IntegrityCheckFailed(String),
 }
 
 /// Input validator for enforcing security limits

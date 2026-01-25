@@ -28,7 +28,7 @@ pub struct ClientHello {
     /// Supported optional features
     pub supported_features: Vec<String>,
     /// Client nonce for freshness
-    pub client_nonce: [u8; 32],
+    pub client_nonce: [u8; 12],
     /// Client identifier
     pub client_id: String,
     /// Timestamp for freshness tracking
@@ -129,4 +129,44 @@ impl ServerHello {
             ));
         }
         
-        if recei
+        if receipt_signing_key.len() != 32 {
+            return Err(EphemeralError::InvalidInput(
+                format!("Invalid receipt signing key length: {}", receipt_signing_key.len())
+            ));
+        }
+
+        Ok(Self {
+            version: PROTOCOL_VERSION_V1,
+            chosen_features,
+            attestation_document,
+            ephemeral_public_key,
+            receipt_signing_key,
+            timestamp: crate::current_timestamp(),
+        })
+    }
+
+    /// Validate ServerHello message
+    pub fn validate(&self) -> Result<()> {
+        if self.version != PROTOCOL_VERSION_V1 {
+             return Err(EphemeralError::ProtocolError(
+                format!("Unsupported protocol version: {}. Only version 1 is supported.", self.version)
+            ));
+        }
+        
+        if self.chosen_features.len() > MAX_FEATURES {
+             return Err(EphemeralError::InvalidInput(
+                format!("Too many features: {}", self.chosen_features.len())
+            ));
+        }
+        
+        if self.ephemeral_public_key.len() != 32 {
+             return Err(EphemeralError::InvalidInput("Invalid ephemeral public key length".to_string()));
+        }
+        
+        if self.receipt_signing_key.len() != 32 {
+             return Err(EphemeralError::InvalidInput("Invalid receipt signing key length".to_string()));
+        }
+        
+        Ok(())
+    }
+}

@@ -5,18 +5,18 @@ pub trait VSockProxy {
     /// Forward encrypted payload to enclave
     fn forward_to_enclave(&self, payload: &[u8]) -> impl std::future::Future<Output = Result<Vec<u8>>> + Send;
     
-    /// Store unstructured weights
-    fn store_weights(&mut self, model_id: &str, weights: &[f32]) -> Result<()>;
+    /// Store unstructured weights (encrypted)
+    fn store_weights(&mut self, model_id: &str, weights: &[u8]) -> Result<()>;
     
-    /// Retrieve unstructured weights
-    fn retrieve_weights(&self, model_id: &str) -> Result<Vec<f32>>;
+    /// Retrieve unstructured weights (encrypted)
+    fn retrieve_weights(&self, model_id: &str) -> Result<Vec<u8>>;
 }
 
 /// Default VSock proxy implementation
 pub struct DefaultVSockProxy {
     pub enclave_cid: u32,
     pub enclave_port: u32,
-    pub weight_storage: std::collections::HashMap<String, Vec<f32>>,
+    pub weight_storage: std::collections::HashMap<String, Vec<u8>>,
 }
 
 impl DefaultVSockProxy {
@@ -35,12 +35,12 @@ impl VSockProxy for DefaultVSockProxy {
         Err(HostError::Host(EphemeralError::VSockError("Not yet implemented".to_string())))
     }
     
-    fn store_weights(&mut self, model_id: &str, weights: &[f32]) -> Result<()> {
+    fn store_weights(&mut self, model_id: &str, weights: &[u8]) -> Result<()> {
         self.weight_storage.insert(model_id.to_string(), weights.to_vec());
         Ok(())
     }
     
-    fn retrieve_weights(&self, model_id: &str) -> Result<Vec<f32>> {
+    fn retrieve_weights(&self, model_id: &str) -> Result<Vec<u8>> {
         self.weight_storage
             .get(model_id)
             .cloned()

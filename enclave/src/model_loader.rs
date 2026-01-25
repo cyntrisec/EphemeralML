@@ -1,0 +1,253 @@
+use crate::{EnclaveError, Result, EphemeralError};
+use crate::kms_client::KmsClient;
+use crate::attestation::AttestationProvider;
+use ephemeral_ml_common::ModelManifest;
+use sha2::{Sha256, Digest};
+use chacha20poly1305::{ChaCha20Poly1305, Key, Nonce, KeyInit};
+use chacha20poly1305::aead::Aead;
+use safetensors::SafeTensors;
+
+pub struct ModelLoader<A: AttestationProvider> {
+    kms_client: KmsClient<A>,
+    trusted_signing_key: [u8; 32],
+}
+
+impl<A: AttestationProvider> ModelLoader<A> {
+    pub fn new(kms_client: KmsClient<A>, trusted_signing_key: [u8; 32]) -> Self {
+        Self {
+            kms_client,
+            trusted_signing_key,
+        }
+    }
+
+    /// Load and verify a model from an encrypted artifact
+    /// Returns the decrypted plaintext bytes. Caller must parse as SafeTensors.
+    pub async fn load_model(
+        &self,
+        manifest: &ModelManifest,
+        encrypted_artifact: &[u8],
+        wrapped_dek: &[u8],
+    ) -> Result<Vec<u8>> {
+        // 1. Verify Manifest Signature
+        manifest.verify(&self.trusted_signing_key)
+            .map_err(|e| EnclaveError::Enclave(EphemeralError::Validation(
+                crate::ValidationError::InvalidSignature(format!("Manifest verification failed: {}", e))
+            )))?;
+
+        // 2. Unwrap DEK using KMS
+        let dek_bytes = self.kms_client.decrypt(wrapped_dek).await?;
+        
+        if dek_bytes.len() != 32 {
+            return Err(EnclaveError::Enclave(EphemeralError::KmsError(
+                format!("Invalid DEK length: expected 32, got {}", dek_bytes.len())
+            )));
+        }
+
+        // 3. Decrypt Artifact
+        if encrypted_artifact.len() < 12 + 16 {
+             return Err(EnclaveError::Enclave(EphemeralError::DecryptionError("Artifact too short".to_string())));
+        }
+
+        let (nonce_bytes, ciphertext) = encrypted_artifact.split_at(12);
+        let key = Key::from_slice(&dek_bytes);
+        let cipher = ChaCha20Poly1305::new(key);
+        let nonce = Nonce::from_slice(nonce_bytes);
+
+        let plaintext = cipher.decrypt(nonce, ciphertext)
+            .map_err(|e| EnclaveError::Enclave(EphemeralError::DecryptionError(format!("Model decryption failed: {}", e))))?;
+
+        // 4. Verify Hash
+        let mut hasher = Sha256::new();
+        hasher.update(&plaintext);
+        let calculated_hash = hasher.finalize();
+
+        if calculated_hash.as_slice() != manifest.model_hash.as_slice() {
+            return Err(EnclaveError::Enclave(EphemeralError::Validation(
+                crate::ValidationError::IntegrityCheckFailed("Model hash mismatch".to_string())
+            )));
+        }
+        
+        // 5. Validate Safetensors format
+        let st = SafeTensors::deserialize(&plaintext)
+             .map_err(|e| EnclaveError::Enclave(EphemeralError::DecompositionError(format!("Safetensors parse failed: {}", e))))?;
+
+        // 6. Enforce dtype constraints (Task 18.2)
+        Self::validate_model_format(&st)?;
+
+        Ok(plaintext)
+    }
+
+    fn validate_model_format(st: &SafeTensors) -> Result<()> {
+        for (name, view) in st.tensors() {
+            let dtype = view.dtype();
+            // We only support F32, F16, and BF16 for v1
+            match dtype {
+                safetensors::Dtype::F32 | safetensors::Dtype::F16 | safetensors::Dtype::BF16 => {
+                    // Allowed
+                }
+                _ => {
+                    return Err(EnclaveError::Enclave(EphemeralError::ValidationError(
+                        format!("Unsupported dtype {:?} for tensor {}", dtype, name)
+                    )));
+                }
+            }
+        }
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::attestation::DefaultAttestationProvider;
+    use crate::kms_proxy_client::KmsProxyClient;
+    use ed25519_dalek::{SigningKey, Signer};
+    use rand::rngs::OsRng;
+    use rand::RngCore;
+    use serde::Serialize;
+    use chacha20poly1305::aead::Aead;
+    use tokio::net::TcpListener;
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    use ephemeral_ml_common::{VSockMessage, MessageType, KmsRequest, KmsResponse};
+    use hpke::{kem::X25519HkdfSha256, OpModeS, Serializable, Deserializable};
+
+    #[tokio::test]
+    async fn test_load_model_mock() {
+        // Setup Keys
+        let mut csprng = OsRng;
+        let signing_key = SigningKey::generate(&mut csprng);
+        let verifying_key = signing_key.verifying_key();
+        
+        let dek = [0x42u8; 32]; // Mock DEK
+        
+        // Setup Provider and get HPKE public key
+        let provider = DefaultAttestationProvider::new().unwrap();
+        let hpke_pk_bytes = provider.get_hpke_public_key();
+        
+        // Start Mock KMS Server
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+        
+        let dek_clone = dek.clone();
+        
+        tokio::spawn(async move {
+            let (mut socket, _) = listener.accept().await.unwrap();
+            
+            // Read length prefix
+            let mut len_buf = [0u8; 4];
+            socket.read_exact(&mut len_buf).await.unwrap();
+            let total_len = u32::from_be_bytes(len_buf) as usize;
+            
+            // FIX: Enforce MAX_MESSAGE_SIZE limit in test server
+            if total_len > ephemeral_ml_common::vsock::MAX_MESSAGE_SIZE {
+                panic!("Message too large in test server: {} bytes", total_len);
+            }
+
+            let mut body = vec![0u8; total_len];
+            socket.read_exact(&mut body).await.unwrap();
+            
+            let mut full_buf = Vec::with_capacity(4 + total_len);
+            full_buf.extend_from_slice(&len_buf);
+            full_buf.extend_from_slice(&body);
+            
+            let msg = VSockMessage::decode(&full_buf).unwrap();
+            assert_eq!(msg.msg_type, MessageType::KmsProxy);
+            
+            // Assume request is valid Decrypt
+            // We just need to return the DEK encrypted to the Enclave
+            
+            // Encrypt DEK using HPKE
+            let mut rng = OsRng;
+            let kem_pub = <X25519HkdfSha256 as hpke::Kem>::PublicKey::from_bytes(&hpke_pk_bytes).unwrap();
+            
+            let (encapped_key, mut sender_ctx) = hpke::setup_sender::<
+                hpke::aead::ChaCha20Poly1305,
+                hpke::kdf::HkdfSha256,
+                X25519HkdfSha256,
+                _,
+            >(&OpModeS::Base, &kem_pub, b"KMS_DEK", &mut rng).unwrap();
+            
+            let ciphertext = sender_ctx.seal(&dek_clone, b"").unwrap();
+            let mut encrypted_dek = encapped_key.to_bytes().to_vec();
+            encrypted_dek.extend_from_slice(&ciphertext);
+            
+            let response = KmsResponse::Decrypt {
+                ciphertext_for_recipient: Some(encrypted_dek),
+                plaintext: None,
+                key_id: None,
+            };
+            
+            let response_payload = serde_json::to_vec(&response).unwrap();
+            let response_msg = VSockMessage::new(MessageType::KmsProxy, msg.sequence, response_payload).unwrap();
+            let encoded = response_msg.encode();
+            
+            socket.write_all(&encoded).await.unwrap();
+        });
+        
+        // Setup Client with Proxy
+        let proxy_client = KmsProxyClient::new().with_addr(format!("127.0.0.1:{}", port));
+        let kms_client = KmsClient::new_with_proxy(provider, proxy_client);
+        let loader = ModelLoader::new(kms_client, verifying_key.to_bytes());
+        
+        // Create Mock Safetensors Artifact
+        let json_header = r#"{"test": {"dtype":"F32", "shape":[1], "data_offsets":[0, 4]}}"#;
+        let json_bytes = json_header.as_bytes();
+        let n: u64 = json_bytes.len() as u64;
+        let mut plaintext_model = Vec::new();
+        plaintext_model.extend_from_slice(&n.to_le_bytes());
+        plaintext_model.extend_from_slice(json_bytes);
+        plaintext_model.extend_from_slice(&[0u8; 4]); // 4 bytes of data
+        
+        // Hash it
+        let mut hasher = Sha256::new();
+        hasher.update(&plaintext_model);
+        let model_hash = hasher.finalize().to_vec();
+        
+        // Encrypt it
+        let mut nonce_bytes = [0u8; 12];
+        csprng.fill_bytes(&mut nonce_bytes);
+        let nonce = Nonce::from_slice(&nonce_bytes);
+        let key = Key::from_slice(&dek);
+        let cipher = ChaCha20Poly1305::new(key);
+        let ciphertext = cipher.encrypt(nonce, plaintext_model.as_slice()).unwrap();
+        
+        let mut encrypted_artifact = nonce_bytes.to_vec();
+        encrypted_artifact.extend_from_slice(&ciphertext);
+        
+        // Mock KMS Wrapped DEK (dummy for this test since our mock server ignores input and returns `dek` encrypted)
+        let wrapped_dek = vec![0u8; 32]; 
+        
+        // Create Manifest
+        #[derive(Serialize)]
+        struct Payload {
+            model_id: String,
+            version: String,
+            #[serde(with = "serde_bytes")]
+            model_hash: Vec<u8>,
+            hash_algorithm: String,
+            key_id: String,
+        }
+        let payload = Payload {
+            model_id: "test".to_string(),
+            version: "v1".to_string(),
+            model_hash: model_hash.clone(),
+            hash_algorithm: "sha256".to_string(),
+            key_id: "key".to_string(),
+        };
+        let payload_bytes = serde_json::to_vec(&payload).unwrap();
+        let signature = signing_key.sign(&payload_bytes);
+        
+        let manifest = ModelManifest {
+            model_id: "test".to_string(),
+            version: "v1".to_string(),
+            model_hash: model_hash,
+            hash_algorithm: "sha256".to_string(),
+            key_id: "key".to_string(),
+            signature: signature.to_bytes().to_vec(),
+        };
+        
+        // Test Load
+        let loaded_bytes = loader.load_model(&manifest, &encrypted_artifact, &wrapped_dek).await.unwrap();
+        assert_eq!(loaded_bytes, plaintext_model);
+    }
+}

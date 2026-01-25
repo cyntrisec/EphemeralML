@@ -11,7 +11,7 @@ fn io_error_to_host_error(err: std::io::Error) -> HostError {
 /// Mock VSock proxy that uses TCP for local development
 pub struct MockVSockProxy {
     pub tcp_port: u16,
-    pub weight_storage: HashMap<String, Vec<f32>>,
+    pub weight_storage: HashMap<String, Vec<u8>>,
 }
 
 impl MockVSockProxy {
@@ -48,18 +48,64 @@ impl MockVSockProxy {
     }
 
     async fn handle_mock_connection(mut stream: TcpStream) -> Result<()> {
-        let mut buffer = vec![0u8; 4096];
-        let bytes_read = stream.read(&mut buffer).await.map_err(io_error_to_host_error)?;
-        
-        if bytes_read == 0 {
+        use ephemeral_ml_common::{VSockMessage, MessageType, KmsRequest};
+        use crate::kms_proxy_server::KmsProxyServer;
+
+        // Read length prefix
+        let mut len_buf = [0u8; 4];
+        // If we can't read 4 bytes, assume connection closed or empty
+        if stream.read_exact(&mut len_buf).await.is_err() {
             return Ok(());
         }
-
-        // Echo back the data with a mock response prefix
-        let response = format!("MOCK_RESPONSE:{}", String::from_utf8_lossy(&buffer[..bytes_read]));
-        stream.write_all(response.as_bytes()).await.map_err(io_error_to_host_error)?;
-        stream.flush().await.map_err(io_error_to_host_error)?;
         
+        let total_len = u32::from_be_bytes(len_buf) as usize;
+        
+        // Safety check
+        if total_len > ephemeral_ml_common::vsock::MAX_MESSAGE_SIZE + 100 {
+            return Err(HostError::Host(EphemeralError::Validation(
+                ephemeral_ml_common::ValidationError::SizeLimitExceeded("Message too large".to_string())
+            )));
+        }
+
+        let mut body = vec![0u8; total_len];
+        stream.read_exact(&mut body).await.map_err(io_error_to_host_error)?;
+        
+        let mut full_buf = Vec::with_capacity(4 + total_len);
+        full_buf.extend_from_slice(&len_buf);
+        full_buf.extend_from_slice(&body);
+        
+        let msg = VSockMessage::decode(&full_buf)
+            .map_err(|e| HostError::Host(EphemeralError::Validation(ephemeral_ml_common::ValidationError::InvalidFormat(e.to_string()))))?;
+
+        if msg.msg_type == MessageType::KmsProxy {
+             let request: KmsRequest = serde_json::from_slice(&msg.payload)
+                 .map_err(|e| HostError::Host(EphemeralError::SerializationError(e.to_string())))?;
+                 
+             let mut server = KmsProxyServer::new();
+             let response = server.handle_request(request);
+             
+             let response_payload = serde_json::to_vec(&response)
+                 .map_err(|e| HostError::Host(EphemeralError::SerializationError(e.to_string())))?;
+                 
+             let response_msg = VSockMessage::new(MessageType::KmsProxy, msg.sequence, response_payload)
+                 .map_err(|e| HostError::Host(EphemeralError::Validation(ephemeral_ml_common::ValidationError::InvalidFormat(e.to_string()))))?;
+                 
+             let encoded = response_msg.encode();
+             stream.write_all(&encoded).await.map_err(io_error_to_host_error)?;
+        } else {
+             // Default echo behavior for other types (or Data)
+             // Just echo back for now if it's Data, or ignore
+             if msg.msg_type == MessageType::Data {
+                let response = format!("MOCK_RESPONSE:{}", String::from_utf8_lossy(&msg.payload));
+                // We need to wrap it in VSockMessage
+                let response_msg = VSockMessage::new(MessageType::Data, msg.sequence, response.as_bytes().to_vec())
+                    .map_err(|e| HostError::Host(EphemeralError::Validation(ephemeral_ml_common::ValidationError::InvalidFormat(e.to_string()))))?;
+                
+                stream.write_all(&response_msg.encode()).await.map_err(io_error_to_host_error)?;
+             }
+        }
+        
+        stream.flush().await.map_err(io_error_to_host_error)?;
         Ok(())
     }
 }
@@ -82,13 +128,13 @@ impl VSockProxy for MockVSockProxy {
         Ok(response)
     }
 
-    fn store_weights(&mut self, model_id: &str, weights: &[f32]) -> Result<()> {
+    fn store_weights(&mut self, model_id: &str, weights: &[u8]) -> Result<()> {
         self.weight_storage.insert(model_id.to_string(), weights.to_vec());
-        println!("Mock: Stored {} weights for model {}", weights.len(), model_id);
+        println!("Mock: Stored {} bytes of weights for model {}", weights.len(), model_id);
         Ok(())
     }
 
-    fn retrieve_weights(&self, model_id: &str) -> Result<Vec<f32>> {
+    fn retrieve_weights(&self, model_id: &str) -> Result<Vec<u8>> {
         self.weight_storage
             .get(model_id)
             .cloned()
@@ -98,7 +144,7 @@ impl VSockProxy for MockVSockProxy {
 
 /// Mock weight storage for testing
 pub struct MockWeightStorage {
-    storage: HashMap<String, Vec<f32>>,
+    storage: HashMap<String, Vec<u8>>,
 }
 
 impl MockWeightStorage {
@@ -116,13 +162,13 @@ impl Default for MockWeightStorage {
 }
 
 impl WeightStorage for MockWeightStorage {
-    fn store(&mut self, model_id: &str, weights: &[f32]) -> Result<()> {
+    fn store(&mut self, model_id: &str, weights: &[u8]) -> Result<()> {
         self.storage.insert(model_id.to_string(), weights.to_vec());
-        println!("Mock storage: Stored {} weights for model {}", weights.len(), model_id);
+        println!("Mock storage: Stored {} bytes of weights for model {}", weights.len(), model_id);
         Ok(())
     }
 
-    fn retrieve(&self, model_id: &str) -> Result<Vec<f32>> {
+    fn retrieve(&self, model_id: &str) -> Result<Vec<u8>> {
         self.storage
             .get(model_id)
             .cloned()

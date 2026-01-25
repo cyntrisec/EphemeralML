@@ -48,9 +48,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("Assembled model: {}", model.id);
     
     // Test inference
-    let input: Vec<f32> = vec![1.0, 2.0, 3.0, 4.0, 5.0];
-    let output = assembler.execute_inference(&model, &input)?;
-    println!("Inference result: {:?}", output);
+    let input_data: Vec<u8> = vec![1, 2, 3, 4, 5];
+    let output = assembler.execute_inference(&model, &input_data)?;
+    // Inference output removed to prevent secret leakage
     
     // Clean up
     assembler.destroy_model(model)?;

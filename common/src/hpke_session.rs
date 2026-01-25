@@ -39,12 +39,13 @@ pub struct HPKESession {
     pub protocol_version: u32,
     pub attestation_hash: [u8; 32],
     pub enclave_public_key: [u8; 32],
-    pub client_nonce: [u8; 32],
+    pub client_nonce: [u8; 12],
     pub transcript_hash: [u8; 32],
     
     // Session keys (zeroized on drop)
     session_key: [u8; 32],
     next_sequence_number: u64,
+    next_incoming_sequence: u64,
     
     // Session metadata
     pub created_at: u64,
@@ -59,7 +60,7 @@ impl HPKESession {
         protocol_version: u32,
         attestation_hash: [u8; 32],
         enclave_public_key: [u8; 32],
-        client_nonce: [u8; 32],
+        client_nonce: [u8; 12],
         ttl_seconds: u64,
     ) -> Result<Self> {
         let now = crate::current_timestamp();
@@ -81,6 +82,7 @@ impl HPKESession {
             transcript_hash,
             session_key: [0u8; 32], // Will be derived during establishment
             next_sequence_number: 0,
+            next_incoming_sequence: 0,
             created_at: now,
             expires_at: now + ttl_seconds,
             is_established: false,
@@ -91,7 +93,7 @@ impl HPKESession {
     fn derive_transcript_hash(
         attestation_hash: &[u8; 32],
         enclave_public_key: &[u8; 32],
-        client_nonce: &[u8; 32],
+        client_nonce: &[u8; 12],
         protocol_version: u32,
     ) -> Result<[u8; 32]> {
         use sha2::{Sha256, Digest};
@@ -178,7 +180,7 @@ impl HPKESession {
     }
     
     /// Decrypt payload with replay protection
-    pub fn decrypt(&self, message: &EncryptedMessage) -> Result<Vec<u8>> {
+    pub fn decrypt(&mut self, message: &EncryptedMessage) -> Result<Vec<u8>> {
         if !self.is_established {
             return Err(EphemeralError::DecryptionError("Session not established".to_string()));
         }
@@ -191,13 +193,26 @@ impl HPKESession {
             return Err(EphemeralError::DecryptionError("Protocol version mismatch".to_string()));
         }
         
+        // Enforce strict monotonic sequence
+        if message.sequence_number != self.next_incoming_sequence {
+             return Err(EphemeralError::DecryptionError(format!(
+                "Replay or out-of-order packet detected: expected sequence {}, got {}", 
+                self.next_incoming_sequence, message.sequence_number
+            )));
+        }
+
         // Reconstruct full ciphertext with authentication tag for ChaCha20-Poly1305
         let mut full_ciphertext = message.ciphertext.clone();
         full_ciphertext.extend_from_slice(&message.auth_tag);
         
         // Decrypt and verify message frame using the sequence number from the message
         let message_frame = self.decrypt_frame(&full_ciphertext, message.sequence_number)?;
-        self.parse_message_frame(&message_frame, message.sequence_number)
+        let plaintext = self.parse_message_frame(&message_frame, message.sequence_number)?;
+        
+        // Increment sequence only after success
+        self.next_incoming_sequence += 1;
+        
+        Ok(plaintext)
     }
     
     /// Create canonical message frame
@@ -394,7 +409,7 @@ impl HPKESessionManager {
         protocol_version: u32,
         attestation_hash: [u8; 32],
         enclave_public_key: [u8; 32],
-        client_nonce: [u8; 32],
+        client_nonce: [u8; 12],
         ttl_seconds: u64,
     ) -> Result<()> {
         if self.sessions.len() >= self.max_sessions {
@@ -440,10 +455,10 @@ impl HPKESessionManager {
     
     /// Decrypt payload for session
     pub fn decrypt(
-        &self,
+        &mut self,
         message: &EncryptedMessage,
     ) -> Result<Vec<u8>> {
-        let session = self.sessions.get(&message.session_id)
+        let session = self.sessions.get_mut(&message.session_id)
             .ok_or_else(|| EphemeralError::InvalidInput("Session not found".to_string()))?;
         
         session.decrypt(message)
@@ -495,7 +510,7 @@ mod tests {
         let protocol_version = 1;
         let attestation_hash = [1u8; 32];
         let enclave_public_key = [2u8; 32];
-        let client_nonce = [3u8; 32];
+        let client_nonce = [3u8; 12];
         let ttl_seconds = 3600;
         
         let session = HPKESession::new(
@@ -520,7 +535,7 @@ mod tests {
             1,
             [1u8; 32],
             [2u8; 32],
-            [3u8; 32],
+            [3u8; 12],
             3600,
         ).unwrap();
         
@@ -537,7 +552,7 @@ mod tests {
             1,
             [1u8; 32],
             [2u8; 32],
-            [3u8; 32],
+            [3u8; 12],
             3600,
         ).unwrap();
         
@@ -558,7 +573,7 @@ mod tests {
             1,
             [1u8; 32],
             [2u8; 32],
-            [3u8; 32],
+            [3u8; 12],
             3600,
         ).unwrap();
         
@@ -600,7 +615,7 @@ mod tests {
             1,
             [1u8; 32],
             [2u8; 32],
-            [3u8; 32],
+            [3u8; 12],
             3600,
         ).unwrap();
         
@@ -612,5 +627,91 @@ mod tests {
         let decrypted = manager.decrypt(&encrypted).unwrap();
         
         assert_eq!(plaintext, decrypted.as_slice());
+    }
+
+    #[test]
+    fn test_replay_protection_failure() {
+        let mut session = HPKESession::new(
+            "test-replay".to_string(),
+            1,
+            [1u8; 32],
+            [2u8; 32],
+            [3u8; 12],
+            3600,
+        ).unwrap();
+        
+        let enclave_private_key = [4u8; 32];
+        session.establish(&enclave_private_key).unwrap();
+        
+        let plaintext = b"Replay me!";
+        let encrypted = session.encrypt(plaintext).unwrap();
+        
+        // First decryption should succeed
+        let decrypted1 = session.decrypt(&encrypted).unwrap();
+        assert_eq!(plaintext, decrypted1.as_slice());
+        
+        // Second decryption of same message should fail due to replay protection
+        let result = session.decrypt(&encrypted);
+        assert!(result.is_err());
+        
+        // Verify error message mentions replay
+        let err = result.err().unwrap();
+        assert!(format!("{}", err).contains("Replay or out-of-order"));
+    }
+
+    #[test]
+    fn test_ciphertext_tampering() {
+        let mut session = HPKESession::new(
+            "test-tamper".to_string(),
+            1, [0u8; 32], [0u8; 32], [0u8; 12], 3600
+        ).unwrap();
+        session.establish(&[4u8; 32]).unwrap();
+        
+        let plaintext = b"Sensitive data";
+        let mut encrypted = session.encrypt(plaintext).unwrap();
+        
+        // Flip one bit in ciphertext
+        encrypted.ciphertext[0] ^= 0x01;
+        
+        let result = session.decrypt(&encrypted);
+        assert!(result.is_err());
+        assert!(format!("{:?}", result.err().unwrap()).contains("Decryption failed"));
+    }
+
+    #[test]
+    fn test_auth_tag_tampering() {
+        let mut session = HPKESession::new(
+            "test-tag-tamper".to_string(),
+            1, [0u8; 32], [0u8; 32], [0u8; 12], 3600
+        ).unwrap();
+        session.establish(&[4u8; 32]).unwrap();
+        
+        let mut encrypted = session.encrypt(b"data").unwrap();
+        
+        // Flip one bit in auth tag
+        encrypted.auth_tag[0] ^= 0x01;
+        
+        assert!(session.decrypt(&encrypted).is_err());
+    }
+
+    #[test]
+    fn test_header_tampering() {
+        let mut session = HPKESession::new(
+            "test-header".to_string(),
+            1, [0u8; 32], [0u8; 32], [0u8; 12], 3600
+        ).unwrap();
+        session.establish(&[4u8; 32]).unwrap();
+        
+        let encrypted = session.encrypt(b"data").unwrap();
+        
+        // Tamper with sequence number in the header (unencrypted part of struct)
+        let mut bad_seq = encrypted.clone();
+        bad_seq.sequence_number = 999;
+        assert!(session.decrypt(&bad_seq).is_err());
+        
+        // Tamper with session_id
+        let mut bad_session = encrypted.clone();
+        bad_session.session_id = "wrong".to_string();
+        assert!(session.decrypt(&bad_session).is_err());
     }
 }
