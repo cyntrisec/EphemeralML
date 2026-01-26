@@ -13,7 +13,8 @@ echo "[ephemeralml] bootstrapping (AL2023)..."
 # AL2023 uses dnf
 dnf update -y
 
-# SSM agent is typically preinstalled, but ensure it's running.
+# SSM agent (AL2023 may not ship it by default)
+dnf install -y amazon-ssm-agent || true
 systemctl enable --now amazon-ssm-agent || true
 
 # Core tools
