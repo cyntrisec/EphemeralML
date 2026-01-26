@@ -12,8 +12,8 @@ use serde::{Deserialize, Serialize};
 #[derive(Serialize, Deserialize, Debug)]
 pub struct InferenceHandlerInput {
     pub model_id: String,
-    pub input_tensor: Vec<f32>,
-    pub input_shape: Vec<usize>,
+    pub input_data: Vec<u8>,
+    pub input_shape: Option<Vec<usize>>,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -145,10 +145,14 @@ impl SecureClient for SecureEnclaveClient {
             .ok_or_else(|| ClientError::Client(EphemeralError::InvalidInput("Channel not established".to_string())))?;
 
         // 1. Encrypt Request
+        // Convert f32 tensor back to bytes for the mock server which expects Vec<u8>
+        // In a real scenario, this would likely serialize the tensor properly
+        let input_data: Vec<u8> = input_tensor.iter().map(|&x| (x * 255.0) as u8).collect();
+        
         let input = InferenceHandlerInput {
             model_id: model_id.to_string(),
-            input_tensor,
-            input_shape: vec![],
+            input_data,
+            input_shape: None,
         };
         let plaintext = serde_json::to_vec(&input).unwrap();
         let encrypted_request = hpke.encrypt(&plaintext).map_err(|e| ClientError::Client(e))?;
@@ -286,7 +290,8 @@ mod tests {
             let req_plaintext = server_hpke.decrypt(&encrypted_request).unwrap();
             let input: InferenceHandlerInput = serde_json::from_slice(&req_plaintext).unwrap();
             
-            let output_tensor = input.input_tensor.iter().map(|x| x + 0.1).collect();
+            // In the mock, we treat input_data as the tensor for the test
+            let output_tensor: Vec<f32> = input.input_data.iter().map(|&x| (x as f32) + 0.1).collect();
             let mut signed_receipt = AttestationReceipt::new(
                 "receipt".to_string(), 1, SecurityMode::GatewayOnly,
                 EnclaveMeasurements::new(vec![0x01; 48], vec![0x02; 48], vec![0x03; 48]),

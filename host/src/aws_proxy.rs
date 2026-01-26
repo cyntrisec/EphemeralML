@@ -94,9 +94,10 @@ impl AwsApiProxy {
         
         // AWS KMS returns base64 string usually in JSON if using CLI, but SDK returns blob.
         // We will return JSON payload mimic
+        use base64::{Engine as _, engine::general_purpose};
         let dummy_response = serde_json::json!({
             "KeyId": "arn:aws:kms:us-east-1:123456789012:key/12345678-1234-1234-1234-123456789012",
-            "Plaintext": base64::encode(plaintext_bytes),
+            "Plaintext": general_purpose::STANDARD.encode(plaintext_bytes),
              "CiphertextBlob": if recipient.is_some() { "some_encrypted_blob" } else { "null" }
         });
         
@@ -133,7 +134,8 @@ mod tests {
             KmsResponse::Success(payload) => {
                 let json: serde_json::Value = serde_json::from_slice(&payload).unwrap();
                 let plaintext_b64 = json["Plaintext"].as_str().unwrap();
-                let plaintext_bytes = base64::decode(plaintext_b64).unwrap();
+                use base64::{Engine as _, engine::general_purpose};
+                let plaintext_bytes = general_purpose::STANDARD.decode(plaintext_b64).unwrap();
                 assert_eq!(String::from_utf8(plaintext_bytes).unwrap(), "MOCK_PLAINTEXT_BYTES_BASE64_ENCODED");
             },
             _ => panic!("Expected success"),

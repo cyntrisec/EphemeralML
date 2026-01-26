@@ -1,7 +1,7 @@
 use crate::{Result, EnclaveError, EphemeralError};
 use ephemeral_ml_common::{
     HPKESession, ReceiptSigningKey, SessionId, EncryptedMessage,
-    AttestationReceipt, SecurityMode, EnclaveMeasurements
+    AttestationReceipt
 };
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
@@ -20,7 +20,7 @@ pub struct EnclaveSession {
 
 impl EnclaveSession {
     pub fn new(
-        session_id: SessionId,
+        _session_id: SessionId,
         hpke: HPKESession,
         receipt_signing_key: ReceiptSigningKey,
         attestation_hash: [u8; 32],
@@ -97,14 +97,14 @@ impl SessionManager {
     /// Access a session to perform operations
     /// Returns a guard or closure result? 
     /// For simplicity, we'll expose a method to run a closure on the session
-    pub fn with_session<F, R>(&self, session_id: &str, f: F) -> Result<R>
+    pub fn with_session<F, R>(&self, _session_id: &str, f: F) -> Result<R>
     where
         F: FnOnce(&mut EnclaveSession) -> Result<R>,
     {
         let mut sessions = self.sessions.lock().map_err(|_| {
             EnclaveError::Enclave(EphemeralError::Internal("Lock poisoned".to_string()))
         })?;
-        let session = sessions.get_mut(session_id)
+        let session = sessions.get_mut(_session_id)
             .ok_or_else(|| EnclaveError::Enclave(EphemeralError::InvalidInput("Session not found".to_string())))?;
         
         f(session)

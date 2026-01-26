@@ -49,9 +49,14 @@ impl<A: AttestationProvider> ModelLoader<A> {
         }
 
         let (nonce_bytes, ciphertext) = encrypted_artifact.split_at(12);
-        let key = Key::from_slice(&dek_bytes);
+        use std::convert::TryInto;
+        let key_array: [u8; 32] = dek_bytes.as_slice().try_into()
+            .map_err(|_| EnclaveError::Enclave(EphemeralError::KmsError("Invalid DEK length".to_string())))?;
+        let key: &Key = (&key_array).into();
         let cipher = ChaCha20Poly1305::new(key);
-        let nonce = Nonce::from_slice(nonce_bytes);
+        let nonce_array: [u8; 12] = nonce_bytes.try_into()
+            .map_err(|_| EnclaveError::Enclave(EphemeralError::DecryptionError("Invalid nonce length".to_string())))?;
+        let nonce: &Nonce = (&nonce_array).into();
 
         let plaintext = cipher.decrypt(nonce, ciphertext)
             .map_err(|e| EnclaveError::Enclave(EphemeralError::DecryptionError(format!("Model decryption failed: {}", e))))?;
@@ -108,7 +113,7 @@ mod tests {
     use chacha20poly1305::aead::Aead;
     use tokio::net::TcpListener;
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
-    use ephemeral_ml_common::{VSockMessage, MessageType, KmsRequest, KmsResponse};
+    use ephemeral_ml_common::{VSockMessage, MessageType, KmsResponse};
     use hpke::{kem::X25519HkdfSha256, OpModeS, Serializable, Deserializable};
 
     #[tokio::test]
@@ -158,6 +163,9 @@ mod tests {
             
             // Encrypt DEK using HPKE
             let mut rng = OsRng;
+            // Get REAL HPKE public key from provider (since it's mock, it's deterministic [4u8; 32] private)
+            // Wait, DefaultAttestationProvider::new() creates a MockAttestationProvider with NEW keys.
+            // We need to use the keys from THAT instance.
             let kem_pub = <X25519HkdfSha256 as hpke::Kem>::PublicKey::from_bytes(&hpke_pk_bytes).unwrap();
             
             let (encapped_key, mut sender_ctx) = hpke::setup_sender::<
@@ -206,8 +214,12 @@ mod tests {
         // Encrypt it
         let mut nonce_bytes = [0u8; 12];
         csprng.fill_bytes(&mut nonce_bytes);
-        let nonce = Nonce::from_slice(&nonce_bytes);
-        let key = Key::from_slice(&dek);
+        use chacha20poly1305::{Key as CKey, Nonce as CNonce};
+        use std::convert::TryInto;
+        let nonce_array: [u8; 12] = nonce_bytes.try_into().unwrap();
+        let nonce = CNonce::from_slice(&nonce_array);
+        let key_array: [u8; 32] = dek.try_into().unwrap();
+        let key = CKey::from_slice(&key_array);
         let cipher = ChaCha20Poly1305::new(key);
         let ciphertext = cipher.encrypt(nonce, plaintext_model.as_slice()).unwrap();
         

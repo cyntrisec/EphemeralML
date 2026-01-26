@@ -35,14 +35,14 @@ pub struct NonceManager {
     /// Maximum number of tracked nonces
     max_entries: usize,
     /// Nonce size in bytes
-    nonce_size: usize,
+    _nonce_size: usize,
 }
 
 /// Entry for tracking pending nonces
 #[derive(Debug, Clone)]
 struct NonceEntry {
     timestamp: u64,
-    context: String, // Context for debugging (e.g., "attestation_challenge")
+    _context: String, // Context for debugging (e.g., "attestation_challenge")
 }
 
 impl NonceManager {
@@ -53,7 +53,7 @@ impl NonceManager {
             used_nonces: HashMap::new(),
             max_nonce_age,
             max_entries,
-            nonce_size: 12, // 96-bit nonces for ChaCha20Poly1305
+            _nonce_size: 12, // 96-bit nonces for ChaCha20Poly1305
         }
     }
     
@@ -79,7 +79,7 @@ impl NonceManager {
         // Track as pending
         let entry = NonceEntry {
             timestamp: current_timestamp(),
-            context: context.to_string(),
+            _context: context.to_string(),
         };
         
         self.pending_nonces.insert(nonce_vec.clone(), entry);

@@ -1,4 +1,4 @@
-use ephemeral_ml_client::{mock::MockSecureClient, SecureClient};
+use ephemeral_ml_client::mock::MockSecureClient;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {

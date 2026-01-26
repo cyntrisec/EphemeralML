@@ -49,7 +49,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     
     // Test inference
     let input_data: Vec<u8> = vec![1, 2, 3, 4, 5];
-    let output = assembler.execute_inference(&model, &input_data)?;
+    let _output = assembler.execute_inference(&model, &input_data)?;
     // Inference output removed to prevent secret leakage
     
     // Clean up
@@ -60,7 +60,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("Starting mock TCP server on port 8082...");
     
     // Start mock server
-    let mut server = MockEnclaveServer::new(8082);
+    let server = MockEnclaveServer::new(8082);
     server.start().await?;
     
     Ok(())

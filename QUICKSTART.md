@@ -61,6 +61,23 @@ cargo run
 ```
 This demonstrates attestation verification and secure channel establishment.
 
+## Interactive Inference
+
+The project includes a command-line tool for interactive inference testing.
+
+### 1. Start Mock Enclave Server
+```bash
+# In one terminal
+cargo run -p ephemeral-ml-enclave --bin mock_server --features mock
+```
+
+### 2. Run Commander CLI
+```bash
+# In another terminal
+cargo run -p ephemeral-ml-client --bin commander
+```
+This tool provides a REPL-like interface to interact with the enclave, allowing you to send prompts and receive attested receipts.
+
 ## Testing
 
 ```bash
@@ -69,6 +86,9 @@ cargo test
 
 # Run integration tests
 cargo test --test integration
+
+# Verify host blindness (Spy Mode)
+cargo test --test spy_test
 
 # Validate project structure
 python validate_structure.py

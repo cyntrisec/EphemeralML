@@ -113,7 +113,7 @@ impl FreshnessTracker {
 pub struct AttestationVerifier {
     policy_manager: PolicyManager,
     freshness_enforcer: FreshnessEnforcer,
-    aws_root_certificates: Vec<Vec<u8>>, // AWS Nitro root certificates
+    _aws_root_certificates: Vec<Vec<u8>>, // AWS Nitro root certificates
 }
 
 impl AttestationVerifier {
@@ -122,7 +122,7 @@ impl AttestationVerifier {
         Self {
             policy_manager,
             freshness_enforcer: FreshnessEnforcer::new(),
-            aws_root_certificates: Self::load_aws_root_certificates(),
+            _aws_root_certificates: Self::load_aws_root_certificates(),
         }
     }
     
