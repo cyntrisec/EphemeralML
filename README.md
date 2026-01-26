@@ -153,6 +153,8 @@ Each inference can return an **AER** containing:
 
 ### 🚀 Production Ready: AWS & Nitro Features
 
+**Nitro hello-world validated:** We successfully deployed and ran a minimal Enclave on real AWS (Terraform → SSM → build EIF → run enclave → console). See `projects/EphemeralML/infra/hello-enclave` and `projects/EphemeralML/INFRA.md`.
+
 **Real Security Implementation:**
 - [x] **Real NSM Support**: Enclave now integrates with the Nitro Security Module (NSM) for hardware-rooted attestation.
 - [x] **AWS Certificate Chain**: Added initial parsing and dependencies for production AWS certificate validation.
@@ -239,6 +241,16 @@ See [Implementation Tasks](.kiro/specs/confidential-inference-gateway/tasks.md) 
 - **S3 encrypted artifacts** with signed manifests
 - **Mock mode support** for local development  
 - **Gov cloud ready**: Strict trust boundaries, deny-by-default policies, verifiable execution evidence
+
+### Nitro Enclave hello-world validated (AWS)
+We validated the full "hello-world" deployment loop on real Nitro hardware:
+- Region: `us-east-1`
+- **AZ must be pinned** (subnet defaulted to `us-east-1e` and caused instance-type unsupported errors)
+- Working instance type: `m6i.xlarge`
+- Confirmed NOT working for enclaves: `c6a.large`, `m6i.large`
+- Amazon Linux 2 note: install `nitro-cli` via `amazon-linux-extras` (not `yum` directly)
+
+See: `projects/EphemeralML/infra/hello-enclave/HELLO_ENCLAVE_RUNBOOK.md` (includes troubleshooting for `E19` / `E44` and SSM setup).
 
 ---
 

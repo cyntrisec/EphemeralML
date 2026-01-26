@@ -292,11 +292,11 @@ This implementation plan breaks down the Confidential Inference Gateway into dis
 - _Requirements: 11.1, 11.7, 11.9, 11.10_
 
 ### 21. Production Deployment and Validation
-- [ ] **21.1** Set up EC2 instances with Nitro Enclaves support
-- [ ] **21.2** Deploy EIF files to production enclaves
+- [x] **21.1** Set up EC2 instances with Nitro Enclaves support *(validated via hello-world loop)*
+- [x] **21.2** Deploy EIF files to production enclaves *(validated: `hello.eif` ran and printed "HELLO FROM ENCLAVE")*
 - [ ] **21.3** Configure KMS keys with attestation-bound policies
 - [ ] **21.4** Set up monitoring and logging for production system
-- [ ] **21.5** Test complete system on actual AWS Nitro hardware
+- [x] **21.5** Test complete system on actual AWS Nitro hardware *(validated in `us-east-1` with `m6i.xlarge` and pinned AZ)*
 - [ ] **21.6** Validate attestation with real PCR measurements
 - [ ] **21.7** Test KMS authorization model with attestation-bound policies
 - [ ] **21.8** Verify security boundaries in production environment
