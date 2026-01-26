@@ -178,17 +178,36 @@ sudo nitro-cli build-enclave --docker-uri ephemeralml/vsock-pingpong:latest --ou
 ls -lh vsock-pingpong.eif
 
 log "Run enclave"
-sudo nitro-cli run-enclave --eif-path vsock-pingpong.eif --cpu-count 2 --memory 1024 --enclave-cid 16 --debug-mode
+RUN_JSON=$(sudo nitro-cli run-enclave --eif-path vsock-pingpong.eif --cpu-count 2 --memory 1024 --enclave-cid 16 --debug-mode)
+echo "$RUN_JSON"
+ENCLAVE_ID=$(echo "$RUN_JSON" | jq -r '.EnclaveID')
+log "EnclaveID: $ENCLAVE_ID"
+
 sleep 2
-sudo nitro-cli describe-enclaves
+DESC=$(sudo nitro-cli describe-enclaves)
+echo "$DESC"
 
 log "Ping"
-python3 ./vsock_client.py 16 5000
+set +e
+PING_OUT=$(python3 ./vsock_client.py 16 5000 2>&1)
+PING_RC=$?
+set -e
+
+echo "$PING_OUT"
+
+if [[ $PING_RC -ne 0 ]]; then
+  log "Ping failed (rc=$PING_RC). Collecting diagnostics..."
+  log "Console (first 200 lines, debug-mode required):"
+  # console is interactive; use timeout to capture boot/app logs without hanging.
+  timeout 8 sudo nitro-cli console --enclave-id "$ENCLAVE_ID" 2>&1 | sed -n '1,200p' || true
+  log "describe-enclaves after failure:"
+  sudo nitro-cli describe-enclaves || true
+  exit 4
+fi
 
 # Capture enclave id and terminate
-ENCLAVE_ID=$(sudo nitro-cli describe-enclaves | jq -r '.[0].EnclaveID')
 log "Terminating enclave: $ENCLAVE_ID"
-sudo nitro-cli terminate-enclave --enclave-id "$ENCLAVE_ID"
+sudo nitro-cli terminate-enclave --enclave-id "$ENCLAVE_ID" || true
 sudo nitro-cli describe-enclaves
 
 log "DONE"
