@@ -21,4 +21,9 @@ RUN cargo build --release --target x86_64-unknown-linux-musl
 FROM alpine:3.19
 COPY --from=build /app/target/x86_64-unknown-linux-musl/release/vsock-pingpong /vsock-pingpong
 RUN chmod +x /vsock-pingpong
-CMD ["/vsock-pingpong"]
+
+# Allow selecting a runtime mode without editing Rust code.
+ARG MODE=vsock
+ENV VSOCK_PINGPONG_MODE=${MODE}
+
+CMD ["/bin/sh","-c","/vsock-pingpong --mode ${VSOCK_PINGPONG_MODE}"]

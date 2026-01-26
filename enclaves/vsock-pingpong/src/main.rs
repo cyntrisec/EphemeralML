@@ -4,6 +4,34 @@ use std::mem;
 use std::os::fd::{FromRawFd, RawFd};
 use std::process;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Mode {
+    Basic,
+    Vsock,
+}
+
+fn parse_mode() -> Mode {
+    let mut args = std::env::args().skip(1);
+    while let Some(a) = args.next() {
+        if a == "--mode" {
+            if let Some(v) = args.next() {
+                return match v.as_str() {
+                    "basic" => Mode::Basic,
+                    "vsock" => Mode::Vsock,
+                    _ => Mode::Vsock,
+                };
+            }
+        }
+        if a == "basic" {
+            return Mode::Basic;
+        }
+        if a == "vsock" {
+            return Mode::Vsock;
+        }
+    }
+    Mode::Vsock
+}
+
 // AF_VSOCK server: listen on port 5000; reply "pong" when receiving "ping".
 // Parent connects to CID 16 / port 5000.
 
@@ -83,51 +111,64 @@ fn make_listener(port: u32) -> RawFd {
     fd
 }
 
-fn run() {
-    eprintln!("[enclave] starting vsock server on port {}", PORT);
-
-    let listen_fd = make_listener(PORT);
-
-    loop {
-        let client_fd = unsafe {
-            libc::accept(listen_fd, std::ptr::null_mut(), std::ptr::null_mut())
-        };
-        if client_fd < 0 {
-            die("accept");
-        }
-
-        // Wrap the client fd in a File for plain read/write.
-        let mut stream = unsafe { std::fs::File::from_raw_fd(client_fd) };
-
-        let mut buf = [0u8; 16];
-        let n = match stream.read(&mut buf) {
-            Ok(0) => continue,
-            Ok(n) => n,
-            Err(e) => {
-                eprintln!("[enclave] read error: {e}");
-                continue;
+fn run(mode: Mode) {
+    match mode {
+        Mode::Basic => {
+            eprintln!("[enclave] basic mode: alive; sleeping forever");
+            loop {
+                std::thread::sleep(std::time::Duration::from_secs(60));
             }
-        };
-
-        let msg = &buf[..n];
-        eprintln!(
-            "[enclave] received: {:?}",
-            std::str::from_utf8(msg).unwrap_or("<non-utf8>")
-        );
-
-        let reply: &[u8] = if msg == b"ping" { b"pong" } else { b"unknown" };
-
-        if let Err(e) = stream.write_all(reply) {
-            eprintln!("[enclave] write error: {e}");
         }
-        // drop(stream) closes the connection
+        Mode::Vsock => {
+            eprintln!("[enclave] vsock mode: starting vsock server on port {}", PORT);
+
+            let listen_fd = make_listener(PORT);
+
+            loop {
+                let client_fd = unsafe {
+                    libc::accept(listen_fd, std::ptr::null_mut(), std::ptr::null_mut())
+                };
+                if client_fd < 0 {
+                    die("accept");
+                }
+
+                // Wrap the client fd in a File for plain read/write.
+                let mut stream = unsafe { std::fs::File::from_raw_fd(client_fd) };
+
+                let mut buf = [0u8; 16];
+                let n = match stream.read(&mut buf) {
+                    Ok(0) => continue,
+                    Ok(n) => n,
+                    Err(e) => {
+                        eprintln!("[enclave] read error: {e}");
+                        continue;
+                    }
+                };
+
+                let msg = &buf[..n];
+                eprintln!(
+                    "[enclave] received: {:?}",
+                    std::str::from_utf8(msg).unwrap_or("<non-utf8>")
+                );
+
+                let reply: &[u8] = if msg == b"ping" { b"pong" } else { b"unknown" };
+
+                if let Err(e) = stream.write_all(reply) {
+                    eprintln!("[enclave] write error: {e}");
+                }
+                // drop(stream) closes the connection
+            }
+        }
     }
 }
 
 fn main() {
+    let mode = parse_mode();
+    eprintln!("[enclave] mode={mode:?}");
+
     // If the enclave panics and exits immediately, we lose all visibility.
     // Catch panics, log them, then sleep forever so `nitro-cli console` (or attach-console) can inspect.
-    let res = std::panic::catch_unwind(|| run());
+    let res = std::panic::catch_unwind(|| run(mode));
     if let Err(_) = res {
         eprintln!("[enclave] PANIC: caught unwind; sleeping forever for debugging");
         loop {
