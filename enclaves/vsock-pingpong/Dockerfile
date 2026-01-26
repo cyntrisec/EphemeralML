@@ -16,6 +16,9 @@ RUN cargo build --release --target x86_64-unknown-linux-musl
 COPY src ./src
 RUN cargo build --release --target x86_64-unknown-linux-musl
 
-FROM scratch
+# Runtime stage: avoid `scratch` while debugging Nitro's boot/init quirks.
+# A tiny Alpine userspace makes behavior more predictable.
+FROM alpine:3.19
 COPY --from=build /app/target/x86_64-unknown-linux-musl/release/vsock-pingpong /vsock-pingpong
-ENTRYPOINT ["/vsock-pingpong"]
+RUN chmod +x /vsock-pingpong
+CMD ["/vsock-pingpong"]
