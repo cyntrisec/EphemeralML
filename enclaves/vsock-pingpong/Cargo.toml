@@ -1,0 +1,15 @@
+[package]
+name = "vsock-pingpong"
+version = "0.1.0"
+edition = "2021"
+
+# Keep deps minimal: use libc only for AF_VSOCK syscalls.
+[dependencies]
+libc = "0.2"
+
+[profile.release]
+# small binary; enclave images benefit from size.
+strip = true
+lto = true
+codegen-units = 1
+panic = "abort"

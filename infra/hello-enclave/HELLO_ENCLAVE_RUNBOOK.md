@@ -2,6 +2,8 @@
 
 Goal: prove the *deployment loop* works: EC2 parent boots → allocator runs → EIF builds → enclave launches → vsock ping/pong.
 
+For Milestone A2 (our own minimal vsock ping/pong), use: `VSOCK_PINGPONG_RUNBOOK.md`.
+
 ## Recommended defaults
 - Region: `us-east-1`
 - OS/AMI: Amazon Linux 2

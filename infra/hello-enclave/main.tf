@@ -114,8 +114,16 @@ resource "aws_route_table_association" "public" {
 
 resource "aws_security_group" "host" {
   name        = "${var.project_name}-hello-host-sg"
-  description = "Hello-world Nitro Enclave host SG: no inbound, outbound 443"
+  description = "Hello-world Nitro Enclave host SG: no inbound, outbound 80/443"
   vpc_id      = aws_vpc.this.id
+
+  egress {
+    description = "HTTP outbound (AL2 yum repos can redirect via HTTP)"
+    from_port   = 80
+    to_port     = 80
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
 
   egress {
     description = "HTTPS outbound for SSM / yum / github"
