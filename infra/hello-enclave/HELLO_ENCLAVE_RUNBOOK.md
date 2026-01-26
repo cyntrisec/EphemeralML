@@ -5,7 +5,7 @@ Goal: prove the *deployment loop* works: EC2 parent boots → allocator runs →
 ## Recommended defaults
 - Region: `us-east-1`
 - OS/AMI: Amazon Linux 2
-- Instance: `c6a.large` (cheap) or `m6i.large`
+- Instance: `m6i.large` (recommended) or `c6i.large` (compute). `c6a.*` is cheaper but **does not support** Nitro Enclaves.
 - Connectivity: **SSM-only** (no SSH inbound)
 
 ## 1) Deploy with Terraform
