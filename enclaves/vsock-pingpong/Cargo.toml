@@ -12,4 +12,6 @@ libc = "0.2"
 strip = true
 lto = true
 codegen-units = 1
-panic = "abort"
+# Keep the enclave process alive long enough to inspect logs if something panics.
+# We'll catch unwinds in main and then sleep forever.
+panic = "unwind"

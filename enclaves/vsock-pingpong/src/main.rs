@@ -83,7 +83,7 @@ fn make_listener(port: u32) -> RawFd {
     fd
 }
 
-fn main() {
+fn run() {
     eprintln!("[enclave] starting vsock server on port {}", PORT);
 
     let listen_fd = make_listener(PORT);
@@ -121,5 +121,17 @@ fn main() {
             eprintln!("[enclave] write error: {e}");
         }
         // drop(stream) closes the connection
+    }
+}
+
+fn main() {
+    // If the enclave panics and exits immediately, we lose all visibility.
+    // Catch panics, log them, then sleep forever so `nitro-cli console` (or attach-console) can inspect.
+    let res = std::panic::catch_unwind(|| run());
+    if let Err(_) = res {
+        eprintln!("[enclave] PANIC: caught unwind; sleeping forever for debugging");
+        loop {
+            std::thread::sleep(std::time::Duration::from_secs(60));
+        }
     }
 }
