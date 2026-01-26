@@ -101,6 +101,13 @@ temp/
 *.eif
 enclave.dockerfile
 
+# Terraform (do not commit local state)
+**/.terraform/
+**/*.tfstate
+**/*.tfstate.*
+crash.log
+crash.*.log
+
 # Build artifacts
 build/
 out/
