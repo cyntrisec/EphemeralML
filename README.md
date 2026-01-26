@@ -2,7 +2,7 @@
 [![Production Status](https://img.shields.io/badge/Production-Ready%20for%20AWS-blue?style=for-the-badge)]()
 [![Platform](https://img.shields.io/badge/Platform-AWS%20Nitro-orange?style=for-the-badge&logo=amazon-aws)]()
 [![Language](https://img.shields.io/badge/Written%20in-Rust-b7410e?style=for-the-badge&logo=rust)]()
-[![License](https://img.shields.io/badge/License-MIT-blue?style=for-the-badge)]()
+[![License](https://img.shields.io/badge/License-Apache%202.0-blue?style=for-the-badge)]()
 
 # 🔒 EphemeralML: Confidential Inference Gateway
 
