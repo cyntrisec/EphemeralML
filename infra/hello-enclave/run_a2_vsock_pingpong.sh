@@ -151,6 +151,9 @@ if [[ -n "${A2_TAR_B64:-}" ]]; then
   log "Extracting vsock-pingpong sources from A2_TAR_B64"
   echo "$A2_TAR_B64" | base64 -d | tar -xz -C "$WORK"
   cd "$WORK/vsock-pingpong"
+  if [[ -f VERSION.txt ]]; then
+    log "A2 source version: $(cat VERSION.txt)"
+  fi
 else
   # Fallback: fetch repo if a public git URL was provided.
   if [[ -z "${REPO_URL:-}" ]]; then
@@ -237,7 +240,13 @@ if [[ "$goto_destroy" != "1" ]]; then
   # SSM expects a JSON array of commands. We ship the remote script as base64 and execute it.
   REMOTE_B64=$(base64 -w0 "$REMOTE_SH")
   # Also ship the enclave artifact directory (so we don't depend on git URL structure/private repos)
-  TAR_B64=$(tar -C "$REPO_ROOT/enclaves" -cz vsock-pingpong | base64 -w0)
+  # Ship sources as a tarball, including a version marker so we can tell what code actually ran.
+  COMMIT=$(cd "$REPO_ROOT" && git rev-parse --short HEAD 2>/dev/null || echo "unknown")
+  TMPDIR=$(mktemp -d)
+  cp -a "$REPO_ROOT/enclaves/vsock-pingpong" "$TMPDIR/"
+  echo "commit=$COMMIT" > "$TMPDIR/vsock-pingpong/VERSION.txt"
+  TAR_B64=$(tar -C "$TMPDIR" -cz vsock-pingpong | base64 -w0)
+  rm -rf "$TMPDIR"
 
   REMOTE_CMD=$(jq -n --arg repo "$REPO_URL_DEFAULT" --arg b64 "$REMOTE_B64" --arg tar "$TAR_B64" '
     [
