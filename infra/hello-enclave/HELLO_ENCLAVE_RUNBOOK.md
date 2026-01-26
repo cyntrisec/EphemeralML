@@ -58,7 +58,7 @@ socat - VSOCK-CONNECT:16:5000
 ### "Unsupported" instance type / AZ capacity errors (common)
 **Symptom:** Terraform or EC2 returns an error implying the chosen instance type is not supported/available in the selected subnet/AZ.
 
-**Root cause seen in validation:** the subnet defaulted to `us-east-1e`, which caused instance-type unsupported errors.
+**Common cause:** the subnet lands in an AZ where the chosen instance type is not available (e.g. `us-east-1e`).
 
 **Fix:**
 - **Pin a known-good AZ** explicitly (example: `us-east-1a` or `us-east-1b`).
@@ -83,7 +83,7 @@ sudo amazon-linux-extras enable aws-nitro-enclaves-cli
 sudo yum clean metadata
 sudo yum install -y aws-nitro-enclaves-cli
 
-# Ensure blobs exist (this created them in the validated setup)
+# Ensure blobs exist
 sudo yum install -y aws-nitro-enclaves-cli-devel
 
 # If you still see E19, reinstall
@@ -109,7 +109,7 @@ sudo nitro-cli console --enclave-id <id>
 
 **Fix:** install the Session Manager Plugin on your laptop.
 
-**Note from validation:** an unrelated `apt` failure was caused by a broken Hashicorp repo entry ("virginia"). If your package manager is failing, disable/remove the bad repo entry and retry the plugin install.
+If your package manager is failing due to third-party repositories, disable the failing repo entry and retry the plugin install.
 
 ## Troubleshooting (Known gotchas)
 

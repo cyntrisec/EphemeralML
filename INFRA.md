@@ -1,8 +1,8 @@
 # Infrastructure Notes (EphemeralML)
 
-## Nitro Enclaves: Hello-World Deployment Loop (Validated)
+## Nitro Enclaves: Hello-World Deployment Loop
 
-We validated a real AWS deployment loop end-to-end:
+A minimal AWS Nitro Enclave deployment loop:
 - Terraform deploy (VPC/subnet/IGW/SG + EC2 with `enclave_options.enabled = true`)
 - Connect via SSM Session Manager
 - Install Nitro Enclaves tooling on AL2
@@ -24,7 +24,7 @@ We validated a real AWS deployment loop end-to-end:
 - `nitro-cli` on AL2 is installed via `amazon-linux-extras install aws-nitro-enclaves-cli`.
 - `nitro-cli build-enclave` requires `/usr/share/nitro_enclaves/blobs` (fixed via `aws-nitro-enclaves-cli-devel` + reinstall).
 - `nitro-cli console` requires enclave started with `--debug-mode`.
-- Laptop needs `session-manager-plugin` to use `aws ssm start-session`.
+- Local workstation needs `session-manager-plugin` to use `aws ssm start-session`.
 
 ## Terraform stack
 See: `projects/EphemeralML/infra/hello-enclave`.

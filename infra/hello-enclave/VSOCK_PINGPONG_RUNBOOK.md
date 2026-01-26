@@ -29,9 +29,9 @@ aws ec2 describe-instances \
 
 If anything shows up above and you didn’t mean to keep it, **destroy first** (see cleanup section).
 
-## 1) Deploy the parent with Terraform (requires Boris confirmation)
+## 1) Deploy the parent with Terraform
 
-Do **not** run `apply` until Boris explicitly confirms.
+(Manual step; run `apply` only when you are ready to incur small, timeboxed AWS cost.)
 
 Plan (safe):
 ```bash

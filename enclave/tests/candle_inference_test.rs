@@ -11,7 +11,7 @@ fn test_candle_inference_minilm() {
     let weights_path = "../test_assets/minilm/model.safetensors";
     let tokenizer_path = "../test_assets/minilm/tokenizer.json";
     
-    if !Path::new(config_path).exists() {
+    if !Path::new(config_path).exists() || !Path::new(weights_path).exists() || !Path::new(tokenizer_path).exists() {
         println!("Skipping test: model assets not found");
         return;
     }
