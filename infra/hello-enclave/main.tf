@@ -49,14 +49,14 @@ locals {
 
 data "aws_caller_identity" "current" {}
 
-# Amazon Linux 2 (least friction for Nitro Enclaves)
-data "aws_ami" "al2" {
+# Amazon Linux 2023 (newer kernel; avoids some AL2 CPU hotplug issues we hit with Nitro Enclaves)
+data "aws_ami" "al2023" {
   most_recent = true
   owners      = ["amazon"]
 
   filter {
     name   = "name"
-    values = ["amzn2-ami-hvm-2.0.*-x86_64-gp2"]
+    values = ["al2023-ami-*-x86_64"]
   }
 
   filter {
@@ -184,7 +184,7 @@ resource "aws_key_pair" "ssh" {
 }
 
 resource "aws_instance" "host" {
-  ami           = data.aws_ami.al2.id
+  ami           = data.aws_ami.al2023.id
   instance_type = var.instance_type
 
   subnet_id              = aws_subnet.public.id
@@ -202,7 +202,7 @@ resource "aws_instance" "host" {
     http_tokens = "required" # IMDSv2
   }
 
-  user_data = file("${path.module}/user_data_al2.sh")
+  user_data = file("${path.module}/user_data_al2023.sh")
 
   tags = {
     Name = "${var.project_name}-hello-host"
