@@ -184,3 +184,4 @@ coverage.xml
 # Cargo.lock
 # local-only
 GEMINI.md
+/test_assets/**/*.safetensors
