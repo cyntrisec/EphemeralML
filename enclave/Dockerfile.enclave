@@ -1,0 +1,24 @@
+# EphemeralML Enclave Dockerfile
+# This image will be converted to .eif by nitro-cli
+
+FROM ubuntu:22.04
+
+# 1. Install dependencies
+RUN apt-get update && apt-get install -y \
+    libssl3 \
+    ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+# 2. Set working directory
+WORKDIR /app
+
+# 3. Copy the compiled enclave binary
+COPY target/release/ephemeral-ml-enclave /app/enclave_app
+
+# 4. Copy assets needed for inference (e.g., tokenizer)
+COPY test_assets/minilm/tokenizer.json /app/test_assets/minilm/tokenizer.json
+COPY test_assets/minilm/config.json /app/test_assets/minilm/config.json
+
+# 5. Set entrypoint
+# The enclave app will listen on VSock
+ENTRYPOINT ["/app/enclave_app"]
