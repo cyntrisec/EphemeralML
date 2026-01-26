@@ -21,9 +21,14 @@ struct SockAddrVm {
 }
 
 fn die(msg: &str) -> ! {
+    // In Nitro Enclaves, failures can be hard to diagnose if the process exits instantly
+    // (the enclave disappears before we can attach `nitro-cli console`).
+    // So we log the error and then sleep forever to keep the enclave alive for debugging.
     let e = std::io::Error::last_os_error();
     eprintln!("{}: {}", msg, e);
-    process::exit(1);
+    loop {
+        std::thread::sleep(std::time::Duration::from_secs(60));
+    }
 }
 
 fn cvt(ret: libc::c_int, msg: &str) -> libc::c_int {
