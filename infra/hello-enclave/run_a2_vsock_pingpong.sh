@@ -142,22 +142,33 @@ EOF
 sudo systemctl enable --now nitro-enclaves-allocator.service
 sudo systemctl start nitro-enclaves-allocator.service
 
-# Fetch repo (assumes public git URL must be provided via SSM env var REPO_URL)
-if [[ -z "${REPO_URL:-}" ]]; then
-  log "ERROR: REPO_URL not set"
-  exit 3
-fi
+# Source code delivery
+# Prefer a tarball shipped by the launcher (works with private repos / avoids path mismatches).
+WORK=/home/ec2-user/a2
+mkdir -p "$WORK"
 
-WORK=/home/ec2-user/clawd
-if [[ ! -d "$WORK" ]]; then
-  log "Cloning repo to $WORK"
-  git clone "$REPO_URL" "$WORK"
+if [[ -n "${A2_TAR_B64:-}" ]]; then
+  log "Extracting vsock-pingpong sources from A2_TAR_B64"
+  echo "$A2_TAR_B64" | base64 -d | tar -xz -C "$WORK"
+  cd "$WORK/vsock-pingpong"
 else
-  log "Repo exists; updating"
-  (cd "$WORK" && git pull --ff-only) || true
-fi
+  # Fallback: fetch repo if a public git URL was provided.
+  if [[ -z "${REPO_URL:-}" ]]; then
+    log "ERROR: neither A2_TAR_B64 nor REPO_URL is set"
+    exit 3
+  fi
 
-cd "$WORK/projects/EphemeralML/enclaves/vsock-pingpong"
+  REPO_DIR=/home/ec2-user/clawd
+  if [[ ! -d "$REPO_DIR" ]]; then
+    log "Cloning repo to $REPO_DIR"
+    git clone "$REPO_URL" "$REPO_DIR"
+  else
+    log "Repo exists; updating"
+    (cd "$REPO_DIR" && git pull --ff-only) || true
+  fi
+
+  cd "$REPO_DIR/projects/EphemeralML/enclaves/vsock-pingpong"
+fi
 
 log "Docker build"
 sudo docker build -t ephemeralml/vsock-pingpong:latest .
@@ -186,17 +197,7 @@ EOS
 chmod +x "$REMOTE_SH"
 
 REPO_URL_DEFAULT="${A2_REPO_URL:-}"
-if [[ -z "$REPO_URL_DEFAULT" ]]; then
-  cat <<EOF
-
-You must provide a git clone URL reachable from the instance (HTTPS).
-Example:
-  export A2_REPO_URL=https://github.com/tsyrulb/EphemeralML.git
-Then re-run this script.
-EOF
-  log "Missing A2_REPO_URL";
-  goto_destroy=1
-fi
+# Note: A2_REPO_URL is optional now. We ship the needed sources as a tarball by default.
 
 goto_destroy=${goto_destroy:-0}
 
@@ -206,10 +207,14 @@ if [[ "$goto_destroy" != "1" ]]; then
   log "Sending SSM command (this is the main on-host execution)"
   # SSM expects a JSON array of commands. We ship the remote script as base64 and execute it.
   REMOTE_B64=$(base64 -w0 "$REMOTE_SH")
-  REMOTE_CMD=$(jq -n --arg repo "$REPO_URL_DEFAULT" --arg b64 "$REMOTE_B64" '
+  # Also ship the enclave artifact directory (so we don't depend on git URL structure/private repos)
+  TAR_B64=$(tar -C "$REPO_ROOT/enclaves" -cz vsock-pingpong | base64 -w0)
+
+  REMOTE_CMD=$(jq -n --arg repo "$REPO_URL_DEFAULT" --arg b64 "$REMOTE_B64" --arg tar "$TAR_B64" '
     [
       "set -euo pipefail",
       "export REPO_URL=\($repo)",
+      "export A2_TAR_B64=\($tar)",
       "echo \($b64) | base64 -d > /tmp/ephemeralml_a2_host.sh",
       "chmod +x /tmp/ephemeralml_a2_host.sh",
       "/tmp/ephemeralml_a2_host.sh"
