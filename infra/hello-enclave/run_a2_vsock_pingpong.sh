@@ -197,9 +197,19 @@ echo "$PING_OUT"
 
 if [[ $PING_RC -ne 0 ]]; then
   log "Ping failed (rc=$PING_RC). Collecting diagnostics..."
+
   log "Console (first 200 lines, debug-mode required):"
   # console is interactive; use timeout to capture boot/app logs without hanging.
   timeout 8 sudo nitro-cli console --enclave-id "$ENCLAVE_ID" 2>&1 | sed -n '1,200p' || true
+
+  log "nitro_enclaves error logs (latest first):"
+  sudo ls -1t /var/log/nitro_enclaves/err*.log 2>/dev/null | head -n 5 || true
+  LATEST_ERR=$(sudo ls -1t /var/log/nitro_enclaves/err*.log 2>/dev/null | head -n 1 || true)
+  if [[ -n "$LATEST_ERR" ]]; then
+    log "Latest error log: $LATEST_ERR (first 200 lines)"
+    sudo sed -n '1,200p' "$LATEST_ERR" || true
+  fi
+
   log "describe-enclaves after failure:"
   sudo nitro-cli describe-enclaves || true
   exit 4
