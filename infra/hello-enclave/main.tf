@@ -28,7 +28,7 @@ variable "project_name" {
 variable "instance_type" {
   description = "Parent EC2 instance type (must support Nitro Enclaves). Note: some AMD 'a' families (e.g., c6a) do NOT support Enclaves."
   type        = string
-  default     = "m6i.large"
+  default     = "m6i.xlarge"
 }
 
 variable "ssh_public_key" {
