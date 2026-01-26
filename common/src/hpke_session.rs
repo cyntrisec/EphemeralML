@@ -38,7 +38,8 @@ pub struct HPKESession {
     pub session_id: SessionId,
     pub protocol_version: u32,
     pub attestation_hash: [u8; 32],
-    pub enclave_public_key: [u8; 32],
+    pub local_public_key: [u8; 32],
+    pub peer_public_key: [u8; 32],
     pub client_nonce: [u8; 12],
     pub transcript_hash: [u8; 32],
     
@@ -59,16 +60,18 @@ impl HPKESession {
         session_id: SessionId,
         protocol_version: u32,
         attestation_hash: [u8; 32],
-        enclave_public_key: [u8; 32],
+        local_public_key: [u8; 32],
+        peer_public_key: [u8; 32],
         client_nonce: [u8; 12],
         ttl_seconds: u64,
     ) -> Result<Self> {
         let now = crate::current_timestamp();
         
-        // Derive transcript hash: attestation_hash || enclave_public_key || client_nonce || protocol_version
+        // Derive transcript hash: attestation_hash || local_public_key || peer_public_key || client_nonce || protocol_version
         let transcript_hash = Self::derive_transcript_hash(
             &attestation_hash,
-            &enclave_public_key,
+            &local_public_key,
+            &peer_public_key,
             &client_nonce,
             protocol_version,
         )?;
@@ -77,7 +80,8 @@ impl HPKESession {
             session_id,
             protocol_version,
             attestation_hash,
-            enclave_public_key,
+            local_public_key,
+            peer_public_key,
             client_nonce,
             transcript_hash,
             session_key: [0u8; 32], // Will be derived during establishment
@@ -92,15 +96,21 @@ impl HPKESession {
     /// Derive canonical transcript hash for session binding
     fn derive_transcript_hash(
         attestation_hash: &[u8; 32],
-        enclave_public_key: &[u8; 32],
+        local_public_key: &[u8; 32],
+        peer_public_key: &[u8; 32],
         client_nonce: &[u8; 12],
         protocol_version: u32,
     ) -> Result<[u8; 32]> {
         use sha2::{Sha256, Digest};
         
+        // Canonical order for public keys to ensure both sides reach same transcript hash
+        let mut keys = [*local_public_key, *peer_public_key];
+        keys.sort();
+        
         let mut hasher = Sha256::new();
         hasher.update(attestation_hash);
-        hasher.update(enclave_public_key);
+        hasher.update(&keys[0]);
+        hasher.update(&keys[1]);
         hasher.update(client_nonce);
         hasher.update(&protocol_version.to_be_bytes());
         
@@ -110,11 +120,17 @@ impl HPKESession {
         Ok(result)
     }
     
-    /// Establish HPKE session using enclave ephemeral key
-    pub fn establish(&mut self, enclave_private_key: &[u8; 32]) -> Result<()> {
-        // Derive session key from HPKE key exchange
+    /// Establish HPKE session using local private key and peer public key
+    pub fn establish(&mut self, local_private_key: &[u8; 32]) -> Result<()> {
+        use x25519_dalek::{StaticSecret, PublicKey};
+        
+        let secret = StaticSecret::from(*local_private_key);
+        let peer_pub = PublicKey::from(self.peer_public_key);
+        let shared_secret = secret.diffie_hellman(&peer_pub);
+        
+        // Derive session key from shared secret and transcript binding
         self.session_key = Self::derive_session_key(
-            enclave_private_key,
+            shared_secret.as_bytes(),
             &self.transcript_hash,
         )?;
         
@@ -122,17 +138,15 @@ impl HPKESession {
         Ok(())
     }
     
-    /// Derive session key using X25519 key exchange and transcript binding
+    /// Derive session key using shared secret and transcript binding
     fn derive_session_key(
-        enclave_private_key: &[u8; 32],
+        shared_secret: &[u8; 32],
         transcript_hash: &[u8; 32],
     ) -> Result<[u8; 32]> {
         use sha2::{Sha256, Digest};
         
-        // For v1, we use a simplified key derivation
-        // In production, this would use proper HPKE key derivation
         let mut hasher = Sha256::new();
-        hasher.update(enclave_private_key);
+        hasher.update(shared_secret);
         hasher.update(transcript_hash);
         hasher.update(b"EphemeralML-HPKE-v1");
         
@@ -408,7 +422,8 @@ impl HPKESessionManager {
         session_id: SessionId,
         protocol_version: u32,
         attestation_hash: [u8; 32],
-        enclave_public_key: [u8; 32],
+        local_public_key: [u8; 32],
+        peer_public_key: [u8; 32],
         client_nonce: [u8; 12],
         ttl_seconds: u64,
     ) -> Result<()> {
@@ -420,7 +435,8 @@ impl HPKESessionManager {
             session_id.clone(),
             protocol_version,
             attestation_hash,
-            enclave_public_key,
+            local_public_key,
+            peer_public_key,
             client_nonce,
             ttl_seconds,
         )?;
@@ -433,12 +449,12 @@ impl HPKESessionManager {
     pub fn establish_session(
         &mut self,
         session_id: &SessionId,
-        enclave_private_key: &[u8; 32],
+        local_private_key: &[u8; 32],
     ) -> Result<()> {
         let session = self.sessions.get_mut(session_id)
             .ok_or_else(|| EphemeralError::InvalidInput("Session not found".to_string()))?;
         
-        session.establish(enclave_private_key)
+        session.establish(local_private_key)
     }
     
     /// Encrypt payload for session
@@ -509,15 +525,17 @@ mod tests {
         let session_id = "test-session".to_string();
         let protocol_version = 1;
         let attestation_hash = [1u8; 32];
-        let enclave_public_key = [2u8; 32];
-        let client_nonce = [3u8; 12];
+        let local_public_key = [2u8; 32];
+        let peer_public_key = [3u8; 32];
+        let client_nonce = [4u8; 12];
         let ttl_seconds = 3600;
         
         let session = HPKESession::new(
             session_id.clone(),
             protocol_version,
             attestation_hash,
-            enclave_public_key,
+            local_public_key,
+            peer_public_key,
             client_nonce,
             ttl_seconds,
         ).unwrap();
@@ -530,55 +548,86 @@ mod tests {
     
     #[test]
     fn test_session_establishment() {
+        use x25519_dalek::{StaticSecret, PublicKey};
+        let client_secret = StaticSecret::random_from_rng(rand::thread_rng());
+        let client_public = PublicKey::from(&client_secret);
+        
+        let server_secret = StaticSecret::random_from_rng(rand::thread_rng());
+        let server_public = PublicKey::from(&server_secret);
+
         let mut session = HPKESession::new(
             "test".to_string(),
             1,
             [1u8; 32],
-            [2u8; 32],
+            *client_public.as_bytes(),
+            *server_public.as_bytes(),
             [3u8; 12],
             3600,
         ).unwrap();
         
-        let enclave_private_key = [4u8; 32];
-        session.establish(&enclave_private_key).unwrap();
+        session.establish(client_secret.as_bytes()).unwrap();
         
         assert!(session.is_established);
     }
     
     #[test]
     fn test_encrypt_decrypt_roundtrip() {
-        let mut session = HPKESession::new(
+        use x25519_dalek::{StaticSecret, PublicKey};
+        let client_secret = StaticSecret::random_from_rng(rand::thread_rng());
+        let client_public = PublicKey::from(&client_secret);
+        
+        let server_secret = StaticSecret::random_from_rng(rand::thread_rng());
+        let server_public = PublicKey::from(&server_secret);
+
+        let mut client_session = HPKESession::new(
             "test".to_string(),
             1,
             [1u8; 32],
-            [2u8; 32],
+            *client_public.as_bytes(),
+            *server_public.as_bytes(),
             [3u8; 12],
             3600,
         ).unwrap();
-        
-        let enclave_private_key = [4u8; 32];
-        session.establish(&enclave_private_key).unwrap();
+        client_session.establish(client_secret.as_bytes()).unwrap();
+
+        let mut server_session = HPKESession::new(
+            "test".to_string(),
+            1,
+            [1u8; 32],
+            *server_public.as_bytes(),
+            *client_public.as_bytes(),
+            [3u8; 12],
+            3600,
+        ).unwrap();
+        server_session.establish(server_secret.as_bytes()).unwrap();
         
         let plaintext = b"Hello, HPKE!";
-        let encrypted = session.encrypt(plaintext).unwrap();
-        let decrypted = session.decrypt(&encrypted).unwrap();
+        let encrypted = client_session.encrypt(plaintext).unwrap();
+        let decrypted = server_session.decrypt(&encrypted).unwrap();
         
         assert_eq!(plaintext, decrypted.as_slice());
     }
     
     #[test]
     fn test_chacha20_poly1305_encryption() {
+        use x25519_dalek::{StaticSecret, PublicKey};
+        let client_secret = StaticSecret::random_from_rng(rand::thread_rng());
+        let client_public = PublicKey::from(&client_secret);
+        
+        let server_secret = StaticSecret::random_from_rng(rand::thread_rng());
+        let server_public = PublicKey::from(&server_secret);
+
         let mut session = HPKESession::new(
             "test-chacha20".to_string(),
             1,
             [1u8; 32],
-            [2u8; 32],
+            *client_public.as_bytes(),
+            *server_public.as_bytes(),
             [3u8; 12],
             3600,
         ).unwrap();
         
-        let enclave_private_key = [4u8; 32];
-        session.establish(&enclave_private_key).unwrap();
+        session.establish(client_secret.as_bytes()).unwrap();
         
         let plaintext = b"Test ChaCha20-Poly1305 encryption";
         let encrypted1 = session.encrypt(plaintext).unwrap();
@@ -597,9 +646,20 @@ mod tests {
         // ChaCha20-Poly1305 ciphertext should be different from simple XOR
         assert_ne!(encrypted1.ciphertext, xor_result);
         
-        // Verify decryption works correctly
-        let decrypted1 = session.decrypt(&encrypted1).unwrap();
-        let decrypted2 = session.decrypt(&encrypted2).unwrap();
+        // Reset sequence for decryption test (or create a receiver session)
+        let mut receiver_session = HPKESession::new(
+            "test-chacha20".to_string(),
+            1,
+            [1u8; 32],
+            *server_public.as_bytes(),
+            *client_public.as_bytes(),
+            [3u8; 12],
+            3600,
+        ).unwrap();
+        receiver_session.establish(server_secret.as_bytes()).unwrap();
+
+        let decrypted1 = receiver_session.decrypt(&encrypted1).unwrap();
+        let decrypted2 = receiver_session.decrypt(&encrypted2).unwrap();
         
         assert_eq!(plaintext, decrypted1.as_slice());
         assert_eq!(plaintext, decrypted2.as_slice());
@@ -607,6 +667,13 @@ mod tests {
     
     #[test]
     fn test_session_manager() {
+        use x25519_dalek::{StaticSecret, PublicKey};
+        let client_secret = StaticSecret::random_from_rng(rand::thread_rng());
+        let client_public = PublicKey::from(&client_secret);
+        
+        let server_secret = StaticSecret::random_from_rng(rand::thread_rng());
+        let server_public = PublicKey::from(&server_secret);
+
         let mut manager = HPKESessionManager::new(10);
         
         let session_id = "test-session".to_string();
@@ -614,44 +681,64 @@ mod tests {
             session_id.clone(),
             1,
             [1u8; 32],
-            [2u8; 32],
+            *client_public.as_bytes(),
+            *server_public.as_bytes(),
             [3u8; 12],
             3600,
         ).unwrap();
         
-        let enclave_private_key = [4u8; 32];
-        manager.establish_session(&session_id, &enclave_private_key).unwrap();
+        manager.establish_session(&session_id, client_secret.as_bytes()).unwrap();
         
         let plaintext = b"Test message";
         let encrypted = manager.encrypt(&session_id, plaintext).unwrap();
-        let decrypted = manager.decrypt(&encrypted).unwrap();
+
+        // Server side
+        let mut server_manager = HPKESessionManager::new(10);
+        server_manager.create_session(
+            session_id.clone(),
+            1,
+            [1u8; 32],
+            *server_public.as_bytes(),
+            *client_public.as_bytes(),
+            [3u8; 12],
+            3600,
+        ).unwrap();
+        server_manager.establish_session(&session_id, server_secret.as_bytes()).unwrap();
+
+        let decrypted = server_manager.decrypt(&encrypted).unwrap();
         
         assert_eq!(plaintext, decrypted.as_slice());
     }
 
     #[test]
     fn test_replay_protection_failure() {
-        let mut session = HPKESession::new(
+        use x25519_dalek::{StaticSecret, PublicKey};
+        let client_secret = StaticSecret::random_from_rng(rand::thread_rng());
+        let client_public = PublicKey::from(&client_secret);
+        let server_secret = StaticSecret::random_from_rng(rand::thread_rng());
+        let server_public = PublicKey::from(&server_secret);
+
+        let mut client_session = HPKESession::new(
             "test-replay".to_string(),
-            1,
-            [1u8; 32],
-            [2u8; 32],
-            [3u8; 12],
-            3600,
+            1, [1u8; 32], *client_public.as_bytes(), *server_public.as_bytes(), [3u8; 12], 3600
         ).unwrap();
+        client_session.establish(client_secret.as_bytes()).unwrap();
         
-        let enclave_private_key = [4u8; 32];
-        session.establish(&enclave_private_key).unwrap();
+        let mut server_session = HPKESession::new(
+            "test-replay".to_string(),
+            1, [1u8; 32], *server_public.as_bytes(), *client_public.as_bytes(), [3u8; 12], 3600
+        ).unwrap();
+        server_session.establish(server_secret.as_bytes()).unwrap();
         
         let plaintext = b"Replay me!";
-        let encrypted = session.encrypt(plaintext).unwrap();
+        let encrypted = client_session.encrypt(plaintext).unwrap();
         
         // First decryption should succeed
-        let decrypted1 = session.decrypt(&encrypted).unwrap();
+        let decrypted1 = server_session.decrypt(&encrypted).unwrap();
         assert_eq!(plaintext, decrypted1.as_slice());
         
         // Second decryption of same message should fail due to replay protection
-        let result = session.decrypt(&encrypted);
+        let result = server_session.decrypt(&encrypted);
         assert!(result.is_err());
         
         // Verify error message mentions replay
@@ -661,57 +748,93 @@ mod tests {
 
     #[test]
     fn test_ciphertext_tampering() {
-        let mut session = HPKESession::new(
+        use x25519_dalek::{StaticSecret, PublicKey};
+        let client_secret = StaticSecret::random_from_rng(rand::thread_rng());
+        let client_public = PublicKey::from(&client_secret);
+        let server_secret = StaticSecret::random_from_rng(rand::thread_rng());
+        let server_public = PublicKey::from(&server_secret);
+
+        let mut client_session = HPKESession::new(
             "test-tamper".to_string(),
-            1, [0u8; 32], [0u8; 32], [0u8; 12], 3600
+            1, [0u8; 32], *client_public.as_bytes(), *server_public.as_bytes(), [0u8; 12], 3600
         ).unwrap();
-        session.establish(&[4u8; 32]).unwrap();
+        client_session.establish(client_secret.as_bytes()).unwrap();
         
+        let mut server_session = HPKESession::new(
+            "test-tamper".to_string(),
+            1, [0u8; 32], *server_public.as_bytes(), *client_public.as_bytes(), [0u8; 12], 3600
+        ).unwrap();
+        server_session.establish(server_secret.as_bytes()).unwrap();
+
         let plaintext = b"Sensitive data";
-        let mut encrypted = session.encrypt(plaintext).unwrap();
+        let mut encrypted = client_session.encrypt(plaintext).unwrap();
         
         // Flip one bit in ciphertext
         encrypted.ciphertext[0] ^= 0x01;
         
-        let result = session.decrypt(&encrypted);
+        let result = server_session.decrypt(&encrypted);
         assert!(result.is_err());
         assert!(format!("{:?}", result.err().unwrap()).contains("Decryption failed"));
     }
 
     #[test]
     fn test_auth_tag_tampering() {
-        let mut session = HPKESession::new(
+        use x25519_dalek::{StaticSecret, PublicKey};
+        let client_secret = StaticSecret::random_from_rng(rand::thread_rng());
+        let client_public = PublicKey::from(&client_secret);
+        let server_secret = StaticSecret::random_from_rng(rand::thread_rng());
+        let server_public = PublicKey::from(&server_secret);
+
+        let mut client_session = HPKESession::new(
             "test-tag-tamper".to_string(),
-            1, [0u8; 32], [0u8; 32], [0u8; 12], 3600
+            1, [0u8; 32], *client_public.as_bytes(), *server_public.as_bytes(), [0u8; 12], 3600
         ).unwrap();
-        session.establish(&[4u8; 32]).unwrap();
+        client_session.establish(client_secret.as_bytes()).unwrap();
         
-        let mut encrypted = session.encrypt(b"data").unwrap();
+        let mut server_session = HPKESession::new(
+            "test-tag-tamper".to_string(),
+            1, [0u8; 32], *server_public.as_bytes(), *client_public.as_bytes(), [0u8; 12], 3600
+        ).unwrap();
+        server_session.establish(server_secret.as_bytes()).unwrap();
+
+        let mut encrypted = client_session.encrypt(b"data").unwrap();
         
         // Flip one bit in auth tag
         encrypted.auth_tag[0] ^= 0x01;
         
-        assert!(session.decrypt(&encrypted).is_err());
+        assert!(server_session.decrypt(&encrypted).is_err());
     }
 
     #[test]
     fn test_header_tampering() {
-        let mut session = HPKESession::new(
+        use x25519_dalek::{StaticSecret, PublicKey};
+        let client_secret = StaticSecret::random_from_rng(rand::thread_rng());
+        let client_public = PublicKey::from(&client_secret);
+        let server_secret = StaticSecret::random_from_rng(rand::thread_rng());
+        let server_public = PublicKey::from(&server_secret);
+
+        let mut client_session = HPKESession::new(
             "test-header".to_string(),
-            1, [0u8; 32], [0u8; 32], [0u8; 12], 3600
+            1, [0u8; 32], *client_public.as_bytes(), *server_public.as_bytes(), [0u8; 12], 3600
         ).unwrap();
-        session.establish(&[4u8; 32]).unwrap();
+        client_session.establish(client_secret.as_bytes()).unwrap();
         
-        let encrypted = session.encrypt(b"data").unwrap();
+        let mut server_session = HPKESession::new(
+            "test-header".to_string(),
+            1, [0u8; 32], *server_public.as_bytes(), *client_public.as_bytes(), [0u8; 12], 3600
+        ).unwrap();
+        server_session.establish(server_secret.as_bytes()).unwrap();
+
+        let encrypted = client_session.encrypt(b"data").unwrap();
         
         // Tamper with sequence number in the header (unencrypted part of struct)
         let mut bad_seq = encrypted.clone();
         bad_seq.sequence_number = 999;
-        assert!(session.decrypt(&bad_seq).is_err());
+        assert!(server_session.decrypt(&bad_seq).is_err());
         
         // Tamper with session_id
         let mut bad_session = encrypted.clone();
         bad_session.session_id = "wrong".to_string();
-        assert!(session.decrypt(&bad_session).is_err());
+        assert!(server_session.decrypt(&bad_session).is_err());
     }
 }

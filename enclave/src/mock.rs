@@ -23,24 +23,28 @@ pub struct MockAttestationUserData {
     pub supported_features: Vec<String>,
 }
 
+use zeroize::ZeroizeOnDrop;
+
 /// Mock key pair for testing
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, ZeroizeOnDrop)]
 pub struct MockKeyPair {
+    #[zeroize(skip)]
     pub public_key: [u8; 32],
     pub private_key: [u8; 32],
 }
 
 impl MockKeyPair {
     pub fn generate() -> Self {
-        let private_key = [4u8; 32];
-        let public_key = [
-            0xba, 0x1d, 0x5a, 0x93, 0x95, 0x22, 0xea, 0x6e,
-            0x0a, 0x2e, 0x36, 0x9b, 0xa1, 0xc1, 0x6d, 0x8b,
-            0xb0, 0x48, 0x9e, 0x51, 0xd8, 0x3c, 0x41, 0x55,
-            0x24, 0x65, 0x59, 0xb8, 0x44, 0x9e, 0x25, 0x2a
-        ];
+        use x25519_dalek::{StaticSecret, PublicKey};
+        use rand::rngs::OsRng;
         
-        Self { public_key, private_key }
+        let secret = StaticSecret::random_from_rng(OsRng);
+        let public = PublicKey::from(&secret);
+        
+        Self { 
+            public_key: *public.as_bytes(), 
+            private_key: *secret.as_bytes() 
+        }
     }
 }
 
@@ -396,7 +400,8 @@ impl MockEnclaveServer {
                         session_id.clone(),
                         1,
                         attestation_hash,
-                        attestation_provider.get_hpke_public_key(),
+                        attestation_provider.get_hpke_public_key(), // Local PK
+                        client_hello.ephemeral_public_key,           // Peer PK
                         client_hello.client_nonce,
                         3600,
                     ).map_err(|e| EnclaveError::Enclave(e))?;

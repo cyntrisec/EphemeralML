@@ -7,12 +7,15 @@
 use crate::error::{EphemeralError, Result};
 use serde::{Deserialize, Serialize};
 use ed25519_dalek::Signer;
+use zeroize::ZeroizeOnDrop;
 
 /// Ed25519 receipt signing keypair with secure memory management
+#[derive(ZeroizeOnDrop)]
 pub struct ReceiptSigningKey {
     /// Ed25519 private key (zeroized on drop)
     private_key: ed25519_dalek::SigningKey,
     /// Ed25519 public key (public keys don't need zeroization)
+    #[zeroize(skip)]
     pub public_key: ed25519_dalek::VerifyingKey,
     /// Key generation timestamp
     pub created_at: u64,
@@ -42,6 +45,16 @@ impl ReceiptSigningKey {
         let mut key = Self::generate()?;
         key.expires_at = Some(key.created_at + ttl_seconds);
         Ok(key)
+    }
+
+    /// Create from existing keys (for testing)
+    pub fn from_parts(private_key: ed25519_dalek::SigningKey, public_key: ed25519_dalek::VerifyingKey) -> Self {
+        Self {
+            private_key,
+            public_key,
+            created_at: crate::current_timestamp(),
+            expires_at: None,
+        }
     }
     
     /// Get public key bytes for embedding in attestation user data

@@ -150,7 +150,8 @@ mod tests {
             session_id.clone(),
             1,
             [1u8; 32],
-            [2u8; 32],
+            [2u8; 32], // local
+            [2u8; 32], // peer
             [3u8; 12],
             3600
         ).unwrap();
@@ -187,6 +188,7 @@ mod tests {
             session_id.clone(),
             1,
             [1u8; 32],
+            [2u8; 32], // Local pub
             [2u8; 32], // Enclave pub
             [3u8; 12], // Client nonce
             3600
@@ -205,6 +207,7 @@ mod tests {
             session_id.clone(),
             1,
             [1u8; 32],
+            [2u8; 32],
             [2u8; 32],
             [3u8; 12],
             3600

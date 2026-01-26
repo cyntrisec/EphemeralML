@@ -129,7 +129,7 @@ mod tests {
         
         let create_session = |id: &str| {
             let hpke = HPKESession::new(
-                id.to_string(), 1, [0u8; 32], [0u8; 32], [0u8; 12], 3600
+                id.to_string(), 1, [0u8; 32], [0u8; 32], [0u8; 32], [0u8; 12], 3600
             ).unwrap();
             let receipt_key = ReceiptSigningKey::generate().unwrap();
             EnclaveSession::new(id.to_string(), hpke, receipt_key, [0u8; 32], "client".to_string())

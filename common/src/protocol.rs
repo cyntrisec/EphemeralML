@@ -29,13 +29,15 @@ pub struct ClientHello {
     pub client_nonce: [u8; 12],
     /// Client identifier
     pub client_id: String,
+    /// Ephemeral public key for HPKE
+    pub ephemeral_public_key: [u8; 32],
     /// Timestamp for freshness tracking
     pub timestamp: u64,
 }
 
 impl ClientHello {
     /// Create new ClientHello with v1 protocol
-    pub fn new(client_id: String, supported_features: Vec<String>) -> Result<Self> {
+    pub fn new(client_id: String, supported_features: Vec<String>, ephemeral_public_key: [u8; 32]) -> Result<Self> {
         if client_id.len() > MAX_CLIENT_ID_LENGTH {
             return Err(EphemeralError::InvalidInput(
                 format!("Client ID too long: {} > {}", client_id.len(), MAX_CLIENT_ID_LENGTH)
@@ -53,6 +55,7 @@ impl ClientHello {
             supported_features,
             client_nonce: crate::generate_nonce(),
             client_id,
+            ephemeral_public_key,
             timestamp: crate::current_timestamp(),
         })
     }
