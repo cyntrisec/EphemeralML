@@ -32,12 +32,24 @@ pub trait SecureClient {
     async fn execute_inference(&mut self, addr: &str, model_id: &str, input_tensor: Vec<f32>) -> Result<Vec<f32>>;
 }
 
+use zeroize::ZeroizeOnDrop;
+
 /// Default implementation of secure enclave client
+#[derive(ZeroizeOnDrop)]
 pub struct SecureEnclaveClient {
+    #[zeroize(skip)]
     client_id: String,
+    #[zeroize(skip)]
     hpke_session: Option<HPKESession>,
+    #[zeroize(skip)]
     policy_manager: PolicyManager,
+    #[zeroize(skip)]
     pub receipt_verifier: ReceiptVerifier,
+    client_private_key: Option<[u8; 32]>,
+    #[zeroize(skip)]
+    server_receipt_signing_key: Option<[u8; 32]>,
+    #[zeroize(skip)]
+    server_attestation_doc: Option<Vec<u8>>,
 }
 
 impl SecureEnclaveClient {
@@ -47,6 +59,9 @@ impl SecureEnclaveClient {
             hpke_session: None,
             policy_manager: PolicyManager::new(),
             receipt_verifier: ReceiptVerifier::new(vec![]), // Empty roots for mock
+            client_private_key: None,
+            server_receipt_signing_key: None,
+            server_attestation_doc: None,
         }
     }
 }
@@ -55,11 +70,19 @@ impl SecureEnclaveClient {
 impl SecureClient for SecureEnclaveClient {
     /// Establish attested secure channel with enclave
     async fn establish_channel(&mut self, addr: &str) -> Result<()> {
+        use x25519_dalek::{StaticSecret, PublicKey};
+        use rand::rngs::OsRng;
+
         let mut stream = TcpStream::connect(addr).await
             .map_err(|e| ClientError::Client(EphemeralError::NetworkError(e.to_string())))?;
 
-        // 1. Send ClientHello
-        let client_hello = ClientHello::new(self.client_id.clone(), vec!["gateway".to_string()])
+        // 1. Generate client ephemeral keypair and send ClientHello
+        let client_secret = StaticSecret::random_from_rng(OsRng);
+        let client_public = PublicKey::from(&client_secret);
+        let client_public_bytes = *client_public.as_bytes();
+        self.client_private_key = Some(*client_secret.as_bytes());
+
+        let client_hello = ClientHello::new(self.client_id.clone(), vec!["gateway".to_string()], client_public_bytes)
             .map_err(|e| ClientError::Client(e))?;
         
         let hello_payload = serde_json::to_vec(&client_hello).unwrap();
@@ -93,6 +116,8 @@ impl SecureClient for SecureEnclaveClient {
             .map_err(|e| ClientError::Client(EphemeralError::SerializationError(e.to_string())))?;
         
         server_hello.validate().map_err(|e| ClientError::Client(e))?;
+        self.server_receipt_signing_key = Some(server_hello.receipt_signing_key.as_slice().try_into().unwrap());
+        self.server_attestation_doc = Some(server_hello.attestation_document.clone());
 
         // 3. Verify Attestation
         let attestation_doc: AttestationDocument = serde_json::from_slice(&server_hello.attestation_document)
@@ -119,17 +144,20 @@ impl SecureClient for SecureEnclaveClient {
         hasher.update(&attestation_doc.signature);
         let attestation_hash = hasher.finalize().into();
 
+        let server_public_key_bytes: [u8; 32] = server_hello.ephemeral_public_key.as_slice().try_into()
+            .map_err(|_| ClientError::Client(EphemeralError::InvalidInput("Invalid pubkey length".to_string())))?;
+
         let mut hpke = HPKESession::new(
             "session-id".to_string(),
             1,
             attestation_hash,
-            server_hello.ephemeral_public_key.as_slice().try_into().map_err(|_| ClientError::Client(EphemeralError::InvalidInput("Invalid pubkey length".to_string())))?,
+            client_public_bytes,      // Local PK
+            server_public_key_bytes, // Peer PK
             client_hello.client_nonce,
             3600,
         ).map_err(|e| ClientError::Client(e))?;
 
-        let enclave_private = [4u8; 32]; 
-        hpke.establish(&enclave_private).map_err(|e| ClientError::Client(e))?;
+        hpke.establish(&self.client_private_key.unwrap()).map_err(|e| ClientError::Client(e))?;
 
         self.hpke_session = Some(hpke);
         Ok(())
@@ -194,9 +222,26 @@ impl SecureClient for SecureEnclaveClient {
         let output: InferenceHandlerOutput = serde_json::from_slice(&response_bytes)
             .map_err(|e| ClientError::Client(EphemeralError::SerializationError(e.to_string())))?;
 
-        // 5. Verify Receipt (Mock)
-        if output.receipt.signature.is_none() {
-            return Err(ClientError::Client(EphemeralError::ValidationError("Receipt not signed".to_string())));
+        // 5. Verify Receipt
+        let signing_pk = self.server_receipt_signing_key
+            .ok_or_else(|| ClientError::Client(EphemeralError::ValidationError("Missing receipt signing key".to_string())))?;
+        
+        let public_key = ed25519_dalek::VerifyingKey::from_bytes(&signing_pk)
+            .map_err(|e| ClientError::Client(EphemeralError::ValidationError(format!("Invalid receipt public key: {}", e))))?;
+        
+        if !output.receipt.verify_signature(&public_key).map_err(|e| ClientError::Client(e))? {
+            return Err(ClientError::Client(EphemeralError::ValidationError("Invalid receipt signature".to_string())));
+        }
+
+        // Verify binding to attestation
+        let attestation_doc_bytes = self.server_attestation_doc.as_ref().unwrap();
+        use sha2::{Sha256, Digest};
+        let mut hasher = Sha256::new();
+        hasher.update(attestation_doc_bytes);
+        let attestation_hash: [u8; 32] = hasher.finalize().into();
+
+        if output.receipt.attestation_doc_hash != attestation_hash {
+            return Err(ClientError::Client(EphemeralError::ValidationError("Receipt not bound to current attestation".to_string())));
         }
 
         Ok(output.output_tensor)
@@ -207,7 +252,7 @@ impl SecureClient for SecureEnclaveClient {
 mod tests {
     use super::*;
     use tokio::net::TcpListener;
-    use ephemeral_ml_common::{AttestationDocument, PcrMeasurements, EnclaveMeasurements, SecurityMode};
+    use ephemeral_ml_common::{AttestationDocument, PcrMeasurements, EnclaveMeasurements, SecurityMode, ReceiptSigningKey};
     use sha2::{Sha256, Digest};
 
     #[tokio::test]
@@ -245,17 +290,23 @@ mod tests {
             hasher.update(&attestation.signature);
             let attestation_hash: [u8; 32] = hasher.finalize().into();
 
-            use hpke::{kem::X25519HkdfSha256, Kem, Serializable};
-            let (_, public_key_obj) = X25519HkdfSha256::derive_keypair(&[0u8; 32]);
-            let server_pub_key = public_key_obj.to_bytes().to_vec();
-            let server_pub_key_fixed: [u8; 32] = public_key_obj.to_bytes().into();
+            use x25519_dalek::{StaticSecret, PublicKey};
+            let server_secret = StaticSecret::from([0u8; 32]);
+            let server_public = PublicKey::from(&server_secret);
+            let server_pub_key = server_public.to_bytes().to_vec();
+            let server_pub_key_fixed = *server_public.as_bytes();
+
+            // Generate real signature
+            use ed25519_dalek::SigningKey;
+            let signing_key = SigningKey::from_bytes(&[0u8; 32]);
+            let verifying_key = signing_key.verifying_key();
 
             let server_hello = ServerHello {
                 version: 1,
                 chosen_features: vec!["gateway".to_string()],
                 attestation_document: serde_json::to_vec(&attestation).unwrap(),
                 ephemeral_public_key: server_pub_key,
-                receipt_signing_key: vec![0u8; 32],
+                receipt_signing_key: verifying_key.to_bytes().to_vec(),
                 timestamp: 0,
             };
             
@@ -281,23 +332,31 @@ mod tests {
                 "session-id".to_string(),
                 1,
                 attestation_hash,
-                server_pub_key_fixed,
+                server_pub_key_fixed,          // Local PK
+                client_hello.ephemeral_public_key, // Peer PK
                 client_hello.client_nonce,
                 3600,
             ).unwrap();
-            server_hpke.establish(&[4u8; 32]).unwrap();
+            server_hpke.establish(server_secret.as_bytes()).unwrap();
             
             let req_plaintext = server_hpke.decrypt(&encrypted_request).unwrap();
             let input: InferenceHandlerInput = serde_json::from_slice(&req_plaintext).unwrap();
             
             // In the mock, we treat input_data as the tensor for the test
             let output_tensor: Vec<f32> = input.input_data.iter().map(|&x| (x as f32) + 0.1).collect();
+            
+            let attestation_doc_bytes = serde_json::to_vec(&attestation).unwrap();
+            let mut hasher = Sha256::new();
+            hasher.update(&attestation_doc_bytes);
+            let attestation_doc_hash: [u8; 32] = hasher.finalize().into();
+
             let mut signed_receipt = AttestationReceipt::new(
                 "receipt".to_string(), 1, SecurityMode::GatewayOnly,
                 EnclaveMeasurements::new(vec![0x01; 48], vec![0x02; 48], vec![0x03; 48]),
-                [0u8; 32], [0u8; 32], [0u8; 32], "v1".to_string(), 0, "model".to_string(), "v1".to_string(), 0, 0
+                attestation_doc_hash, [0u8; 32], [0u8; 32], "v1".to_string(), 0, "model".to_string(), "v1".to_string(), 0, 0
             );
-            signed_receipt.signature = Some(vec![0u8; 64]);
+            
+            signed_receipt.sign(&ReceiptSigningKey::from_parts(signing_key, verifying_key)).unwrap();
 
             let output = InferenceHandlerOutput {
                 output_tensor,

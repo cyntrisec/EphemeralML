@@ -10,6 +10,10 @@ pub use ephemeral_ml_common::{AttestationDocument, PcrMeasurements, current_time
 use aws_nitro_enclaves_nsm_api as nsm;
 #[cfg(feature = "production")]
 use crate::{EnclaveError, EphemeralError};
+#[cfg(feature = "production")]
+use hpke::{kem::X25519HkdfSha256, aead::ChaCha20Poly1305, kdf::HkdfSha256, OpModeR, Serializable, Deserializable};
+#[cfg(feature = "production")]
+use serde_bytes::ByteBuf;
 
 /// Attestation document user data structure for key binding
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -107,8 +111,8 @@ impl NSMAttestationProvider {
         }
 
         let request = nsm::api::Request::Attestation {
-            user_data: Some(user_data.to_vec()),
-            nonce: Some(nonce.to_vec()),
+            user_data: Some(ByteBuf::from(user_data.to_vec())),
+            nonce: Some(ByteBuf::from(nonce.to_vec())),
             public_key: None, // We embed keys in user_data instead
         };
 
@@ -135,26 +139,30 @@ impl NSMAttestationProvider {
             )));
         }
 
-        let request = nsm::api::Request::DescribePCRs;
-        let response = nsm::driver::nsm_process_request(nsm_fd, request);
-        nsm::driver::nsm_exit(nsm_fd);
-
-        match response {
-            nsm::api::Response::DescribePCRs { pcrs } => {
-                // Extract PCR0, PCR1, PCR2 (first 3 PCRs)
-                let pcr0 = pcrs.get(&0).cloned().unwrap_or_else(|| vec![0u8; 48]);
-                let pcr1 = pcrs.get(&1).cloned().unwrap_or_else(|| vec![0u8; 48]);
-                let pcr2 = pcrs.get(&2).cloned().unwrap_or_else(|| vec![0u8; 48]);
-                
-                Ok(PcrMeasurements::new(pcr0, pcr1, pcr2))
+        let mut pcr_values = Vec::new();
+        for i in 0..3 {
+            let request = nsm::api::Request::DescribePCR { index: i };
+            let response = nsm::driver::nsm_process_request(nsm_fd, request);
+            match response {
+                nsm::api::Response::DescribePCR { data, .. } => {
+                    pcr_values.push(data);
+                }
+                _ => {
+                    nsm::driver::nsm_exit(nsm_fd);
+                    return Err(EnclaveError::Enclave(EphemeralError::AttestationError(
+                        format!("Failed to describe PCR {}", i)
+                    )));
+                }
             }
-            nsm::api::Response::Error(err) => Err(EnclaveError::Enclave(EphemeralError::AttestationError(
-                format!("NSM PCR description error: {:?}", err)
-            ))),
-            _ => Err(EnclaveError::Enclave(EphemeralError::AttestationError(
-                "Unexpected NSM response type".to_string()
-            ))),
         }
+        
+        nsm::driver::nsm_exit(nsm_fd);
+        
+        Ok(PcrMeasurements::new(
+            pcr_values[0].clone(),
+            pcr_values[1].clone(),
+            pcr_values[2].clone()
+        ))
     }
 }
 
@@ -182,28 +190,31 @@ impl AttestationProvider for NSMAttestationProvider {
             )))?;
         
         // Extract fields from the CBOR document
-        let doc_map = parsed_doc.as_map()
-            .ok_or_else(|| EnclaveError::Enclave(EphemeralError::AttestationError(
+        let doc_map = if let serde_cbor::Value::Map(m) = parsed_doc {
+            m
+        } else {
+            return Err(EnclaveError::Enclave(EphemeralError::AttestationError(
                 "Attestation document is not a CBOR map".to_string()
-            )))?;
+            )));
+        };
         
         // Extract module_id
         let module_id = doc_map.get(&serde_cbor::Value::Text("module_id".to_string()))
-            .and_then(|v| v.as_text())
-            .unwrap_or("unknown")
-            .to_string();
+            .and_then(|v| if let serde_cbor::Value::Text(s) = v { Some(s) } else { None })
+            .cloned()
+            .unwrap_or_else(|| "unknown".to_string());
         
         // Extract digest (PCR measurements hash)
         let digest = doc_map.get(&serde_cbor::Value::Text("digest".to_string()))
-            .and_then(|v| v.as_bytes())
-            .unwrap_or(&[])
-            .to_vec();
+            .and_then(|v| if let serde_cbor::Value::Bytes(b) = v { Some(b) } else { None })
+            .cloned()
+            .unwrap_or_default();
         
         // Extract certificate
         let certificate = doc_map.get(&serde_cbor::Value::Text("certificate".to_string()))
-            .and_then(|v| v.as_bytes())
-            .unwrap_or(&[])
-            .to_vec();
+            .and_then(|v| if let serde_cbor::Value::Bytes(b) = v { Some(b) } else { None })
+            .cloned()
+            .unwrap_or_default();
         
         // Get PCR measurements
         let pcrs = self.get_pcr_measurements()?;
@@ -262,7 +273,7 @@ impl AttestationProvider for NSMAttestationProvider {
 pub struct DefaultAttestationProvider {
     #[cfg(feature = "production")]
     nsm_provider: NSMAttestationProvider,
-    #[cfg(feature = "mock")]
+    #[cfg(not(feature = "production"))]
     mock_provider: crate::mock::MockAttestationProvider,
 }
 
@@ -271,7 +282,7 @@ impl DefaultAttestationProvider {
         Ok(Self {
             #[cfg(feature = "production")]
             nsm_provider: NSMAttestationProvider::new()?,
-            #[cfg(feature = "mock")]
+            #[cfg(not(feature = "production"))]
             mock_provider: crate::mock::MockAttestationProvider::new(),
         })
     }
@@ -280,42 +291,62 @@ impl DefaultAttestationProvider {
 impl AttestationProvider for DefaultAttestationProvider {
     fn generate_attestation(&self, nonce: &[u8]) -> Result<AttestationDocument> {
         #[cfg(feature = "production")]
-        return self.nsm_provider.generate_attestation(nonce);
+        {
+            return self.nsm_provider.generate_attestation(nonce);
+        }
         
-        #[cfg(feature = "mock")]
-        return self.mock_provider.generate_attestation(nonce);
+        #[cfg(not(feature = "production"))]
+        {
+            return self.mock_provider.generate_attestation(nonce);
+        }
     }
     
     fn get_pcr_measurements(&self) -> Result<PcrMeasurements> {
         #[cfg(feature = "production")]
-        return self.nsm_provider.get_pcr_measurements();
+        {
+            return self.nsm_provider.get_pcr_measurements();
+        }
         
-        #[cfg(feature = "mock")]
-        return self.mock_provider.get_pcr_measurements();
+        #[cfg(not(feature = "production"))]
+        {
+            return self.mock_provider.get_pcr_measurements();
+        }
     }
     
     fn get_hpke_public_key(&self) -> [u8; 32] {
         #[cfg(feature = "production")]
-        return self.nsm_provider.get_hpke_public_key();
+        {
+            return self.nsm_provider.get_hpke_public_key();
+        }
         
-        #[cfg(feature = "mock")]
-        return self.mock_provider.get_hpke_public_key();
+        #[cfg(not(feature = "production"))]
+        {
+            return self.mock_provider.get_hpke_public_key();
+        }
     }
     
     fn get_receipt_public_key(&self) -> [u8; 32] {
         #[cfg(feature = "production")]
-        return self.nsm_provider.get_receipt_public_key();
+        {
+            return self.nsm_provider.get_receipt_public_key();
+        }
         
-        #[cfg(feature = "mock")]
-        return self.mock_provider.get_receipt_public_key();
+        #[cfg(not(feature = "production"))]
+        {
+            return self.mock_provider.get_receipt_public_key();
+        }
     }
 
     fn decrypt_hpke(&self, ciphertext: &[u8]) -> Result<Vec<u8>> {
         #[cfg(feature = "production")]
-        return self.nsm_provider.decrypt_hpke(ciphertext);
+        {
+            return self.nsm_provider.decrypt_hpke(ciphertext);
+        }
         
-        #[cfg(feature = "mock")]
-        return self.mock_provider.decrypt_hpke(ciphertext);
+        #[cfg(not(feature = "production"))]
+        {
+            return self.mock_provider.decrypt_hpke(ciphertext);
+        }
     }
 }
 

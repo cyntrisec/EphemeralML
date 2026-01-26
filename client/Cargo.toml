@@ -24,6 +24,9 @@ ed25519-dalek = { workspace = true }
 base64 = "0.22.1"
 async-trait = "0.1"
 hpke = { workspace = true, features = ["std", "x25519"] }
+zeroize = { workspace = true }
+x25519-dalek = { workspace = true }
+rand = { workspace = true }
 
 [dev-dependencies]
 proptest = { workspace = true }

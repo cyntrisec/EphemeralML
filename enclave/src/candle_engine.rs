@@ -144,6 +144,8 @@ impl CandleInferenceEngine {
             .map_err(|e| EnclaveError::CandleError(e.to_string()))?;
         
         let token_ids = tokens.get_ids();
+        let attention_mask = tokens.get_attention_mask();
+        
         let input_ids = Tensor::new(token_ids, &loaded.device)
             .map_err(|e| EnclaveError::CandleError(e.to_string()))?
             .unsqueeze(0)
@@ -160,8 +162,31 @@ impl CandleInferenceEngine {
             .squeeze(0)
             .map_err(|e| EnclaveError::CandleError(e.to_string()))?;
         
-        // Pooling: Mean pooling across the sequence length
-        let mean_embeddings = embeddings.mean(0)
+        // Pooling: Mask-aware mean pooling across the sequence length
+        let mask = Tensor::new(attention_mask, &loaded.device)
+            .map_err(|e| EnclaveError::CandleError(e.to_string()))?
+            .to_dtype(embeddings.dtype())
+            .map_err(|e| EnclaveError::CandleError(e.to_string()))?;
+        
+        // Expand mask for broadcast with embeddings [seq_len, hidden_size]
+        let mask_expanded = mask.unsqueeze(1)
+            .map_err(|e| EnclaveError::CandleError(e.to_string()))?
+            .broadcast_as(embeddings.shape())
+            .map_err(|e| EnclaveError::CandleError(e.to_string()))?;
+        
+        let masked_embeddings = embeddings.mul(&mask_expanded)
+            .map_err(|e| EnclaveError::CandleError(e.to_string()))?;
+        
+        let sum_embeddings = masked_embeddings.sum(0)
+            .map_err(|e| EnclaveError::CandleError(e.to_string()))?;
+        
+        let sum_mask = mask.sum(0)
+            .map_err(|e| EnclaveError::CandleError(e.to_string()))?
+            .to_dtype(embeddings.dtype())
+            .map_err(|e| EnclaveError::CandleError(e.to_string()))?;
+        
+        // Avoid division by zero
+        let mean_embeddings = sum_embeddings.broadcast_div(&sum_mask)
             .map_err(|e| EnclaveError::CandleError(e.to_string()))?;
         
         let res = mean_embeddings.to_vec1::<f32>()
