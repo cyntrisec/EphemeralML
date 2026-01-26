@@ -32,21 +32,13 @@ pub struct MockKeyPair {
 
 impl MockKeyPair {
     pub fn generate() -> Self {
-        use hpke::{kem::X25519HkdfSha256, Kem, Serializable};
-        
-        // Generate deterministic keys using a fixed seed
-        let mut hasher = Sha256::new();
-        hasher.update(b"deterministic_seed_for_mock_keypair");
-        let hash = hasher.finalize();
-        
-        // Use the hash as Input Key Material (IKM)
-        let (private_key_obj, public_key_obj) = X25519HkdfSha256::derive_keypair(&hash);
-        
-        let mut public_key = [0u8; 32];
-        let mut private_key = [0u8; 32];
-        
-        public_key.copy_from_slice(&public_key_obj.to_bytes());
-        private_key.copy_from_slice(&private_key_obj.to_bytes());
+        let private_key = [4u8; 32];
+        let public_key = [
+            0xba, 0x1d, 0x5a, 0x93, 0x95, 0x22, 0xea, 0x6e,
+            0x0a, 0x2e, 0x36, 0x9b, 0xa1, 0xc1, 0x6d, 0x8b,
+            0xb0, 0x48, 0x9e, 0x51, 0xd8, 0x3c, 0x41, 0x55,
+            0x24, 0x65, 0x59, 0xb8, 0x44, 0x9e, 0x25, 0x2a
+        ];
         
         Self { public_key, private_key }
     }
@@ -187,7 +179,7 @@ impl AttestationProvider for MockAttestationProvider {
     }
 
     fn decrypt_hpke(&self, ciphertext: &[u8]) -> Result<Vec<u8>> {
-        use hpke::{aead::ChaCha20Poly1305, kem::X25519HkdfSha256, OpModeR, Serializable, Deserializable};
+        use hpke::{aead::ChaCha20Poly1305, kem::X25519HkdfSha256, OpModeR, Deserializable};
         
         if ciphertext.len() < 32 {
              return Err(EnclaveError::Enclave(EphemeralError::DecryptionError("Ciphertext too short".to_string())));
@@ -246,7 +238,7 @@ impl EphemeralAssembler for MockEphemeralAssembler {
         Ok(model)
     }
 
-    fn execute_inference(&self, model: &CandleModel, input: &[u8]) -> Result<Vec<f32>> {
+    fn execute_inference(&self, _model: &CandleModel, input: &[u8]) -> Result<Vec<f32>> {
         let output: Vec<f32> = input.iter().map(|&x| (x as f32) * 2.0 + 1.0).collect();
         Ok(output)
     }
@@ -393,7 +385,7 @@ impl MockEnclaveServer {
                     client_hello.validate().map_err(|e| EnclaveError::Enclave(e))?;
 
                     // Establish Session
-                    let session_id = Uuid::new_v4().to_string();
+                    let session_id = "session-id".to_string();
                     let attestation_doc = attestation_provider.generate_attestation(&client_hello.client_nonce)?;
                     
                     let mut hasher = Sha256::new();

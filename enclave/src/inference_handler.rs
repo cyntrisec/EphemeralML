@@ -1,5 +1,5 @@
 use crate::{EnclaveError, Result, EphemeralError, AttestationProvider, InferenceEngine};
-use crate::session_manager::{SessionManager, EnclaveSession};
+use crate::session_manager::SessionManager;
 use crate::receipt::ReceiptBuilder;
 use ephemeral_ml_common::{EncryptedMessage, AttestationReceipt};
 use serde::{Deserialize, Serialize};
@@ -70,7 +70,7 @@ impl<A: AttestationProvider, I: InferenceEngine> InferenceHandler<A, I> {
                         checksum: "dummy".to_string(),
                     }
                 },
-                weights: vec![],
+                weights: vec![0.5],
             };
 
             let start_time = std::time::Instant::now();
@@ -125,9 +125,10 @@ mod tests {
     
     #[test]
     fn test_inference_lifecycle() {
+        use crate::session_manager::EnclaveSession;
         // Setup components
         let provider = DefaultAttestationProvider::new().unwrap();
-        let engine = DefaultInferenceEngine; // Note: Default implementation returns Error currently
+        let _engine = DefaultInferenceEngine; // Note: Default implementation returns Error currently
         
         // Use MockInferenceEngine for success path
         struct MockInferenceEngine;
@@ -182,7 +183,7 @@ mod tests {
         let input_bytes = serde_json::to_vec(&input).unwrap();
         
         // Encrypt Request (simulate client)
-        let mut client_hpke = HPKESession::new(
+        let mut _client_hpke = HPKESession::new(
             session_id.clone(),
             1,
             [1u8; 32],

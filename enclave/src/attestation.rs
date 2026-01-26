@@ -2,7 +2,6 @@ use crate::Result;
 use serde::{Deserialize, Serialize};
 use sha2::{Sha256, Digest};
 use uuid::Uuid;
-use hpke::{aead::ChaCha20Poly1305, kem::X25519HkdfSha256, OpModeR, Serializable, Deserializable};
 
 // Re-export common types
 pub use ephemeral_ml_common::{AttestationDocument, PcrMeasurements, current_timestamp};

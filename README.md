@@ -148,6 +148,7 @@ Each inference can return an **AER** containing:
 - 🔄 **Nonce-based freshness tracking** with replay detection
 - 📋 **Policy management** with measurement allowlists
 - 🛡️ **Input validation** with security limits and DoS protection
+- 🕵️ **Spy Mode for Host Blindness Verification** - [See Security Demo](SECURITY_DEMO.md)
 - 🧪 **Comprehensive test suite** for all implemented components
 
 **Try It Now:**
@@ -165,6 +166,9 @@ cd enclave && cargo run --bin mock_server --features mock
 
 # Run client examples (Terminal 2)
 cd client && cargo run --bin mock_client --features mock
+
+# Use interactive commander CLI (Terminal 2 alternative)
+cargo run -p ephemeral-ml-client --bin commander
 ```
 
 ### 🚧 In Development: Production Features (75% remaining)

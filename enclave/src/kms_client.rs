@@ -1,7 +1,6 @@
 use crate::{EnclaveError, Result, EphemeralError};
 use crate::kms_proxy_client::KmsProxyClient;
 use ephemeral_ml_common::{KmsRequest, KmsResponse};
-use serde_json;
 
 /// KMS Stub Client for Enclave
 pub struct KmsClient<A: crate::attestation::AttestationProvider> {

@@ -132,6 +132,9 @@ This implementation plan breaks down the Confidential Inference Gateway into dis
 - [x] **10.4** Validate all host proxy responses as untrusted
   - ✅ `ResponseValidator` for treating all host data as untrusted
   - ✅ Validation of content types and sizes
+- [x] **10.5** Implement Spy Mode for host blindness demonstration
+  - ✅ `SpyProxy` wrapper for traffic interception
+  - ✅ Verification via `spy_test.rs` integration test
 - _Requirements: 4.1, 4.2, 12.6, 12.7, 12.8_
 
 
@@ -202,8 +205,9 @@ This implementation plan breaks down the Confidential Inference Gateway into dis
 - [x] **14.5** Add Ed25519 signature generation with per-session keys
   - ✅ `EnclaveSession` holds per-session receipt key
   - ✅ `InferenceHandler` signs receipt
-- [*] **14.6** Write property tests for enclave computation isolation
-- [*] **14.7** Write property tests for receipt verification and anti-forgery
+- [x] **14.6** Implement interactive CLI commander tool
+- [*] **14.7** Write property tests for enclave computation isolation
+- [*] **14.8** Write property tests for receipt verification and anti-forgery
 - _Requirements: 5.1, 5.2, 5.4, 6.1, 6.2, 6.3, 6.10, 6.11, 6.12_
 
 **Phase 5 Checkpoint:** Core inference functionality working
@@ -325,6 +329,7 @@ This implementation plan breaks down the Confidential Inference Gateway into dis
 - AER Receipt Generation & Signing
 - Production Hardening (Redacted errors, Audit logging, Signed policies)
 - End-to-End Integration Mock
+- **Host Blindness Verification (Spy Mode)**
 
 **🚧 Partially Complete:**
 - Attestation verification (mock working, production certificate chain stubbed)

@@ -388,7 +388,7 @@ pub struct EncryptedMessage {
 /// HPKE session manager for handling multiple sessions
 pub struct HPKESessionManager {
     sessions: HashMap<SessionId, HPKESession>,
-    config: HPKEConfig,
+    _config: HPKEConfig,
     max_sessions: usize,
 }
 
@@ -397,7 +397,7 @@ impl HPKESessionManager {
     pub fn new(max_sessions: usize) -> Self {
         Self {
             sessions: HashMap::new(),
-            config: HPKEConfig::default(),
+            _config: HPKEConfig::default(),
             max_sessions,
         }
     }

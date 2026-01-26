@@ -4,8 +4,6 @@
 //! ClientHello/ServerHello handshake, and canonical message framing.
 
 use crate::error::{EphemeralError, Result};
-use crate::hpke_session::SessionId;
-use crate::receipt_signing::{AttestationReceipt, EnclaveMeasurements};
 use serde::{Deserialize, Serialize};
 
 /// Protocol version - fixed to 1 for v1

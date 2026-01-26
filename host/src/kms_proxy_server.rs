@@ -7,13 +7,13 @@ use rand::RngCore;
 /// Mock KMS Proxy Server
 pub struct KmsProxyServer {
     // Mock key storage
-    keys: HashMap<String, Vec<u8>>,
+    _keys: HashMap<String, Vec<u8>>,
 }
 
 impl KmsProxyServer {
     pub fn new() -> Self {
         Self {
-            keys: HashMap::new(),
+            _keys: HashMap::new(),
         }
     }
 

@@ -344,13 +344,13 @@ impl ReceiptBinding {
 /// Receipt verifier for client-side verification
 pub struct ReceiptVerifier {
     /// Trusted attestation root certificates
-    trusted_roots: Vec<Vec<u8>>,
+    _trusted_roots: Vec<Vec<u8>>,
 }
 
 impl ReceiptVerifier {
     /// Create new receipt verifier with trusted roots
     pub fn new(trusted_roots: Vec<Vec<u8>>) -> Self {
-        Self { trusted_roots }
+        Self { _trusted_roots: trusted_roots }
     }
     
     /// Verify receipt authenticity and binding

@@ -1,4 +1,4 @@
-use crate::{Result, EnclaveError, EphemeralError, AttestationProvider};
+use crate::{Result, AttestationProvider};
 use crate::session_manager::EnclaveSession;
 use ephemeral_ml_common::{AttestationReceipt, EnclaveMeasurements, SecurityMode};
 use sha2::{Sha256, Digest};
