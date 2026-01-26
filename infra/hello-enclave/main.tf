@@ -196,6 +196,12 @@ resource "aws_instance" "host" {
     enabled = true
   }
 
+  # Default AL2023 root volume can be tiny on some AMIs; Docker + rust image pulls need more.
+  root_block_device {
+    volume_size = 30
+    volume_type = "gp3"
+  }
+
   key_name = local.use_ssh ? aws_key_pair.ssh[0].key_name : null
 
   metadata_options {
