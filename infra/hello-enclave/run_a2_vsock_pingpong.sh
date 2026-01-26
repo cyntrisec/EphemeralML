@@ -204,12 +204,24 @@ CMD_ID=""
 if [[ "$goto_destroy" != "1" ]]; then
   # SendCommand with script content
   log "Sending SSM command (this is the main on-host execution)"
+  # SSM expects a JSON array of commands. We ship the remote script as base64 and execute it.
+  REMOTE_B64=$(base64 -w0 "$REMOTE_SH")
+  REMOTE_CMD=$(jq -n --arg repo "$REPO_URL_DEFAULT" --arg b64 "$REMOTE_B64" '
+    [
+      "set -euo pipefail",
+      "export REPO_URL=\($repo)",
+      "echo \($b64) | base64 -d > /tmp/ephemeralml_a2_host.sh",
+      "chmod +x /tmp/ephemeralml_a2_host.sh",
+      "/tmp/ephemeralml_a2_host.sh"
+    ]
+  ')
+
   CMD_JSON=$(aws ssm send-command \
     --region "$REGION" \
     --instance-ids "$INSTANCE_ID" \
     --document-name "AWS-RunShellScript" \
     --comment "EphemeralML A2 vsock pingpong" \
-    --parameters commands="$(sed 's/"/\\"/g' "$REMOTE_SH" | awk '{print}' ORS='\n')" \
+    --parameters commands="$REMOTE_CMD" \
     --timeout-seconds $((TIMEBOX_MIN*60)) \
     --cloud-watch-output-config CloudWatchOutputEnabled=false \
     --output json)
