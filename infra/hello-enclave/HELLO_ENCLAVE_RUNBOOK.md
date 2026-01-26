@@ -9,10 +9,12 @@ Goal: prove the *deployment loop* works: EC2 parent boots → allocator runs →
 - Connectivity: **SSM-only** (no SSH inbound)
 
 ## 1) Deploy with Terraform
+If you hit an AZ availability error (common), pin a known-good AZ like `us-east-1a` or `us-east-1b`.
+
 ```bash
 cd projects/EphemeralML/infra/hello-enclave
 terraform init
-terraform apply
+terraform apply -var 'availability_zone=us-east-1a' -var 'instance_type=m6i.xlarge'
 ```
 
 Outputs include an `aws ssm start-session --target i-...` command.

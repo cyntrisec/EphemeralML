@@ -31,6 +31,12 @@ variable "instance_type" {
   default     = "m6i.xlarge"
 }
 
+variable "availability_zone" {
+  description = "Availability Zone to place the subnet/instance in (some types not available in all AZs)."
+  type        = string
+  default     = "us-east-1a"
+}
+
 variable "ssh_public_key" {
   description = "Optional SSH public key. Leave empty to use SSM-only (recommended)."
   type        = string
@@ -80,6 +86,7 @@ resource "aws_internet_gateway" "this" {
 resource "aws_subnet" "public" {
   vpc_id                  = aws_vpc.this.id
   cidr_block              = "10.42.1.0/24"
+  availability_zone       = var.availability_zone
   map_public_ip_on_launch = true
 
   tags = {
