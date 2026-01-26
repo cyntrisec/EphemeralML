@@ -108,6 +108,13 @@ enclave.dockerfile
 crash.log
 crash.*.log
 
+# Local run artifacts
+**/logs/
+
+# Encrypted test assets (generated; do not commit)
+/test_assets/**/*.encrypted
+/test_assets/**/*.wrapped
+
 # Build artifacts
 build/
 out/
