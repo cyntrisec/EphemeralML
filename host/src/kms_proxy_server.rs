@@ -7,8 +7,8 @@ use ephemeral_ml_common::{
     KmsProxyErrorCode, KmsProxyRequestEnvelope, KmsProxyResponseEnvelope, KmsRequest, KmsResponse,
 };
 use hpke::{aead::ChaCha20Poly1305, kem::X25519HkdfSha256, Deserializable, OpModeS, Serializable};
-use rand::rngs::OsRng;
-use rand::RngCore;
+use rand::rngs::{OsRng, StdRng};
+use rand::{RngCore, SeedableRng};
 use std::collections::HashMap;
 use std::time::Instant;
 use tokio::time::{sleep, timeout, Duration};
@@ -120,7 +120,10 @@ impl KmsProxyServer {
                     if rate_limited {
                         self.metrics.inc_rate_limited();
                     }
-                    let mut rng = rand::thread_rng();
+                    // rand::thread_rng() is !Send and will poison any future we spawn onto
+                    // the multithread Tokio runtime. Use a Send RNG.
+                    let mut rng = StdRng::from_rng(OsRng)
+                        .unwrap_or_else(|_| StdRng::from_seed([0u8; 32]));
 
                     for attempt in 1..=self.retry.max_attempts {
                         let elapsed = started.elapsed();
@@ -238,7 +241,8 @@ impl KmsProxyServer {
                         self.circuit.before_request().await;
                         let _permit = self.limiter.acquire().await;
                         self.rate_limiter.acquire(1.0).await;
-                        let mut rng = rand::thread_rng();
+                        let mut rng = StdRng::from_rng(OsRng)
+                            .unwrap_or_else(|_| StdRng::from_seed([0u8; 32]));
 
                         for attempt in 1..=self.retry.max_attempts {
                             let elapsed = started.elapsed();
