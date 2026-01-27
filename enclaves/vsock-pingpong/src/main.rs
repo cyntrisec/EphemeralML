@@ -176,12 +176,23 @@ fn run(mode: Mode) {
                 use ephemeral_ml_common::{KmsRequest, KmsResponse, MessageType, VSockMessage};
                 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
-                // 1. Get attestation document
+                // 1. Generate an RSA keypair and request an attestation document that embeds the recipient public key.
+                // KMS requires the enclave public key to be present in the attestation doc when using RecipientInfo.
+                use rand::rngs::OsRng;
+                use rsa::{RsaPrivateKey, pkcs1::EncodeRsaPublicKey};
+
+                let mut rng = OsRng;
+                let rsa_priv = RsaPrivateKey::new(&mut rng, 2048).expect("rsa keygen failed");
+                let rsa_pub = rsa_priv.to_public_key();
+                // Encode as PKCS#1 DER; this is acceptable for KMS recipient public key embedding.
+                let rsa_pub_der = rsa_pub.to_pkcs1_der().expect("rsa pub der").as_bytes().to_vec();
+
+                // 2. Get attestation document
                 let nsm_fd = aws_nitro_enclaves_nsm_api::driver::nsm_init();
                 let request = aws_nitro_enclaves_nsm_api::api::Request::Attestation {
                     user_data: None,
                     nonce: None,
-                    public_key: None,
+                    public_key: Some(rsa_pub_der.into()),
                 };
                 let response = aws_nitro_enclaves_nsm_api::driver::nsm_process_request(nsm_fd, request);
                 let attestation_doc = match response {
