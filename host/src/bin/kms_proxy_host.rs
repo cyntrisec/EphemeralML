@@ -5,13 +5,19 @@ use ephemeral_ml_common::{
 use ephemeral_ml_host::kms_proxy_server::KmsProxyServer;
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 use tokio::time::{Duration, Instant};
+use tracing::{info, warn, instrument};
 
 #[cfg(feature = "production")]
 use tokio_vsock::VsockListener;
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    println!("[kms-proxy-host] starting...");
+    // Init OpenTelemetry + JSON logs early.
+    // If OTEL_EXPORTER_OTLP_ENDPOINT is not set, the exporter will fail to connect,
+    // but logs will still be produced locally.
+    ephemeral_ml_host::otel::init();
+
+    info!(event = "startup", "kms-proxy-host starting");
 
     let mut kms_server = KmsProxyServer::new();
 
@@ -22,23 +28,23 @@ async fn main() -> Result<()> {
         let config = aws_config::load_from_env().await;
         let kms_client = aws_sdk_kms::Client::new(&config);
         kms_server = kms_server.with_kms_client(kms_client);
-        println!("[kms-proxy-host] initialized with real AWS KMS client");
+        info!(event = "init", mode = "production", "initialized with real AWS KMS client");
     }
 
     #[cfg(not(feature = "production"))]
-    println!("[kms-proxy-host] running in MOCK mode (no AWS calls)");
+    info!(event = "mode", mode = "mock", "running in MOCK mode (no AWS calls)");
 
     // Listen on Port 8082 (standard for our KMS proxy)
     #[cfg(feature = "production")]
     {
         let mut listener = VsockListener::bind(libc::VMADDR_CID_ANY, 8082)?;
-        println!("[kms-proxy-host] listening on VSOCK port 8082");
+        info!(event = "listen", transport = "vsock", port = 8082, "listening");
 
         loop {
             let (mut stream, addr) = listener.accept().await?;
-            println!("[kms-proxy-host] accepted connection from CID {}", addr.cid());
+            info!(event = "accept", transport = "vsock", cid = addr.cid(), "accepted connection");
             if let Err(e) = serve_one(&mut stream, &mut kms_server, timeouts).await {
-                eprintln!("[kms-proxy-host] connection error: {e}");
+                warn!(event = "conn_error", transport = "vsock", error = %e, "connection error");
                 continue;
             };
         }
@@ -47,13 +53,13 @@ async fn main() -> Result<()> {
     #[cfg(not(feature = "production"))]
     {
         let listener = tokio::net::TcpListener::bind("127.0.0.1:8082").await?;
-        println!("[kms-proxy-host] listening on TCP port 8082 (MOCK)");
+        info!(event = "listen", transport = "tcp", addr = "127.0.0.1:8082", "listening (mock)");
 
         loop {
             let (mut stream, addr) = listener.accept().await?;
-            println!("[kms-proxy-host] accepted TCP connection from {}", addr);
+            info!(event = "accept", transport = "tcp", peer = %addr, "accepted connection");
             if let Err(e) = serve_one(&mut stream, &mut kms_server, timeouts).await {
-                eprintln!("[kms-proxy-host] connection error: {e}");
+                warn!(event = "conn_error", transport = "tcp", error = %e, "connection error");
                 continue;
             };
         }
@@ -62,6 +68,7 @@ async fn main() -> Result<()> {
     Ok(())
 }
 
+#[instrument(skip_all, fields(request_id, trace_id, op, kms_request_id))]
 async fn serve_one<S: AsyncRead + AsyncWrite + Unpin>(
     stream: &mut S,
     kms_server: &mut KmsProxyServer,
@@ -109,6 +116,17 @@ async fn serve_one<S: AsyncRead + AsyncWrite + Unpin>(
         }
     };
 
+    // Annotate span fields for correlation.
+    tracing::Span::current().record("request_id", &req_env.request_id.as_str());
+    if let Some(tid) = req_env.trace_id.as_deref() {
+        tracing::Span::current().record("trace_id", &tid);
+    }
+    let op = match &req_env.request {
+        ephemeral_ml_common::KmsRequest::Decrypt { .. } => "Decrypt",
+        ephemeral_ml_common::KmsRequest::GenerateDataKey { .. } => "GenerateDataKey",
+    };
+    tracing::Span::current().record("op", &op);
+
     // Structured request log (redacted).
     log_request_structured(&req_env);
 
@@ -128,6 +146,11 @@ async fn serve_one<S: AsyncRead + AsyncWrite + Unpin>(
     )
     .await
     .unwrap_or(timeout_resp);
+
+    // Attach AWS KMS request id (if present) to span.
+    if let Some(kid) = resp_env.kms_request_id.as_deref() {
+        tracing::Span::current().record("kms_request_id", &kid);
+    }
 
     // Structured response log (no sensitive bytes).
     log_response_structured(kms_server, &resp_env, started.elapsed());
@@ -159,7 +182,7 @@ fn log_request_structured(req: &KmsProxyRequestEnvelope) {
         "ciphertext_len": ciphertext_len,
     });
 
-    println!("{}", line);
+    info!(event = "kms_proxy_request", json = %line.to_string());
 }
 
 fn log_response_structured(
@@ -185,7 +208,7 @@ fn log_response_structured(
         "metrics": snap,
     });
 
-    println!("{}", line);
+    info!(event = "kms_proxy_response", json = %line.to_string());
 }
 
 #[derive(Clone, Copy, Debug)]
