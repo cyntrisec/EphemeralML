@@ -23,9 +23,7 @@ FROM alpine:3.19
 COPY --from=build /app/target/x86_64-unknown-linux-musl/release/vsock-pingpong /vsock-pingpong
 RUN chmod +x /vsock-pingpong
 
-# Run the Rust binary as PID 1.
-ENTRYPOINT ["/vsock-pingpong"]
-
-# Default mode; can be overridden via docker build args by replacing CMD at build time,
-# or by passing args when debugging locally.
-CMD ["--mode","vsock"]
+# IMPORTANT: Nitro's `build-enclave` currently uses the container **CMD** as the program to exec.
+# In practice it may ignore Docker ENTRYPOINT. So we encode the full argv in CMD.
+# (Otherwise you get: `execvpe: --mode: No such file or directory` and an immediate reboot.)
+CMD ["/vsock-pingpong","--mode","vsock"]
