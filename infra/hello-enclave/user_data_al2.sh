@@ -21,7 +21,11 @@ systemctl enable --now docker
 usermod -aG docker ec2-user || true
 
 # Nitro Enclaves
-# On AL2 these packages are available via yum repos.
+# On AL2, Nitro Enclaves tooling is provided via Amazon Linux Extras.
+# See: amazon-linux-extras install aws-nitro-enclaves-cli
+amazon-linux-extras install -y aws-nitro-enclaves-cli || true
+
+# Install CLI + headers if available via yum after enabling extras.
 yum install -y aws-nitro-enclaves-cli aws-nitro-enclaves-cli-devel || true
 
 systemctl enable --now nitro-enclaves-allocator.service || true
