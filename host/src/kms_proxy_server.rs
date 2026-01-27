@@ -1,3 +1,4 @@
+use crate::circuit_breaker::{CircuitBreaker, Config as CircuitConfig};
 use crate::limits::{ConcurrencyLimiter, DEFAULT_MAX_IN_FLIGHT};
 use crate::rate_limit::{Config as RateLimitConfig, RateLimiter};
 use crate::retry::RetryPolicy;
@@ -21,6 +22,7 @@ pub struct KmsProxyServer {
     retry: RetryPolicy,
     limiter: ConcurrencyLimiter,
     rate_limiter: RateLimiter,
+    circuit: CircuitBreaker,
     #[cfg(feature = "production")]
     kms_client: Option<Client>,
 }
@@ -32,6 +34,7 @@ impl Clone for KmsProxyServer {
             retry: self.retry,
             limiter: self.limiter.clone(),
             rate_limiter: self.rate_limiter.clone(),
+            circuit: self.circuit.clone(),
             #[cfg(feature = "production")]
             kms_client: self.kms_client.clone(),
         }
@@ -45,6 +48,7 @@ impl KmsProxyServer {
             retry: RetryPolicy::default(),
             limiter: ConcurrencyLimiter::new(DEFAULT_MAX_IN_FLIGHT),
             rate_limiter: RateLimiter::new(RateLimitConfig::default()),
+            circuit: CircuitBreaker::new(CircuitConfig::default()),
             #[cfg(feature = "production")]
             kms_client: None,
         }
@@ -85,7 +89,8 @@ impl KmsProxyServer {
                 // If we have a real KMS client, use it.
                 #[cfg(feature = "production")]
                 if let Some(client) = &self.kms_client {
-                    // Cap concurrent upstream KMS calls + apply RPS limiter.
+                    // Circuit breaker + caps for upstream KMS calls.
+                    self.circuit.before_request().await;
                     let _permit = self.limiter.acquire().await;
                     self.rate_limiter.acquire(1.0).await;
                     let mut rng = rand::thread_rng();
@@ -122,6 +127,7 @@ impl KmsProxyServer {
 
                         match timeout(per_attempt, builder.send()).await {
                             Ok(Ok(output)) => {
+                                self.circuit.record_result(true).await;
                                 let kms_request_id = aws_request_id(&output);
                                 return (
                                     KmsResponse::GenerateDataKey {
@@ -139,6 +145,7 @@ impl KmsProxyServer {
                                 );
                             }
                             Ok(Err(e)) => {
+                                self.circuit.record_result(false).await;
                                 let code = classify_aws_error(&format!("{e:?}"));
                                 if !is_retryable(code) || attempt == self.retry.max_attempts {
                                     return (
@@ -151,6 +158,7 @@ impl KmsProxyServer {
                                 }
                             }
                             Err(_) => {
+                                self.circuit.record_result(false).await;
                                 if attempt == self.retry.max_attempts {
                                     return (
                                         KmsResponse::Error {
@@ -198,7 +206,8 @@ impl KmsProxyServer {
                 #[cfg(feature = "production")]
                 if let Some(client) = &self.kms_client {
                     if let Some(attestation_doc) = &recipient {
-                        // Cap concurrent upstream KMS calls + apply RPS limiter.
+                        // Circuit breaker + caps for upstream KMS calls.
+                        self.circuit.before_request().await;
                         let _permit = self.limiter.acquire().await;
                         self.rate_limiter.acquire(1.0).await;
                         let mut rng = rand::thread_rng();
@@ -252,6 +261,7 @@ impl KmsProxyServer {
 
                             match timeout(per_attempt, builder.send()).await {
                                 Ok(Ok(output)) => {
+                                    self.circuit.record_result(true).await;
                                     let kms_request_id = aws_request_id(&output);
                                     let ciphertext_for_recipient =
                                         output.ciphertext_for_recipient().map(|b| b.as_ref().to_vec());
@@ -277,6 +287,7 @@ impl KmsProxyServer {
                                     );
                                 }
                                 Ok(Err(e)) => {
+                                    self.circuit.record_result(false).await;
                                     let code = classify_aws_error(&format!("{e:?}"));
                                     if !is_retryable(code) || attempt == self.retry.max_attempts {
                                         return (
@@ -289,6 +300,7 @@ impl KmsProxyServer {
                                     }
                                 }
                                 Err(_) => {
+                                    self.circuit.record_result(false).await;
                                     if attempt == self.retry.max_attempts {
                                         return (
                                             KmsResponse::Error {
