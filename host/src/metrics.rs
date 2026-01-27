@@ -1,3 +1,4 @@
+use serde::Serialize;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 
@@ -70,7 +71,7 @@ impl Metrics {
     }
 }
 
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize)]
 pub struct MetricsSnapshot {
     pub kms_requests_total: u64,
     pub kms_success_total: u64,
