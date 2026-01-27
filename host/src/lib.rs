@@ -4,6 +4,7 @@ pub mod kms_proxy_server;
 pub mod retry;
 pub mod limits;
 pub mod rate_limit;
+pub mod circuit_breaker;
 pub mod proxy;
 pub mod storage;
 pub mod spy;
