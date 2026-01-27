@@ -164,10 +164,11 @@ Each inference can return an **AER** containing:
 
 ### 📅 Development Timeline
 
-- **Q1 2024**: ✅ Specification and mock mode complete
-- **Q2 2024**: 🚧 Production cryptography and AWS integration
-- **Q3 2024**: 🎯 End-to-end integration and deployment
-- **Q4 2024**: 🎯 Performance optimization and v1 release
+> Timeline note: the project started in 2024; milestones below are kept up-to-date.
+
+- **2024**: ✅ Specification + mock-mode complete
+- **2025**: 🚧 Production hardening + AWS/Nitro bring-up
+- **2026**: 🚧 Nitro Enclaves deployment/debugging + end-to-end validation
 
 ---
 
@@ -260,7 +261,7 @@ See: `projects/EphemeralML/infra/hello-enclave/HELLO_ENCLAVE_RUNBOOK.md` (includ
 A: Mock mode is fully functional for development. You can run the complete system locally with simulated attestation, HPKE sessions, and receipt generation.
 
 **Q: When will production features be ready?**  
-A: We're targeting Q2-Q3 2024 for production AWS integration. Core cryptographic infrastructure is implemented, AWS-specific features are in development.
+A: The security primitives are in place; Nitro Enclaves end-to-end validation is actively underway. See the timeline above for the current year’s milestones.
 
 **Q: Can the host read prompts or outputs?**  
 A: By design, no. The host relays ciphertext only; decryption occurs inside the enclave. This is architecturally complete and working in mock mode.
@@ -290,7 +291,7 @@ A: Clone the repo and run `cargo test` to see all components working. The mock m
 
 ## 📄 License
 
-MIT License - see `LICENSE` file for details.
+Apache License 2.0 — see `LICENSE` file for details.
 
 ---
 
