@@ -6,6 +6,9 @@ edition = "2021"
 # Keep deps minimal: use libc only for AF_VSOCK syscalls.
 [dependencies]
 libc = "0.2"
+aws-nitro-enclaves-nsm-api = "0.4.0"
+hex = "0.4"
+serde_bytes = "0.11"
 
 [profile.release]
 # small binary; enclave images benefit from size.

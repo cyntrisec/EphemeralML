@@ -8,6 +8,7 @@ use std::process;
 enum Mode {
     Basic,
     Vsock,
+    Attestation,
 }
 
 fn parse_mode() -> Mode {
@@ -18,6 +19,7 @@ fn parse_mode() -> Mode {
                 return match v.as_str() {
                     "basic" => Mode::Basic,
                     "vsock" => Mode::Vsock,
+                    "attestation" => Mode::Attestation,
                     _ => Mode::Vsock,
                 };
             }
@@ -27,6 +29,9 @@ fn parse_mode() -> Mode {
         }
         if a == "vsock" {
             return Mode::Vsock;
+        }
+        if a == "attestation" {
+            return Mode::Attestation;
         }
     }
     Mode::Vsock
@@ -115,6 +120,50 @@ fn run(mode: Mode) {
     match mode {
         Mode::Basic => {
             eprintln!("[enclave] basic mode: alive; sleeping forever");
+            loop {
+                std::thread::sleep(std::time::Duration::from_secs(60));
+            }
+        }
+        Mode::Attestation => {
+            eprintln!("[enclave] attestation mode: fetching PCRs");
+            let nsm_fd = aws_nitro_enclaves_nsm_api::driver::nsm_init();
+            if nsm_fd < 0 {
+                eprintln!("[enclave] ERROR: Failed to initialize NSM driver");
+                process::exit(1);
+            }
+
+            for i in 0..16 {
+                let request = aws_nitro_enclaves_nsm_api::api::Request::DescribePCR { index: i };
+                let response = aws_nitro_enclaves_nsm_api::driver::nsm_process_request(nsm_fd, request);
+                match response {
+                    aws_nitro_enclaves_nsm_api::api::Response::DescribePCR { data, .. } => {
+                        eprintln!("PCR {}: {}", i, hex::encode(data));
+                    }
+                    _ => {
+                        eprintln!("[enclave] ERROR: Failed to describe PCR {}", i);
+                    }
+                }
+            }
+
+            // Also try to get an attestation document with a dummy nonce
+            let nonce = vec![1u8, 2, 3, 4];
+            let request = aws_nitro_enclaves_nsm_api::api::Request::Attestation {
+                user_data: None,
+                nonce: Some(serde_bytes::ByteBuf::from(nonce)),
+                public_key: None,
+            };
+            let response = aws_nitro_enclaves_nsm_api::driver::nsm_process_request(nsm_fd, request);
+            match response {
+                aws_nitro_enclaves_nsm_api::api::Response::Attestation { document } => {
+                    eprintln!("[enclave] successfully generated attestation document ({} bytes)", document.len());
+                }
+                _ => {
+                    eprintln!("[enclave] ERROR: Failed to generate attestation document");
+                }
+            }
+
+            aws_nitro_enclaves_nsm_api::driver::nsm_exit(nsm_fd);
+            eprintln!("[enclave] attestation validation complete; sleeping");
             loop {
                 std::thread::sleep(std::time::Duration::from_secs(60));
             }
