@@ -1,7 +1,7 @@
 # Build a minimal Nitro Enclave image (used by `nitro-cli build-enclave --docker-uri ...`).
 # Produces a tiny static binary and runs it as PID 1.
 
-FROM rust:1.75-alpine AS build
+FROM rust:alpine AS build
 
 RUN apk add --no-cache musl-dev
 WORKDIR /app
