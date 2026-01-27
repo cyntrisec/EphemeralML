@@ -6,29 +6,23 @@ FROM rust:1.75-alpine AS build
 RUN apk add --no-cache musl-dev
 WORKDIR /app
 
-# Copy manifest + sources (crate is tiny; keep this simple and reliable)
-COPY Cargo.toml Cargo.lock* ./
-COPY src ./src
+# We need the workspace dependency (../../common). Build context is the repo root.
+# Copy manifests first for better caching.
+COPY Cargo.toml ./enclaves/vsock-pingpong/Cargo.toml
+COPY Cargo.lock* ./Cargo.lock
+COPY common/Cargo.toml ./common/Cargo.toml
 
+# Copy sources
+COPY enclaves/vsock-pingpong/src ./enclaves/vsock-pingpong/src
+COPY common/src ./common/src
+
+# Build the enclave binary (musl)
 RUN rustup target add x86_64-unknown-linux-musl
-RUN cargo build --release --target x86_64-unknown-linux-musl
-
-# Runtime stage
-# Use BusyBox (static) to minimize runtime dependencies and ensure /bin/sh exists.
-FROM rust:alpine AS build
-
-RUN apk add --no-cache musl-dev
-WORKDIR /app
-
-# Copy manifest + sources (crate is tiny; keep this simple and reliable)
-COPY Cargo.toml Cargo.lock* ./
-COPY src ./src
-
-RUN cargo build --release
+RUN cd enclaves/vsock-pingpong && cargo build --release --target x86_64-unknown-linux-musl
 
 FROM busybox:1.36
 
-COPY --from=build /app/target/x86_64-unknown-linux-musl/release/vsock-pingpong /vsock-pingpong
+COPY --from=build /app/enclaves/vsock-pingpong/target/x86_64-unknown-linux-musl/release/vsock-pingpong /vsock-pingpong
 COPY init.sh /init
 RUN chmod +x /vsock-pingpong /init
 
