@@ -90,6 +90,7 @@ impl KmsProxyServer {
                             // When using RecipientInfo for Nitro Enclaves, KMS expects the encryption algorithm to be specified.
                             .encryption_algorithm(aws_sdk_kms::types::EncryptionAlgorithmSpec::SymmetricDefault)
                             .recipient(aws_sdk_kms::types::RecipientInfo::builder()
+                                .key_encryption_algorithm(aws_sdk_kms::types::KeyEncryptionMechanism::RsaesOaepSha256)
                                 .attestation_document(aws_sdk_kms::primitives::Blob::new(attestation_doc.clone()))
                                 .build());
 
