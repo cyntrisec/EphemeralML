@@ -1,4 +1,5 @@
 use crate::limits::{ConcurrencyLimiter, DEFAULT_MAX_IN_FLIGHT};
+use crate::rate_limit::{Config as RateLimitConfig, RateLimiter};
 use crate::retry::RetryPolicy;
 use ephemeral_ml_common::{
     KmsProxyErrorCode, KmsProxyRequestEnvelope, KmsProxyResponseEnvelope, KmsRequest, KmsResponse,
@@ -19,6 +20,7 @@ pub struct KmsProxyServer {
     _keys: HashMap<String, Vec<u8>>,
     retry: RetryPolicy,
     limiter: ConcurrencyLimiter,
+    rate_limiter: RateLimiter,
     #[cfg(feature = "production")]
     kms_client: Option<Client>,
 }
@@ -29,6 +31,7 @@ impl Clone for KmsProxyServer {
             _keys: self._keys.clone(),
             retry: self.retry,
             limiter: self.limiter.clone(),
+            rate_limiter: self.rate_limiter.clone(),
             #[cfg(feature = "production")]
             kms_client: self.kms_client.clone(),
         }
@@ -41,6 +44,7 @@ impl KmsProxyServer {
             _keys: HashMap::new(),
             retry: RetryPolicy::default(),
             limiter: ConcurrencyLimiter::new(DEFAULT_MAX_IN_FLIGHT),
+            rate_limiter: RateLimiter::new(RateLimitConfig::default()),
             #[cfg(feature = "production")]
             kms_client: None,
         }
@@ -81,8 +85,9 @@ impl KmsProxyServer {
                 // If we have a real KMS client, use it.
                 #[cfg(feature = "production")]
                 if let Some(client) = &self.kms_client {
-                    // Cap concurrent upstream KMS calls.
+                    // Cap concurrent upstream KMS calls + apply RPS limiter.
                     let _permit = self.limiter.acquire().await;
+                    self.rate_limiter.acquire(1.0).await;
                     let mut rng = rand::thread_rng();
 
                     for attempt in 1..=self.retry.max_attempts {
@@ -193,8 +198,9 @@ impl KmsProxyServer {
                 #[cfg(feature = "production")]
                 if let Some(client) = &self.kms_client {
                     if let Some(attestation_doc) = &recipient {
-                        // Cap concurrent upstream KMS calls.
+                        // Cap concurrent upstream KMS calls + apply RPS limiter.
                         let _permit = self.limiter.acquire().await;
+                        self.rate_limiter.acquire(1.0).await;
                         let mut rng = rand::thread_rng();
 
                         for attempt in 1..=self.retry.max_attempts {
