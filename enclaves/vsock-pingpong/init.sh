@@ -17,11 +17,19 @@ mount -t sysfs sys /sys 2>/dev/null || true
 echo "[init] ls -la /"
 ls -la / || true
 
-echo "[init] launching /vsock-pingpong $*"
+mode="${VSOCK_PINGPONG_MODE:-}"
+if [ $# -ge 2 ] && [ "$1" = "--mode" ]; then
+  mode="$2"
+fi
+if [ -z "$mode" ]; then
+  mode="vsock"
+fi
+
+echo "[init] launching /vsock-pingpong --mode ${mode} (argv: $*)"
 export RUST_BACKTRACE=1
 
 # Run as a child so PID1 stays alive even if the app dies.
-/vsock-pingpong "$@"
+/vsock-pingpong --mode "$mode"
 rc=$?
 echo "[init] /vsock-pingpong exited rc=$rc"
 

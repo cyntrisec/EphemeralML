@@ -21,6 +21,14 @@ COPY --from=build /app/target/x86_64-unknown-linux-musl/release/vsock-pingpong /
 COPY init.sh /init
 RUN chmod +x /vsock-pingpong /init
 
-# IMPORTANT: Nitro's `build-enclave` uses the container **CMD** as the program to exec
-# (and may ignore ENTRYPOINT). So CMD must be the full argv starting with the executable.
-CMD ["/init","--mode","vsock"]
+# Nitro's init/packager semantics are picky about how the command is derived.
+# Empirically, relying on CMD alone can lead to an immediate reboot if the init
+# can't determine what to exec. Define ENTRYPOINT explicitly.
+#
+# Mode is controlled via env so we can parameterize builds without depending on
+# JSON-form CMD interpolation.
+ARG MODE=vsock
+ENV VSOCK_PINGPONG_MODE=${MODE}
+
+ENTRYPOINT ["/init"]
+CMD []
