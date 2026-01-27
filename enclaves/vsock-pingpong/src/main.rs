@@ -179,13 +179,13 @@ fn run(mode: Mode) {
                 // 1. Generate an RSA keypair and request an attestation document that embeds the recipient public key.
                 // KMS requires the enclave public key to be present in the attestation doc when using RecipientInfo.
                 use rand::rngs::OsRng;
-                use rsa::{RsaPrivateKey, pkcs1::EncodeRsaPublicKey};
+                use rsa::{RsaPrivateKey, pkcs8::EncodePublicKey};
 
                 let mut rng = OsRng;
                 let rsa_priv = RsaPrivateKey::new(&mut rng, 2048).expect("rsa keygen failed");
                 let rsa_pub = rsa_priv.to_public_key();
-                // Encode as PKCS#1 DER; this is acceptable for KMS recipient public key embedding.
-                let rsa_pub_der = rsa_pub.to_pkcs1_der().expect("rsa pub der").as_bytes().to_vec();
+                // Encode as SubjectPublicKeyInfo (PKCS#8/SPKI) DER. KMS expects a valid RSA public key.
+                let rsa_pub_der = rsa_pub.to_public_key_der().expect("rsa pub der").as_bytes().to_vec();
 
                 // 2. Get attestation document
                 let nsm_fd = aws_nitro_enclaves_nsm_api::driver::nsm_init();
