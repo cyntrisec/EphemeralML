@@ -9,30 +9,25 @@ enum Mode {
     Basic,
     Vsock,
     Attestation,
+    Kms,
 }
 
 fn parse_mode() -> Mode {
-    let mut args = std::env::args().skip(1);
-    while let Some(a) = args.next() {
-        if a == "--mode" {
-            if let Some(v) = args.next() {
-                return match v.as_str() {
-                    "basic" => Mode::Basic,
-                    "vsock" => Mode::Vsock,
-                    "attestation" => Mode::Attestation,
-                    _ => Mode::Vsock,
-                };
-            }
+    let args: Vec<String> = std::env::args().collect();
+    eprintln!("[enclave] debug: raw args: {:?}", args);
+    let mut i = 1;
+    while i < args.len() {
+        if args[i] == "--mode" && i + 1 < args.len() {
+            let v = &args[i + 1];
+            return match v.as_str() {
+                "basic" => Mode::Basic,
+                "vsock" => Mode::Vsock,
+                "attestation" => Mode::Attestation,
+                "kms" => Mode::Kms,
+                _ => Mode::Vsock,
+            };
         }
-        if a == "basic" {
-            return Mode::Basic;
-        }
-        if a == "vsock" {
-            return Mode::Vsock;
-        }
-        if a == "attestation" {
-            return Mode::Attestation;
-        }
+        i += 1;
     }
     Mode::Vsock
 }
@@ -164,6 +159,133 @@ fn run(mode: Mode) {
 
             aws_nitro_enclaves_nsm_api::driver::nsm_exit(nsm_fd);
             eprintln!("[enclave] attestation validation complete; sleeping");
+            loop {
+                std::thread::sleep(std::time::Duration::from_secs(60));
+            }
+        }
+        Mode::Kms => {
+            eprintln!("[enclave] KMS mode: testing KMS data key generation and decryption");
+            
+            // We use tokio for the KMS test
+            let rt = tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+                .unwrap();
+            
+            rt.block_on(async {
+                use ephemeral_ml_common::{KmsRequest, KmsResponse, MessageType, VSockMessage};
+                use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+                // 1. Get attestation document
+                let nsm_fd = aws_nitro_enclaves_nsm_api::driver::nsm_init();
+                let request = aws_nitro_enclaves_nsm_api::api::Request::Attestation {
+                    user_data: None,
+                    nonce: None,
+                    public_key: None,
+                };
+                let response = aws_nitro_enclaves_nsm_api::driver::nsm_process_request(nsm_fd, request);
+                let attestation_doc = match response {
+                    aws_nitro_enclaves_nsm_api::api::Response::Attestation { document } => document,
+                    _ => die("Failed to get attestation doc"),
+                };
+                aws_nitro_enclaves_nsm_api::driver::nsm_exit(nsm_fd);
+                eprintln!("[enclave] generated attestation doc ({} bytes)", attestation_doc.len());
+
+                // 2. Connect to Host KMS Proxy (Port 8082)
+                // We use raw libc since tokio-vsock isn't in our minimal enclave crate deps yet (or we can add it)
+                // Actually I added tokio to Cargo.toml, so I can use std::os::unix::net or similar if I had vsock support.
+                // For simplicity, let's use the libc socket we already have.
+                let fd = unsafe { libc::socket(libc::AF_VSOCK, libc::SOCK_STREAM, 0) };
+                let addr = SockAddrVm {
+                    svm_family: libc::AF_VSOCK as libc::sa_family_t,
+                    svm_reserved1: 0,
+                    svm_port: 8082,
+                    svm_cid: 3, // Parent
+                    svm_zero: [0; 4],
+                };
+                let res = unsafe {
+                    libc::connect(fd, &addr as *const _ as *const libc::sockaddr, mem::size_of::<SockAddrVm>() as libc::socklen_t)
+                };
+                if res < 0 {
+                    die("connect to host KMS proxy failed");
+                }
+                
+                let mut stream = unsafe { std::fs::File::from_raw_fd(fd) };
+
+                // 3. Send GenerateDataKey request
+                let kms_req = KmsRequest::GenerateDataKey {
+                    key_id: "alias/ephemeral-ml-test".to_string(),
+                    key_spec: None,
+                };
+                let payload = serde_json::to_vec(&kms_req).unwrap();
+                let msg = VSockMessage::new(MessageType::KmsProxy, 0, payload).unwrap();
+                stream.write_all(&msg.encode()).unwrap();
+                
+                // 4. Read response
+                let mut len_buf = [0u8; 4];
+                stream.read_exact(&mut len_buf).unwrap();
+                let len = u32::from_be_bytes(len_buf) as usize;
+                let mut body = vec![0u8; len];
+                stream.read_exact(&mut body).unwrap();
+                
+                let mut full_msg = len_buf.to_vec();
+                full_msg.extend_from_slice(&body);
+                let msg = VSockMessage::decode(&full_msg).unwrap();
+                let kms_resp: KmsResponse = serde_json::from_slice(&msg.payload).unwrap();
+                
+                match kms_resp {
+                    KmsResponse::GenerateDataKey { key_id, ciphertext_blob, .. } => {
+                        eprintln!("[enclave] successfully generated data key for {}", key_id);
+                        
+                        // 5. Test Decryption with Attestation
+                        let decrypt_req = KmsRequest::Decrypt {
+                            ciphertext_blob,
+                            key_id: Some(key_id),
+                            encryption_context: None,
+                            grant_tokens: None,
+                            recipient: Some(attestation_doc),
+                        };
+
+                        // Connect again (simple sequential test)
+                        let fd = unsafe { libc::socket(libc::AF_VSOCK, libc::SOCK_STREAM, 0) };
+                        unsafe {
+                            libc::connect(fd, &addr as *const _ as *const libc::sockaddr, mem::size_of::<SockAddrVm>() as libc::socklen_t);
+                        }
+                        let mut stream = unsafe { std::fs::File::from_raw_fd(fd) };
+
+                        let payload = serde_json::to_vec(&decrypt_req).unwrap();
+                        let msg = VSockMessage::new(MessageType::KmsProxy, 1, payload).unwrap();
+                        stream.write_all(&msg.encode()).unwrap();
+
+                        let mut len_buf = [0u8; 4];
+                        stream.read_exact(&mut len_buf).unwrap();
+                        let len = u32::from_be_bytes(len_buf) as usize;
+                        let mut body = vec![0u8; len];
+                        stream.read_exact(&mut body).unwrap();
+
+                        let mut full_msg = len_buf.to_vec();
+                        full_msg.extend_from_slice(&body);
+                        let msg = VSockMessage::decode(&full_msg).unwrap();
+                        let decrypt_resp: KmsResponse = serde_json::from_slice(&msg.payload).unwrap();
+
+                        match decrypt_resp {
+                            KmsResponse::Decrypt { ciphertext_for_recipient, .. } => {
+                                if ciphertext_for_recipient.is_some() {
+                                    eprintln!("[enclave] SUCCESS: received wrapped key from KMS");
+                                } else {
+                                    eprintln!("[enclave] FAILED: KMS did not return wrapped key (policy issue?)");
+                                }
+                            }
+                            KmsResponse::Error(e) => eprintln!("[enclave] KMS Decrypt Error: {}", e),
+                            _ => eprintln!("[enclave] Unexpected response from KMS"),
+                        }
+                    }
+                    KmsResponse::Error(e) => eprintln!("[enclave] KMS GenerateDataKey Error: {}", e),
+                    _ => eprintln!("[enclave] Unexpected response from KMS"),
+                }
+            });
+            
+            eprintln!("[enclave] KMS test complete; sleeping");
             loop {
                 std::thread::sleep(std::time::Duration::from_secs(60));
             }
