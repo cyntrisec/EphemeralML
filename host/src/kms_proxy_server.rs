@@ -1,5 +1,6 @@
 use crate::circuit_breaker::{CircuitBreaker, Config as CircuitConfig};
 use crate::limits::{ConcurrencyLimiter, DEFAULT_MAX_IN_FLIGHT};
+use crate::metrics::Metrics;
 use crate::rate_limit::{Config as RateLimitConfig, RateLimiter};
 use crate::retry::RetryPolicy;
 use ephemeral_ml_common::{
@@ -23,6 +24,7 @@ pub struct KmsProxyServer {
     limiter: ConcurrencyLimiter,
     rate_limiter: RateLimiter,
     circuit: CircuitBreaker,
+    metrics: Metrics,
     #[cfg(feature = "production")]
     kms_client: Option<Client>,
 }
@@ -35,6 +37,7 @@ impl Clone for KmsProxyServer {
             limiter: self.limiter.clone(),
             rate_limiter: self.rate_limiter.clone(),
             circuit: self.circuit.clone(),
+            metrics: self.metrics.clone(),
             #[cfg(feature = "production")]
             kms_client: self.kms_client.clone(),
         }
@@ -49,6 +52,7 @@ impl KmsProxyServer {
             limiter: ConcurrencyLimiter::new(DEFAULT_MAX_IN_FLIGHT),
             rate_limiter: RateLimiter::new(RateLimitConfig::default()),
             circuit: CircuitBreaker::new(CircuitConfig::default()),
+            metrics: Metrics::default(),
             #[cfg(feature = "production")]
             kms_client: None,
         }
@@ -61,6 +65,8 @@ impl KmsProxyServer {
     }
 
     pub async fn handle_envelope(&mut self, env: KmsProxyRequestEnvelope) -> KmsProxyResponseEnvelope {
+        self.metrics.inc_requests();
+
         let request_id = env.request_id;
         let trace_id = env.trace_id;
 
@@ -69,6 +75,19 @@ impl KmsProxyServer {
         let started = Instant::now();
 
         let (response, kms_request_id) = self.handle_request_with_deadline(env.request, started, deadline).await;
+
+        match &response {
+            KmsResponse::Error { code, .. } => {
+                self.metrics.inc_error();
+                if *code == KmsProxyErrorCode::Timeout {
+                    self.metrics.inc_timeout();
+                }
+                if *code == KmsProxyErrorCode::UpstreamThrottled {
+                    self.metrics.inc_throttled();
+                }
+            }
+            _ => self.metrics.inc_success(),
+        }
 
         KmsProxyResponseEnvelope {
             request_id,
@@ -91,8 +110,12 @@ impl KmsProxyServer {
                 if let Some(client) = &self.kms_client {
                     // Circuit breaker + caps for upstream KMS calls.
                     self.circuit.before_request().await;
+                    self.metrics.inc_circuit_wait();
                     let _permit = self.limiter.acquire().await;
-                    self.rate_limiter.acquire(1.0).await;
+                    let rate_limited = self.rate_limiter.acquire(1.0).await;
+                    if rate_limited {
+                        self.metrics.inc_rate_limited();
+                    }
                     let mut rng = rand::thread_rng();
 
                     for attempt in 1..=self.retry.max_attempts {
@@ -172,6 +195,7 @@ impl KmsProxyServer {
                         }
 
                         // Backoff (full jitter), but never exceed remaining budget.
+                        self.metrics.inc_retry();
                         let sleep_for = self.retry.compute_backoff(attempt, &mut rng).min(deadline - started.elapsed());
                         if sleep_for.is_zero() {
                             continue;
@@ -313,6 +337,7 @@ impl KmsProxyServer {
                                 }
                             }
 
+                            self.metrics.inc_retry();
                             let sleep_for =
                                 self.retry.compute_backoff(attempt, &mut rng).min(deadline - started.elapsed());
                             if !sleep_for.is_zero() {
