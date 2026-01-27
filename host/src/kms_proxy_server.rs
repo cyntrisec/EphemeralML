@@ -42,11 +42,23 @@ impl KmsProxyServer {
 
     pub async fn handle_request(&mut self, request: KmsRequest) -> KmsResponse {
         match request {
-            KmsRequest::GenerateDataKey { key_id, key_spec: _ } => {
+            KmsRequest::GenerateDataKey { key_id, key_spec } => {
                 // If we have a real KMS client, use it.
                 #[cfg(feature = "production")]
                 if let Some(client) = &self.kms_client {
-                    match client.generate_data_key().key_id(key_id.clone()).send().await {
+                    // KMS requires either key_spec or number_of_bytes.
+                    // Our wire type carries a string; map common values.
+                    let ks_norm = key_spec.trim().to_ascii_uppercase();
+                    let mut builder = client.generate_data_key().key_id(key_id.clone());
+
+                    builder = match ks_norm.as_str() {
+                        "AES_256" | "AES256" => builder.key_spec(aws_sdk_kms::types::DataKeySpec::Aes256),
+                        "AES_128" | "AES128" => builder.key_spec(aws_sdk_kms::types::DataKeySpec::Aes128),
+                        // Fallback: generate 32 bytes if caller sends something unexpected.
+                        _ => builder.number_of_bytes(32),
+                    };
+
+                    match builder.send().await {
                         Ok(output) => {
                             return KmsResponse::GenerateDataKey {
                                 key_id: output.key_id().unwrap_or(&key_id).to_string(),
