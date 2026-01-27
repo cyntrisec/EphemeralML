@@ -80,7 +80,7 @@ impl KmsProxyServer {
                     plaintext: key.to_vec(),
                 }
             }
-            KmsRequest::Decrypt { ciphertext_blob, recipient, encryption_context, .. } => {
+            KmsRequest::Decrypt { ciphertext_blob, key_id, recipient, encryption_context, .. } => {
                 // If we have a real KMS client and a recipient (attestation doc), use real KMS.
                 #[cfg(feature = "production")]
                 if let Some(client) = &self.kms_client {
@@ -92,6 +92,10 @@ impl KmsProxyServer {
                             .recipient(aws_sdk_kms::types::RecipientInfo::builder()
                                 .attestation_document(aws_sdk_kms::primitives::Blob::new(attestation_doc.clone()))
                                 .build());
+
+                        if let Some(kid) = &key_id {
+                            builder = builder.key_id(kid);
+                        }
                         
                         // Add encryption context if provided
                         if let Some(ctx) = encryption_context {
