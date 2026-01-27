@@ -2,6 +2,7 @@ pub mod error;
 pub mod aws_proxy;
 pub mod kms_proxy_server;
 pub mod retry;
+pub mod limits;
 pub mod proxy;
 pub mod storage;
 pub mod spy;
