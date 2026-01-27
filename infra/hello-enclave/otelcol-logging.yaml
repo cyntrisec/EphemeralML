@@ -1,0 +1,25 @@
+# OpenTelemetry Collector (logging demo)
+# Receives OTLP traces/metrics/logs and prints them to stdout.
+# This is the fastest way to show end-to-end tracing without AWS wiring.
+
+receivers:
+  otlp:
+    protocols:
+      grpc:
+      http:
+
+exporters:
+  logging:
+    verbosity: detailed
+
+service:
+  pipelines:
+    traces:
+      receivers: [otlp]
+      exporters: [logging]
+    metrics:
+      receivers: [otlp]
+      exporters: [logging]
+    logs:
+      receivers: [otlp]
+      exporters: [logging]
