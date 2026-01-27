@@ -6,13 +6,11 @@ FROM rust:1.75-alpine AS build
 RUN apk add --no-cache musl-dev
 WORKDIR /app
 
-# Cache deps (no dummy sources; just fetch)
+# Copy manifest + sources (crate is tiny; keep this simple and reliable)
 COPY Cargo.toml Cargo.lock* ./
-RUN rustup target add x86_64-unknown-linux-musl
-RUN cargo fetch
-
-# Build real app
 COPY src ./src
+
+RUN rustup target add x86_64-unknown-linux-musl
 RUN cargo build --release --target x86_64-unknown-linux-musl
 
 # Runtime stage
