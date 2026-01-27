@@ -14,10 +14,12 @@ pub struct KmsProxyClientTimeouts {
 
 impl Default for KmsProxyClientTimeouts {
     fn default() -> Self {
+        // v1 defaults aligned with DoD/SLO:
+        // hard deadline 800ms for end-to-end (enclave→proxy→KMS→proxy→enclave).
         Self {
-            connect: Duration::from_secs(2),
-            io: Duration::from_secs(5),
-            overall: Duration::from_secs(15),
+            connect: Duration::from_millis(200),
+            io: Duration::from_millis(300),
+            overall: Duration::from_millis(800),
         }
     }
 }

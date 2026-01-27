@@ -165,10 +165,12 @@ struct ProxyTimeouts {
 
 impl Default for ProxyTimeouts {
     fn default() -> Self {
+        // v1 defaults aligned with DoD/SLO:
+        // hard deadline 800ms for the full request.
         Self {
-            io: Duration::from_secs(5),
-            handle: Duration::from_secs(10),
-            overall: Duration::from_secs(15),
+            io: Duration::from_millis(200),
+            handle: Duration::from_millis(700),
+            overall: Duration::from_millis(800),
         }
     }
 }
