@@ -43,7 +43,9 @@ impl RateLimiter {
     }
 
     /// Wait until at least `cost` tokens are available, then consume them.
-    pub async fn acquire(&self, cost: f64) {
+    /// Returns true if we had to wait (rate-limited), false if we acquired immediately.
+    pub async fn acquire(&self, cost: f64) -> bool {
+        let mut waited = false;
         loop {
             let mut st = self.inner.lock().await;
             let now = Instant::now();
@@ -55,7 +57,7 @@ impl RateLimiter {
 
             if st.tokens >= cost {
                 st.tokens -= cost;
-                return;
+                return waited;
             }
 
             // Need more tokens; compute sleep time and release lock.
@@ -65,6 +67,7 @@ impl RateLimiter {
 
             // Clamp small sleeps to avoid busy loops.
             let sleep_for = Duration::from_secs_f64(secs).max(Duration::from_millis(1));
+            waited = true;
             tokio::time::sleep(sleep_for).await;
         }
     }
@@ -79,10 +82,10 @@ mod tests {
         let rl = RateLimiter::new(Config { rps: 10.0, burst: 2.0 });
 
         let t0 = Instant::now();
-        rl.acquire(1.0).await;
-        rl.acquire(1.0).await;
+        assert!(!rl.acquire(1.0).await);
+        assert!(!rl.acquire(1.0).await);
         // Third should wait ~100ms
-        rl.acquire(1.0).await;
+        assert!(rl.acquire(1.0).await);
         assert!(t0.elapsed() >= Duration::from_millis(80));
     }
 }

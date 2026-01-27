@@ -5,6 +5,7 @@ pub mod retry;
 pub mod limits;
 pub mod rate_limit;
 pub mod circuit_breaker;
+pub mod metrics;
 pub mod proxy;
 pub mod storage;
 pub mod spy;
