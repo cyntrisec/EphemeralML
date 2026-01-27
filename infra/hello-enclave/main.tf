@@ -6,6 +6,10 @@ terraform {
       source  = "hashicorp/aws"
       version = ">= 5.0"
     }
+    time = {
+      source  = "hashicorp/time"
+      version = ">= 0.12"
+    }
   }
 }
 
@@ -177,6 +181,13 @@ resource "aws_iam_instance_profile" "host" {
   role = aws_iam_role.host.name
 }
 
+# IAM resources can be eventually-consistent for EC2 RunInstances.
+# A short sleep avoids transient "Invalid IAM Instance Profile name".
+resource "time_sleep" "wait_iam_instance_profile" {
+  depends_on      = [aws_iam_instance_profile.host]
+  create_duration = "20s"
+}
+
 resource "aws_key_pair" "ssh" {
   count      = local.use_ssh ? 1 : 0
   key_name   = "${var.project_name}-hello-key"
@@ -191,6 +202,8 @@ resource "aws_instance" "host" {
   vpc_security_group_ids = [aws_security_group.host.id]
 
   iam_instance_profile = aws_iam_instance_profile.host.name
+
+  depends_on = [time_sleep.wait_iam_instance_profile]
 
   enclave_options {
     enabled = true
