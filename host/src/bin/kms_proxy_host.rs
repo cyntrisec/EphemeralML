@@ -109,7 +109,8 @@ async fn serve_one<S: AsyncRead + AsyncWrite + Unpin>(
         }
     };
 
-    log_request_redacted(&req_env);
+    // Structured request log (redacted).
+    log_request_structured(&req_env);
 
     let timeout_resp = KmsProxyResponseEnvelope {
         request_id: req_env.request_id.clone(),
@@ -128,6 +129,9 @@ async fn serve_one<S: AsyncRead + AsyncWrite + Unpin>(
     .await
     .unwrap_or(timeout_resp);
 
+    // Structured response log (no sensitive bytes).
+    log_response_structured(kms_server, &resp_env, started.elapsed());
+
     let resp_payload = serde_json::to_vec(&resp_env)?;
     let resp_msg = VSockMessage::new(MessageType::KmsProxy, msg.sequence, resp_payload)?;
     tokio::time::timeout(timeouts.io.min(remaining(timeouts.overall)), stream.write_all(&resp_msg.encode()))
@@ -137,23 +141,51 @@ async fn serve_one<S: AsyncRead + AsyncWrite + Unpin>(
     Ok(())
 }
 
-fn log_request_redacted(req: &KmsProxyRequestEnvelope) {
+fn log_request_structured(req: &KmsProxyRequestEnvelope) {
     let (op, recipient, ciphertext_len) = match &req.request {
-        ephemeral_ml_common::KmsRequest::Decrypt { ciphertext_blob, recipient, .. } => {
-            ("Decrypt", recipient.is_some(), ciphertext_blob.len())
-        }
+        ephemeral_ml_common::KmsRequest::Decrypt {
+            ciphertext_blob, recipient, ..
+        } => ("Decrypt", recipient.is_some(), ciphertext_blob.len()),
         ephemeral_ml_common::KmsRequest::GenerateDataKey { .. } => ("GenerateDataKey", false, 0usize),
     };
 
     // Redacted: never log payload bytes, attestation docs, or plaintext.
-    println!(
-        "[kms-proxy-host] request_id={} trace_id={} op={} recipient={} ciphertext_len={}",
-        req.request_id,
-        req.trace_id.as_deref().unwrap_or("-"),
-        op,
-        recipient,
-        ciphertext_len
-    );
+    let line = serde_json::json!({
+        "event": "kms_proxy_request",
+        "request_id": req.request_id,
+        "trace_id": req.trace_id,
+        "op": op,
+        "recipient": recipient,
+        "ciphertext_len": ciphertext_len,
+    });
+
+    println!("{}", line);
+}
+
+fn log_response_structured(
+    kms_server: &KmsProxyServer,
+    resp: &KmsProxyResponseEnvelope,
+    elapsed: Duration,
+) {
+    let (ok, code) = match &resp.response {
+        KmsResponse::Error { code, .. } => (false, Some(format!("{:?}", code))),
+        _ => (true, None),
+    };
+
+    let snap = kms_server.metrics_snapshot();
+
+    let line = serde_json::json!({
+        "event": "kms_proxy_response",
+        "request_id": resp.request_id,
+        "trace_id": resp.trace_id,
+        "ok": ok,
+        "error_code": code,
+        "kms_request_id": resp.kms_request_id,
+        "duration_ms": elapsed.as_millis(),
+        "metrics": snap,
+    });
+
+    println!("{}", line);
 }
 
 #[derive(Clone, Copy, Debug)]

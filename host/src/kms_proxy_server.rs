@@ -64,6 +64,10 @@ impl KmsProxyServer {
         self
     }
 
+    pub fn metrics_snapshot(&self) -> crate::metrics::MetricsSnapshot {
+        self.metrics.snapshot()
+    }
+
     pub async fn handle_envelope(&mut self, env: KmsProxyRequestEnvelope) -> KmsProxyResponseEnvelope {
         self.metrics.inc_requests();
 
