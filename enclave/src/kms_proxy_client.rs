@@ -5,6 +5,10 @@ use tokio::io::{AsyncReadExt, AsyncWriteExt};
 pub struct KmsProxyClient {
     #[cfg(feature = "mock")]
     host_addr: String,
+    #[cfg(feature = "production")]
+    cid: u32,
+    #[cfg(feature = "production")]
+    port: u32,
 }
 
 impl KmsProxyClient {
@@ -12,12 +16,23 @@ impl KmsProxyClient {
         Self {
             #[cfg(feature = "mock")]
             host_addr: "127.0.0.1:8082".to_string(),
+            #[cfg(feature = "production")]
+            cid: 3, // Parent CID is always 3 in Nitro
+            #[cfg(feature = "production")]
+            port: 8082,
         }
     }
 
     #[cfg(feature = "mock")]
     pub fn with_addr(mut self, addr: String) -> Self {
         self.host_addr = addr;
+        self
+    }
+
+    #[cfg(feature = "production")]
+    pub fn with_vsock(mut self, cid: u32, port: u32) -> Self {
+        self.cid = cid;
+        self.port = port;
         self
     }
 
@@ -28,13 +43,14 @@ impl KmsProxyClient {
         let msg = VSockMessage::new(MessageType::KmsProxy, 0, payload)?; // Seq 0 for simple request/response
         let encoded = msg.encode();
 
-        // Connect (one-off for simplicity for now)
+        // Connect
         #[cfg(feature = "mock")]
         let mut stream = tokio::net::TcpStream::connect(&self.host_addr).await
-            .map_err(|e| EnclaveError::Enclave(EphemeralError::NetworkError(format!("Failed to connect to host proxy: {}", e))))?;
+            .map_err(|e| EnclaveError::Enclave(EphemeralError::NetworkError(format!("Failed to connect to host proxy (TCP): {}", e))))?;
         
-        #[cfg(not(feature = "mock"))]
-        return Err(EnclaveError::Enclave(EphemeralError::NotImplemented("VSock transport not implemented yet".to_string())));
+        #[cfg(feature = "production")]
+        let mut stream = tokio_vsock::VsockStream::connect(self.cid, self.port).await
+            .map_err(|e| EnclaveError::Enclave(EphemeralError::NetworkError(format!("Failed to connect to host proxy (VSock): {}", e))))?;
 
         stream.write_all(&encoded).await
             .map_err(|e| EnclaveError::Enclave(EphemeralError::NetworkError(format!("Failed to write to stream: {}", e))))?;

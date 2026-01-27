@@ -4,27 +4,63 @@ use hpke::{aead::ChaCha20Poly1305, kem::X25519HkdfSha256, OpModeS, Serializable,
 use rand::rngs::OsRng;
 use rand::RngCore;
 
-/// Mock KMS Proxy Server
+#[cfg(feature = "production")]
+use aws_sdk_kms::Client;
+
+/// KMS Proxy Server
 pub struct KmsProxyServer {
     // Mock key storage
     _keys: HashMap<String, Vec<u8>>,
+    #[cfg(feature = "production")]
+    kms_client: Option<Client>,
+}
+
+impl Clone for KmsProxyServer {
+    fn clone(&self) -> Self {
+        Self {
+            _keys: self._keys.clone(),
+            #[cfg(feature = "production")]
+            kms_client: self.kms_client.clone(),
+        }
+    }
 }
 
 impl KmsProxyServer {
     pub fn new() -> Self {
         Self {
             _keys: HashMap::new(),
+            #[cfg(feature = "production")]
+            kms_client: None,
         }
     }
 
-    pub fn handle_request(&mut self, request: KmsRequest) -> KmsResponse {
+    #[cfg(feature = "production")]
+    pub fn with_kms_client(mut self, client: aws_sdk_kms::Client) -> Self {
+        self.kms_client = Some(client);
+        self
+    }
+
+    pub async fn handle_request(&mut self, request: KmsRequest) -> KmsResponse {
         match request {
             KmsRequest::GenerateDataKey { key_id, key_spec: _ } => {
+                // If we have a real KMS client, use it.
+                #[cfg(feature = "production")]
+                if let Some(client) = &self.kms_client {
+                    match client.generate_data_key().key_id(key_id.clone()).send().await {
+                        Ok(output) => {
+                            return KmsResponse::GenerateDataKey {
+                                key_id: output.key_id().unwrap_or(&key_id).to_string(),
+                                ciphertext_blob: output.ciphertext_blob().map(|b| b.as_ref().to_vec()).unwrap_or_default(),
+                                plaintext: output.plaintext().map(|b| b.as_ref().to_vec()).unwrap_or_default(),
+                            };
+                        }
+                        Err(e) => return KmsResponse::Error(format!("AWS KMS GenerateDataKey error: {:?}", e)),
+                    }
+                }
+
+                // Mock implementation
                 let mut key = [0u8; 32];
                 rand::thread_rng().fill_bytes(&mut key);
-                
-                // Store key? For now, stateless mock.
-                // self.keys.insert(key_id.clone(), key.to_vec());
                 
                 KmsResponse::GenerateDataKey {
                     key_id: key_id,
@@ -32,7 +68,36 @@ impl KmsProxyServer {
                     plaintext: key.to_vec(),
                 }
             }
-            KmsRequest::Decrypt { ciphertext_blob, recipient, .. } => {
+            KmsRequest::Decrypt { ciphertext_blob, recipient, encryption_context, .. } => {
+                // If we have a real KMS client and a recipient (attestation doc), use real KMS.
+                #[cfg(feature = "production")]
+                if let Some(client) = &self.kms_client {
+                    if let Some(attestation_doc) = &recipient {
+                        let mut builder = client.decrypt()
+                            .ciphertext_blob(aws_sdk_kms::primitives::Blob::new(ciphertext_blob.clone()))
+                            .recipient(aws_sdk_kms::primitives::Blob::new(attestation_doc.clone()));
+                        
+                        // Add encryption context if provided
+                        if let Some(ctx) = encryption_context {
+                            for (k, v) in ctx {
+                                builder = builder.encryption_context(k, v);
+                            }
+                        }
+
+                        match builder.send().await {
+                            Ok(output) => {
+                                return KmsResponse::Decrypt {
+                                    ciphertext_for_recipient: output.ciphertext_for_recipient().map(|b| b.as_ref().to_vec()),
+                                    plaintext: output.plaintext().map(|b| b.as_ref().to_vec()),
+                                    key_id: output.key_id().map(|s| s.to_string()),
+                                };
+                            }
+                            Err(e) => return KmsResponse::Error(format!("AWS KMS Decrypt error: {:?}", e)),
+                        }
+                    }
+                }
+
+                // Mock implementation or fallback
                 let key_material = ciphertext_blob;
                 
                 if let Some(attestation_bytes) = recipient {

@@ -10,6 +10,15 @@ The immediate reboot issue was caused by the lack of an explicit `ENTRYPOINT` in
 - Commit `b49017e`: Set explicit `ENTRYPOINT` and parameterized mode via ENV.
 - Log `dawn-sage` (2026-01-27): Confirmed successful boot and vsock server startup.
 
+### Mathematical & Cryptographic Observations (for the Brain Trust):
+The NSM (Nitro Security Module) integration is verified. During the `quick-willow` run, we successfully extracted hardware-rooted measurements:
+- **PCR 0-2:** `0000...` (Expected for unsigned/debug EIF).
+- **PCR 3 (Metadata):** `c326a1669e016cc3731099de9edebf13c59bea3bbba8c367fae5580d5c6682a675b23449572b136975cbdac4ecf8c9d0`
+- **PCR 4 (Code/Image):** `ad592e54c599f885470841666f757e57fc7b29ab7294d82e3a52501579dc68cebc9ed5628a470a00083d2dbdcdce2efb`
+- **Attestation Doc:** Successfully generated (4466 bytes), confirming the enclave can prove its identity to KMS.
+
+This confirms that Layer 1 security (Identity + Attestation) is ready for real KMS integration.
+
 ---
 
 # EphemeralML hello-enclave / vsock-pingpong — Handoff Packet

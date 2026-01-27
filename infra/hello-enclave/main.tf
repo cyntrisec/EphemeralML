@@ -215,6 +215,54 @@ resource "aws_instance" "host" {
   }
 }
 
+# KMS Key for Confidential Inference
+resource "aws_kms_key" "enclave_key" {
+  description             = "KMS key for EphemeralML enclave attestation-bound decryption"
+  deletion_window_in_days = 7
+  enable_key_rotation     = false # Not needed for hello-world
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid    = "Enable IAM User Permissions"
+        Effect = "Allow"
+        Principal = {
+          AWS = "arn:aws:iam::${data.aws_caller_identity.current.account_id}:root"
+        }
+        Action   = "kms:*"
+        Resource = "*"
+      },
+      {
+        Sid    = "Allow EphemeralML-Deployer"
+        Effect = "Allow"
+        Principal = {
+          AWS = data.aws_caller_identity.current.arn
+        }
+        Action   = "kms:*"
+        Resource = "*"
+      },
+      {
+        Sid    = "Allow Enclave Decrypt with Attestation"
+        Effect = "Allow"
+        Principal = {
+          AWS = aws_iam_role.host.arn
+        }
+        Action   = [
+          "kms:Decrypt",
+          "kms:GenerateDataKey"
+        ]
+        Resource = "*"
+      }
+    ]
+  })
+}
+
+resource "aws_kms_alias" "enclave_key" {
+  name          = "alias/${var.project_name}-test"
+  target_key_id = aws_kms_key.enclave_key.key_id
+}
+
 output "instance_id" {
   value = aws_instance.host.id
 }

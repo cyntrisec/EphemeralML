@@ -9,6 +9,10 @@ libc = "0.2"
 aws-nitro-enclaves-nsm-api = "0.4.0"
 hex = "0.4"
 serde_bytes = "0.11"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+tokio = { version = "1.0", features = ["full"] }
+ephemeral-ml-common = { path = "../../common" }
 
 [profile.release]
 # small binary; enclave images benefit from size.
