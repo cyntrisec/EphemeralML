@@ -15,6 +15,17 @@ RUN cargo build --release --target x86_64-unknown-linux-musl
 
 # Runtime stage
 # Use BusyBox (static) to minimize runtime dependencies and ensure /bin/sh exists.
+FROM rust:alpine AS build
+
+RUN apk add --no-cache musl-dev
+WORKDIR /app
+
+# Copy manifest + sources (crate is tiny; keep this simple and reliable)
+COPY Cargo.toml Cargo.lock* ./
+COPY src ./src
+
+RUN cargo build --release
+
 FROM busybox:1.36
 
 COPY --from=build /app/target/x86_64-unknown-linux-musl/release/vsock-pingpong /vsock-pingpong
