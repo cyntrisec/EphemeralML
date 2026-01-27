@@ -8,7 +8,7 @@ WORKDIR /app
 
 # We need the workspace dependency (../../common). Build context is the repo root.
 # Copy manifests first for better caching.
-COPY Cargo.toml ./enclaves/vsock-pingpong/Cargo.toml
+COPY enclaves/vsock-pingpong/Cargo.toml ./enclaves/vsock-pingpong/Cargo.toml
 COPY Cargo.lock* ./Cargo.lock
 COPY common/Cargo.toml ./common/Cargo.toml
 
@@ -18,7 +18,7 @@ COPY common/src ./common/src
 
 # Build the enclave binary (musl)
 RUN rustup target add x86_64-unknown-linux-musl
-RUN cd enclaves/vsock-pingpong && cargo build --release --target x86_64-unknown-linux-musl
+RUN cargo build --release --target x86_64-unknown-linux-musl --manifest-path enclaves/vsock-pingpong/Cargo.toml
 
 FROM busybox:1.36
 
