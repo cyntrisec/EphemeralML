@@ -1,11 +1,13 @@
+use crate::retry::RetryPolicy;
 use ephemeral_ml_common::{
     KmsProxyErrorCode, KmsProxyRequestEnvelope, KmsProxyResponseEnvelope, KmsRequest, KmsResponse,
 };
-use std::collections::HashMap;
-use hpke::{aead::ChaCha20Poly1305, kem::X25519HkdfSha256, OpModeS, Serializable, Deserializable};
+use hpke::{aead::ChaCha20Poly1305, kem::X25519HkdfSha256, Deserializable, OpModeS, Serializable};
 use rand::rngs::OsRng;
 use rand::RngCore;
-use tokio::time::{timeout, Duration};
+use std::collections::HashMap;
+use std::time::Instant;
+use tokio::time::{sleep, timeout, Duration};
 
 #[cfg(feature = "production")]
 use aws_sdk_kms::Client;
@@ -14,6 +16,7 @@ use aws_sdk_kms::Client;
 pub struct KmsProxyServer {
     // Mock key storage
     _keys: HashMap<String, Vec<u8>>,
+    retry: RetryPolicy,
     #[cfg(feature = "production")]
     kms_client: Option<Client>,
 }
@@ -22,6 +25,7 @@ impl Clone for KmsProxyServer {
     fn clone(&self) -> Self {
         Self {
             _keys: self._keys.clone(),
+            retry: self.retry,
             #[cfg(feature = "production")]
             kms_client: self.kms_client.clone(),
         }
@@ -32,6 +36,7 @@ impl KmsProxyServer {
     pub fn new() -> Self {
         Self {
             _keys: HashMap::new(),
+            retry: RetryPolicy::default(),
             #[cfg(feature = "production")]
             kms_client: None,
         }
@@ -46,7 +51,12 @@ impl KmsProxyServer {
     pub async fn handle_envelope(&mut self, env: KmsProxyRequestEnvelope) -> KmsProxyResponseEnvelope {
         let request_id = env.request_id;
         let trace_id = env.trace_id;
-        let (response, kms_request_id) = self.handle_request(env.request).await;
+
+        // Hard deadline (end-to-end budget) for the whole operation.
+        let deadline = Duration::from_millis(800);
+        let started = Instant::now();
+
+        let (response, kms_request_id) = self.handle_request_with_deadline(env.request, started, deadline).await;
 
         KmsProxyResponseEnvelope {
             request_id,
@@ -56,49 +66,22 @@ impl KmsProxyServer {
         }
     }
 
-    async fn handle_request(&mut self, request: KmsRequest) -> (KmsResponse, Option<String>) {
+    async fn handle_request_with_deadline(
+        &mut self,
+        request: KmsRequest,
+        started: Instant,
+        deadline: Duration,
+    ) -> (KmsResponse, Option<String>) {
         match request {
             KmsRequest::GenerateDataKey { key_id, key_spec } => {
                 // If we have a real KMS client, use it.
                 #[cfg(feature = "production")]
                 if let Some(client) = &self.kms_client {
-                    // KMS requires either key_spec or number_of_bytes.
-                    // Our wire type carries a string; map common values.
-                    let ks_norm = key_spec.trim().to_ascii_uppercase();
-                    let mut builder = client.generate_data_key().key_id(key_id.clone());
+                    let mut rng = rand::thread_rng();
 
-                    builder = match ks_norm.as_str() {
-                        "AES_256" | "AES256" => builder.key_spec(aws_sdk_kms::types::DataKeySpec::Aes256),
-                        "AES_128" | "AES128" => builder.key_spec(aws_sdk_kms::types::DataKeySpec::Aes128),
-                        // Fallback: generate 32 bytes if caller sends something unexpected.
-                        _ => builder.number_of_bytes(32),
-                    };
-
-                    match timeout(Duration::from_secs(10), builder.send()).await {
-                        Ok(Ok(output)) => {
-                            let kms_request_id = aws_request_id(&output);
-                            return (
-                                KmsResponse::GenerateDataKey {
-                                    key_id: output.key_id().unwrap_or(&key_id).to_string(),
-                                    ciphertext_blob: output
-                                        .ciphertext_blob()
-                                        .map(|b| b.as_ref().to_vec())
-                                        .unwrap_or_default(),
-                                    plaintext: output.plaintext().map(|b| b.as_ref().to_vec()).unwrap_or_default(),
-                                },
-                                kms_request_id,
-                            );
-                        }
-                        Ok(Err(e)) => {
-                            return (
-                                KmsResponse::Error {
-                                    code: classify_aws_error(&format!("{e:?}")),
-                                    message: "Upstream KMS error".to_string(),
-                                },
-                                None,
-                            );
-                        }
-                        Err(_) => {
+                    for attempt in 1..=self.retry.max_attempts {
+                        let elapsed = started.elapsed();
+                        if elapsed >= deadline {
                             return (
                                 KmsResponse::Error {
                                     code: KmsProxyErrorCode::Timeout,
@@ -107,7 +90,83 @@ impl KmsProxyServer {
                                 None,
                             );
                         }
+
+                        let remaining = deadline - elapsed;
+                        // Per-attempt timeout budget (v1 defaults).
+                        let per_attempt = if attempt == 1 {
+                            Duration::from_millis(250)
+                        } else {
+                            Duration::from_millis(300)
+                        }
+                        .min(remaining);
+
+                        // Build request fresh each attempt.
+                        let ks_norm = key_spec.trim().to_ascii_uppercase();
+                        let mut builder = client.generate_data_key().key_id(key_id.clone());
+                        builder = match ks_norm.as_str() {
+                            "AES_256" | "AES256" => builder.key_spec(aws_sdk_kms::types::DataKeySpec::Aes256),
+                            "AES_128" | "AES128" => builder.key_spec(aws_sdk_kms::types::DataKeySpec::Aes128),
+                            _ => builder.number_of_bytes(32),
+                        };
+
+                        match timeout(per_attempt, builder.send()).await {
+                            Ok(Ok(output)) => {
+                                let kms_request_id = aws_request_id(&output);
+                                return (
+                                    KmsResponse::GenerateDataKey {
+                                        key_id: output.key_id().unwrap_or(&key_id).to_string(),
+                                        ciphertext_blob: output
+                                            .ciphertext_blob()
+                                            .map(|b| b.as_ref().to_vec())
+                                            .unwrap_or_default(),
+                                        plaintext: output
+                                            .plaintext()
+                                            .map(|b| b.as_ref().to_vec())
+                                            .unwrap_or_default(),
+                                    },
+                                    kms_request_id,
+                                );
+                            }
+                            Ok(Err(e)) => {
+                                let code = classify_aws_error(&format!("{e:?}"));
+                                if !is_retryable(code) || attempt == self.retry.max_attempts {
+                                    return (
+                                        KmsResponse::Error {
+                                            code,
+                                            message: "Upstream KMS error".to_string(),
+                                        },
+                                        None,
+                                    );
+                                }
+                            }
+                            Err(_) => {
+                                if attempt == self.retry.max_attempts {
+                                    return (
+                                        KmsResponse::Error {
+                                            code: KmsProxyErrorCode::Timeout,
+                                            message: "Operation timed out".to_string(),
+                                        },
+                                        None,
+                                    );
+                                }
+                            }
+                        }
+
+                        // Backoff (full jitter), but never exceed remaining budget.
+                        let sleep_for = self.retry.compute_backoff(attempt, &mut rng).min(deadline - started.elapsed());
+                        if sleep_for.is_zero() {
+                            continue;
+                        }
+                        sleep(sleep_for).await;
                     }
+
+                    return (
+                        KmsResponse::Error {
+                            code: KmsProxyErrorCode::UpstreamUnavailable,
+                            message: "Upstream KMS error".to_string(),
+                        },
+                        None,
+                    );
                 }
 
                 // Mock implementation
@@ -128,62 +187,11 @@ impl KmsProxyServer {
                 #[cfg(feature = "production")]
                 if let Some(client) = &self.kms_client {
                     if let Some(attestation_doc) = &recipient {
-                        let mut builder = client.decrypt()
-                            .ciphertext_blob(aws_sdk_kms::primitives::Blob::new(ciphertext_blob.clone()))
-                            // When using RecipientInfo for Nitro Enclaves, KMS expects the encryption algorithm to be specified.
-                            .encryption_algorithm(aws_sdk_kms::types::EncryptionAlgorithmSpec::SymmetricDefault)
-                            .recipient(aws_sdk_kms::types::RecipientInfo::builder()
-                                .key_encryption_algorithm(aws_sdk_kms::types::KeyEncryptionMechanism::RsaesOaepSha256)
-                                .attestation_document(aws_sdk_kms::primitives::Blob::new(attestation_doc.clone()))
-                                .build());
+                        let mut rng = rand::thread_rng();
 
-                        if let Some(kid) = &key_id {
-                            builder = builder.key_id(kid);
-                        }
-                        
-                        // Add encryption context if provided
-                        if let Some(ctx) = encryption_context {
-                            for (k, v) in ctx {
-                                builder = builder.encryption_context(k, v);
-                            }
-                        }
-
-                        match timeout(Duration::from_secs(10), builder.send()).await {
-                            Ok(Ok(output)) => {
-                                let kms_request_id = aws_request_id(&output);
-                                let ciphertext_for_recipient =
-                                    output.ciphertext_for_recipient().map(|b| b.as_ref().to_vec());
-
-                                // Fail-closed: when using RecipientInfo, never forward plaintext.
-                                if ciphertext_for_recipient.is_none() {
-                                    return (
-                                        KmsResponse::Error {
-                                            code: KmsProxyErrorCode::Internal,
-                                            message: "Recipient-bound decrypt returned no ciphertext".to_string(),
-                                        },
-                                        kms_request_id,
-                                    );
-                                }
-
-                                return (
-                                    KmsResponse::Decrypt {
-                                        ciphertext_for_recipient,
-                                        plaintext: None,
-                                        key_id: output.key_id().map(|s| s.to_string()),
-                                    },
-                                    kms_request_id,
-                                );
-                            }
-                            Ok(Err(e)) => {
-                                return (
-                                    KmsResponse::Error {
-                                        code: classify_aws_error(&format!("{e:?}")),
-                                        message: "Upstream KMS error".to_string(),
-                                    },
-                                    None,
-                                );
-                            }
-                            Err(_) => {
+                        for attempt in 1..=self.retry.max_attempts {
+                            let elapsed = started.elapsed();
+                            if elapsed >= deadline {
                                 return (
                                     KmsResponse::Error {
                                         code: KmsProxyErrorCode::Timeout,
@@ -192,7 +200,107 @@ impl KmsProxyServer {
                                     None,
                                 );
                             }
+
+                            let remaining = deadline - elapsed;
+                            let per_attempt = if attempt == 1 {
+                                Duration::from_millis(200)
+                            } else {
+                                Duration::from_millis(250)
+                            }
+                            .min(remaining);
+
+                            // Build request fresh each attempt.
+                            let mut builder = client
+                                .decrypt()
+                                .ciphertext_blob(aws_sdk_kms::primitives::Blob::new(ciphertext_blob.clone()))
+                                .encryption_algorithm(aws_sdk_kms::types::EncryptionAlgorithmSpec::SymmetricDefault)
+                                .recipient(
+                                    aws_sdk_kms::types::RecipientInfo::builder()
+                                        .key_encryption_algorithm(
+                                            aws_sdk_kms::types::KeyEncryptionMechanism::RsaesOaepSha256,
+                                        )
+                                        .attestation_document(aws_sdk_kms::primitives::Blob::new(
+                                            attestation_doc.clone(),
+                                        ))
+                                        .build(),
+                                );
+
+                            if let Some(kid) = &key_id {
+                                builder = builder.key_id(kid);
+                            }
+
+                            // Add encryption context if provided
+                            if let Some(ctx) = encryption_context.clone() {
+                                for (k, v) in ctx {
+                                    builder = builder.encryption_context(k, v);
+                                }
+                            }
+
+                            match timeout(per_attempt, builder.send()).await {
+                                Ok(Ok(output)) => {
+                                    let kms_request_id = aws_request_id(&output);
+                                    let ciphertext_for_recipient =
+                                        output.ciphertext_for_recipient().map(|b| b.as_ref().to_vec());
+
+                                    // Fail-closed: when using RecipientInfo, never forward plaintext.
+                                    if ciphertext_for_recipient.is_none() {
+                                        return (
+                                            KmsResponse::Error {
+                                                code: KmsProxyErrorCode::Internal,
+                                                message: "Recipient-bound decrypt returned no ciphertext".to_string(),
+                                            },
+                                            kms_request_id,
+                                        );
+                                    }
+
+                                    return (
+                                        KmsResponse::Decrypt {
+                                            ciphertext_for_recipient,
+                                            plaintext: None,
+                                            key_id: output.key_id().map(|s| s.to_string()),
+                                        },
+                                        kms_request_id,
+                                    );
+                                }
+                                Ok(Err(e)) => {
+                                    let code = classify_aws_error(&format!("{e:?}"));
+                                    if !is_retryable(code) || attempt == self.retry.max_attempts {
+                                        return (
+                                            KmsResponse::Error {
+                                                code,
+                                                message: "Upstream KMS error".to_string(),
+                                            },
+                                            None,
+                                        );
+                                    }
+                                }
+                                Err(_) => {
+                                    if attempt == self.retry.max_attempts {
+                                        return (
+                                            KmsResponse::Error {
+                                                code: KmsProxyErrorCode::Timeout,
+                                                message: "Operation timed out".to_string(),
+                                            },
+                                            None,
+                                        );
+                                    }
+                                }
+                            }
+
+                            let sleep_for =
+                                self.retry.compute_backoff(attempt, &mut rng).min(deadline - started.elapsed());
+                            if !sleep_for.is_zero() {
+                                sleep(sleep_for).await;
+                            }
                         }
+
+                        return (
+                            KmsResponse::Error {
+                                code: KmsProxyErrorCode::UpstreamUnavailable,
+                                message: "Upstream KMS error".to_string(),
+                            },
+                            None,
+                        );
                     }
                 }
 
@@ -289,6 +397,13 @@ impl KmsProxyServer {
         
         Ok(result)
     }
+}
+
+fn is_retryable(code: KmsProxyErrorCode) -> bool {
+    matches!(
+        code,
+        KmsProxyErrorCode::Timeout | KmsProxyErrorCode::UpstreamThrottled | KmsProxyErrorCode::UpstreamUnavailable
+    )
 }
 
 fn classify_aws_error(msg: &str) -> KmsProxyErrorCode {
