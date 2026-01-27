@@ -75,7 +75,9 @@ impl KmsProxyServer {
                     if let Some(attestation_doc) = &recipient {
                         let mut builder = client.decrypt()
                             .ciphertext_blob(aws_sdk_kms::primitives::Blob::new(ciphertext_blob.clone()))
-                            .recipient(aws_sdk_kms::primitives::Blob::new(attestation_doc.clone()));
+                            .recipient(aws_sdk_kms::types::RecipientInfo::builder()
+                                .attestation_document(aws_sdk_kms::primitives::Blob::new(attestation_doc.clone()))
+                                .build());
                         
                         // Add encryption context if provided
                         if let Some(ctx) = encryption_context {
