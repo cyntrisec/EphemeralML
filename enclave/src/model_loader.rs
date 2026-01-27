@@ -158,8 +158,9 @@ mod tests {
             let msg = VSockMessage::decode(&full_buf).unwrap();
             assert_eq!(msg.msg_type, MessageType::KmsProxy);
             
-            // Assume request is valid Decrypt
-            // We just need to return the DEK encrypted to the Enclave
+            let request_env: ephemeral_ml_common::KmsProxyRequestEnvelope =
+                serde_json::from_slice(&msg.payload).unwrap();
+            // We just need to return the DEK encrypted to the Enclave.
             
             // Encrypt DEK using HPKE
             let mut rng = OsRng;
@@ -185,7 +186,14 @@ mod tests {
                 key_id: None,
             };
             
-            let response_payload = serde_json::to_vec(&response).unwrap();
+            let response_env = ephemeral_ml_common::KmsProxyResponseEnvelope {
+                request_id: request_env.request_id,
+                trace_id: request_env.trace_id,
+                kms_request_id: None,
+                response,
+            };
+
+            let response_payload = serde_json::to_vec(&response_env).unwrap();
             let response_msg = VSockMessage::new(MessageType::KmsProxy, msg.sequence, response_payload).unwrap();
             let encoded = response_msg.encode();
             

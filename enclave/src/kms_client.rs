@@ -1,6 +1,6 @@
 use crate::{EnclaveError, Result, EphemeralError};
 use crate::kms_proxy_client::KmsProxyClient;
-use ephemeral_ml_common::{KmsRequest, KmsResponse};
+use ephemeral_ml_common::{KmsProxyErrorCode, KmsRequest, KmsResponse};
 
 /// KMS Stub Client for Enclave
 pub struct KmsClient<A: crate::attestation::AttestationProvider> {
@@ -44,19 +44,34 @@ impl<A: crate::attestation::AttestationProvider> KmsClient<A> {
         let response = self.proxy_client.send_request(request).await?;
         
         // 4. Handle response
-        match response {
+        match response.response {
             KmsResponse::Decrypt { ciphertext_for_recipient, plaintext, .. } => {
                 if let Some(enc_key) = ciphertext_for_recipient {
                     // Decrypt using our private key
                     self.attestation_provider.decrypt_hpke(&enc_key)
-                } else if let Some(pt) = plaintext {
-                    // Host returned plaintext (unsafe, but maybe allowed if recipient was None, or Mock)
-                    Ok(pt)
+                } else if plaintext.is_some() {
+                    // Fail-closed: if we asked for Recipient-bound decrypt, plaintext must never be returned.
+                    Err(EnclaveError::Enclave(EphemeralError::KmsError(
+                        "KMS proxy returned plaintext for Recipient-bound decrypt".to_string(),
+                    )))
                 } else {
                     Err(EnclaveError::Enclave(EphemeralError::KmsError("No key returned in response".to_string())))
                 }
             }
-            KmsResponse::Error(e) => Err(EnclaveError::Enclave(EphemeralError::KmsError(e))),
+            KmsResponse::Error { code, message } => {
+                let prefix = match code {
+                    KmsProxyErrorCode::Timeout => "kms_proxy_timeout",
+                    KmsProxyErrorCode::InvalidRequest => "kms_proxy_invalid_request",
+                    KmsProxyErrorCode::UpstreamAccessDenied => "kms_proxy_access_denied",
+                    KmsProxyErrorCode::UpstreamThrottled => "kms_proxy_throttled",
+                    KmsProxyErrorCode::UpstreamUnavailable => "kms_proxy_unavailable",
+                    KmsProxyErrorCode::Internal => "kms_proxy_internal",
+                };
+                Err(EnclaveError::Enclave(EphemeralError::KmsError(format!(
+                    "{}: {}",
+                    prefix, message
+                ))))
+            }
             _ => Err(EnclaveError::Enclave(EphemeralError::KmsError("Unexpected response type".to_string()))),
         }
     }
