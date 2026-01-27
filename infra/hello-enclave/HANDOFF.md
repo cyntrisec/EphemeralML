@@ -1,3 +1,17 @@
+## Status: RESOLVED (2026-01-27)
+The immediate reboot issue was caused by the lack of an explicit `ENTRYPOINT` in our Dockerfile. 
+
+### Resolution details:
+- **Root Cause:** `nitro-cli build-enclave` (or the underlying Nitro initramfs) is picky about how the command is defined in the Docker image. If only `CMD` is used, the enclave's internal `init` might fail to determine the execution path, leading to an immediate, silent reboot at ~0.17s.
+- **Fix:** Explicitly define `ENTRYPOINT ["/init"]` (or the application binary) in the `Dockerfile`.
+- **Validation:** Verified via `busybox-smoke` and `vsock-pingpong` runs. Logs confirmed the PID1 wrapper (`/init`) successfully starting and launching the app.
+
+### Key artifacts:
+- Commit `b49017e`: Set explicit `ENTRYPOINT` and parameterized mode via ENV.
+- Log `dawn-sage` (2026-01-27): Confirmed successful boot and vsock server startup.
+
+---
+
 # EphemeralML hello-enclave / vsock-pingpong — Handoff Packet
 
 ## Goal
