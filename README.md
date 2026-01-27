@@ -160,6 +160,7 @@ Each inference can return an **AER** containing:
 - [x] **AWS Certificate Chain**: Added initial parsing and dependencies for production AWS certificate validation.
 - [x] **VSock Communication**: High-performance, secure communication between host and enclave.
 - [x] **Infrastructure as Code**: Terraform setup ready in `projects/EphemeralML/infra` for automated AWS deployment.
+  - Nitro Enclaves debug notes (KMS + fixes): `infra/hello-enclave/KMS_DEBUG_NOTES_2026-01-27.md`
 - [x] **Model Protection**: `encrypt_model.py` and `setup_host.sh` scripts available for production workflow.
 
 ### 📅 Development Timeline

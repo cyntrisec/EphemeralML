@@ -1,5 +1,8 @@
 # Infrastructure Notes (EphemeralML)
 
+## Nitro Enclaves debug notes
+- KMS + Nitro Enclaves postmortem / fixes: `infra/hello-enclave/KMS_DEBUG_NOTES_2026-01-27.md`
+
 ## Nitro Enclaves: Hello-World Deployment Loop
 
 A minimal AWS Nitro Enclave deployment loop:
