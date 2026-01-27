@@ -287,11 +287,11 @@ fn run(mode: Mode) {
                                     eprintln!("[enclave] FAILED: KMS did not return wrapped key (policy issue?)");
                                 }
                             }
-                            KmsResponse::Error(e) => eprintln!("[enclave] KMS Decrypt Error: {}", e),
+                            KmsResponse::Error { code, message } => eprintln!("[enclave] KMS Decrypt Error ({:?}): {}", code, message),
                             _ => eprintln!("[enclave] Unexpected response from KMS"),
                         }
                     }
-                    KmsResponse::Error(e) => eprintln!("[enclave] KMS GenerateDataKey Error: {}", e),
+                    KmsResponse::Error { code, message } => eprintln!("[enclave] KMS GenerateDataKey Error ({:?}): {}", code, message),
                     _ => eprintln!("[enclave] Unexpected response from KMS"),
                 }
             });

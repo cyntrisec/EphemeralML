@@ -40,7 +40,13 @@ pub use hpke_session::{
     HPKESession, HPKESessionManager, HPKEConfig, EncryptedMessage, SessionId,
 };
 
-pub use kms_proxy::{KmsRequest, KmsResponse};
+pub use kms_proxy::{
+    KmsRequest,
+    KmsResponse,
+    KmsProxyRequestEnvelope,
+    KmsProxyResponseEnvelope,
+    KmsProxyErrorCode,
+};
 pub use model_manifest::ModelManifest;
 
 pub use receipt_signing::{

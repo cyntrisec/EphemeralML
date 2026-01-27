@@ -48,7 +48,7 @@ impl MockVSockProxy {
     }
 
     async fn handle_mock_connection(mut stream: TcpStream) -> Result<()> {
-        use ephemeral_ml_common::{VSockMessage, MessageType, KmsRequest};
+        use ephemeral_ml_common::{KmsProxyRequestEnvelope, MessageType, VSockMessage};
         use crate::kms_proxy_server::KmsProxyServer;
 
         // Read length prefix
@@ -78,11 +78,11 @@ impl MockVSockProxy {
             .map_err(|e| HostError::Host(EphemeralError::Validation(ephemeral_ml_common::ValidationError::InvalidFormat(e.to_string()))))?;
 
         if msg.msg_type == MessageType::KmsProxy {
-             let request: KmsRequest = serde_json::from_slice(&msg.payload)
+             let request: KmsProxyRequestEnvelope = serde_json::from_slice(&msg.payload)
                  .map_err(|e| HostError::Host(EphemeralError::SerializationError(e.to_string())))?;
                  
              let mut server = KmsProxyServer::new();
-             let response = server.handle_request(request).await;
+             let response = server.handle_envelope(request).await;
              
              let response_payload = serde_json::to_vec(&response)
                  .map_err(|e| HostError::Host(EphemeralError::SerializationError(e.to_string())))?;

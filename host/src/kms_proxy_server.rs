@@ -1,8 +1,11 @@
-use ephemeral_ml_common::{KmsRequest, KmsResponse};
+use ephemeral_ml_common::{
+    KmsProxyErrorCode, KmsProxyRequestEnvelope, KmsProxyResponseEnvelope, KmsRequest, KmsResponse,
+};
 use std::collections::HashMap;
 use hpke::{aead::ChaCha20Poly1305, kem::X25519HkdfSha256, OpModeS, Serializable, Deserializable};
 use rand::rngs::OsRng;
 use rand::RngCore;
+use tokio::time::{timeout, Duration};
 
 #[cfg(feature = "production")]
 use aws_sdk_kms::Client;
@@ -40,7 +43,20 @@ impl KmsProxyServer {
         self
     }
 
-    pub async fn handle_request(&mut self, request: KmsRequest) -> KmsResponse {
+    pub async fn handle_envelope(&mut self, env: KmsProxyRequestEnvelope) -> KmsProxyResponseEnvelope {
+        let request_id = env.request_id;
+        let trace_id = env.trace_id;
+        let (response, kms_request_id) = self.handle_request(env.request).await;
+
+        KmsProxyResponseEnvelope {
+            request_id,
+            trace_id,
+            kms_request_id,
+            response,
+        }
+    }
+
+    async fn handle_request(&mut self, request: KmsRequest) -> (KmsResponse, Option<String>) {
         match request {
             KmsRequest::GenerateDataKey { key_id, key_spec } => {
                 // If we have a real KMS client, use it.
@@ -58,15 +74,39 @@ impl KmsProxyServer {
                         _ => builder.number_of_bytes(32),
                     };
 
-                    match builder.send().await {
-                        Ok(output) => {
-                            return KmsResponse::GenerateDataKey {
-                                key_id: output.key_id().unwrap_or(&key_id).to_string(),
-                                ciphertext_blob: output.ciphertext_blob().map(|b| b.as_ref().to_vec()).unwrap_or_default(),
-                                plaintext: output.plaintext().map(|b| b.as_ref().to_vec()).unwrap_or_default(),
-                            };
+                    match timeout(Duration::from_secs(10), builder.send()).await {
+                        Ok(Ok(output)) => {
+                            let kms_request_id = aws_request_id(&output);
+                            return (
+                                KmsResponse::GenerateDataKey {
+                                    key_id: output.key_id().unwrap_or(&key_id).to_string(),
+                                    ciphertext_blob: output
+                                        .ciphertext_blob()
+                                        .map(|b| b.as_ref().to_vec())
+                                        .unwrap_or_default(),
+                                    plaintext: output.plaintext().map(|b| b.as_ref().to_vec()).unwrap_or_default(),
+                                },
+                                kms_request_id,
+                            );
                         }
-                        Err(e) => return KmsResponse::Error(format!("AWS KMS GenerateDataKey error: {:?}", e)),
+                        Ok(Err(e)) => {
+                            return (
+                                KmsResponse::Error {
+                                    code: classify_aws_error(&format!("{e:?}")),
+                                    message: "Upstream KMS error".to_string(),
+                                },
+                                None,
+                            );
+                        }
+                        Err(_) => {
+                            return (
+                                KmsResponse::Error {
+                                    code: KmsProxyErrorCode::Timeout,
+                                    message: "Operation timed out".to_string(),
+                                },
+                                None,
+                            );
+                        }
                     }
                 }
 
@@ -74,11 +114,14 @@ impl KmsProxyServer {
                 let mut key = [0u8; 32];
                 rand::thread_rng().fill_bytes(&mut key);
                 
+                (
                 KmsResponse::GenerateDataKey {
                     key_id: key_id,
                     ciphertext_blob: key.to_vec(),
                     plaintext: key.to_vec(),
-                }
+                },
+                None,
+                )
             }
             KmsRequest::Decrypt { ciphertext_blob, key_id, recipient, encryption_context, .. } => {
                 // If we have a real KMS client and a recipient (attestation doc), use real KMS.
@@ -105,15 +148,50 @@ impl KmsProxyServer {
                             }
                         }
 
-                        match builder.send().await {
-                            Ok(output) => {
-                                return KmsResponse::Decrypt {
-                                    ciphertext_for_recipient: output.ciphertext_for_recipient().map(|b| b.as_ref().to_vec()),
-                                    plaintext: output.plaintext().map(|b| b.as_ref().to_vec()),
-                                    key_id: output.key_id().map(|s| s.to_string()),
-                                };
+                        match timeout(Duration::from_secs(10), builder.send()).await {
+                            Ok(Ok(output)) => {
+                                let kms_request_id = aws_request_id(&output);
+                                let ciphertext_for_recipient =
+                                    output.ciphertext_for_recipient().map(|b| b.as_ref().to_vec());
+
+                                // Fail-closed: when using RecipientInfo, never forward plaintext.
+                                if ciphertext_for_recipient.is_none() {
+                                    return (
+                                        KmsResponse::Error {
+                                            code: KmsProxyErrorCode::Internal,
+                                            message: "Recipient-bound decrypt returned no ciphertext".to_string(),
+                                        },
+                                        kms_request_id,
+                                    );
+                                }
+
+                                return (
+                                    KmsResponse::Decrypt {
+                                        ciphertext_for_recipient,
+                                        plaintext: None,
+                                        key_id: output.key_id().map(|s| s.to_string()),
+                                    },
+                                    kms_request_id,
+                                );
                             }
-                            Err(e) => return KmsResponse::Error(format!("AWS KMS Decrypt error: {:?}", e)),
+                            Ok(Err(e)) => {
+                                return (
+                                    KmsResponse::Error {
+                                        code: classify_aws_error(&format!("{e:?}")),
+                                        message: "Upstream KMS error".to_string(),
+                                    },
+                                    None,
+                                );
+                            }
+                            Err(_) => {
+                                return (
+                                    KmsResponse::Error {
+                                        code: KmsProxyErrorCode::Timeout,
+                                        message: "Operation timed out".to_string(),
+                                    },
+                                    None,
+                                );
+                            }
                         }
                     }
                 }
@@ -123,19 +201,31 @@ impl KmsProxyServer {
                 
                 if let Some(attestation_bytes) = recipient {
                     match self.process_attestation(&attestation_bytes, &key_material) {
-                        Ok(wrapped_key) => KmsResponse::Decrypt {
-                            ciphertext_for_recipient: Some(wrapped_key),
-                            plaintext: None,
-                            key_id: None,
-                        },
-                        Err(e) => KmsResponse::Error(e),
+                        Ok(wrapped_key) => (
+                            KmsResponse::Decrypt {
+                                ciphertext_for_recipient: Some(wrapped_key),
+                                plaintext: None,
+                                key_id: None,
+                            },
+                            None,
+                        ),
+                        Err(_e) => (
+                            KmsResponse::Error {
+                                code: KmsProxyErrorCode::InvalidRequest,
+                                message: "Invalid attestation document".to_string(),
+                            },
+                            None,
+                        ),
                     }
                 } else {
-                    KmsResponse::Decrypt {
-                        ciphertext_for_recipient: None,
-                        plaintext: Some(key_material),
-                        key_id: None,
-                    }
+                    (
+                        KmsResponse::Decrypt {
+                            ciphertext_for_recipient: None,
+                            plaintext: Some(key_material),
+                            key_id: None,
+                        },
+                        None,
+                    )
                 }
             }
         }
@@ -201,13 +291,32 @@ impl KmsProxyServer {
     }
 }
 
+fn classify_aws_error(msg: &str) -> KmsProxyErrorCode {
+    let m = msg.to_ascii_lowercase();
+    if m.contains("accessdenied") || m.contains("notauthorized") || m.contains("unauthorized") {
+        return KmsProxyErrorCode::UpstreamAccessDenied;
+    }
+    if m.contains("throttling") || m.contains("too many requests") || m.contains("ratelimit") {
+        return KmsProxyErrorCode::UpstreamThrottled;
+    }
+    if m.contains("invalid") || m.contains("validation") || m.contains("notfound") {
+        return KmsProxyErrorCode::InvalidRequest;
+    }
+    KmsProxyErrorCode::UpstreamUnavailable
+}
+
+#[cfg(feature = "production")]
+fn aws_request_id<T: aws_types::request_id::RequestId>(output: &T) -> Option<String> {
+    output.request_id().map(|s| s.to_string())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use ephemeral_ml_common::KmsRequest;
+    use ephemeral_ml_common::{KmsProxyRequestEnvelope, KmsRequest};
 
-    #[test]
-    fn test_host_blindness_enforced() {
+    #[tokio::test]
+    async fn test_host_blindness_enforced() {
         let mut server = KmsProxyServer::new();
         
         // Generate a valid HPKE public key
@@ -241,16 +350,22 @@ mod tests {
             recipient: Some(attestation_cbor),
         };
 
-        let response = server.handle_request(request);
+        let response = server
+            .handle_envelope(KmsProxyRequestEnvelope {
+                request_id: "test-request".to_string(),
+                trace_id: Some("trace-1".to_string()),
+                request,
+            })
+            .await;
         
-        match response {
+        match response.response {
             KmsResponse::Decrypt { ciphertext_for_recipient, plaintext, .. } => {
                 // MUST have ciphertext for recipient
                 assert!(ciphertext_for_recipient.is_some());
                 // MUST NOT have plaintext
                 assert!(plaintext.is_none());
             }
-            KmsResponse::Error(e) => panic!("KMS Error: {}", e),
+            KmsResponse::Error { code, message } => panic!("KMS Error: {:?} {}", code, message),
             _ => panic!("Expected Decrypt response"),
         }
     }
