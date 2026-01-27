@@ -8,8 +8,7 @@ WORKDIR /app
 
 # We need the workspace dependency (../../common). Build context is the repo root.
 # Copy manifests first for better caching.
-# We also copy the workspace root Cargo.toml because common/ inherits workspace deps.
-COPY Cargo.toml ./Cargo.toml
+# (workspace root Cargo.toml not required; common/ is buildable standalone)
 COPY enclaves/vsock-pingpong/Cargo.toml ./enclaves/vsock-pingpong/Cargo.toml
 COPY Cargo.lock* ./Cargo.lock
 COPY common/Cargo.toml ./common/Cargo.toml
