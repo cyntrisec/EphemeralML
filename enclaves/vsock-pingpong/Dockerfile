@@ -17,13 +17,13 @@ COPY src ./src
 RUN cargo build --release --target x86_64-unknown-linux-musl
 
 # Runtime stage
-# IMPORTANT: do NOT use "/bin/sh -c" in enclave images.
-# If the shell or its dynamic loader fails, the enclave may reboot before our binary runs.
-FROM alpine:3.19
-COPY --from=build /app/target/x86_64-unknown-linux-musl/release/vsock-pingpong /vsock-pingpong
-RUN chmod +x /vsock-pingpong
+# Use BusyBox (static) to minimize runtime dependencies and ensure /bin/sh exists.
+FROM busybox:1.36
 
-# IMPORTANT: Nitro's `build-enclave` currently uses the container **CMD** as the program to exec.
-# In practice it may ignore Docker ENTRYPOINT. So we encode the full argv in CMD.
-# (Otherwise you get: `execvpe: --mode: No such file or directory` and an immediate reboot.)
-CMD ["/vsock-pingpong","--mode","vsock"]
+COPY --from=build /app/target/x86_64-unknown-linux-musl/release/vsock-pingpong /vsock-pingpong
+COPY init.sh /init
+RUN chmod +x /vsock-pingpong /init
+
+# IMPORTANT: Nitro's `build-enclave` uses the container **CMD** as the program to exec
+# (and may ignore ENTRYPOINT). So CMD must be the full argv starting with the executable.
+CMD ["/init","--mode","vsock"]
