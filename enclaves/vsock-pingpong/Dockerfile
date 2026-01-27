@@ -16,14 +16,16 @@ RUN cargo build --release --target x86_64-unknown-linux-musl
 COPY src ./src
 RUN cargo build --release --target x86_64-unknown-linux-musl
 
-# Runtime stage: avoid `scratch` while debugging Nitro's boot/init quirks.
-# A tiny Alpine userspace makes behavior more predictable.
+# Runtime stage
+# IMPORTANT: do NOT use "/bin/sh -c" in enclave images.
+# If the shell or its dynamic loader fails, the enclave may reboot before our binary runs.
 FROM alpine:3.19
 COPY --from=build /app/target/x86_64-unknown-linux-musl/release/vsock-pingpong /vsock-pingpong
 RUN chmod +x /vsock-pingpong
 
-# Allow selecting a runtime mode without editing Rust code.
-ARG MODE=vsock
-ENV VSOCK_PINGPONG_MODE=${MODE}
+# Run the Rust binary as PID 1.
+ENTRYPOINT ["/vsock-pingpong"]
 
-CMD ["/bin/sh","-c","/vsock-pingpong --mode ${VSOCK_PINGPONG_MODE}"]
+# Default mode; can be overridden via docker build args by replacing CMD at build time,
+# or by passing args when debugging locally.
+CMD ["--mode","vsock"]
