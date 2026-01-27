@@ -215,7 +215,7 @@ fn run(mode: Mode) {
                 // 3. Send GenerateDataKey request
                 let kms_req = KmsRequest::GenerateDataKey {
                     key_id: "alias/ephemeral-ml-test".to_string(),
-                    key_spec: None,
+                    key_spec: "AES_256".to_string(),
                 };
                 let payload = serde_json::to_vec(&kms_req).unwrap();
                 let msg = VSockMessage::new(MessageType::KmsProxy, 0, payload).unwrap();

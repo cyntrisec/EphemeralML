@@ -3,7 +3,8 @@ members = [
     "common",
     "client",
     "host", 
-    "enclave"
+    "enclave",
+    "enclaves/vsock-pingpong"
 ]
 resolver = "2"
 
