@@ -77,8 +77,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             let manifest = ModelManifest {
                 model_id: "test-model-001".to_string(),
                 version: "1.0.0".to_string(),
-                hash_sha256: "3b8e1224560b8fb840634d6fe3f67254c273f3416b7df750d02d45c42261cb7a".to_string(),
-                encryption_nonce: Some("00".repeat(12)), // Placeholder
+                model_hash: "3b8e1224560b8fb840634d6fe3f67254c273f3416b7df750d02d45c42261cb7a".to_string(),
+                hash_algorithm: "sha256".to_string(),
+                key_id: "test".to_string(),
+                signature: vec![0u8; 64], // Placeholder
             };
 
             println!("[test] Attempting to fetch and decrypt model...");
