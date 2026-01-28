@@ -25,7 +25,6 @@ impl<A: AttestationProvider> ModelLoader<A> {
     pub async fn load_model(
         &self,
         manifest: &ModelManifest,
-        encrypted_artifact: &[u8],
         wrapped_dek: &[u8],
     ) -> Result<Vec<u8>> {
         // 1. Verify Manifest Signature
@@ -34,7 +33,10 @@ impl<A: AttestationProvider> ModelLoader<A> {
                 crate::ValidationError::InvalidSignature(format!("Manifest verification failed: {}", e))
             )))?;
 
-        // 2. Unwrap DEK using KMS
+        // 2. Fetch Encrypted Artifact from Host
+        let encrypted_artifact = self.kms_client.proxy_client().fetch_model(&manifest.model_id).await?;
+
+        // 3. Unwrap DEK using KMS
         let dek_bytes = self.kms_client.decrypt(wrapped_dek).await?;
         
         if dek_bytes.len() != 32 {
@@ -134,6 +136,7 @@ mod tests {
         let port = listener.local_addr().unwrap().port();
         
         let dek_clone = dek.clone();
+        let encrypted_artifact_clone = encrypted_artifact.clone();
         
         tokio::spawn(async move {
             let (mut socket, _) = listener.accept().await.unwrap();
@@ -156,48 +159,56 @@ mod tests {
             full_buf.extend_from_slice(&body);
             
             let msg = VSockMessage::decode(&full_buf).unwrap();
-            assert_eq!(msg.msg_type, MessageType::KmsProxy);
-            
-            let request_env: ephemeral_ml_common::KmsProxyRequestEnvelope =
-                serde_json::from_slice(&msg.payload).unwrap();
-            // We just need to return the DEK encrypted to the Enclave.
-            
-            // Encrypt DEK using HPKE
-            let mut rng = OsRng;
-            // Get REAL HPKE public key from provider (since it's mock, it's deterministic [4u8; 32] private)
-            // Wait, DefaultAttestationProvider::new() creates a MockAttestationProvider with NEW keys.
-            // We need to use the keys from THAT instance.
-            let kem_pub = <X25519HkdfSha256 as hpke::Kem>::PublicKey::from_bytes(&hpke_pk_bytes).unwrap();
-            
-            let (encapped_key, mut sender_ctx) = hpke::setup_sender::<
-                hpke::aead::ChaCha20Poly1305,
-                hpke::kdf::HkdfSha256,
-                X25519HkdfSha256,
-                _,
-            >(&OpModeS::Base, &kem_pub, b"KMS_DEK", &mut rng).unwrap();
-            
-            let ciphertext = sender_ctx.seal(&dek_clone, b"").unwrap();
-            let mut encrypted_dek = encapped_key.to_bytes().to_vec();
-            encrypted_dek.extend_from_slice(&ciphertext);
-            
-            let response = KmsResponse::Decrypt {
-                ciphertext_for_recipient: Some(encrypted_dek),
-                plaintext: None,
-                key_id: None,
-            };
-            
-            let response_env = ephemeral_ml_common::KmsProxyResponseEnvelope {
-                request_id: request_env.request_id,
-                trace_id: request_env.trace_id,
-                kms_request_id: None,
-                response,
-            };
+            match msg.msg_type {
+                MessageType::KmsProxy => {
+                    let request_env: ephemeral_ml_common::KmsProxyRequestEnvelope =
+                        serde_json::from_slice(&msg.payload).unwrap();
+                    // We just need to return the DEK encrypted to the Enclave.
+                    
+                    // Encrypt DEK using HPKE
+                    let mut rng = OsRng;
+                    let kem_pub = <X25519HkdfSha256 as hpke::Kem>::PublicKey::from_bytes(&hpke_pk_bytes).unwrap();
+                    
+                    let (encapped_key, mut sender_ctx) = hpke::setup_sender::<
+                        hpke::aead::ChaCha20Poly1305,
+                        hpke::kdf::HkdfSha256,
+                        X25519HkdfSha256,
+                        _,
+                    >(&OpModeS::Base, &kem_pub, b"KMS_DEK", &mut rng).unwrap();
+                    
+                    let ciphertext = sender_ctx.seal(&dek_clone, b"").unwrap();
+                    let mut encrypted_dek = encapped_key.to_bytes().to_vec();
+                    encrypted_dek.extend_from_slice(&ciphertext);
+                    
+                    let response = KmsResponse::Decrypt {
+                        ciphertext_for_recipient: Some(encrypted_dek),
+                        plaintext: None,
+                        key_id: None,
+                    };
+                    
+                    let response_env = ephemeral_ml_common::KmsProxyResponseEnvelope {
+                        request_id: request_env.request_id,
+                        trace_id: request_env.trace_id,
+                        kms_request_id: None,
+                        response,
+                    };
 
-            let response_payload = serde_json::to_vec(&response_env).unwrap();
-            let response_msg = VSockMessage::new(MessageType::KmsProxy, msg.sequence, response_payload).unwrap();
-            let encoded = response_msg.encode();
-            
-            socket.write_all(&encoded).await.unwrap();
+                    let response_payload = serde_json::to_vec(&response_env).unwrap();
+                    let response_msg = VSockMessage::new(MessageType::KmsProxy, msg.sequence, response_payload).unwrap();
+                    socket.write_all(&response_msg.encode()).await.unwrap();
+                }
+                MessageType::Storage => {
+                    use ephemeral_ml_common::storage_protocol::StorageResponse;
+                    let response = StorageResponse::Data {
+                        payload: encrypted_artifact_clone,
+                        is_last: true,
+                    };
+                    let resp_payload = serde_json::to_vec(&response).unwrap();
+                    let resp_msg = VSockMessage::new(MessageType::Storage, msg.sequence, resp_payload).unwrap();
+                    socket.write_all(&resp_msg.encode()).await.unwrap();
+                }
+                _ => panic!("Unexpected msg type: {:?}", msg.msg_type),
+            }
         });
         
         // Setup Client with Proxy
@@ -267,7 +278,7 @@ mod tests {
         };
         
         // Test Load
-        let loaded_bytes = loader.load_model(&manifest, &encrypted_artifact, &wrapped_dek).await.unwrap();
+        let loaded_bytes = loader.load_model(&manifest, &wrapped_dek).await.unwrap();
         assert_eq!(loaded_bytes, plaintext_model);
     }
 }

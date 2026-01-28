@@ -12,6 +12,7 @@ pub mod model_manifest;
 pub mod protocol;
 pub mod receipt_signing;
 pub mod vsock;
+pub mod storage_protocol;
 
 
 // Re-export commonly used types and errors

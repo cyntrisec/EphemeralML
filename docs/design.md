@@ -114,8 +114,11 @@ sequenceDiagram
 
 ### KMS Authorization Model
 
-**Attestation-Bound Key Release Policy**:
-The security of the system depends on KMS key policies (or Key Broker policies) that cryptographically bind key release to enclave attestation, preventing the host from accessing plaintext DEKs even with stolen IAM credentials.
+**Attestation-Bound Key Release Policy (Hardened Production Mode)**:
+The system has transitioned from permissive/mock mode to a hardened production-ready architecture. The security of the system depends on KMS key policies that cryptographically bind key release to enclave attestation.
+
+**KMS RecipientInfo Implementation**:
+We utilize the `public_key` field within the NSM attestation document to provide an RSA-2048 public key generated inside the enclave. AWS KMS uses this key to wrap the Data Encryption Key (DEK) specifically for the requesting enclave instance. This ensures that even if the host intercepts the KMS response, it cannot decrypt the wrapped secret.
 
 **Required KMS Policy Structure**:
 ```json
@@ -138,11 +141,12 @@ The security of the system depends on KMS key policies (or Key Broker policies) 
 ```
 
 **Authorization Flow**:
-1. Host retrieves wrapped DEK from S3 storage
-2. Enclave calls kms-decrypt via Nitro Enclaves SDK (over VSock proxy)
-3. Host only forwards bytes to AWS KMS - never sees plaintext DEK
-4. **KMS evaluates policy**: KMS authorizes based on attestation document measurements using kms:RecipientAttestation:* condition keys
-5. **Critical Security Property**: KMS establishes protected session with enclave; all session traffic is protected from the parent instance (host)
+1. Enclave generates an RSA-2048 keypair.
+2. Enclave requests an attestation document from NSM, embedding the RSA public key in the `public_key` field.
+3. Enclave calls `kms:Decrypt` (via VSock proxy) providing the attestation document as `RecipientInfo`.
+4. **KMS evaluates policy**: KMS validates the attestation document (checking measurements like `kms:RecipientAttestation:ImageSha384`).
+5. **Key Wrapping**: KMS wraps the plaintext DEK using the RSA public key provided in the attestation document.
+6. **Protected Delivery**: The host only forwards the RSA-wrapped bytes to the enclave. Only the enclave, possessing the private RSA key, can decrypt the DEK.
 
 **Authorization Model Clarification**:
 KMS enforces cryptographic eligibility for DEK release; semantic authorization (which model, which client, which session) is enforced by signed policy bundles and client-side verification.
@@ -397,13 +401,14 @@ impl FreshnessTracker {
 ### Client Components
 
 #### Attestation Verifier
-**Purpose**: Verify enclave identity and establish trust before releasing secrets
+**Purpose**: Verify enclave identity and establish trust before releasing secrets using hardened production verification.
 
 **Key Responsibilities**:
-- Validate Nitro attestation documents using NSM certificate chains
-- Check enclave measurements against client-maintained allowlists with policy update support
-- Enforce freshness through nonce-based challenge-response
-- Establish HPKE sessions bound to attested ephemeral public keys
+- **Full COSE/CBOR Parsing**: Perform deep inspection of the Nitro attestation document structure.
+- **Hardened Certificate Validation**: Validate the full AWS certificate chain (Leaf -> Intermediate -> Root CA).
+- **Measurement Validation**: Check enclave measurements against client-maintained allowlists.
+- **Freshness Enforcement**: Enforce freshness through nonce-based challenge-response.
+- **HPKE Binding**: Establish HPKE sessions bound to attested ephemeral public keys.
 
 **Interface**:
 ```rust

@@ -20,6 +20,8 @@ pub enum MessageType {
     Shutdown = 0x05,
     /// KMS Proxy traffic
     KmsProxy = 0x06,
+    /// Storage (S3) traffic
+    Storage = 0x07,
 }
 
 impl TryFrom<u8> for MessageType {
@@ -33,6 +35,7 @@ impl TryFrom<u8> for MessageType {
             0x04 => Ok(MessageType::Heartbeat),
             0x05 => Ok(MessageType::Shutdown),
             0x06 => Ok(MessageType::KmsProxy),
+            0x07 => Ok(MessageType::Storage),
             _ => Err(EphemeralError::Validation(crate::ValidationError::InvalidFormat(
                 format!("Unknown message type: 0x{:02x}", value)
             ))),

@@ -1,6 +1,7 @@
 use crate::{Result, EnclaveError, EphemeralError};
 use ephemeral_ml_common::{
-    KmsProxyRequestEnvelope, KmsProxyResponseEnvelope, KmsRequest, MessageType, VSockMessage,
+    KmsProxyRequestEnvelope, KmsProxyResponseEnvelope, KmsRequest, KmsResponse, MessageType, VSockMessage,
+    storage_protocol::{StorageRequest, StorageResponse},
 };
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::time::{Duration, Instant};
@@ -203,6 +204,82 @@ impl KmsProxyClient {
         }
 
         Ok(response)
+    }
+
+    pub async fn fetch_model(&self, model_id: &str) -> Result<Vec<u8>> {
+        let req = StorageRequest {
+            model_id: model_id.to_string(),
+            part_index: 0,
+        };
+
+        let payload = serde_json::to_vec(&req)
+            .map_err(|e| EnclaveError::Enclave(EphemeralError::SerializationError(e.to_string())))?;
+
+        let msg = VSockMessage::new(MessageType::Storage, 0, payload)?;
+        let encoded = msg.encode();
+
+        let started = Instant::now();
+        let remaining = |overall: Duration| -> Duration {
+            overall
+                .checked_sub(started.elapsed())
+                .unwrap_or_else(|| Duration::from_secs(0))
+        };
+
+        // Connect and send (reusing the logic or just making a new connection)
+        // For simplicity, let's just implement the connection here too
+        #[cfg(feature = "mock")]
+        let mut stream = tokio::time::timeout(
+            self.timeouts.connect.min(remaining(self.timeouts.overall)),
+            tokio::net::TcpStream::connect(&self.host_addr),
+        )
+        .await
+        .map_err(|_| EnclaveError::Enclave(EphemeralError::Timeout("Storage proxy connect timeout".to_string())))?
+        .map_err(|e| {
+            EnclaveError::Enclave(EphemeralError::NetworkError(format!(
+                "Failed to connect to host proxy (TCP): {}",
+                e
+            )))
+        })?;
+        
+        #[cfg(feature = "production")]
+        let mut stream = tokio::time::timeout(
+            self.timeouts.connect.min(remaining(self.timeouts.overall)),
+            tokio_vsock::VsockStream::connect(self.cid, self.port),
+        )
+        .await
+        .map_err(|_| EnclaveError::Enclave(EphemeralError::Timeout("Storage proxy connect timeout".to_string())))?
+        .map_err(|e| {
+            EnclaveError::Enclave(EphemeralError::NetworkError(format!(
+                "Failed to connect to host proxy (VSock): {}",
+                e
+            )))
+        })?;
+
+        stream.write_all(&encoded).await.map_err(|e| EnclaveError::Enclave(EphemeralError::NetworkError(e.to_string())))?;
+
+        // Read response
+        let mut len_buf = [0u8; 4];
+        stream.read_exact(&mut len_buf).await.map_err(|e| EnclaveError::Enclave(EphemeralError::NetworkError(e.to_string())))?;
+        let len = u32::from_be_bytes(len_buf) as usize;
+        let mut body = vec![0u8; len];
+        stream.read_exact(&mut body).await.map_err(|e| EnclaveError::Enclave(EphemeralError::NetworkError(e.to_string())))?;
+
+        let mut full_buf = Vec::with_capacity(4 + len);
+        full_buf.extend_from_slice(&len_buf);
+        full_buf.extend_from_slice(&body);
+        let response_msg = VSockMessage::decode(&full_buf)?;
+
+        if response_msg.msg_type != MessageType::Storage {
+            return Err(EnclaveError::Enclave(EphemeralError::ProtocolError("Expected Storage response".to_string())));
+        }
+
+        let response: StorageResponse = serde_json::from_slice(&response_msg.payload)
+            .map_err(|e| EnclaveError::Enclave(EphemeralError::SerializationError(e.to_string())))?;
+
+        match response {
+            StorageResponse::Data { payload, .. } => Ok(payload),
+            StorageResponse::Error { message } => Err(EnclaveError::Enclave(EphemeralError::StorageError(message))),
+        }
     }
 }
 

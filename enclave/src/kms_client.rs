@@ -23,6 +23,10 @@ impl<A: crate::attestation::AttestationProvider> KmsClient<A> {
         }
     }
 
+    pub fn proxy_client(&self) -> &KmsProxyClient {
+        &self.proxy_client
+    }
+
     /// Request decryption of a ciphertext using attestation binding
     pub async fn decrypt(&self, ciphertext: &[u8]) -> Result<Vec<u8>> {
         // 1. Generate attestation document

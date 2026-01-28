@@ -22,7 +22,7 @@ EphemeralML is a defense-in-depth confidential inference system that protects mo
 - **A2. Nitro attestation roots**: AWS Nitro attestation root certificates are trusted for verifying attestation documents
 - **A3. Host compromise**: Host OS is assumed fully compromised (root) and can observe/modify vsock traffic, scheduling, and storage; it cannot read enclave memory
 - **A4. Network adversary**: On-path attacker can observe/modify network traffic between client and host
-- **A5. KMS/Key Authority trust**: AWS KMS (or Key Broker) correctly enforces attestation-bound key release policy
+- **A5. KMS/Key Authority trust**: AWS KMS correctly enforces attestation-bound key release policy using RSA-2048 `RecipientInfo` to wrap secrets specifically for the verified enclave instance.
 - **A6. Time source**: "Freshness" is provided via nonces + challenge/response (not wall-clock inside enclave)
 - **A7. Side-channels**: Residual leakage via timing/access-patterns exists; only mitigations listed in-scope are claimed
 
@@ -51,11 +51,11 @@ EphemeralML is a defense-in-depth confidential inference system that protects mo
 #### Acceptance Criteria
 
 1. WHEN establishing communication, THE Client SHALL verify the enclave's attestation document using Nitro attestation measurements
-2. WHEN validating attestation, THE Client SHALL check certificate chain authenticity against AWS root certificates and verify measurements against client-maintained allowlist
+2. WHEN validating attestation, THE Client SHALL perform hardened verification including full COSE/CBOR parsing and AWS certificate chain validation (Leaf -> Intermediate -> Root CA) and verify measurements against client-maintained allowlist
 3. WHEN attestation verification succeeds, THE Client SHALL establish an end-to-end encrypted session bound to the enclave's cryptographic identity
 4. IF attestation fails or measurements don't match allowlist, THEN THE Client SHALL refuse to release any secrets
 5. THE Client SHALL enforce freshness by including nonces in attestation challenges to prevent replay attacks
-6. WHEN attestation documents are received, THE Client SHALL validate they are signed by authentic AWS Nitro hardware
+6. WHEN attestation documents are received, THE Client SHALL validate they are signed by authentic AWS Nitro hardware using full certificate chain validation
 7. The Enclave SHALL generate an ephemeral session public key at boot/handshake and SHALL include it in the Attestation_Document (user-data) so the Client can bind the secure channel to the attested enclave instance
 
 ### Requirement 2: Attestation-Gated Key Release
@@ -72,7 +72,7 @@ EphemeralML is a defense-in-depth confidential inference system that protects mo
 6. THE System SHALL implement time-bounded key access with automatic expiration for ephemeral sessions
 7. Key release policy MUST be enforceable by an external authority (AWS KMS and/or a Key Broker). V1 uses AWS KMS for cryptographic enforcement; allowlist approval is enforced by the Client/Policy bundle
 8. Freshness SHALL be verified by the Client and/or a dedicated Key Broker. KMS enforces measurement-bound authorization per policy
-9. The System SHALL define a VSock "KMS proxy protocol" where the Host forwards enclave-originated KMS API calls and MUST NOT gain access to plaintext DEKs (host handles transport only)
+9. The System SHALL implement hardened attestation-bound key release where the Enclave generates an RSA-2048 keypair, embeds the public key in the attestation document's `public_key` field, and uses it as `RecipientInfo` for AWS KMS to wrap secrets specifically for that enclave.
 10. Host proxy MUST be a byte-forwarder; it MUST NOT terminate TLS
 11. Enclave MUST authenticate the KMS endpoint (pinned AWS CA set) and validate response structure
 12. Proxy MUST be deny-by-default: only allow KMS + S3 endpoints explicitly
