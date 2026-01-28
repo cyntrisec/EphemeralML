@@ -1,8 +1,7 @@
 use crate::Result;
 use serde::{Deserialize, Serialize};
 use sha2::{Sha256, Digest};
-use uuid::Uuid;
-use rsa::{RsaPrivateKey, RsaPublicKey, pkcs8::EncodePublicKey, Oaep};
+use rsa::{RsaPrivateKey, pkcs8::EncodePublicKey, Oaep};
 
 // Re-export common types
 pub use ephemeral_ml_common::{AttestationDocument, PcrMeasurements, current_timestamp};
@@ -12,7 +11,7 @@ use aws_nitro_enclaves_nsm_api as nsm;
 #[cfg(feature = "production")]
 use crate::{EnclaveError, EphemeralError};
 #[cfg(feature = "production")]
-use hpke::{kem::X25519HkdfSha256, aead::ChaCha20Poly1305, kdf::HkdfSha256, OpModeR, Serializable, Deserializable};
+use hpke::{kem::X25519HkdfSha256, aead::ChaCha20Poly1305, OpModeR, Deserializable};
 #[cfg(feature = "production")]
 use serde_bytes::ByteBuf;
 

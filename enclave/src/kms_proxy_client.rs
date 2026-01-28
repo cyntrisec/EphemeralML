@@ -1,6 +1,6 @@
 use crate::{Result, EnclaveError, EphemeralError};
 use ephemeral_ml_common::{
-    KmsProxyRequestEnvelope, KmsProxyResponseEnvelope, KmsRequest, KmsResponse, MessageType, VSockMessage,
+    KmsProxyRequestEnvelope, KmsProxyResponseEnvelope, KmsRequest, MessageType, VSockMessage,
 };
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::time::{Duration, Instant};

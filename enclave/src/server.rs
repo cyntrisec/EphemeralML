@@ -1,10 +1,11 @@
 use crate::{EnclaveError, Result, EphemeralError, AttestationProvider, InferenceEngine, session_manager::{SessionManager, EnclaveSession}, inference_handler::InferenceHandler};
 use ephemeral_ml_common::{
-    MessageType, VSockMessage, ClientHello, ServerHello, HPKESession,
-    PROTOCOL_VERSION_V1,
+    MessageType, VSockMessage, HPKESession,
 };
+use ephemeral_ml_common::protocol::{ClientHello, ServerHello, PROTOCOL_VERSION_V1};
 use std::sync::Arc;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use libc;
 
 #[cfg(feature = "production")]
 use tokio_vsock::{VsockListener, VsockStream};
@@ -141,12 +142,15 @@ impl<A: AttestationProvider + Clone + Send + 'static, I: InferenceEngine + Clone
                         .map_err(|e| EnclaveError::Enclave(EphemeralError::NetworkError(e.to_string())))?;
                 }
                 MessageType::Data => {
-                    let encrypted_req = ephemeral_ml_common::EncryptedMessage::decode(&msg.payload)
+                    let encrypted_req: ephemeral_ml_common::EncryptedMessage = serde_json::from_slice(&msg.payload)
                         .map_err(|e| EnclaveError::Enclave(EphemeralError::SerializationError(e.to_string())))?;
                     
                     let encrypted_resp = handler.handle_request(&encrypted_req)?;
                     
-                    let resp_msg = VSockMessage::new(MessageType::Data, msg.sequence, encrypted_resp.encode())?;
+                    let resp_payload = serde_json::to_vec(&encrypted_resp)
+                        .map_err(|e| EnclaveError::Enclave(EphemeralError::SerializationError(e.to_string())))?;
+
+                    let resp_msg = VSockMessage::new(MessageType::Data, msg.sequence, resp_payload)?;
                     stream.write_all(&resp_msg.encode()).await
                         .map_err(|e| EnclaveError::Enclave(EphemeralError::NetworkError(e.to_string())))?;
                 }
