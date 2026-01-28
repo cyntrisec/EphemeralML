@@ -9,6 +9,7 @@ use ephemeral_ml_enclave::server::ProductionEnclaveServer;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    println!("EphemeralNet Enclave v1.0.1-debug");
     #[cfg(not(feature = "production"))]
     {
         println!("EphemeralNet Enclave (Mock Mode)");
