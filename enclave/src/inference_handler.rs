@@ -17,6 +17,7 @@ pub struct InferenceHandlerOutput {
     pub receipt: AttestationReceipt,
 }
 
+#[derive(Clone)]
 pub struct InferenceHandler<A: AttestationProvider, I: InferenceEngine> {
     pub session_manager: SessionManager,
     pub attestation_provider: A,

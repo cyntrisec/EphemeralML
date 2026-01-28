@@ -73,6 +73,7 @@ pub trait AttestationProvider: Send + Sync {
 
 /// NSM client for production attestation document generation
 #[cfg(feature = "production")]
+#[derive(Clone)]
 pub struct NSMAttestationProvider {
     hpke_keypair: EphemeralKeyPair,
     receipt_keypair: EphemeralKeyPair,
@@ -274,6 +275,7 @@ impl AttestationProvider for NSMAttestationProvider {
 }
 
 /// Default attestation provider that uses mock in development, NSM in production
+#[derive(Clone)]
 pub struct DefaultAttestationProvider {
     #[cfg(feature = "production")]
     nsm_provider: NSMAttestationProvider,

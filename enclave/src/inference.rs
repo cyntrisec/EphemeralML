@@ -11,6 +11,7 @@ pub trait InferenceEngine: Send + Sync {
 }
 
 /// Default inference engine implementation
+#[derive(Clone)]
 pub struct DefaultInferenceEngine;
 
 impl InferenceEngine for DefaultInferenceEngine {

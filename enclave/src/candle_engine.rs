@@ -11,9 +11,10 @@ use std::collections::HashMap;
 use std::io::Cursor;
 
 /// Inference engine powered by Candle for production use
+#[derive(Clone)]
 pub struct CandleInferenceEngine {
     device: Device,
-    models: RwLock<HashMap<String, Arc<LoadedModel>>>,
+    models: Arc<RwLock<HashMap<String, Arc<LoadedModel>>>>,
 }
 
 enum LoadedModel {
@@ -43,7 +44,7 @@ impl CandleInferenceEngine {
         };
         Ok(Self {
             device,
-            models: RwLock::new(HashMap::new()),
+            models: Arc::new(RwLock::new(HashMap::new())),
         })
     }
 

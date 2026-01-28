@@ -1,8 +1,10 @@
+#[cfg(not(feature = "production"))]
 use ephemeral_ml_enclave::{
     mock::{MockEnclaveServer, MockAttestationProvider, MockEphemeralAssembler},
     AttestationProvider, EphemeralAssembler, DefaultAttestationProvider, current_timestamp,
-    CandleInferenceEngine,
 };
+#[cfg(feature = "production")]
+use ephemeral_ml_enclave::{DefaultAttestationProvider, CandleInferenceEngine};
 
 #[cfg(feature = "production")]
 use ephemeral_ml_enclave::server::ProductionEnclaveServer;

@@ -55,6 +55,7 @@ fn io_error_to_enclave_error(err: std::io::Error) -> EnclaveError {
 }
 
 /// Mock attestation provider for local development
+#[derive(Clone)]
 pub struct MockAttestationProvider {
     pub valid_attestation: bool,
     pub hpke_keypair: MockKeyPair,
