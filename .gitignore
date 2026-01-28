@@ -150,3 +150,12 @@ coverage.xml
 # local-only
 GEMINI.md
 /test_assets/**/*.safetensors
+
+# Large reference docs (keep locally, don't commit)
+docs/aws-reference/
+
+# Test artifacts (generated)
+test_artifacts/
+
+# Investor materials (private)
+docs/investors/*.pdf
