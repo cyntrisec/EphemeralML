@@ -27,6 +27,9 @@ async-trait = "0.1"
 hpke = { workspace = true, features = ["std", "x25519"] }
 zeroize = { workspace = true }
 x25519-dalek = { workspace = true }
+coset = { workspace = true }
+x509-parser = { workspace = true }
+openssl = { workspace = true }
 rand = { workspace = true }
 
 [dev-dependencies]

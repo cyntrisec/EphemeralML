@@ -10,6 +10,7 @@ pub mod inference_handler;
 pub mod inference;
 pub mod candle_engine;
 pub mod audit;
+pub mod server;
 
 #[cfg(feature = "mock")]
 pub mod mock;

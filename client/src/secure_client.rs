@@ -72,18 +72,27 @@ impl SecureClient for SecureEnclaveClient {
     async fn establish_channel(&mut self, addr: &str) -> Result<()> {
         use x25519_dalek::{StaticSecret, PublicKey};
         use rand::rngs::OsRng;
+        use crate::attestation_verifier::AttestationVerifier;
 
         let mut stream = TcpStream::connect(addr).await
             .map_err(|e| ClientError::Client(EphemeralError::NetworkError(e.to_string())))?;
 
-        // 1. Generate client ephemeral keypair and send ClientHello
+        // 1. Initialize Verifier and generate challenge
+        let mut verifier = AttestationVerifier::new(self.policy_manager.clone());
+        let challenge_nonce = verifier.generate_challenge_nonce()?;
+
+        // 2. Generate client ephemeral keypair and send ClientHello
         let client_secret = StaticSecret::random_from_rng(OsRng);
         let client_public = PublicKey::from(&client_secret);
         let client_public_bytes = *client_public.as_bytes();
         self.client_private_key = Some(*client_secret.as_bytes());
 
-        let client_hello = ClientHello::new(self.client_id.clone(), vec!["gateway".to_string()], client_public_bytes)
+        // Note: ClientHello::new generates its own nonce internally for protocol freshness,
+        // but we'll use the one from the verifier to ensure consistency if needed.
+        // Actually, let's update ClientHello to use our challenge nonce.
+        let mut client_hello = ClientHello::new(self.client_id.clone(), vec!["gateway".to_string()], client_public_bytes)
             .map_err(|e| ClientError::Client(e))?;
+        client_hello.client_nonce = challenge_nonce.as_slice().try_into().unwrap();
         
         let hello_payload = serde_json::to_vec(&client_hello).unwrap();
         let hello_msg = VSockMessage::new(MessageType::Hello, 0, hello_payload)
@@ -92,7 +101,7 @@ impl SecureClient for SecureEnclaveClient {
         stream.write_all(&hello_msg.encode()).await
             .map_err(|e| ClientError::Client(EphemeralError::NetworkError(e.to_string())))?;
 
-        // 2. Receive ServerHello
+        // 3. Receive ServerHello
         let mut len_buf = [0u8; 4];
         stream.read_exact(&mut len_buf).await
             .map_err(|e| ClientError::Client(EphemeralError::NetworkError(e.to_string())))?;
@@ -116,43 +125,31 @@ impl SecureClient for SecureEnclaveClient {
             .map_err(|e| ClientError::Client(EphemeralError::SerializationError(e.to_string())))?;
         
         server_hello.validate().map_err(|e| ClientError::Client(e))?;
-        self.server_receipt_signing_key = Some(server_hello.receipt_signing_key.as_slice().try_into().unwrap());
+
+        // 4. Verify Attestation using the production verifier
+        // The signature field of ServerHello contains the raw attestation document (COSE/CBOR)
+        let attestation_doc = AttestationDocument {
+            module_id: "enclave".to_string(), // Placeholder, verifier extracts real one
+            digest: vec![], // Placeholder
+            timestamp: server_hello.timestamp,
+            pcrs: ephemeral_ml_common::PcrMeasurements::new(vec![], vec![], vec![]), // Placeholder
+            certificate: vec![], // Placeholder
+            signature: server_hello.attestation_document.clone(), // Raw bytes
+            nonce: Some(client_hello.client_nonce.to_vec()),
+        };
+
+        let identity = verifier.verify_attestation(&attestation_doc, &client_hello.client_nonce)?;
+        
+        self.server_receipt_signing_key = Some(identity.receipt_signing_key);
         self.server_attestation_doc = Some(server_hello.attestation_document.clone());
 
-        // 3. Verify Attestation
-        let attestation_doc: AttestationDocument = serde_json::from_slice(&server_hello.attestation_document)
-            .map_err(|e| ClientError::Client(EphemeralError::SerializationError(e.to_string())))?;
-        
-        // Mock verification
-        let pcr0 = hex::encode(&attestation_doc.pcrs.pcr0);
-        let pcr1 = hex::encode(&attestation_doc.pcrs.pcr1);
-        let pcr2 = hex::encode(&attestation_doc.pcrs.pcr2);
-        
-        // Load default policy for mock
-        let default_policy = PolicyManager::create_default_policy();
-        self.policy_manager.load_policy(&serde_json::to_vec(&default_policy).unwrap())
-            .map_err(|e| ClientError::Client(EphemeralError::AttestationError(e.to_string())))?;
-
-        if !self.policy_manager.is_measurement_allowed(&pcr0, &pcr1, &pcr2)
-            .map_err(|e| ClientError::Client(EphemeralError::AttestationError(e.to_string())))? {
-            return Err(ClientError::Client(EphemeralError::AttestationError("Enclave measurements not allowed by policy".to_string())));
-        }
-
-        // 4. Establish HPKE Session
-        use sha2::{Sha256, Digest};
-        let mut hasher = Sha256::new();
-        hasher.update(&attestation_doc.signature);
-        let attestation_hash = hasher.finalize().into();
-
-        let server_public_key_bytes: [u8; 32] = server_hello.ephemeral_public_key.as_slice().try_into()
-            .map_err(|_| ClientError::Client(EphemeralError::InvalidInput("Invalid pubkey length".to_string())))?;
-
+        // 5. Establish HPKE Session
         let mut hpke = HPKESession::new(
             "session-id".to_string(),
             1,
-            attestation_hash,
+            identity.attestation_hash,
             client_public_bytes,      // Local PK
-            server_public_key_bytes, // Peer PK
+            identity.hpke_public_key, // Peer PK
             client_hello.client_nonce,
             3600,
         ).map_err(|e| ClientError::Client(e))?;

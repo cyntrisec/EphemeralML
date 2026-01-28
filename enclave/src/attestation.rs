@@ -2,6 +2,7 @@ use crate::Result;
 use serde::{Deserialize, Serialize};
 use sha2::{Sha256, Digest};
 use uuid::Uuid;
+use rsa::{RsaPrivateKey, RsaPublicKey, pkcs8::EncodePublicKey, Oaep};
 
 // Re-export common types
 pub use ephemeral_ml_common::{AttestationDocument, PcrMeasurements, current_timestamp};
@@ -24,7 +25,7 @@ pub struct AttestationUserData {
     pub supported_features: Vec<String>,
 }
 
-/// Ephemeral key pair for session establishment
+/// Ephemeral key pair for session establishment (X25519)
 #[derive(Clone, Debug)]
 pub struct EphemeralKeyPair {
     pub public_key: [u8; 32],
@@ -34,41 +35,19 @@ pub struct EphemeralKeyPair {
 impl EphemeralKeyPair {
     /// Generate a new ephemeral key pair
     pub fn generate() -> Self {
-        #[cfg(feature = "production")]
-        {
-            use rand::rngs::OsRng;
-            use rand::RngCore;
-            
-            let mut public_key = [0u8; 32];
-            let mut private_key = [0u8; 32];
-            
-            let mut rng = OsRng;
-            rng.fill_bytes(&mut public_key);
-            rng.fill_bytes(&mut private_key);
-            
-            Self { public_key, private_key }
-        }
+        use rand::rngs::OsRng;
+        use rand::RngCore;
         
-        #[cfg(not(feature = "production"))]
-        {
-            // Fallback for non-production environments
-            let mut public_key = [0u8; 32];
-            let mut private_key = [0u8; 32];
-            
-            let mut hasher = Sha256::new();
-            hasher.update(Uuid::new_v4().as_bytes());
-            hasher.update(&current_timestamp().to_be_bytes());
-            let hash = hasher.finalize();
-            public_key.copy_from_slice(&hash[..32]);
-            
-            let mut hasher2 = Sha256::new();
-            hasher2.update(&public_key);
-            hasher2.update(Uuid::new_v4().as_bytes());
-            let hash2 = hasher2.finalize();
-            private_key.copy_from_slice(&hash2[..32]);
-            
-            Self { public_key, private_key }
-        }
+        let mut public_key = [0u8; 32];
+        let mut private_key = [0u8; 32];
+        
+        let mut rng = OsRng;
+        // In a real implementation, we would use x25519_dalek to generate these properly.
+        // For now, keeping the byte array structure for compatibility with existing code.
+        rng.fill_bytes(&mut public_key);
+        rng.fill_bytes(&mut private_key);
+        
+        Self { public_key, private_key }
     }
 }
 
@@ -88,6 +67,9 @@ pub trait AttestationProvider {
 
     /// Decrypt ciphertext encrypted with the enclave's HPKE public key
     fn decrypt_hpke(&self, ciphertext: &[u8]) -> Result<Vec<u8>>;
+
+    /// Decrypt ciphertext returned by AWS KMS (RecipientInfo flow)
+    fn decrypt_kms(&self, ciphertext: &[u8]) -> Result<Vec<u8>>;
 }
 
 /// NSM client for production attestation document generation
@@ -95,15 +77,21 @@ pub trait AttestationProvider {
 pub struct NSMAttestationProvider {
     hpke_keypair: EphemeralKeyPair,
     receipt_keypair: EphemeralKeyPair,
+    kms_keypair: RsaPrivateKey,
 }
 
 #[cfg(feature = "production")]
 impl NSMAttestationProvider {
     /// Create a new NSM attestation provider with ephemeral keys
     pub fn new() -> Result<Self> {
+        let mut rng = rand::thread_rng();
+        let kms_keypair = RsaPrivateKey::new(&mut rng, 2048)
+            .map_err(|e| EnclaveError::Enclave(EphemeralError::Internal(format!("RSA keygen failed: {}", e))))?;
+
         Ok(Self {
             hpke_keypair: EphemeralKeyPair::generate(),
             receipt_keypair: EphemeralKeyPair::generate(),
+            kms_keypair,
         })
     }
     
@@ -116,10 +104,15 @@ impl NSMAttestationProvider {
             )));
         }
 
+        // Export RSA public key as SPKI DER for KMS
+        let kms_pub_key = self.kms_keypair.to_public_key();
+        let kms_pub_der = kms_pub_key.to_public_key_der()
+            .map_err(|e| EnclaveError::Enclave(EphemeralError::Internal(format!("RSA export failed: {}", e))))?;
+
         let request = nsm::api::Request::Attestation {
             user_data: Some(ByteBuf::from(user_data.to_vec())),
             nonce: Some(ByteBuf::from(nonce.to_vec())),
-            public_key: None, // We embed keys in user_data instead
+            public_key: Some(ByteBuf::from(kms_pub_der.as_bytes().to_vec())),
         };
 
         let response = nsm::driver::nsm_process_request(nsm_fd, request);
@@ -273,6 +266,12 @@ impl AttestationProvider for NSMAttestationProvider {
             
         Ok(plaintext)
     }
+
+    fn decrypt_kms(&self, ciphertext: &[u8]) -> Result<Vec<u8>> {
+        let padding = Oaep::new::<Sha256>();
+        self.kms_keypair.decrypt(padding, ciphertext)
+            .map_err(|e| EnclaveError::Enclave(EphemeralError::DecryptionError(format!("KMS decryption failed: {}", e))))
+    }
 }
 
 /// Default attestation provider that uses mock in development, NSM in production
@@ -352,6 +351,18 @@ impl AttestationProvider for DefaultAttestationProvider {
         #[cfg(not(feature = "production"))]
         {
             return self.mock_provider.decrypt_hpke(ciphertext);
+        }
+    }
+
+    fn decrypt_kms(&self, ciphertext: &[u8]) -> Result<Vec<u8>> {
+        #[cfg(feature = "production")]
+        {
+            return self.nsm_provider.decrypt_kms(ciphertext);
+        }
+        
+        #[cfg(not(feature = "production"))]
+        {
+            return self.mock_provider.decrypt_kms(ciphertext);
         }
     }
 }

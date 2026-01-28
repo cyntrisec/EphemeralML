@@ -213,7 +213,7 @@ Each inference can return an **AER** containing:
 
 ### 📋 Detailed Progress
 
-See [Implementation Tasks](.kiro/specs/confidential-inference-gateway/tasks.md) for complete progress tracking with 21 phases and 80+ specific tasks.
+See [Implementation Tasks](docs/tasks.md) for complete progress tracking with 21 phases and 80+ specific tasks.
 
 ---
 
@@ -304,6 +304,6 @@ Apache License 2.0 — see `LICENSE` file for details.
 
 *Mock Mode Complete - Production Development In Progress*
 
-**[Try the Demo](#-current-implementation-status)** • **[View Progress](.kiro/specs/confidential-inference-gateway/tasks.md)** • **[Read Specification](.kiro/specs/)**
+**[Try the Demo](#-current-implementation-status)** • **[View Progress](docs/tasks.md)** • **[Read Specification](docs/design.md)**
 
 </div>

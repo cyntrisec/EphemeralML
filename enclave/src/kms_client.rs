@@ -47,8 +47,8 @@ impl<A: crate::attestation::AttestationProvider> KmsClient<A> {
         match response.response {
             KmsResponse::Decrypt { ciphertext_for_recipient, plaintext, .. } => {
                 if let Some(enc_key) = ciphertext_for_recipient {
-                    // Decrypt using our private key
-                    self.attestation_provider.decrypt_hpke(&enc_key)
+                    // Decrypt using our RSA private key (RecipientInfo flow)
+                    self.attestation_provider.decrypt_kms(&enc_key)
                 } else if plaintext.is_some() {
                     // Fail-closed: if we asked for Recipient-bound decrypt, plaintext must never be returned.
                     Err(EnclaveError::Enclave(EphemeralError::KmsError(

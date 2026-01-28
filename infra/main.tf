@@ -63,7 +63,19 @@ resource "aws_kms_key" "model_key" {
         }
         Action   = "kms:Decrypt"
         Resource = "*"
-        # PRO TIP: Add Condition kms:RecipientAttestation:ImageSha384 here after building EIF
+        
+        # PRO TIP: Use RecipientAttestation condition to pin the enclave identity.
+        # Once you have your EIF measurements, uncomment and update these:
+        # condition {
+        #   test     = "StringEquals"
+        #   variable = "kms:RecipientAttestation:ImageSha384"
+        #   values   = ["<YOUR_EIF_IMAGE_SHA384>"]
+        # }
+        # condition {
+        #   test     = "StringEquals"
+        #   variable = "kms:RecipientAttestation:PCR0"
+        #   values   = ["<YOUR_EIF_PCR0>"]
+        # }
       }
     ]
   })
