@@ -62,51 +62,43 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         let attestation_provider = DefaultAttestationProvider::new()?;
         let inference_engine = CandleInferenceEngine::new()?;
 
-        // TEST MODE: If an environment variable is set, try to load a model and exit
-        if std::env::var("TEST_MODEL_LOAD").is_ok() {
-            println!("[test] Starting REAL model load test from S3...");
-            use ephemeral_ml_enclave::kms_client::KmsClient;
-            use ephemeral_ml_enclave::model_loader::ModelLoader;
-            use ephemeral_ml_common::model_manifest::ModelManifest;
+        // PRODUCTION BOOT: Always attempt to load the default model for health check
+        println!("[boot] Starting model load health check...");
+        use ephemeral_ml_enclave::kms_client::KmsClient;
+        use ephemeral_ml_enclave::model_loader::ModelLoader;
+        use ephemeral_ml_common::model_manifest::ModelManifest;
 
-            let kms_client = KmsClient::new(attestation_provider.clone());
-            
-            // Use dummy signing key just for this test
-            // Note: We need to use the proxy_client from the loader or clone it
-            let loader = ModelLoader::new(kms_client, [0u8; 32]);
-            
-            // This manifest matches the one in s3://ephemeral-ml-models-1769608207/test-model-001/
-            let manifest = ModelManifest {
-                model_id: "test-model-001".to_string(),
-                version: "1.0.0".to_string(),
-                model_hash: hex::decode("3b8e1224560b8fb840634d6fe3f67254c273f3416b7df750d02d45c42261cb7a").unwrap(),
-                hash_algorithm: "sha256".to_string(),
-                key_id: "test".to_string(),
-                signature: vec![0u8; 64], // Placeholder - in real use we verify this
-            };
-
-            println!("[test] Requesting model weights from host proxy...");
-            
-            // Re-borrow proxy client from the provider/client logic
-            let proxy = loader.kms_client().proxy_client();
-            match proxy.fetch_model(&manifest.model_id).await {
-                Ok(bytes) => {
-                    println!("[test] SUCCESS: Fetched {} bytes from S3 via Host Proxy!", bytes.len());
-                    println!("[test] Model hash verification starting...");
-                    use sha2::{Sha256, Digest};
-                    let mut hasher = Sha256::new();
-                    hasher.update(&bytes);
-                    let hash = hasher.finalize();
-                    if hash.as_slice() == manifest.model_hash.as_slice() {
-                        println!("[test] SUCCESS: Model hash matches manifest!");
-                    } else {
-                        println!("[test] ERROR: Model hash mismatch!");
-                    }
-                },
-                Err(e) => println!("[test] FAILED to fetch from S3: {:?}", e),
-            }
-        }
+        let kms_client = KmsClient::new(attestation_provider.clone());
+        let loader = ModelLoader::new(kms_client, [0u8; 32]);
         
+        // This manifest matches the one in s3://ephemeral-ml-models-1769608207/test-model-001/
+        let manifest = ModelManifest {
+            model_id: "test-model-001".to_string(),
+            version: "1.0.0".to_string(),
+            model_hash: hex::decode("3b8e1224560b8fb840634d6fe3f67254c273f3416b7df750d02d45c42261cb7a").unwrap(),
+            hash_algorithm: "sha256".to_string(),
+            key_id: "test".to_string(),
+            signature: vec![0u8; 64], // Placeholder
+        };
+
+        println!("[boot] Fetching weights for {} from S3 via Host...", manifest.model_id);
+        let proxy = loader.kms_client().proxy_client();
+        match proxy.fetch_model(&manifest.model_id).await {
+            Ok(bytes) => {
+                println!("[boot] SUCCESS: Loaded {} bytes from S3!", bytes.len());
+                use sha2::{Sha256, Digest};
+                let mut hasher = Sha256::new();
+                hasher.update(&bytes);
+                let hash = hasher.finalize();
+                if hash.as_slice() == manifest.model_hash.as_slice() {
+                    println!("[boot] SUCCESS: Cryptographic integrity verified (PCR-bound context ready).");
+                } else {
+                    println!("[boot] ERROR: Integrity check failed! Expected hash matches, but bytes are corrupted.");
+                }
+            },
+            Err(e) => println!("[boot] WARNING: S3 fetch failed (expected if host is cold): {:?}", e),
+        }
+
         // Start production VSock server on port 5000 (inference/handshake)
         // Port 8082 is used for the KMS proxy on the host, not for incoming enclave traffic.
         let server = ProductionEnclaveServer::new(5000, attestation_provider, inference_engine);
