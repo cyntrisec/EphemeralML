@@ -114,7 +114,7 @@ async fn serve_one<S: AsyncRead + AsyncWrite + Unpin>(
         let mut full_msg = len_buf.to_vec();
         full_msg.extend_from_slice(&body);
 
-        let msg = VSockMessage::decode(&full_buf)?;
+        let msg = VSockMessage::decode(&full_msg)?;
         match msg.msg_type {
             MessageType::KmsProxy => {
                 let req_env: KmsProxyRequestEnvelope = serde_json::from_slice(&msg.payload)?;
