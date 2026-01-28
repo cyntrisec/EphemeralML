@@ -25,6 +25,7 @@ impl Default for KmsProxyClientTimeouts {
     }
 }
 
+#[derive(Debug, Clone)]
 pub struct KmsProxyClient {
     #[cfg(feature = "mock")]
     host_addr: String,
@@ -85,103 +86,8 @@ impl KmsProxyClient {
         let payload = serde_json::to_vec(&env)
             .map_err(|e| EnclaveError::Enclave(EphemeralError::SerializationError(e.to_string())))?;
 
-        let msg = VSockMessage::new(MessageType::KmsProxy, 0, payload)?; // Seq 0 for simple request/response
-        let encoded = msg.encode();
-
-        let started = Instant::now();
-        let remaining = |overall: Duration| -> Duration {
-            overall
-                .checked_sub(started.elapsed())
-                .unwrap_or_else(|| Duration::from_secs(0))
-        };
-
-        // Connect
-        #[cfg(feature = "mock")]
-        let mut stream = tokio::time::timeout(
-            self.timeouts.connect.min(remaining(self.timeouts.overall)),
-            tokio::net::TcpStream::connect(&self.host_addr),
-        )
-        .await
-        .map_err(|_| EnclaveError::Enclave(EphemeralError::Timeout("KMS proxy connect timeout".to_string())))?
-        .map_err(|e| {
-            EnclaveError::Enclave(EphemeralError::NetworkError(format!(
-                "Failed to connect to host proxy (TCP): {}",
-                e
-            )))
-        })?;
-        
-        #[cfg(feature = "production")]
-        let mut stream = tokio::time::timeout(
-            self.timeouts.connect.min(remaining(self.timeouts.overall)),
-            tokio_vsock::VsockStream::connect(self.cid, self.port),
-        )
-        .await
-        .map_err(|_| EnclaveError::Enclave(EphemeralError::Timeout("KMS proxy connect timeout".to_string())))?
-        .map_err(|e| {
-            EnclaveError::Enclave(EphemeralError::NetworkError(format!(
-                "Failed to connect to host proxy (VSock): {}",
-                e
-            )))
-        })?;
-
-        tokio::time::timeout(
-            self.timeouts.io.min(remaining(self.timeouts.overall)),
-            stream.write_all(&encoded),
-        )
-        .await
-        .map_err(|_| EnclaveError::Enclave(EphemeralError::Timeout("KMS proxy write timeout".to_string())))?
-        .map_err(|e| {
-            EnclaveError::Enclave(EphemeralError::NetworkError(format!(
-                "Failed to write to stream: {}",
-                e
-            )))
-        })?;
-
-        // Read response
-        // We need to read length prefix first (4 bytes)
-        let mut len_buf = [0u8; 4];
-        tokio::time::timeout(
-            self.timeouts.io.min(remaining(self.timeouts.overall)),
-            stream.read_exact(&mut len_buf),
-        )
-        .await
-        .map_err(|_| EnclaveError::Enclave(EphemeralError::Timeout("KMS proxy read timeout".to_string())))?
-        .map_err(|e| {
-            EnclaveError::Enclave(EphemeralError::NetworkError(format!(
-                "Failed to read length prefix: {}",
-                e
-            )))
-        })?;
-        
-        let total_len = u32::from_be_bytes(len_buf) as usize;
-        
-        // Safety check for size
-        if total_len > ephemeral_ml_common::vsock::MAX_MESSAGE_SIZE + 100 {
-             return Err(EnclaveError::Enclave(EphemeralError::Validation(
-                ephemeral_ml_common::ValidationError::SizeLimitExceeded("Response too large".to_string())
-            )));
-        }
-
-        let mut body = vec![0u8; total_len];
-        tokio::time::timeout(
-            self.timeouts.io.min(remaining(self.timeouts.overall)),
-            stream.read_exact(&mut body),
-        )
-        .await
-        .map_err(|_| EnclaveError::Enclave(EphemeralError::Timeout("KMS proxy read timeout".to_string())))?
-        .map_err(|e| {
-            EnclaveError::Enclave(EphemeralError::NetworkError(format!(
-                "Failed to read body: {}",
-                e
-            )))
-        })?;
-             
-        // Reconstruct full buffer for decode (length prefix + body)
-        let mut full_buf = Vec::with_capacity(4 + total_len);
-        full_buf.extend_from_slice(&len_buf);
-        full_buf.extend_from_slice(&body);
-        
-        let response_msg = VSockMessage::decode(&full_buf)?;
+        let msg = VSockMessage::new(MessageType::KmsProxy, 0, payload)?; 
+        let response_msg = self.send_raw(msg).await?;
         
         if response_msg.msg_type != MessageType::KmsProxy {
              // If we got Error type, maybe it's a protocol error
@@ -204,6 +110,101 @@ impl KmsProxyClient {
         }
 
         Ok(response)
+    }
+
+    /// Low-level VSock message sender
+    pub async fn send_raw(&self, msg: VSockMessage) -> Result<VSockMessage> {
+        let encoded = msg.encode();
+        let started = Instant::now();
+        let remaining = |overall: Duration| -> Duration {
+            overall
+                .checked_sub(started.elapsed())
+                .unwrap_or_else(|| Duration::from_secs(0))
+        };
+
+        // Connect
+        #[cfg(feature = "mock")]
+        let mut stream = tokio::time::timeout(
+            self.timeouts.connect.min(remaining(self.timeouts.overall)),
+            tokio::net::TcpStream::connect(&self.host_addr),
+        )
+        .await
+        .map_err(|_| EnclaveError::Enclave(EphemeralError::Timeout("Proxy connect timeout".to_string())))?
+        .map_err(|e| {
+            EnclaveError::Enclave(EphemeralError::NetworkError(format!(
+                "Failed to connect to host proxy (TCP): {}",
+                e
+            )))
+        })?;
+        
+        #[cfg(feature = "production")]
+        let mut stream = tokio::time::timeout(
+            self.timeouts.connect.min(remaining(self.timeouts.overall)),
+            tokio_vsock::VsockStream::connect(self.cid, self.port),
+        )
+        .await
+        .map_err(|_| EnclaveError::Enclave(EphemeralError::Timeout("Proxy connect timeout".to_string())))?
+        .map_err(|e| {
+            EnclaveError::Enclave(EphemeralError::NetworkError(format!(
+                "Failed to connect to host proxy (VSock): {}",
+                e
+            )))
+        })?;
+
+        tokio::time::timeout(
+            self.timeouts.io.min(remaining(self.timeouts.overall)),
+            stream.write_all(&encoded),
+        )
+        .await
+        .map_err(|_| EnclaveError::Enclave(EphemeralError::Timeout("Proxy write timeout".to_string())))?
+        .map_err(|e| {
+            EnclaveError::Enclave(EphemeralError::NetworkError(format!(
+                "Failed to write to stream: {}",
+                e
+            )))
+        })?;
+
+        // Read response
+        let mut len_buf = [0u8; 4];
+        tokio::time::timeout(
+            self.timeouts.io.min(remaining(self.timeouts.overall)),
+            stream.read_exact(&mut len_buf),
+        )
+        .await
+        .map_err(|_| EnclaveError::Enclave(EphemeralError::Timeout("Proxy read timeout".to_string())))?
+        .map_err(|e| {
+            EnclaveError::Enclave(EphemeralError::NetworkError(format!(
+                "Failed to read length prefix: {}",
+                e
+            )))
+        })?;
+        
+        let total_len = u32::from_be_bytes(len_buf) as usize;
+        if total_len > ephemeral_ml_common::vsock::MAX_MESSAGE_SIZE + 100 {
+             return Err(EnclaveError::Enclave(EphemeralError::Validation(
+                ephemeral_ml_common::ValidationError::SizeLimitExceeded("Response too large".to_string())
+            )));
+        }
+
+        let mut body = vec![0u8; total_len];
+        tokio::time::timeout(
+            self.timeouts.io.min(remaining(self.timeouts.overall)),
+            stream.read_exact(&mut body),
+        )
+        .await
+        .map_err(|_| EnclaveError::Enclave(EphemeralError::Timeout("Proxy read timeout".to_string())))?
+        .map_err(|e| {
+            EnclaveError::Enclave(EphemeralError::NetworkError(format!(
+                "Failed to read body: {}",
+                e
+            )))
+        })?;
+             
+        let mut full_buf = Vec::with_capacity(4 + total_len);
+        full_buf.extend_from_slice(&len_buf);
+        full_buf.extend_from_slice(&body);
+        
+        Ok(VSockMessage::decode(&full_buf)?)
     }
 
     pub async fn fetch_model(&self, model_id: &str) -> Result<Vec<u8>> {

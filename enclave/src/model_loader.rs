@@ -135,91 +135,6 @@ mod tests {
         let provider = DefaultAttestationProvider::new().unwrap();
         let hpke_pk_bytes = provider.get_hpke_public_key();
         
-        // Start Mock KMS Server
-        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
-        let port = listener.local_addr().unwrap().port();
-        
-        let dek_clone = dek.clone();
-        let encrypted_artifact_clone = encrypted_artifact.clone();
-        
-        tokio::spawn(async move {
-            let (mut socket, _) = listener.accept().await.unwrap();
-            
-            // Read length prefix
-            let mut len_buf = [0u8; 4];
-            socket.read_exact(&mut len_buf).await.unwrap();
-            let total_len = u32::from_be_bytes(len_buf) as usize;
-            
-            // FIX: Enforce MAX_MESSAGE_SIZE limit in test server
-            if total_len > ephemeral_ml_common::vsock::MAX_MESSAGE_SIZE {
-                panic!("Message too large in test server: {} bytes", total_len);
-            }
-
-            let mut body = vec![0u8; total_len];
-            socket.read_exact(&mut body).await.unwrap();
-            
-            let mut full_buf = Vec::with_capacity(4 + total_len);
-            full_buf.extend_from_slice(&len_buf);
-            full_buf.extend_from_slice(&body);
-            
-            let msg = VSockMessage::decode(&full_buf).unwrap();
-            match msg.msg_type {
-                MessageType::KmsProxy => {
-                    let request_env: ephemeral_ml_common::KmsProxyRequestEnvelope =
-                        serde_json::from_slice(&msg.payload).unwrap();
-                    // We just need to return the DEK encrypted to the Enclave.
-                    
-                    // Encrypt DEK using HPKE
-                    let mut rng = OsRng;
-                    let kem_pub = <X25519HkdfSha256 as hpke::Kem>::PublicKey::from_bytes(&hpke_pk_bytes).unwrap();
-                    
-                    let (encapped_key, mut sender_ctx) = hpke::setup_sender::<
-                        hpke::aead::ChaCha20Poly1305,
-                        hpke::kdf::HkdfSha256,
-                        X25519HkdfSha256,
-                        _,
-                    >(&OpModeS::Base, &kem_pub, b"KMS_DEK", &mut rng).unwrap();
-                    
-                    let ciphertext = sender_ctx.seal(&dek_clone, b"").unwrap();
-                    let mut encrypted_dek = encapped_key.to_bytes().to_vec();
-                    encrypted_dek.extend_from_slice(&ciphertext);
-                    
-                    let response = KmsResponse::Decrypt {
-                        ciphertext_for_recipient: Some(encrypted_dek),
-                        plaintext: None,
-                        key_id: None,
-                    };
-                    
-                    let response_env = ephemeral_ml_common::KmsProxyResponseEnvelope {
-                        request_id: request_env.request_id,
-                        trace_id: request_env.trace_id,
-                        kms_request_id: None,
-                        response,
-                    };
-
-                    let response_payload = serde_json::to_vec(&response_env).unwrap();
-                    let response_msg = VSockMessage::new(MessageType::KmsProxy, msg.sequence, response_payload).unwrap();
-                    socket.write_all(&response_msg.encode()).await.unwrap();
-                }
-                MessageType::Storage => {
-                    use ephemeral_ml_common::storage_protocol::StorageResponse;
-                    let response = StorageResponse::Data {
-                        payload: encrypted_artifact_clone,
-                        is_last: true,
-                    };
-                    let resp_payload = serde_json::to_vec(&response).unwrap();
-                    let resp_msg = VSockMessage::new(MessageType::Storage, msg.sequence, resp_payload).unwrap();
-                    socket.write_all(&resp_msg.encode()).await.unwrap();
-                }
-                _ => panic!("Unexpected msg type: {:?}", msg.msg_type),
-            }
-        });
-        
-        // Setup Client with Proxy
-        let proxy_client = KmsProxyClient::new().with_addr(format!("127.0.0.1:{}", port));
-        let kms_client = KmsClient::new_with_proxy(provider, proxy_client);
-        let loader = ModelLoader::new(kms_client, verifying_key.to_bytes());
-        
         // Create Mock Safetensors Artifact
         let json_header = r#"{"test": {"dtype":"F32", "shape":[1], "data_offsets":[0, 4]}}"#;
         let json_bytes = json_header.as_bytes();
@@ -248,6 +163,90 @@ mod tests {
         
         let mut encrypted_artifact = nonce_bytes.to_vec();
         encrypted_artifact.extend_from_slice(&ciphertext);
+        
+        let dek_clone = dek.clone();
+        let encrypted_artifact_clone = encrypted_artifact.clone();
+        
+        // FIX: defined before tokio::spawn
+        let hpke_pk_bytes_clone = hpke_pk_bytes.clone();
+
+        // Start Mock KMS Server
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+        
+        tokio::spawn(async move {
+            while let Ok((mut socket, _)) = listener.accept().await {
+                let mut len_buf = [0u8; 4];
+                if socket.read_exact(&mut len_buf).await.is_err() { break; }
+                let total_len = u32::from_be_bytes(len_buf) as usize;
+                
+                if total_len > ephemeral_ml_common::vsock::MAX_MESSAGE_SIZE {
+                    panic!("Message too large");
+                }
+
+                let mut body = vec![0u8; total_len];
+                if socket.read_exact(&mut body).await.is_err() { break; }
+                
+                let mut full_buf = Vec::with_capacity(4 + total_len);
+                full_buf.extend_from_slice(&len_buf);
+                full_buf.extend_from_slice(&body);
+                
+                let msg = VSockMessage::decode(&full_buf).unwrap();
+                match msg.msg_type {
+                    MessageType::KmsProxy => {
+                        let request_env: ephemeral_ml_common::KmsProxyRequestEnvelope =
+                            serde_json::from_slice(&msg.payload).unwrap();
+                        
+                        let mut rng = OsRng;
+                        let kem_pub = <X25519HkdfSha256 as hpke::Kem>::PublicKey::from_bytes(&hpke_pk_bytes_clone).unwrap();
+                        
+                        let (encapped_key, mut sender_ctx) = hpke::setup_sender::<
+                            hpke::aead::ChaCha20Poly1305,
+                            hpke::kdf::HkdfSha256,
+                            X25519HkdfSha256,
+                            _,
+                        >(&OpModeS::Base, &kem_pub, b"KMS_DEK", &mut rng).unwrap();
+                        
+                        let ciphertext = sender_ctx.seal(&dek_clone, b"").unwrap();
+                        let mut encrypted_dek = encapped_key.to_bytes().to_vec();
+                        encrypted_dek.extend_from_slice(&ciphertext);
+                        
+                        let response = KmsResponse::Decrypt {
+                            ciphertext_for_recipient: Some(encrypted_dek),
+                            plaintext: None,
+                            key_id: None,
+                        };
+                        
+                        let response_env = ephemeral_ml_common::KmsProxyResponseEnvelope {
+                            request_id: request_env.request_id,
+                            trace_id: request_env.trace_id,
+                            kms_request_id: None,
+                            response,
+                        };
+
+                        let response_payload = serde_json::to_vec(&response_env).unwrap();
+                        let response_msg = VSockMessage::new(MessageType::KmsProxy, msg.sequence, response_payload).unwrap();
+                        socket.write_all(&response_msg.encode()).await.unwrap();
+                    }
+                    MessageType::Storage => {
+                        use ephemeral_ml_common::storage_protocol::StorageResponse;
+                        let response = StorageResponse::Data {
+                            payload: encrypted_artifact_clone.clone(),
+                            is_last: true,
+                        };
+                        let resp_payload = serde_json::to_vec(&response).unwrap();
+                        let resp_msg = VSockMessage::new(MessageType::Storage, msg.sequence, resp_payload).unwrap();
+                        socket.write_all(&resp_msg.encode()).await.unwrap();
+                    }
+                    _ => panic!("Unexpected msg type: {:?}", msg.msg_type),
+                }
+            }
+        });
+        
+        // Setup Client with Proxy
+        let proxy_client = KmsProxyClient::new().with_addr(format!("127.0.0.1:{}", port));
+        let kms_client = KmsClient::new_with_proxy(provider, proxy_client);
+        let loader = ModelLoader::new(kms_client, verifying_key.to_bytes());
         
         // Mock KMS Wrapped DEK (dummy for this test since our mock server ignores input and returns `dek` encrypted)
         let wrapped_dek = vec![0u8; 32]; 

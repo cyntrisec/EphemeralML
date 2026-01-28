@@ -1,165 +1,262 @@
-use anyhow::Result;
+use anyhow::{Context, Result};
+use aws_config::BehaviorVersion;
 use ephemeral_ml_common::{
-    KmsProxyErrorCode, KmsProxyRequestEnvelope, KmsProxyResponseEnvelope, KmsResponse, MessageType, VSockMessage,
+    KmsProxyErrorCode, KmsProxyRequestEnvelope, KmsProxyResponseEnvelope, KmsResponse, MessageType,
+    VSockMessage,
     storage_protocol::{StorageRequest, StorageResponse},
+    audit::{AuditLogRequest, AuditLogResponse},
 };
-use ephemeral_ml_host::kms_proxy_server::KmsProxyServer;
-use ephemeral_ml_host::storage::{WeightStorage, InMemoryWeightStorage};
-use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
-use tokio::time::{Duration, Instant};
-use tracing::{info, warn, instrument};
-use std::sync::Arc;
+use ephemeral_ml_host::aws_proxy::AWSApiProxy;
+use ephemeral_ml_host::storage::{WeightStorage};
+#[cfg(feature = "production")]
+use ephemeral_ml_host::storage::S3WeightStorage;
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use tracing::{error, info, warn};
+use tracing_subscriber::{fmt, EnvFilter};
 
 #[cfg(feature = "production")]
 use tokio_vsock::VsockListener;
-#[cfg(feature = "production")]
-use ephemeral_ml_host::storage::S3WeightStorage;
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    ephemeral_ml_host::otel::init();
+    // Initialize logging
+    fmt()
+        .with_env_filter(EnvFilter::from_default_env().add_directive(tracing::Level::INFO.into()))
+        .init();
 
-    info!(event = "startup", "kms-proxy-host starting");
+    // Hardcoded args
+    let cid = 3;
+    let vsock_port = 8082;
+    let tcp_port = 8082;
 
-    let mut kms_server = KmsProxyServer::new();
-    let storage: Arc<dyn WeightStorage>;
-
-    let timeouts = ProxyTimeouts::default();
-
+    let config = aws_config::load_defaults(BehaviorVersion::latest()).await;
+    let proxy = AWSApiProxy::new(&config);
+    let s3_client = aws_sdk_s3::Client::new(&config);
     #[cfg(feature = "production")]
-    {
-        let config = aws_config::load_from_env().await;
-        let kms_client = aws_sdk_kms::Client::new(&config);
-        kms_server = kms_server.with_kms_client(kms_client);
-        
-        let s3_client = aws_sdk_s3::Client::new(&config);
-        // In production, bucket name should come from env or config
-        let bucket = std::env::var("MODEL_BUCKET").unwrap_or_else(|_| "ephemeral-ml-models".to_string());
-        storage = Arc::new(S3WeightStorage::new(s3_client, bucket));
-        
-        info!(event = "init", mode = "production", "initialized with real AWS clients");
-    }
-
+    let storage = S3WeightStorage::new(s3_client, "ephemeral-ml-models-demo".to_string());
     #[cfg(not(feature = "production"))]
-    {
-        storage = Arc::new(InMemoryWeightStorage::new());
-        info!(event = "mode", mode = "mock", "running in MOCK mode (no AWS calls)");
-    }
+    let storage = ephemeral_ml_host::storage::InMemoryWeightStorage::new();
+
+    info!(message = "kms-proxy-host starting", event = "startup");
 
     #[cfg(feature = "production")]
     {
-        let mut listener = VsockListener::bind(libc::VMADDR_CID_ANY, 8082)?;
-        info!(event = "listen", transport = "vsock", port = 8082, "listening");
+        info!(message = "initialized with real AWS clients", event = "init", mode = "production");
+        let mut listener = VsockListener::bind(cid, vsock_port).context("Failed to bind VSock listener")?;
+        info!(message = "listening", event = "listen", transport = "vsock", port = vsock_port);
 
         loop {
-            let (mut stream, addr) = listener.accept().await?;
-            info!(event = "accept", transport = "vsock", cid = addr.cid(), "accepted connection");
-            let kms_server_clone = kms_server.clone();
-            let storage_clone = Arc::clone(&storage);
-            tokio::spawn(async move {
-                let mut kms = kms_server_clone;
-                if let Err(e) = serve_one(&mut stream, &mut kms, storage_clone, timeouts).await {
-                    warn!(event = "conn_error", transport = "vsock", error = %e, "connection error");
+            match listener.accept().await {
+                Ok((stream, addr)) => {
+                    info!(message = "accepted connection", event = "accept", transport = "vsock", cid = addr.cid());
+                    let proxy = proxy.clone();
+                    let storage = storage.clone();
+                    tokio::spawn(async move {
+                        if let Err(e) = handle_connection(stream, proxy, storage).await {
+                            warn!(message = "connection error", event = "conn_error", transport = "vsock", error = %e);
+                        }
+                    });
                 }
-            });
+                Err(e) => {
+                    error!(message = "accept error", event = "accept_error", transport = "vsock", error = %e);
+                }
+            }
         }
     }
 
     #[cfg(not(feature = "production"))]
     {
-        let listener = tokio::net::TcpListener::bind("127.0.0.1:8082").await?;
-        info!(event = "listen", transport = "tcp", addr = "127.0.0.1:8082", "listening (mock)");
+        use tokio::net::TcpListener;
+        info!(message = "initialized with mock AWS clients", event = "init", mode = "mock");
+        let listener = TcpListener::bind(format!("0.0.0.0:{}", tcp_port)).await.context("Failed to bind TCP listener")?;
+        info!(message = "listening", event = "listen", transport = "tcp", port = tcp_port);
 
         loop {
-            let (mut stream, addr) = listener.accept().await?;
-            info!(event = "accept", transport = "tcp", peer = %addr, "accepted connection");
-            let kms_server_clone = kms_server.clone();
-            let storage_clone = Arc::clone(&storage);
-            tokio::spawn(async move {
-                let mut kms = kms_server_clone;
-                if let Err(e) = serve_one(&mut stream, &mut kms, storage_clone, timeouts).await {
-                    warn!(event = "conn_error", transport = "tcp", error = %e, "connection error");
+            match listener.accept().await {
+                Ok((stream, _addr)) => {
+                    info!(message = "accepted connection", event = "accept", transport = "tcp");
+                    let proxy = proxy.clone();
+                    let storage = storage.clone();
+                    tokio::spawn(async move {
+                        if let Err(e) = handle_connection(stream, proxy, storage).await {
+                            warn!(message = "connection error", event = "conn_error", transport = "tcp", error = %e);
+                        }
+                    });
                 }
-            });
-        }
-    }
-}
-
-async fn serve_one<S: AsyncRead + AsyncWrite + Unpin>(
-    stream: &mut S,
-    kms_server: &mut KmsProxyServer,
-    storage: Arc<dyn WeightStorage>,
-    timeouts: ProxyTimeouts,
-) -> Result<()> {
-    loop {
-        let started = Instant::now();
-        let remaining = |overall: Duration| -> Duration {
-            overall
-                .checked_sub(started.elapsed())
-                .unwrap_or_else(|| Duration::from_secs(0))
-        };
-
-        let mut len_buf = [0u8; 4];
-        let read_res = tokio::time::timeout(timeouts.io, stream.read_exact(&mut len_buf)).await;
-        if read_res.is_err() || read_res.unwrap().is_err() {
-            break; // Connection closed or timeout
-        }
-
-        let len = u32::from_be_bytes(len_buf) as usize;
-        let mut body = vec![0u8; len];
-        tokio::time::timeout(timeouts.io, stream.read_exact(&mut body))
-            .await
-            .map_err(|_| anyhow::anyhow!("timeout reading request body"))??;
-
-        let mut full_msg = len_buf.to_vec();
-        full_msg.extend_from_slice(&body);
-
-        let msg = VSockMessage::decode(&full_msg)?;
-        match msg.msg_type {
-            MessageType::KmsProxy => {
-                let req_env: KmsProxyRequestEnvelope = serde_json::from_slice(&msg.payload)?;
-                let resp_env = kms_server.handle_envelope(req_env).await;
-                let resp_payload = serde_json::to_vec(&resp_env)?;
-                let resp_msg = VSockMessage::new(MessageType::KmsProxy, msg.sequence, resp_payload)?;
-                stream.write_all(&resp_msg.encode()).await?;
-            }
-            MessageType::Storage => {
-                let req: StorageRequest = serde_json::from_slice(&msg.payload)?;
-                info!(event = "storage_request", model_id = %req.model_id, "fetching model data");
-                
-                let resp = match storage.retrieve(&req.model_id).await {
-                    Ok(data) => StorageResponse::Data {
-                        payload: data,
-                        is_last: true, // For v1 we send the whole model at once
-                    },
-                    Err(e) => StorageResponse::Error { message: e.to_string() },
-                };
-                
-                let resp_payload = serde_json::to_vec(&resp)?;
-                let resp_msg = VSockMessage::new(MessageType::Storage, msg.sequence, resp_payload)?;
-                stream.write_all(&resp_msg.encode()).await?;
-            }
-            _ => {
-                warn!(event = "unknown_msg_type", msg_type = ?msg.msg_type, "ignoring message");
+                Err(e) => {
+                    error!(message = "accept error", event = "accept_error", transport = "tcp", error = %e);
+                }
             }
         }
     }
     Ok(())
 }
 
-#[derive(Clone, Copy, Debug)]
-struct ProxyTimeouts {
-    io: Duration,
-    handle: Duration,
-    overall: Duration,
-}
+trait AsyncStream: AsyncReadExt + AsyncWriteExt + Unpin + Send {}
+impl<T: AsyncReadExt + AsyncWriteExt + Unpin + Send> AsyncStream for T {}
 
-impl Default for ProxyTimeouts {
-    fn default() -> Self {
-        Self {
-            io: Duration::from_secs(30),
-            handle: Duration::from_secs(60),
-            overall: Duration::from_secs(120),
+async fn handle_connection<S: AsyncStream + 'static>(
+    mut stream: S,
+    proxy: AWSApiProxy,
+    storage: impl WeightStorage + Clone + Send + Sync + 'static,
+) -> Result<()> {
+    loop {
+        let mut len_buf = [0u8; 4];
+        if let Err(_) = stream.read_exact(&mut len_buf).await {
+            break; // Connection closed
+        }
+        let total_len = u32::from_be_bytes(len_buf) as usize;
+        
+        info!(
+            event = "frame_header",
+            len_prefix = ?len_buf,
+            total_len = total_len,
+            "received frame header"
+        );
+
+        if total_len > ephemeral_ml_common::vsock::MAX_MESSAGE_SIZE + 100 {
+            return Err(anyhow::anyhow!("Message too large"));
+        }
+
+        let mut body = vec![0u8; total_len];
+        stream.read_exact(&mut body).await?;
+        
+        // Debug: log first 64 bytes of body
+        let preview_len = body.len().min(64);
+        info!(
+            event = "frame_body",
+            body_len = body.len(),
+            body_preview = ?&body[..preview_len],
+            body_str = ?String::from_utf8_lossy(&body[..preview_len]),
+            "received frame body"
+        );
+
+        let mut full_buf = Vec::with_capacity(4 + total_len);
+        full_buf.extend_from_slice(&len_buf);
+        full_buf.extend_from_slice(&body);
+
+        let msg = VSockMessage::decode(&full_buf)?;
+        
+        info!(
+            event = "frame_decoded",
+            msg_type = ?msg.msg_type,
+            sequence = msg.sequence,
+            payload_len = msg.payload.len(),
+            "decoded VSockMessage"
+        );
+
+        match msg.msg_type {
+            MessageType::KmsProxy => {
+                info!(event = "kms_request_raw", payload_len = msg.payload.len());
+                let req_env: KmsProxyRequestEnvelope = serde_json::from_slice(&msg.payload).map_err(|e| {
+                    error!(event = "kms_parse_error", error = %e, payload = ?String::from_utf8_lossy(&msg.payload));
+                    e
+                })?;
+                
+                info!(
+                    event = "kms_request",
+                    request_id = %req_env.request_id,
+                    trace_id = ?req_env.trace_id,
+                    "processing KMS request"
+                );
+
+                let kms_response = match req_env.request {
+                    ephemeral_ml_common::KmsRequest::Decrypt { ciphertext_blob, key_id, encryption_context, grant_tokens, recipient } => {
+                        proxy.decrypt(ciphertext_blob, key_id, encryption_context, grant_tokens, recipient).await
+                    }
+                    ephemeral_ml_common::KmsRequest::GenerateDataKey { key_id, key_spec } => {
+                        proxy.generate_data_key(key_id, key_spec, None, None, None).await
+                    }
+                };
+
+                let response_env = match kms_response {
+                    Ok(resp) => KmsProxyResponseEnvelope {
+                        request_id: req_env.request_id,
+                        trace_id: req_env.trace_id,
+                        kms_request_id: Some("aws-req-id".to_string()), 
+                        response: resp,
+                    },
+                    Err(e) => {
+                        error!(event = "kms_error", error = %e, "KMS operation failed");
+                        KmsProxyResponseEnvelope {
+                            request_id: req_env.request_id,
+                            trace_id: req_env.trace_id,
+                            kms_request_id: None,
+                            response: KmsResponse::Error { 
+                                code: KmsProxyErrorCode::Internal,
+                                message: e.to_string(),
+                            }
+                        }
+                    }
+                };
+
+                let resp_payload = serde_json::to_vec(&response_env)?;
+                let resp_msg = VSockMessage::new(MessageType::KmsProxy, msg.sequence, resp_payload)?;
+                stream.write_all(&resp_msg.encode()).await?;
+            }
+            MessageType::Storage => {
+                info!(event = "storage_request_raw", payload_len = msg.payload.len());
+                let req: StorageRequest = serde_json::from_slice(&msg.payload).map_err(|e| {
+                    error!(event = "storage_parse_error", error = %e, payload = ?String::from_utf8_lossy(&msg.payload));
+                    e
+                })?;
+                info!(event = "storage_request", model_id = %req.model_id, "fetching model data");
+                
+                let resp = match storage.retrieve(&req.model_id).await {
+                    Ok(data) => StorageResponse::Data {
+                        payload: data,
+                        is_last: true, 
+                    },
+                    Err(e) => {
+                        let err_msg: String = e.to_string();
+                        StorageResponse::Error { message: err_msg }
+                    },
+                };
+                
+                let resp_payload = serde_json::to_vec(&resp)?;
+                let resp_msg = VSockMessage::new(MessageType::Storage, msg.sequence, resp_payload)?;
+                stream.write_all(&resp_msg.encode()).await?;
+            }
+            MessageType::Audit => {
+                info!(event = "audit_request_raw", payload_len = msg.payload.len());
+                let req: AuditLogRequest = serde_json::from_slice(&msg.payload).map_err(|e| {
+                    error!(event = "audit_parse_error", error = %e, payload = ?String::from_utf8_lossy(&msg.payload));
+                    e
+                })?;
+                
+                info!(
+                    event = "audit_log", 
+                    event_type = ?req.entry.event_type,
+                    severity = ?req.entry.severity,
+                    session_id = ?req.entry.session_id,
+                    is_metric = %req.entry.is_metric,
+                    details = ?req.entry.details,
+                    "[AUDIT] received from enclave"
+                );
+
+                let log_entry = serde_json::to_string(&req.entry)? + "\n";
+                let log_file = if req.entry.is_metric {
+                    "/tmp/metrics.log"
+                } else {
+                    "/tmp/audit.log"
+                }; 
+                
+                use std::fs::OpenOptions;
+                use std::io::Write;
+                if let Ok(mut file) = OpenOptions::new().create(true).append(true).open(log_file) {
+                    let _ = file.write_all(log_entry.as_bytes());
+                }
+
+                let resp = AuditLogResponse { success: true, error: None };
+                let resp_payload = serde_json::to_vec(&resp)?;
+                let resp_msg = VSockMessage::new(MessageType::Audit, msg.sequence, resp_payload)?;
+                stream.write_all(&resp_msg.encode()).await?;
+            }
+            _ => {
+                return Err(anyhow::anyhow!("Unsupported message type"));
+            }
         }
     }
+
+    Ok(())
 }

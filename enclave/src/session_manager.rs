@@ -116,6 +116,15 @@ impl SessionManager {
             sessions.remove(session_id);
         }
     }
+
+    /// Get a session by ID (removed from manager)
+    pub fn get_session(&self, session_id: &str) -> Option<EnclaveSession> {
+        if let Ok(mut sessions) = self.sessions.lock() {
+            sessions.remove(session_id)
+        } else {
+            None
+        }
+    }
 }
 
 #[cfg(test)]

@@ -2,13 +2,27 @@ use ephemeral_ml_enclave::{
     DefaultAttestationProvider, CandleInferenceEngine,
     kms_client::KmsClient,
     model_loader::ModelLoader,
+    audit::AuditLogger,
 };
-use ephemeral_ml_common::model_manifest::ModelManifest;
+use ephemeral_ml_common::{AuditEventType, AuditSeverity};
 use std::time::Instant;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("=== EphemeralML Phase 8: Performance Benchmark ===");
+    
+    let audit = AuditLogger::new();
+    
+    // Log enclave startup
+    audit.send(
+        AuditEventType::SessionCreated,
+        AuditSeverity::Info,
+        Some("bench-session".to_string()),
+        None,
+        None,
+        vec![("event", serde_json::json!("enclave_startup"))],
+        false,
+    ).await;
     
     let provider = DefaultAttestationProvider::new()?;
     let engine = CandleInferenceEngine::new()?;
@@ -55,6 +69,21 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     
     println!("[bench] Weights ready. Fetch: {:?}, Decrypt: {:?}", fetch_done, decrypt_done - fetch_done);
     
+    // Log model loaded
+    audit.send(
+        AuditEventType::ModelAssembled,
+        AuditSeverity::Info,
+        Some("bench-session".to_string()),
+        None,
+        Some("mini-lm-v2".to_string()),
+        vec![
+            ("weights_size", serde_json::json!(weights_plaintext.len())),
+            ("fetch_ms", serde_json::json!(fetch_done.as_millis())),
+            ("decrypt_ms", serde_json::json!((decrypt_done - fetch_done).as_millis())),
+        ],
+        false,
+    ).await;
+    
     // 4. Register in Inference Engine
     let engine_start = Instant::now();
     engine.register_model(
@@ -68,6 +97,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // 5. Run Inference
     let input_text = "What is the capital of France?";
     println!("[bench] Running inference for: \"{}\"", input_text);
+    
+    // Log inference started
+    audit.send(
+        AuditEventType::InferenceStarted,
+        AuditSeverity::Info,
+        Some("bench-session".to_string()),
+        None,
+        Some("mini-lm-v2".to_string()),
+        vec![("input_length", serde_json::json!(input_text.len()))],
+        false,
+    ).await;
     
     let model_info = ephemeral_ml_enclave::assembly::CandleModel {
         id: "mini-lm-v2".to_string(),
@@ -96,6 +136,20 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("[bench] SUCCESS: Inference completed in {:?}", infer_duration);
     println!("[bench] Output vector size: {}", output.len());
     println!("[bench] First 5 values: {:?}", &output[..5.min(output.len())]);
+    
+    // Log inference completed
+    audit.send(
+        AuditEventType::InferenceCompleted,
+        AuditSeverity::Info,
+        Some("bench-session".to_string()),
+        None,
+        Some("mini-lm-v2".to_string()),
+        vec![
+            ("inference_ms", serde_json::json!(infer_duration.as_millis())),
+            ("output_size", serde_json::json!(output.len())),
+        ],
+        false,
+    ).await;
 
     // Benchmark 4: Receipt Generation
     println!("\n[bench] Generating Attested Execution Receipt (AER)...");

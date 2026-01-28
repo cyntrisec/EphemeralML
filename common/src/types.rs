@@ -376,6 +376,7 @@ pub struct AuditLogEntry {
     pub model_id: Option<String>,
     pub details: HashMap<String, serde_json::Value>,
     pub severity: AuditSeverity,
+    pub is_metric: bool,
 }
 
 /// Types of audit events

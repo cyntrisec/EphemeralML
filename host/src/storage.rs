@@ -1,5 +1,6 @@
 use crate::{HostError, Result, EphemeralError};
 use std::collections::HashMap;
+use std::sync::Arc;
 
 #[cfg(feature = "production")]
 use aws_sdk_s3::Client as S3Client;
@@ -21,14 +22,15 @@ pub trait WeightStorage: Send + Sync {
 }
 
 /// In-memory weight storage implementation
+#[derive(Clone)]
 pub struct InMemoryWeightStorage {
-    storage: std::sync::RwLock<HashMap<String, Vec<u8>>>,
+    storage: Arc<std::sync::RwLock<HashMap<String, Vec<u8>>>>,
 }
 
 impl InMemoryWeightStorage {
     pub fn new() -> Self {
         Self {
-            storage: std::sync::RwLock::new(HashMap::new()),
+            storage: Arc::new(std::sync::RwLock::new(HashMap::new())),
         }
     }
 }

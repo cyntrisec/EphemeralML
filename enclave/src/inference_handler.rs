@@ -22,6 +22,7 @@ pub struct InferenceHandler<A: AttestationProvider, I: InferenceEngine> {
     pub session_manager: SessionManager,
     pub attestation_provider: A,
     pub inference_engine: I,
+    pub audit_logger: crate::audit::AuditLogger,
 }
 
 impl<A: AttestationProvider, I: InferenceEngine> InferenceHandler<A, I> {
@@ -34,86 +35,108 @@ impl<A: AttestationProvider, I: InferenceEngine> InferenceHandler<A, I> {
             session_manager,
             attestation_provider,
             inference_engine,
+            audit_logger: crate::audit::AuditLogger::new(),
         }
     }
 
-    pub fn handle_request(
+    pub async fn handle_request(
         &self,
         encrypted_request: &EncryptedMessage,
     ) -> Result<EncryptedMessage> {
         let session_id = &encrypted_request.session_id;
 
-        self.session_manager.with_session(session_id, |session| {
-            // 1. Decrypt Request
-            let plaintext = session.decrypt(encrypted_request)?;
-            
-            // 2. Parse Input
-            let input: InferenceHandlerInput = serde_json::from_slice(&plaintext)
-                .map_err(|e| EnclaveError::Enclave(EphemeralError::SerializationError(e.to_string())))?;
+        // Note: we might need to make with_session async or handle differently
+        // Since we are adding async audit logs.
+        // For simplicity in this task, we'll use a block_on or change the pattern.
+        // Actually, let's keep it simple: fetch session, then do work.
+        
+        let mut session = self.session_manager.get_session(session_id)
+            .ok_or_else(|| EnclaveError::Enclave(EphemeralError::InvalidInput(format!("Session {} not found", session_id))))? ;
 
-            // 3. Execute Inference (Mock or Real)
-            // For now, we construct a dummy CandleModel reference or similar
-            // In real impl, we'd load the model from storage/memory using model_id
-            use crate::assembly::{CandleModel, TopologyKey};
-            let dummy_model = CandleModel {
-                id: input.model_id.clone(),
-                topology: TopologyKey { // Minimal dummy topology
-                    graph_id: "dummy".to_string(),
-                    nodes: vec![],
-                    edges: vec![],
-                    input_shapes: vec![],
-                    output_shapes: vec![],
-                    metadata: ephemeral_ml_common::ModelMetadata {
-                        name: "dummy".to_string(),
-                        version: "v1".to_string(),
-                        description: None,
-                        created_at: 0,
-                        checksum: "dummy".to_string(),
-                    }
-                },
-                weights: vec![0.5],
-            };
+        // 1. Decrypt Request
+        let plaintext = session.decrypt(encrypted_request)?;
+        
+        // 2. Parse Input
+        let input: InferenceHandlerInput = serde_json::from_slice(&plaintext)
+            .map_err(|e| EnclaveError::Enclave(EphemeralError::SerializationError(e.to_string())))?;
 
-            let start_time = std::time::Instant::now();
-            let output_tensor = self.inference_engine.execute(&dummy_model, &input.input_data)?;
-            let duration = start_time.elapsed().as_millis() as u64;
+        self.audit_logger.info(
+            ephemeral_ml_common::AuditEventType::InferenceStarted,
+            vec![
+                ("session_id", serde_json::json!(session_id)),
+                ("model_id", serde_json::json!(input.model_id)),
+            ]
+        ).await;
 
-            // 4. Generate Receipt
-            // We need to serialize response payload *without* the receipt to include in the receipt hash?
-            // Usually receipt covers the request and the data response.
-            // But the receipt is part of the response structure.
-            // Circular dependency if receipt includes hash of response which includes receipt.
-            // Solution: Receipt includes hash of `output_tensor` (the actual result), not the container.
-            
-            let output_bytes = serde_json::to_vec(&output_tensor)
-                .map_err(|e| EnclaveError::Enclave(EphemeralError::SerializationError(e.to_string())))?;
+        // 3. Execute Inference (Mock or Real)
+        use crate::assembly::{CandleModel, TopologyKey};
+        let dummy_model = CandleModel {
+            id: input.model_id.clone(),
+            topology: TopologyKey { // Minimal dummy topology
+                graph_id: "dummy".to_string(),
+                nodes: vec![],
+                edges: vec![],
+                input_shapes: vec![],
+                output_shapes: vec![],
+                metadata: ephemeral_ml_common::ModelMetadata {
+                    name: "dummy".to_string(),
+                    version: "v1".to_string(),
+                    description: None,
+                    created_at: 0,
+                    checksum: "dummy".to_string(),
+                }
+            },
+            weights: vec![0.5],
+        };
 
-            let mut receipt = ReceiptBuilder::build(
-                session,
-                &self.attestation_provider,
-                &plaintext,
-                &output_bytes,
-                input.model_id,
-                "v1.0".to_string(),
-                duration,
-                0, // Memory peak placeholder
-            )?;
+        let start_time = std::time::Instant::now();
+        let output_tensor = self.inference_engine.execute(&dummy_model, &input.input_data)?;
+        let duration_ms = start_time.elapsed().as_millis() as u64;
 
-            // 5. Sign Receipt
-            session.sign_receipt(&mut receipt)?;
+        // Metric log
+        self.audit_logger.metric(
+            ephemeral_ml_common::AuditEventType::InferenceCompleted,
+            Some(session_id.clone()),
+            vec![
+                ("duration_ms", serde_json::json!(duration_ms)),
+                ("model_id", serde_json::json!(input.model_id)),
+            ]
+        ).await;
 
-            // 6. Construct Response
-            let response = InferenceHandlerOutput {
-                output_tensor,
-                receipt,
-            };
+        // 4. Generate Receipt
+        let output_bytes = serde_json::to_vec(&output_tensor)
+            .map_err(|e| EnclaveError::Enclave(EphemeralError::SerializationError(e.to_string())))?;
 
-            let response_bytes = serde_json::to_vec(&response)
-                .map_err(|e| EnclaveError::Enclave(EphemeralError::SerializationError(e.to_string())))?;
+        let mut receipt = ReceiptBuilder::build(
+            &session,
+            &self.attestation_provider,
+            &plaintext,
+            &output_bytes,
+            input.model_id,
+            "v1.0".to_string(),
+            duration_ms,
+            0, // Memory peak placeholder
+        )?;
 
-            // 7. Encrypt Response
-            session.encrypt(&response_bytes)
-        })
+        // 5. Sign Receipt
+        session.sign_receipt(&mut receipt)?;
+
+        // 6. Construct Response
+        let response = InferenceHandlerOutput {
+            output_tensor,
+            receipt,
+        };
+
+        let response_bytes = serde_json::to_vec(&response)
+            .map_err(|e| EnclaveError::Enclave(EphemeralError::SerializationError(e.to_string())))?;
+
+        // 7. Encrypt Response
+        let encrypted_response = session.encrypt(&response_bytes)?;
+        
+        // Update session back in manager if needed (sequence numbers changed)
+        self.session_manager.add_session(session)?;
+        
+        Ok(encrypted_response)
     }
 }
 
@@ -124,8 +147,8 @@ mod tests {
     use crate::inference::DefaultInferenceEngine;
     use ephemeral_ml_common::{HPKESession, ReceiptSigningKey};
     
-    #[test]
-    fn test_inference_lifecycle() {
+    #[tokio::test]
+    async fn test_inference_lifecycle() {
         use crate::session_manager::EnclaveSession;
         // Setup components
         let provider = DefaultAttestationProvider::new().unwrap();
@@ -218,7 +241,7 @@ mod tests {
         let encrypted_request = client_session.encrypt(&input_bytes).unwrap();
         
         // Handle Request
-        let encrypted_response = handler.handle_request(&encrypted_request).unwrap();
+        let encrypted_response = handler.handle_request(&encrypted_request).await.unwrap();
         
         // Decrypt Response (simulate client)
         // Note: client_session state (sequence number) needs to match
