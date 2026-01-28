@@ -1,7 +1,6 @@
 import os
 import hashlib
 import json
-import requests
 from cryptography.hazmat.primitives.ciphers.aead import ChaCha20Poly1305
 
 MODEL_ID = "mini-lm-v2"
@@ -26,12 +25,12 @@ def download_and_prepare():
     
     for filename in FILES:
         print(f"Downloading {filename}...")
-        r = requests.get(f"{BASE_URL}/{filename}")
-        r.raise_for_status()
-        data = r.content
+        url = f"{BASE_URL}/{filename}"
+        dest = f"test_artifacts/{filename}"
+        os.system(f"curl -L -o {dest} {url}")
         
-        with open(f"test_artifacts/{filename}", "wb") as f:
-            f.write(data)
+        with open(dest, "rb") as f:
+            data = f.read()
             
         plaintext_hash = hashlib.sha256(data).hexdigest()
         
