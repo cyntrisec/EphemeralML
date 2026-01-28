@@ -28,42 +28,61 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let speed = (bytes.len() as f64 / 1024.0 / 1024.0) / duration.as_secs_f64();
     println!("[bench] Download speed: {:.2} MB/s", speed);
     
-    // Benchmark 2: Model Loading (100MB Dummy)
-    let model_id = "large-bench-model";
-    println!("\n[bench] Starting FULL load for: {}...", model_id);
+    // Benchmark 3: Real Model Load (MiniLM)
+    println!("\n[bench] Starting Real Model Benchmark: mini-lm-v2...");
+    let proxy = loader.kms_client().proxy_client();
     
-    let manifest = ModelManifest {
-        model_id: model_id.to_string(),
-        version: "1.0.0".to_string(),
-        model_hash: hex::decode("65ef6bc044c8fe2552592b762eae7baa4d8d6f4b1696ef2f3f6098db27f8f240").unwrap(), // Dummy for now, will update
-        hash_algorithm: "sha256".to_string(),
-        key_id: "test".to_string(),
-        signature: vec![0u8; 64],
-    };
-
-    // Note: We use the fixed DEK from prepare_real_model.py
-    let fixed_dek = hex::decode("0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef").unwrap();
+    // 1. Fetch Config
+    let config_bytes = proxy.fetch_model("mini-lm-v2-config").await?;
+    println!("[bench] Config loaded ({} bytes)", config_bytes.len());
     
+    // 2. Fetch Tokenizer
+    let tokenizer_bytes = proxy.fetch_model("mini-lm-v2-tokenizer").await?;
+    println!("[bench] Tokenizer loaded ({} bytes)", tokenizer_bytes.len());
+    
+    // 3. Fetch & Decrypt Weights
     let start = Instant::now();
-    // Fetch
-    let encrypted_artifact = loader.kms_client().proxy_client().fetch_model(model_id).await?;
+    let encrypted_weights = proxy.fetch_model("mini-lm-v2-weights").await?;
     let fetch_done = start.elapsed();
     
-    // Decrypt (using our mock decrypt with fixed key)
-    let (nonce_bytes, ciphertext) = encrypted_artifact.split_at(12);
+    let (nonce_bytes, ciphertext) = encrypted_weights.split_at(12);
     use chacha20poly1305::{ChaCha20Poly1305, Key, Nonce, KeyInit, aead::Aead};
+    let fixed_dek = hex::decode("0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef").unwrap();
     let cipher = ChaCha20Poly1305::new(Key::from_slice(&fixed_dek));
-    let plaintext = cipher.decrypt(Nonce::from_slice(nonce_bytes), ciphertext)
+    let weights_plaintext = cipher.decrypt(Nonce::from_slice(nonce_bytes), ciphertext)
         .map_err(|e| format!("Decryption failed: {}", e))?;
+    let decrypt_done = start.elapsed();
     
-    let load_done = start.elapsed();
-    println!("[bench] Model decrypted. Size: {} bytes", plaintext.len());
-    println!("[bench] Fetch: {:?}, Decrypt: {:?}", fetch_done, load_done - fetch_done);
+    println!("[bench] Weights ready. Fetch: {:?}, Decrypt: {:?}", fetch_done, decrypt_done - fetch_done);
+    
+    // 4. Register in Inference Engine
+    let engine_start = Instant::now();
+    engine.register_model(
+        "mini-lm-v2",
+        &config_bytes,
+        &weights_plaintext,
+        &tokenizer_bytes
+    )?;
+    println!("[bench] Engine registration complete in {:?}", engine_start.elapsed());
+    
+    // 5. Run Inference
+    let input_text = "What is the capital of France?";
+    println!("[bench] Running inference for: \"{}\"", input_text);
+    
+    let model_info = ephemeral_ml_enclave::assembly::CandleModel {
+        id: "mini-lm-v2".to_string(),
+        model_type: "bert".to_string(),
+    };
+    
+    let infer_start = Instant::now();
+    use ephemeral_ml_enclave::inference::InferenceEngine as _;
+    let output = engine.execute(&model_info, input_text.as_bytes())?;
+    let infer_duration = infer_start.elapsed();
+    
+    println!("[bench] SUCCESS: Inference completed in {:?}", infer_duration);
+    println!("[bench] Output vector size: {}", output.len());
+    println!("[bench] First 5 values: {:?}", &output[..5.min(output.len())]);
 
-    // Benchmark 3: Inference Latency
-    // We need config and tokenizer for a real BERT run. 
-    // For the benchmark baseline, we just measure the raw time.
-    
     println!("\n=== Benchmark Complete ===");
     Ok(())
 }
