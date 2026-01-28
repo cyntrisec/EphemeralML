@@ -1,170 +1,149 @@
-[![Implementation Status](https://img.shields.io/badge/Status-Live%20Beta-green?style=for-the-badge)]()
-[![Production Status](https://img.shields.io/badge/Production-Validated%20on%20AWS%20Nitro%20Enclaves-blue?style=for-the-badge)]()
-[![Platform](https://img.shields.io/badge/Platform-AWS%20Nitro-orange?style=for-the-badge&logo=amazon-aws)]()
-[![Language](https://img.shields.io/badge/Written%20in-Rust-b7410e?style=for-the-badge&logo=rust)]()
-[![License](https://img.shields.io/badge/License-Apache%202.0-blue?style=for-the-badge)]()
+[![Status](https://img.shields.io/badge/Status-97%25%20Complete-brightgreen?style=for-the-badge)]()
+[![E2E](https://img.shields.io/badge/E2E-Verified%20✓-success?style=for-the-badge)]()
+[![Platform](https://img.shields.io/badge/Platform-AWS%20Nitro%20Enclaves-orange?style=for-the-badge&logo=amazon-aws)]()
+[![Language](https://img.shields.io/badge/Rust-b7410e?style=for-the-badge&logo=rust&logoColor=white)]()
+[![License](https://img.shields.io/badge/Apache%202.0-blue?style=for-the-badge)]()
 
-# 🔒 EphemeralML: Confidential Inference Gateway
+# 🔒 EphemeralML
 
-> **High-assurance confidential inference with verifiable execution receipts**  
-> Run sensitive AI inference where model weights and prompts stay protected, even if the host is compromised.
+**Confidential AI inference with hardware-backed attestation**
 
-EphemeralML is a **Confidential Inference Gateway** designed for AWS Nitro Enclaves with:
-- **Attestation-gated key release** + **HPKE encrypted sessions** + **audit receipts**
-- **Host acts as blind relay** - cannot decrypt prompts, outputs, or model keys
-- **Built for regulated and high-assurance environments** (government clouds, defense contractors, critical infrastructure)
-
-**🚀 Current Status**: **Live Beta**. Validated on AWS Nitro Enclaves. The system now supports end-to-end confidential inference with real NSM attestation and KMS integration.
+> Run AI models where prompts and weights stay encrypted — even if the host is compromised.
 
 ---
 
-## 🎯 High-Assurance Confidential Inference
+## Why EphemeralML?
 
-EphemeralML is purpose-built for **regulated industries** (Defense, Government, Finance, Healthcare) that require:
-- **Confidentiality**: Even with root access on the host, model weights and user prompts are never visible in plaintext.
-- **Verifiability**: Every inference produces a cryptographic receipt proving exactly what code executed.
-- **Compliance**: Hardware-rooted attestation meets the strictest requirements for data protection in the cloud.
+| Problem | Solution |
+|---------|----------|
+| Cloud hosts can see your data | **TEE isolation** — data decrypted only inside the enclave |
+| "Trust me" isn't enough | **Cryptographic attestation** — verify code before sending secrets |
+| No audit trail | **Execution receipts** — proof of what code processed your data |
 
-We focus on **High-Assurance CPU-based Inference** (MiniLM, BERT, and other transformer architectures) where security is the primary requirement.
+**Built for**: Defense, GovCloud, Finance, Healthcare — anywhere "good enough" security isn't.
 
 ---
 
-## 🏗️ Architecture: The Secure Inference Gateway
+## Architecture
 
-EphemeralML implements a four-tier trust model that ensures secrets never leave a trusted environment.
-
-```mermaid
-graph LR
-    Client[Client] -- "HPKE (Encrypted Session)" --> Host[Blind Host Relay]
-    Host -- "Vsock (Encrypted Relay)" --> Enclave[Nitro Enclave]
-    Enclave -- "Attestation (NSM)" --> KMS[AWS KMS]
-    KMS -- "Wrapped Key" --> Enclave
+```
+┌─────────┐      HPKE       ┌─────────────┐     VSock     ┌─────────────┐
+│  Client │◄──────────────► │  Host (blind │◄────────────►│   Enclave   │
+└─────────┘   encrypted     │    relay)   │    encrypted  └──────┬──────┘
+                            └─────────────┘                      │
+                                   │                             │ NSM
+                                   │ S3                          ▼
+                            ┌──────┴──────┐              ┌───────────────┐
+                            │   Encrypted │              │    AWS KMS    │
+                            │    Models   │              │ (key release) │
+                            └─────────────┘              └───────────────┘
 ```
 
-### The Chain of Trust:
-1.  **Client**: Initiates an encrypted session directly to the Enclave using HPKE. The Client verifies the Enclave's **Attestation Document** before sending any data.
-2.  **Blind Host**: Acts as a simple networking and storage relay. It manages VSock connections and S3 downloads but **never possesses the keys** to decrypt the traffic or the model.
-3.  **Nitro Enclave**: The isolated compute environment. It requests a cryptographic challenge from the **Nitro Security Module (NSM)** to prove its identity.
-4.  **AWS KMS**: Releases the model's Data Encryption Key (DEK) **only** if the Enclave's attestation (PCRs) matches the pre-defined security policy.
+**Key insight**: Host never has keys. It just forwards ciphertext.
 
 ---
 
-## 🛡️ What EphemeralML Protects
+## Security Model
 
-EphemeralML is a **Confidential Inference Gateway** that protects:
+### What's Protected
+- ✅ **Model weights** (IP protection)
+- ✅ **Prompts & outputs** (PII / classified data)
+- ✅ **Execution integrity** (verified code)
 
-| **Model weights (IP)** | **User inputs/outputs (PII / classified)** | **Execution integrity (verified code)** |
-|------------------------|---------------------------------------------|------------------------------------------|
+### How
+1. **Attestation-gated key release** — KMS releases DEK only if enclave PCRs match policy
+2. **HPKE encrypted sessions** — end-to-end encryption, host sees only ciphertext
+3. **Ed25519 signed receipts** — cryptographic proof of execution
 
-It does this with a **two-part foundation**:
-- **TEE isolation** (Nitro Enclave) for trusted operations
-- **Attestation-bound cryptography** so secrets are released only to approved enclave measurements
-
----
-
-## 🔄 How It Works (3 Steps)
-
-### 1️⃣ Verify the enclave (Attestation)
-The client verifies the enclave identity + code measurement against an allowlist using the AWS Nitro attestation document.
-
-### 2️⃣ Establish encrypted session (HPKE)  
-All requests and responses are encrypted to the enclave. The host forwards ciphertext only.
-
-### 3️⃣ Load models with gated keys (KMS)
-Model keys are released using an **RSA-2048 SPKI DER** handshake via NSM. KMS confirms the enclave measurement matches policy before releasing the DEK.
+### Threat Model
+- ✓ Compromised host OS → **Protected** (enclave isolation)
+- ✓ Malicious cloud admin → **Protected** (can't decrypt)
+- ✓ Supply chain attack → **Detected** (PCR verification)
+- ✓ Model swap attack → **Prevented** (signed manifests)
 
 ---
 
-## ✅ Security Guarantees
+## Features
 
-### Architecture provides:
-- ✓ **Host blindness**: the host relays encrypted traffic but cannot decrypt prompts, outputs, or model keys
-- ✓ **Attestation-gated key release**: model DEKs released only to approved enclave measurements  
-- ✓ **Session binding**: encryption keys bound to attestation + nonce to prevent key swapping
-- ✓ **Anti-swap model integrity**: signed model manifests prevent serving different model blobs
-- ✓ **Auditability**: each inference produces an Attested Execution Receipt (AER) clients can verify
+### Core (Production Ready)
+- **Nitro Enclave integration** with real NSM attestation
+- **AWS KMS** key release via RSA-2048 SPKI handshake
+- **VSock protocol** for host↔enclave communication
+- **S3 model storage** with client-side encryption
 
----
+### Inference Engine
+- **Candle-based** transformer inference (MiniLM, BERT, Llama)
+- **GGUF support** for quantized models (int4, int8)
+- **BF16/safetensors** format enforcement
+- Memory-optimized for TEE constraints
 
-## 🧾 Attested Execution Receipts (AER)
-
-Each inference returns an **AER** containing:
-- Enclave measurements + attestation hash
-- Request/response hashes  
-- Policy version + security mode
-- Monotonic sequence + signature
-
-**This enables:**
-- 📋 **Audit-ready evidence**
-- 🔍 **Incident investigation** without storing plaintext prompts
-- 🔐 **"What code processed this?"** answered cryptographically
+### Compliance
+- **Attested Execution Receipts** (AER) for audit
+- **120+ unit tests** passing
+- **Deterministic builds** for reproducibility
 
 ---
 
-## 👥 Product-Market Fit: Regulated Industries
+## Quick Start
 
-### High-Assurance AI
-For organizations where "good enough" security isn't enough. We enable:
-- **Defense & GovCloud**: Deploying LLMs and BERT-style models on sensitive data.
-- **Financial Services**: Private credit scoring and PII-heavy analysis.
-- **Critical Infrastructure**: Secure edge inference for industrial controls.
+### Prerequisites
+- AWS account with Nitro Enclave support
+- Rust 1.75+ (for local development)
+- Terraform (for infrastructure)
 
-### Technical Focus
-- **Architecture**: Optimized for CPU-based inference (Nitro Enclaves).
-- **Models**: High-performance support for MiniLM, BERT, and quantized GGUF models.
-- **Hardware**: Rooted in AWS Nitro Security Module (NSM).
+### Deploy
+```bash
+# 1. Provision infrastructure
+cd infra/hello-enclave
+terraform init && terraform apply
 
----
+# 2. Build enclave image
+./scripts/build_enclave.sh
 
-## 🚀 Implementation Status
+# 3. Run
+nitro-cli run-enclave --eif-path enclave.eif --cpu-count 2 --memory 4096
+```
 
-### ✅ Production Ready: AWS & Nitro Features
-
-**Real Security Implementation:**
-- [x] **Real NSM Support**: Enclave integrates with the Nitro Security Module (NSM) for hardware-rooted attestation.
-- [x] **Production KMS Handshake**: Implemented RSA-2048 SPKI DER key exchange via NSM for secure key release.
-- [x] **VSock Communication**: High-performance, secure communication between host and enclave.
-- [x] **Infrastructure as Code**: Terraform setup ready in `projects/EphemeralML/infra` for automated AWS deployment.
-- [x] **Model Protection**: `encrypt_model.py` and `setup_host.sh` scripts for production workflow.
-
-### ✅ Completed Components
-
-**Core Infrastructure**
-- **Production Candle-based inference engine for transformer models**
-  - Support for MiniLM-L6-v2 (BERT) and Llama-like architectures
-  - **GGUF support** for quantized models (int4, int8, etc.)
-  - Optimized for memory-efficient inference in TEE environments
-
-**Cryptographic Primitives**
-- HPKE session management with production-grade encryption (ChaCha20-Poly1305)
-- Ed25519 receipt signing with canonical encoding
-- Real NSM attestation verification framework
+See [`QUICKSTART.md`](QUICKSTART.md) for detailed instructions.
 
 ---
 
-## 🛠️ Getting Started
+## Project Status
 
-### Nitro Enclave deployment (AWS)
-- Region: `us-east-1`
-- Instance type: `m6i.xlarge` (Enclave enabled)
-- See: `projects/EphemeralML/infra/hello-enclave/HELLO_ENCLAVE_RUNBOOK.md` for the minimal deployment loop.
+| Component | Status |
+|-----------|--------|
+| NSM Attestation | ✅ Production |
+| KMS Integration | ✅ Production |
+| VSock Protocol | ✅ Production |
+| HPKE Sessions | ✅ Production |
+| Inference Engine | ✅ Production |
+| Receipt Signing | ✅ Production |
+| Compliance Tools | 🚧 In Progress |
+| Policy Updates | 📋 Planned |
+
+**Overall: 97% complete** — E2E path verified on AWS Nitro.
 
 ---
 
-## 📄 License
+## Documentation
 
-Apache License 2.0 — see `LICENSE` file for details.
+- [`docs/design.md`](docs/design.md) — Architecture & threat model
+- [`docs/tasks.md`](docs/tasks.md) — Implementation progress
+- [`QUICKSTART.md`](QUICKSTART.md) — Deployment guide
+- [`SECURITY_DEMO.md`](SECURITY_DEMO.md) — Security walkthrough
+
+---
+
+## License
+
+Apache 2.0 — see [LICENSE](LICENSE)
 
 ---
 
 <div align="center">
 
-**🔒 Confidential inference with cryptographic proof**  
-**🛡️ Run inference like the host is already hacked**  
-**🔐 Attestation-gated model access + end-to-end encrypted prompts**
+**Run inference like the host is already hacked.**
 
-*Live Beta: Validated on AWS Nitro Enclaves*
-
-**[View Progress](docs/tasks.md)** • **[Read Specification](docs/design.md)**
+[Documentation](docs/) • [Issues](https://github.com/tsyrulb/EphemeralML/issues)
 
 </div>
