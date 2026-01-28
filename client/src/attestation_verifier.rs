@@ -256,11 +256,14 @@ impl AttestationVerifier {
 
         for (k, v) in pcrs_map {
             if let serde_cbor::Value::Integer(idx) = k {
-                let bytes = v.as_bytes().ok_or_else(|| ClientError::Client(crate::EphemeralError::AttestationError(format!("PCR {} is not bytes", idx))))?;
+                let bytes = match v {
+                    serde_cbor::Value::Bytes(b) => b.clone(),
+                    _ => return Err(ClientError::Client(crate::EphemeralError::AttestationError(format!("PCR {} is not bytes", idx)))),
+                };
                 match idx {
-                    0 => pcr0 = bytes.clone(),
-                    1 => pcr1 = bytes.clone(),
-                    2 => pcr2 = bytes.clone(),
+                    0 => pcr0 = bytes,
+                    1 => pcr1 = bytes,
+                    2 => pcr2 = bytes,
                     _ => {}
                 }
             }
@@ -305,20 +308,23 @@ impl AttestationVerifier {
     }
 
     fn get_bytes_field(&self, map: &Vec<(serde_cbor::Value, serde_cbor::Value)>, key: &str) -> Result<Vec<u8>> {
-        self.get_field(map, key)?.as_bytes().cloned().ok_or_else(|| {
-             ClientError::Client(crate::EphemeralError::AttestationError(format!("Field {} is not bytes", key)))
-        })
+        match self.get_field(map, key)? {
+            serde_cbor::Value::Bytes(b) => Ok(b.clone()),
+            _ => Err(ClientError::Client(crate::EphemeralError::AttestationError(format!("Field {} is not bytes", key))))
+        }
     }
 
     fn get_str_field(&self, map: &Vec<(serde_cbor::Value, serde_cbor::Value)>, key: &str) -> Result<String> {
-        self.get_field(map, key)?.as_text().cloned().ok_or_else(|| {
-             ClientError::Client(crate::EphemeralError::AttestationError(format!("Field {} is not text", key)))
-        })
+        match self.get_field(map, key)? {
+            serde_cbor::Value::Text(s) => Ok(s.clone()),
+            _ => Err(ClientError::Client(crate::EphemeralError::AttestationError(format!("Field {} is not text", key))))
+        }
     }
 
     fn get_int_field(&self, map: &Vec<(serde_cbor::Value, serde_cbor::Value)>, key: &str) -> Result<i128> {
-        self.get_field(map, key)?.as_integer().ok_or_else(|| {
-             ClientError::Client(crate::EphemeralError::AttestationError(format!("Field {} is not integer", key)))
-        })
+        match self.get_field(map, key)? {
+            serde_cbor::Value::Integer(i) => Ok(*i),
+            _ => Err(ClientError::Client(crate::EphemeralError::AttestationError(format!("Field {} is not integer", key))))
+        }
     }
 }
