@@ -71,6 +71,7 @@ impl WeightStorage for InMemoryWeightStorage {
 
 /// S3-backed weight storage (production)
 #[cfg(feature = "production")]
+#[derive(Clone)]
 pub struct S3WeightStorage {
     client: S3Client,
     bucket: String,
