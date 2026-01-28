@@ -173,7 +173,11 @@ fn run(mode: Mode) {
                 .unwrap();
             
             rt.block_on(async {
-                use ephemeral_ml_common::{KmsRequest, KmsResponse, MessageType, VSockMessage};
+                use ephemeral_ml_common::{
+                    KmsRequest, KmsResponse, MessageType, VSockMessage,
+                    KmsProxyRequestEnvelope, KmsProxyResponseEnvelope,
+                    generate_id,
+                };
                 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
                 // 1. Generate an RSA keypair and request an attestation document that embeds the recipient public key.
@@ -181,18 +185,19 @@ fn run(mode: Mode) {
                 use rand::rngs::OsRng;
                 use rsa::{RsaPrivateKey, pkcs8::EncodePublicKey};
 
+                eprintln!("[enclave] generating RSA keypair for KMS RecipientInfo...");
                 let mut rng = OsRng;
                 let rsa_priv = RsaPrivateKey::new(&mut rng, 2048).expect("rsa keygen failed");
                 let rsa_pub = rsa_priv.to_public_key();
                 // Encode as SubjectPublicKeyInfo (PKCS#8/SPKI) DER. KMS expects a valid RSA public key.
-                let rsa_pub_der = rsa_pub.to_public_key_der().expect("rsa pub der").as_bytes().to_vec();
+                let rsa_pub_der = rsa_pub.to_public_key_der().expect("rsa pub der").to_vec();
 
                 // 2. Get attestation document
                 let nsm_fd = aws_nitro_enclaves_nsm_api::driver::nsm_init();
                 let request = aws_nitro_enclaves_nsm_api::api::Request::Attestation {
                     user_data: None,
                     nonce: None,
-                    public_key: Some(rsa_pub_der.into()),
+                    public_key: Some(serde_bytes::ByteBuf::from(rsa_pub_der)),
                 };
                 let response = aws_nitro_enclaves_nsm_api::driver::nsm_process_request(nsm_fd, request);
                 let attestation_doc = match response {
@@ -203,9 +208,6 @@ fn run(mode: Mode) {
                 eprintln!("[enclave] generated attestation doc ({} bytes)", attestation_doc.len());
 
                 // 2. Connect to Host KMS Proxy (Port 8082)
-                // We use raw libc since tokio-vsock isn't in our minimal enclave crate deps yet (or we can add it)
-                // Actually I added tokio to Cargo.toml, so I can use std::os::unix::net or similar if I had vsock support.
-                // For simplicity, let's use the libc socket we already have.
                 let fd = unsafe { libc::socket(libc::AF_VSOCK, libc::SOCK_STREAM, 0) };
                 let addr = SockAddrVm {
                     svm_family: libc::AF_VSOCK as libc::sa_family_t,
@@ -223,12 +225,17 @@ fn run(mode: Mode) {
                 
                 let mut stream = unsafe { std::fs::File::from_raw_fd(fd) };
 
-                // 3. Send GenerateDataKey request
+                // 3. Send GenerateDataKey request (wrapped in Envelope)
                 let kms_req = KmsRequest::GenerateDataKey {
                     key_id: "alias/ephemeral-ml-test".to_string(),
                     key_spec: "AES_256".to_string(),
                 };
-                let payload = serde_json::to_vec(&kms_req).unwrap();
+                let req_env = KmsProxyRequestEnvelope {
+                    request_id: generate_id(),
+                    trace_id: Some("diag10-test-gen".to_string()),
+                    request: kms_req,
+                };
+                let payload = serde_json::to_vec(&req_env).unwrap();
                 let msg = VSockMessage::new(MessageType::KmsProxy, 0, payload).unwrap();
                 stream.write_all(&msg.encode()).unwrap();
                 
@@ -242,7 +249,13 @@ fn run(mode: Mode) {
                 let mut full_msg = len_buf.to_vec();
                 full_msg.extend_from_slice(&body);
                 let msg = VSockMessage::decode(&full_msg).unwrap();
-                let kms_resp: KmsResponse = serde_json::from_slice(&msg.payload).unwrap();
+                
+                if msg.msg_type == MessageType::Error {
+                    die(&format!("KMS proxy returned error message: {}", String::from_utf8_lossy(&msg.payload)));
+                }
+
+                let resp_env: KmsProxyResponseEnvelope = serde_json::from_slice(&msg.payload).unwrap();
+                let kms_resp = resp_env.response;
                 
                 match kms_resp {
                     KmsResponse::GenerateDataKey { key_id, ciphertext_blob, .. } => {
@@ -254,7 +267,12 @@ fn run(mode: Mode) {
                             key_id: Some(key_id),
                             encryption_context: None,
                             grant_tokens: None,
-                            recipient: Some(attestation_doc),
+                            recipient: Some(attestation_doc.into()),
+                        };
+                        let decrypt_env = KmsProxyRequestEnvelope {
+                            request_id: generate_id(),
+                            trace_id: Some("diag10-test-decrypt".to_string()),
+                            request: decrypt_req,
                         };
 
                         // Connect again (simple sequential test)
@@ -264,7 +282,7 @@ fn run(mode: Mode) {
                         }
                         let mut stream = unsafe { std::fs::File::from_raw_fd(fd) };
 
-                        let payload = serde_json::to_vec(&decrypt_req).unwrap();
+                        let payload = serde_json::to_vec(&decrypt_env).unwrap();
                         let msg = VSockMessage::new(MessageType::KmsProxy, 1, payload).unwrap();
                         stream.write_all(&msg.encode()).unwrap();
 
@@ -277,7 +295,13 @@ fn run(mode: Mode) {
                         let mut full_msg = len_buf.to_vec();
                         full_msg.extend_from_slice(&body);
                         let msg = VSockMessage::decode(&full_msg).unwrap();
-                        let decrypt_resp: KmsResponse = serde_json::from_slice(&msg.payload).unwrap();
+                        
+                        if msg.msg_type == MessageType::Error {
+                            die(&format!("KMS proxy returned error message for decrypt: {}", String::from_utf8_lossy(&msg.payload)));
+                        }
+
+                        let resp_env: KmsProxyResponseEnvelope = serde_json::from_slice(&msg.payload).unwrap();
+                        let decrypt_resp = resp_env.response;
 
                         match decrypt_resp {
                             KmsResponse::Decrypt { ciphertext_for_recipient, .. } => {

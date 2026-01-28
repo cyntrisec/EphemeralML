@@ -34,35 +34,41 @@ pub struct EphemeralKeyPair {
 impl EphemeralKeyPair {
     /// Generate a new ephemeral key pair
     pub fn generate() -> Self {
-        // Generate cryptographically secure random keys
-        let mut hasher = Sha256::new();
-        hasher.update(Uuid::new_v4().as_bytes());
-        hasher.update(&current_timestamp().to_be_bytes());
-        
-        // Add additional entropy from system sources
-        if let Ok(mut file) = std::fs::File::open("/dev/urandom") {
-            use std::io::Read;
-            let mut entropy = [0u8; 32];
-            if file.read_exact(&mut entropy).is_ok() {
-                hasher.update(&entropy);
-            }
+        #[cfg(feature = "production")]
+        {
+            use rand::rngs::OsRng;
+            use rand::RngCore;
+            
+            let mut public_key = [0u8; 32];
+            let mut private_key = [0u8; 32];
+            
+            let mut rng = OsRng;
+            rng.fill_bytes(&mut public_key);
+            rng.fill_bytes(&mut private_key);
+            
+            Self { public_key, private_key }
         }
         
-        let hash = hasher.finalize();
-        
-        let mut public_key = [0u8; 32];
-        let mut private_key = [0u8; 32];
-        
-        public_key.copy_from_slice(&hash[..32]);
-        
-        // Generate private key from public key + additional entropy
-        let mut hasher2 = Sha256::new();
-        hasher2.update(&public_key);
-        hasher2.update(Uuid::new_v4().as_bytes());
-        let hash2 = hasher2.finalize();
-        private_key.copy_from_slice(&hash2[..32]);
-        
-        Self { public_key, private_key }
+        #[cfg(not(feature = "production"))]
+        {
+            // Fallback for non-production environments
+            let mut public_key = [0u8; 32];
+            let mut private_key = [0u8; 32];
+            
+            let mut hasher = Sha256::new();
+            hasher.update(Uuid::new_v4().as_bytes());
+            hasher.update(&current_timestamp().to_be_bytes());
+            let hash = hasher.finalize();
+            public_key.copy_from_slice(&hash[..32]);
+            
+            let mut hasher2 = Sha256::new();
+            hasher2.update(&public_key);
+            hasher2.update(Uuid::new_v4().as_bytes());
+            let hash2 = hasher2.finalize();
+            private_key.copy_from_slice(&hash2[..32]);
+            
+            Self { public_key, private_key }
+        }
     }
 }
 
