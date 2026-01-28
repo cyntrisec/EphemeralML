@@ -23,13 +23,12 @@ To verify that the host is indeed blind to the sensitive data, you can run the i
 Execute the following command from the project root:
 
 ```bash
-cd projects/EphemeralML
-cargo test --test spy_test
+cargo test -p ephemeral-ml-host --test spy_test
 ```
 
 ### What the Test Does
 
-The `spy_test.rs` performs the following steps:
+The `spy_test.rs` (located in `host/tests/spy_test.rs`) performs the following steps:
 1. **Initializes a `SpyProxy`**: It wraps a mock host proxy with the spying capability.
 2. **Simulates Encrypted Traffic**: It sends a payload that represents an HPKE-encrypted message (simulated with non-printable bytes in the test).
 3. **Intercepts and Logs**: The `SpyProxy` writes the intercepted data to `spy_intercept.log`.

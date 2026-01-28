@@ -118,7 +118,7 @@ sequenceDiagram
 The system has transitioned from permissive/mock mode to a hardened production-ready architecture. The security of the system depends on KMS key policies that cryptographically bind key release to enclave attestation.
 
 **KMS RecipientInfo Implementation**:
-We utilize the `public_key` field within the NSM attestation document to provide an RSA-2048 public key generated inside the enclave. AWS KMS uses this key to wrap the Data Encryption Key (DEK) specifically for the requesting enclave instance. This ensures that even if the host intercepts the KMS response, it cannot decrypt the wrapped secret.
+The system uses the **RSA-2048 SPKI DER** format for the public key embedded within the NSM attestation document. AWS KMS utilizes this key as the `RecipientInfo` to wrap the Data Encryption Key (DEK) specifically for the requesting enclave instance. This ensures that even if the host intercepts the KMS response, it cannot decrypt the wrapped secret.
 
 **Required KMS Policy Structure**:
 ```json
@@ -141,8 +141,8 @@ We utilize the `public_key` field within the NSM attestation document to provide
 ```
 
 **Authorization Flow**:
-1. Enclave generates an RSA-2048 keypair.
-2. Enclave requests an attestation document from NSM, embedding the RSA public key in the `public_key` field.
+1. Enclave generates an RSA-2048 keypair within its secure boundary.
+2. Enclave requests an attestation document from NSM, embedding the RSA public key in **SPKI DER format** into the `public_key` field.
 3. Enclave calls `kms:Decrypt` (via VSock proxy) providing the attestation document as `RecipientInfo`.
 4. **KMS evaluates policy**: KMS validates the attestation document (checking measurements like `kms:RecipientAttestation:ImageSha384`).
 5. **Key Wrapping**: KMS wraps the plaintext DEK using the RSA public key provided in the attestation document.

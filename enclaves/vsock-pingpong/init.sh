@@ -29,7 +29,8 @@ echo "[init] launching /vsock-pingpong --mode ${mode} (argv: $*)"
 export RUST_BACKTRACE=1
 
 # Run as a child so PID1 stays alive even if the app dies.
-/vsock-pingpong --mode "$mode"
+# Use env to propagate current environment variables
+env /vsock-pingpong --mode "$mode"
 rc=$?
 echo "[init] /vsock-pingpong exited rc=$rc"
 

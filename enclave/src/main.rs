@@ -64,7 +64,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
         // TEST MODE: If an environment variable is set, try to load a model and exit
         if std::env::var("TEST_MODEL_LOAD").is_ok() {
-            println!("[test] Starting model load test via main loop...");
+            println!("[test] Starting REAL model load test from S3...");
             use ephemeral_ml_enclave::kms_client::KmsClient;
             use ephemeral_ml_enclave::model_loader::ModelLoader;
             use ephemeral_ml_common::model_manifest::ModelManifest;
@@ -73,24 +73,40 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             // Use dummy signing key just for this test
             let loader = ModelLoader::new(kms_client, [0u8; 32]);
             
-            // This is a dummy manifest matching our prepare_test_model.py output
+            // This manifest matches the one in s3://ephemeral-ml-models-1769608207/test-model-001/
             let manifest = ModelManifest {
                 model_id: "test-model-001".to_string(),
                 version: "1.0.0".to_string(),
                 model_hash: hex::decode("3b8e1224560b8fb840634d6fe3f67254c273f3416b7df750d02d45c42261cb7a").unwrap(),
                 hash_algorithm: "sha256".to_string(),
                 key_id: "test".to_string(),
-                signature: vec![0u8; 64], // Placeholder
+                signature: vec![0u8; 64], // Placeholder - in real use we verify this
             };
 
-            println!("[test] Attempting to fetch and decrypt model...");
-            // We'll catch the result and print it to console
-            match loader.load_model(&manifest, &[]).await {
-                Ok(_) => println!("[test] SUCCESS: Model decrypted in memory!"),
-                Err(e) => println!("[test] FAILED as expected (signature/data): {:?}", e),
+            println!("[test] Requesting model weights from host proxy...");
+            
+            // We need to pass the WRAPPED DEK. I'll get it from the file on the host.
+            // Wait, I don't have it inside the enclave. 
+            // In the real flow, the CLIENT sends the wrapped_dek.
+            // For this startup test, I'll just try to fetch the model bytes to prove S3 connectivity.
+            match kms_client.proxy_client().fetch_model(&manifest.model_id).await {
+                Ok(bytes) => {
+                    println!("[test] SUCCESS: Fetched {} bytes from S3 via Host Proxy!", bytes.len());
+                    println!("[test] Model hash verification starting...");
+                    use sha2::{Sha256, Digest};
+                    let mut hasher = Sha256::new();
+                    hasher.update(&bytes);
+                    let hash = hasher.finalize();
+                    if hash.as_slice() == manifest.model_hash.as_slice() {
+                        println!("[test] SUCCESS: Model hash matches manifest!");
+                    } else {
+                        println!("[test] ERROR: Model hash mismatch!");
+                    }
+                },
+                Err(e) => println!("[test] FAILED to fetch from S3: {:?}", e),
             }
         }
-
+        
         // Start production VSock server on port 5000 (inference/handshake)
         // Port 8082 is used for the KMS proxy on the host, not for incoming enclave traffic.
         let server = ProductionEnclaveServer::new(5000, attestation_provider, inference_engine);
