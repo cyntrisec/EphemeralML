@@ -188,6 +188,7 @@ resource "aws_iam_role_policy" "s3_model_access" {
         Effect = "Allow"
         Action = [
           "s3:GetObject",
+          "s3:PutObject",
           "s3:HeadObject",
           "s3:ListBucket"
         ]

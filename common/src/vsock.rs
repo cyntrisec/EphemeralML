@@ -1,8 +1,8 @@
 use crate::{Result, EphemeralError};
 use byteorder::{ByteOrder, BigEndian};
 
-/// Maximum message size (16MB) to prevent DoS
-pub const MAX_MESSAGE_SIZE: usize = 16 * 1024 * 1024;
+/// Maximum message size (1GB) to prevent DoS while allowing model weights
+pub const MAX_MESSAGE_SIZE: usize = 1024 * 1024 * 1024;
 
 /// VSock protocol message type
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
