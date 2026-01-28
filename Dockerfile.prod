@@ -2,7 +2,10 @@
 # This Dockerfile assumes the binary is already built on the host
 # and passed in the build context.
 
-FROM busybox:1.36
+FROM amazonlinux:2
+
+# Install minimal libs for dynamic binary
+RUN yum install -y shadow-utils && yum clean all
 
 # Copy the pre-built release binary from the host context
 COPY ephemeral-ml-enclave /vsock-pingpong
