@@ -20,6 +20,10 @@ impl<A: AttestationProvider> ModelLoader<A> {
         }
     }
 
+    pub fn kms_client(&self) -> &KmsClient<A> {
+        &self.kms_client
+    }
+
     /// Load and verify a model from an encrypted artifact
     /// Returns the decrypted plaintext bytes. Caller must parse as SafeTensors.
     pub async fn load_model(

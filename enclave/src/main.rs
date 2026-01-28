@@ -70,7 +70,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             use ephemeral_ml_common::model_manifest::ModelManifest;
 
             let kms_client = KmsClient::new(attestation_provider.clone());
+            
             // Use dummy signing key just for this test
+            // Note: We need to use the proxy_client from the loader or clone it
             let loader = ModelLoader::new(kms_client, [0u8; 32]);
             
             // This manifest matches the one in s3://ephemeral-ml-models-1769608207/test-model-001/
@@ -85,11 +87,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
             println!("[test] Requesting model weights from host proxy...");
             
-            // We need to pass the WRAPPED DEK. I'll get it from the file on the host.
-            // Wait, I don't have it inside the enclave. 
-            // In the real flow, the CLIENT sends the wrapped_dek.
-            // For this startup test, I'll just try to fetch the model bytes to prove S3 connectivity.
-            match kms_client.proxy_client().fetch_model(&manifest.model_id).await {
+            // Re-borrow proxy client from the provider/client logic
+            let proxy = loader.kms_client().proxy_client();
+            match proxy.fetch_model(&manifest.model_id).await {
                 Ok(bytes) => {
                     println!("[test] SUCCESS: Fetched {} bytes from S3 via Host Proxy!", bytes.len());
                     println!("[test] Model hash verification starting...");
