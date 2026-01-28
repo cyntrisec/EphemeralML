@@ -64,17 +64,29 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
         // TEST MODE: If an environment variable is set, try to load a model and exit
         if std::env::var("TEST_MODEL_LOAD").is_ok() {
-            println!("[test] Starting model load test...");
+            println!("[test] Starting model load test via main loop...");
             use ephemeral_ml_enclave::kms_client::KmsClient;
             use ephemeral_ml_enclave::model_loader::ModelLoader;
-            
+            use ephemeral_ml_common::model_manifest::ModelManifest;
+
             let kms_client = KmsClient::new(attestation_provider.clone());
-            // Use a dummy trusted key for this test
-            let _loader = ModelLoader::new(kms_client, [0u8; 32]);
+            // Use dummy signing key just for this test
+            let loader = ModelLoader::new(kms_client, [0u8; 32]);
             
-            // This will fail unless we provide valid data, but we can catch the error
-            // to see how far it gets (e.g., if it can reach the KMS proxy).
-            println!("[test] ModelLoader initialized.");
+            // This is a dummy manifest matching our prepare_test_model.py output
+            let manifest = ModelManifest {
+                model_id: "test-model-001".to_string(),
+                version: "1.0.0".to_string(),
+                hash_sha256: "3b8e1224560b8fb840634d6fe3f67254c273f3416b7df750d02d45c42261cb7a".to_string(),
+                encryption_nonce: Some("00".repeat(12)), // Placeholder
+            };
+
+            println!("[test] Attempting to fetch and decrypt model...");
+            // We'll catch the result and print it to console
+            match loader.load_model(&manifest, &[]).await {
+                Ok(_) => println!("[test] SUCCESS: Model decrypted in memory!"),
+                Err(e) => println!("[test] FAILED as expected (signature/data): {:?}", e),
+            }
         }
 
         // Start production VSock server on port 5000 (inference/handshake)
