@@ -71,7 +71,21 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     
     let model_info = ephemeral_ml_enclave::assembly::CandleModel {
         id: "mini-lm-v2".to_string(),
-        model_type: "bert".to_string(),
+        topology: ephemeral_ml_common::TopologyKey {
+            graph_id: "dummy".to_string(),
+            nodes: vec![],
+            edges: vec![],
+            input_shapes: vec![],
+            output_shapes: vec![],
+            metadata: ephemeral_ml_common::ModelMetadata {
+                name: "mini-lm-v2".to_string(),
+                version: "1.0.0".to_string(),
+                description: None,
+                created_at: 0,
+                checksum: "dummy".to_string(),
+            },
+        },
+        weights: vec![],
     };
     
     let infer_start = Instant::now();
