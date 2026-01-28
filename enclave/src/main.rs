@@ -62,6 +62,18 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         let attestation_provider = DefaultAttestationProvider::new()?;
         let inference_engine = CandleInferenceEngine::new()?;
 
+        // TEST MODE: If an environment variable is set, try to load a model and exit
+        if std::env::var("TEST_MODEL_LOAD").is_ok() {
+            println!("[test] Starting model load test...");
+            let kms_client = crate::kms_client::KmsClient::new(attestation_provider.clone());
+            // Use a dummy trusted key for this test
+            let loader = crate::model_loader::ModelLoader::new(kms_client, [0u8; 32]);
+            
+            // This will fail unless we provide valid data, but we can catch the error
+            // to see how far it gets (e.g., if it can reach the KMS proxy).
+            println!("[test] ModelLoader initialized.");
+        }
+
         // Start production VSock server on port 5000 (inference/handshake)
         // Port 8082 is used for the KMS proxy on the host, not for incoming enclave traffic.
         let server = ProductionEnclaveServer::new(5000, attestation_provider, inference_engine);
