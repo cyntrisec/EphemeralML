@@ -64,19 +64,12 @@ resource "aws_kms_key" "model_key" {
         Action   = "kms:Decrypt"
         Resource = "*"
         
-        # HARDENED: Use RecipientAttestation condition to pin the enclave identity.
-        # StringEqualsIgnoreCase is the recommended operator for ImageSha384 (PCR0).
-        # Once you have your final signed EIF measurements, uncomment and update these:
-        # condition {
-        #   test     = "StringEqualsIgnoreCase"
-        #   variable = "kms:RecipientAttestation:ImageSha384"
-        #   values   = ["<YOUR_SIGNED_EIF_IMAGE_SHA384>"]
-        # }
-        # condition {
-        #   test     = "StringEqualsIgnoreCase"
-        #   variable = "kms:RecipientAttestation:PCR0"
-        #   values   = ["<YOUR_SIGNED_EIF_PCR0>"]
-        # }
+        # HARDENED: Bound to the specific build generated on 2026-01-28
+        condition {
+          test     = "StringEqualsIgnoreCase"
+          variable = "kms:RecipientAttestation:ImageSha384"
+          values   = ["dd85425484e093a30ff37d86035c8d6a6493b687d2ecc5ef26c1dcf70a53067fe10c879f38f8fc00e7d4208fa5ece1af"]
+        }
         # PRO TIP: You can also pin the Signing Key PCR (usually PCR8) if using signed EIFs.
       }
       }
