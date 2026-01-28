@@ -97,6 +97,56 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("[bench] Output vector size: {}", output.len());
     println!("[bench] First 5 values: {:?}", &output[..5.min(output.len())]);
 
+    // Benchmark 4: Receipt Generation
+    println!("\n[bench] Generating Attested Execution Receipt (AER)...");
+    
+    // Create a mock session for receipt signing
+    use ephemeral_ml_common::{HPKESession, ReceiptSigningKey};
+    use ephemeral_ml_enclave::session_manager::EnclaveSession;
+    use ephemeral_ml_enclave::receipt::ReceiptBuilder;
+
+    let session_id = "bench-session".to_string();
+    let mut hpke = HPKESession::new(
+        session_id.clone(),
+        1,
+        [0u8; 32],
+        [0u8; 32],
+        [0u8; 32],
+        [0u8; 12],
+        3600
+    ).unwrap();
+    hpke.establish(&[0u8; 32]).unwrap(); // Mock establish
+
+    let receipt_signing_key = ReceiptSigningKey::generate().unwrap();
+    let session = EnclaveSession::new(
+        session_id,
+        hpke,
+        receipt_signing_key,
+        [0u8; 32], // attestation hash
+        "bench-client".to_string(),
+    );
+
+    let output_bytes = serde_json::to_vec(&output).unwrap();
+    
+    let receipt_start = Instant::now();
+    let mut receipt = ReceiptBuilder::build(
+        &session,
+        &provider,
+        input_text.as_bytes(),
+        &output_bytes,
+        "mini-lm-v2".to_string(),
+        "1.0.0".to_string(),
+        infer_duration.as_millis() as u64,
+        0,
+    )?;
+    
+    session.sign_receipt(&mut receipt)?;
+    let receipt_duration = receipt_start.elapsed();
+    
+    println!("[bench] Receipt ID: {}", receipt.receipt_id);
+    println!("[bench] Signature: {}...", hex::encode(&receipt.signature.as_ref().unwrap()[..8]));
+    println!("[bench] Receipt Generation Time: {:?}", receipt_duration);
+
     println!("\n=== Benchmark Complete ===");
     Ok(())
 }
