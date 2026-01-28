@@ -176,6 +176,30 @@ resource "aws_iam_role_policy_attachment" "ssm" {
   policy_arn = "arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore"
 }
 
+# S3 access for model storage bucket
+resource "aws_iam_role_policy" "s3_model_access" {
+  name = "${var.project_name}-s3-model-access"
+  role = aws_iam_role.host.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Action = [
+          "s3:GetObject",
+          "s3:HeadObject",
+          "s3:ListBucket"
+        ]
+        Resource = [
+          "arn:aws:s3:::ephemeral-ml-models-*",
+          "arn:aws:s3:::ephemeral-ml-models-*/*"
+        ]
+      }
+    ]
+  })
+}
+
 resource "aws_iam_instance_profile" "host" {
   name = "${var.project_name}-hello-host-profile"
   role = aws_iam_role.host.name
