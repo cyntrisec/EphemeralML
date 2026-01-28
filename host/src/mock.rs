@@ -2,6 +2,8 @@ use crate::{HostError, Result, VSockProxy, WeightStorage, EphemeralError};
 use std::collections::HashMap;
 use tokio::net::{TcpListener, TcpStream};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use std::sync::Arc;
+use tokio::sync::Mutex;
 
 // Helper function to convert std::io::Error to HostError
 fn io_error_to_host_error(err: std::io::Error) -> HostError {
@@ -144,13 +146,13 @@ impl VSockProxy for MockVSockProxy {
 
 /// Mock weight storage for testing
 pub struct MockWeightStorage {
-    storage: HashMap<String, Vec<u8>>,
+    storage: Arc<Mutex<HashMap<String, Vec<u8>>>>,
 }
 
 impl MockWeightStorage {
     pub fn new() -> Self {
         Self {
-            storage: HashMap::new(),
+            storage: Arc::new(Mutex::new(HashMap::new())),
         }
     }
 }
@@ -161,26 +163,31 @@ impl Default for MockWeightStorage {
     }
 }
 
+#[async_trait::async_trait]
 impl WeightStorage for MockWeightStorage {
-    fn store(&mut self, model_id: &str, weights: &[u8]) -> Result<()> {
-        self.storage.insert(model_id.to_string(), weights.to_vec());
+    async fn store(&self, model_id: &str, weights: &[u8]) -> Result<()> {
+        let mut storage = self.storage.lock().await;
+        storage.insert(model_id.to_string(), weights.to_vec());
         println!("Mock storage: Stored {} bytes of weights for model {}", weights.len(), model_id);
         Ok(())
     }
 
-    fn retrieve(&self, model_id: &str) -> Result<Vec<u8>> {
-        self.storage
+    async fn retrieve(&self, model_id: &str) -> Result<Vec<u8>> {
+        let storage = self.storage.lock().await;
+        storage
             .get(model_id)
             .cloned()
             .ok_or_else(|| HostError::Host(EphemeralError::StorageError(format!("Weights not found for model {}", model_id))))
     }
 
-    fn exists(&self, model_id: &str) -> bool {
-        self.storage.contains_key(model_id)
+    async fn exists(&self, model_id: &str) -> bool {
+        let storage = self.storage.lock().await;
+        storage.contains_key(model_id)
     }
 
-    fn remove(&mut self, model_id: &str) -> Result<()> {
-        self.storage.remove(model_id);
+    async fn remove(&self, model_id: &str) -> Result<()> {
+        let mut storage = self.storage.lock().await;
+        storage.remove(model_id);
         println!("Mock storage: Removed weights for model {}", model_id);
         Ok(())
     }
