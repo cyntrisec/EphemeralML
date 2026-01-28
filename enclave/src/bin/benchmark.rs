@@ -118,7 +118,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     hpke.establish(&[0u8; 32]).unwrap(); // Mock establish
 
     let receipt_signing_key = ReceiptSigningKey::generate().unwrap();
-    let session = EnclaveSession::new(
+    let mut session = EnclaveSession::new(
         session_id,
         hpke,
         receipt_signing_key,
