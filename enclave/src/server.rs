@@ -10,14 +10,14 @@ use libc;
 #[cfg(feature = "production")]
 use tokio_vsock::{VsockListener, VsockStream};
 
-pub struct ProductionEnclaveServer<A: AttestationProvider + Clone + Send + 'static, I: InferenceEngine + Clone + Send + 'static> {
+pub struct ProductionEnclaveServer<A: AttestationProvider + Clone + Send + Sync + 'static, I: InferenceEngine + Clone + Send + Sync + 'static> {
     port: u32,
     session_manager: SessionManager,
     attestation_provider: A,
     inference_handler: Arc<InferenceHandler<A, I>>,
 }
 
-impl<A: AttestationProvider + Clone + Send + 'static, I: InferenceEngine + Clone + Send + 'static> ProductionEnclaveServer<A, I> {
+impl<A: AttestationProvider + Clone + Send + Sync + 'static, I: InferenceEngine + Clone + Send + Sync + 'static> ProductionEnclaveServer<A, I> {
     pub fn new(port: u32, attestation_provider: A, inference_engine: I) -> Self {
         let session_manager = SessionManager::new(100); // Support up to 100 concurrent sessions
         let inference_handler = Arc::new(InferenceHandler::new(
@@ -36,7 +36,7 @@ impl<A: AttestationProvider + Clone + Send + 'static, I: InferenceEngine + Clone
 
     #[cfg(feature = "production")]
     pub async fn start(&self) -> Result<()> {
-        let listener = VsockListener::bind(libc::VMADDR_CID_ANY, self.port)
+        let mut listener = VsockListener::bind(libc::VMADDR_CID_ANY, self.port)
             .map_err(|e| EnclaveError::Enclave(EphemeralError::NetworkError(format!("Failed to bind VSock: {}", e))))?;
 
         println!("[server] listening on VSock port {}", self.port);

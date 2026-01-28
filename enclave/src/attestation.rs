@@ -51,7 +51,7 @@ impl EphemeralKeyPair {
 }
 
 /// Trait for attestation functionality
-pub trait AttestationProvider {
+pub trait AttestationProvider: Send + Sync {
     /// Generate an attestation document with the given nonce and embedded ephemeral keys
     fn generate_attestation(&self, nonce: &[u8]) -> Result<AttestationDocument>;
     

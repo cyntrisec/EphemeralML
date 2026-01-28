@@ -2,7 +2,7 @@ use crate::{EnclaveError, Result, EphemeralError};
 use crate::assembly::CandleModel;
 
 /// Trait for inference execution
-pub trait InferenceEngine {
+pub trait InferenceEngine: Send + Sync {
     /// Execute inference on a model with input data (as bytes for flexibility)
     fn execute(&self, model: &CandleModel, input: &[u8]) -> Result<Vec<f32>>;
     
