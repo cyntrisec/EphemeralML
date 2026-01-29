@@ -1,5 +1,6 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::sync::{Arc, RwLock};
 use thiserror::Error;
 
 /// Static policy root key for v1 (checked into client config)
@@ -29,6 +30,18 @@ pub enum PolicyError {
     
     #[error("Serialization error: {0}")]
     Serialization(#[from] serde_json::Error),
+
+    #[error("Version downgrade rejected: new version {new} < current version {current}")]
+    VersionDowngrade { new: u32, current: u32 },
+
+    #[error("Version incompatible: current version {current} < new policy min_compatible_version {min_compatible}")]
+    VersionIncompatible { current: u32, min_compatible: u32 },
+
+    #[error("No previous policy available for rollback")]
+    NoPreviousPolicy,
+
+    #[error("IO error: {0}")]
+    Io(String),
 }
 
 /// Policy bundle containing signed measurement allowlists and configuration
@@ -36,6 +49,9 @@ pub enum PolicyError {
 pub struct PolicyBundle {
     /// Policy version for compatibility tracking
     pub version: u32,
+    /// Minimum compatible version for upgrade compatibility checks
+    #[serde(default = "default_min_compatible_version")]
+    pub min_compatible_version: u32,
     /// Unix timestamp when policy was created
     pub created_at: u64,
     /// Unix timestamp when policy expires
@@ -137,8 +153,8 @@ impl PolicyManager {
             });
         }
         
-        // Validate policy version (v1 only supports version 1)
-        if policy.version != 1 {
+        // Validate policy version (support version 1+)
+        if policy.version < 1 {
             return Err(PolicyError::UnsupportedVersion {
                 version: policy.version,
             });
@@ -192,6 +208,7 @@ impl PolicyManager {
             
         PolicyBundle {
             version: 1,
+            min_compatible_version: 1,
             created_at: current_time,
             expires_at: current_time + (30 * 24 * 60 * 60), // 30 days
             measurement_allowlist: MeasurementAllowlist {
@@ -284,6 +301,7 @@ impl PolicyManager {
         // Create a copy without the signature field for canonical encoding
         let policy_for_signing = PolicyBundleForSigning {
             version: policy.version,
+            min_compatible_version: policy.min_compatible_version,
             created_at: policy.created_at,
             expires_at: policy.expires_at,
             measurement_allowlist: policy.measurement_allowlist.clone(),
@@ -353,10 +371,16 @@ impl PolicyManager {
     }
 }
 
+fn default_min_compatible_version() -> u32 {
+    1
+}
+
 /// Policy bundle structure for signing (without signature field)
 #[derive(Serialize, Deserialize)]
 struct PolicyBundleForSigning {
     pub version: u32,
+    #[serde(default = "default_min_compatible_version")]
+    pub min_compatible_version: u32,
     pub created_at: u64,
     pub expires_at: u64,
     pub measurement_allowlist: MeasurementAllowlist,
@@ -367,6 +391,302 @@ struct PolicyBundleForSigning {
 impl Default for PolicyManager {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+/// Record of a policy version transition
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct PolicyVersionTransition {
+    /// Previous version (0 if first policy)
+    pub from_version: u32,
+    /// New version
+    pub to_version: u32,
+    /// Timestamp of transition (unix seconds)
+    pub timestamp: u64,
+    /// Reason for transition
+    pub reason: String,
+}
+
+/// Tracks policy version history for audit and compatibility
+#[derive(Clone, Debug, Default)]
+pub struct PolicyVersionHistory {
+    /// History of version transitions
+    pub transitions: Vec<PolicyVersionTransition>,
+}
+
+impl PolicyVersionHistory {
+    pub fn new() -> Self {
+        Self { transitions: Vec::new() }
+    }
+
+    pub fn record_transition(&mut self, from: u32, to: u32, reason: &str) {
+        let timestamp = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs();
+        self.transitions.push(PolicyVersionTransition {
+            from_version: from,
+            to_version: to,
+            timestamp,
+            reason: reason.to_string(),
+        });
+    }
+
+    pub fn current_version(&self) -> Option<u32> {
+        self.transitions.last().map(|t| t.to_version)
+    }
+}
+
+/// Policy update manager with atomic swap, rollback, version tracking, and file watching.
+pub struct PolicyUpdateManager {
+    inner: Arc<RwLock<PolicyUpdateManagerInner>>,
+}
+
+struct PolicyUpdateManagerInner {
+    manager: PolicyManager,
+    /// Previous policies for rollback (most recent last)
+    history: Vec<PolicyBundle>,
+    /// Maximum history entries to keep
+    max_history: usize,
+    /// Version history for audit
+    version_history: PolicyVersionHistory,
+    /// Last observed mtime for file watching
+    last_mtime: Option<std::time::SystemTime>,
+}
+
+impl PolicyUpdateManager {
+    /// Create a new PolicyUpdateManager wrapping a PolicyManager
+    pub fn new(manager: PolicyManager) -> Self {
+        Self {
+            inner: Arc::new(RwLock::new(PolicyUpdateManagerInner {
+                manager,
+                history: Vec::new(),
+                max_history: 10,
+                version_history: PolicyVersionHistory::new(),
+                last_mtime: None,
+            })),
+        }
+    }
+
+    /// Create with a custom history limit
+    pub fn with_max_history(manager: PolicyManager, max_history: usize) -> Self {
+        Self {
+            inner: Arc::new(RwLock::new(PolicyUpdateManagerInner {
+                manager,
+                history: Vec::new(),
+                max_history,
+                version_history: PolicyVersionHistory::new(),
+                last_mtime: None,
+            })),
+        }
+    }
+
+    /// Apply a policy update with signature verification and version checks.
+    /// Atomic: on failure the old policy is preserved.
+    pub fn apply_update(&self, new_policy_data: &[u8]) -> Result<(), PolicyError> {
+        let mut inner = self.inner.write().unwrap();
+
+        // Parse new policy first (before touching state)
+        let new_policy: PolicyBundle = serde_json::from_slice(new_policy_data)?;
+
+        // Version checks against current policy
+        if let Some(current) = inner.manager.current_policy() {
+            let current_version = current.version;
+
+            // New version must be >= current
+            if new_policy.version < current_version {
+                return Err(PolicyError::VersionDowngrade {
+                    new: new_policy.version,
+                    current: current_version,
+                });
+            }
+
+            // Current version must be >= new policy's min_compatible_version
+            if current_version < new_policy.min_compatible_version {
+                return Err(PolicyError::VersionIncompatible {
+                    current: current_version,
+                    min_compatible: new_policy.min_compatible_version,
+                });
+            }
+        }
+
+        // Save old policy for rollback
+        let old_policy = inner.manager.current_policy().cloned();
+        let old_version = old_policy.as_ref().map(|p| p.version).unwrap_or(0);
+
+        // Try to load the new policy (validates signature, expiration, measurements)
+        match inner.manager.load_policy(new_policy_data) {
+            Ok(()) => {
+                // Success — push old policy to history
+                if let Some(old) = old_policy {
+                    inner.history.push(old);
+                    // Trim history if needed
+                    while inner.history.len() > inner.max_history {
+                        inner.history.remove(0);
+                    }
+                }
+                let new_version = inner.manager.current_policy().map(|p| p.version).unwrap_or(0);
+                inner.version_history.record_transition(old_version, new_version, "policy_update");
+                Ok(())
+            }
+            Err(e) => {
+                // Rollback: restore old policy if we had one
+                // Since load_policy failed, the manager's current_policy should be unchanged
+                // (load_policy only sets current_policy on success), so no explicit rollback needed.
+                Err(e)
+            }
+        }
+    }
+
+    /// Rollback to the previous policy
+    pub fn rollback(&self) -> Result<(), PolicyError> {
+        let mut inner = self.inner.write().unwrap();
+        let previous = inner.history.pop().ok_or(PolicyError::NoPreviousPolicy)?;
+        let old_version = inner.manager.current_policy().map(|p| p.version).unwrap_or(0);
+        let new_version = previous.version;
+        inner.manager.current_policy = Some(previous);
+        inner.version_history.record_transition(old_version, new_version, "rollback");
+        Ok(())
+    }
+
+    /// Get the current policy
+    pub fn current_policy(&self) -> Option<PolicyBundle> {
+        let inner = self.inner.read().unwrap();
+        inner.manager.current_policy().cloned()
+    }
+
+    /// Get version history
+    pub fn version_history(&self) -> PolicyVersionHistory {
+        let inner = self.inner.read().unwrap();
+        inner.version_history.clone()
+    }
+
+    /// Get history depth
+    pub fn history_depth(&self) -> usize {
+        let inner = self.inner.read().unwrap();
+        inner.history.len()
+    }
+
+    /// One-shot load from file
+    pub fn load_from_file(&self, path: &std::path::Path) -> Result<(), PolicyError> {
+        let data = std::fs::read(path).map_err(|e| PolicyError::Io(e.to_string()))?;
+        self.apply_update(&data)?;
+        // Update mtime
+        if let Ok(meta) = std::fs::metadata(path) {
+            if let Ok(mtime) = meta.modified() {
+                let mut inner = self.inner.write().unwrap();
+                inner.last_mtime = Some(mtime);
+            }
+        }
+        Ok(())
+    }
+
+    /// Check if file has changed and reload if so (poll-based).
+    /// Returns Ok(true) if reloaded, Ok(false) if unchanged.
+    pub fn poll_file(&self, path: &std::path::Path) -> Result<bool, PolicyError> {
+        let meta = std::fs::metadata(path).map_err(|e| PolicyError::Io(e.to_string()))?;
+        let mtime = meta.modified().map_err(|e| PolicyError::Io(e.to_string()))?;
+
+        let should_reload = {
+            let inner = self.inner.read().unwrap();
+            match inner.last_mtime {
+                Some(last) => mtime > last,
+                None => true,
+            }
+        };
+
+        if should_reload {
+            let data = std::fs::read(path).map_err(|e| PolicyError::Io(e.to_string()))?;
+            self.apply_update(&data)?;
+            let mut inner = self.inner.write().unwrap();
+            inner.last_mtime = Some(mtime);
+            Ok(true)
+        } else {
+            Ok(false)
+        }
+    }
+
+    /// Start a background file watcher (polling every `interval`).
+    /// Returns a handle that stops watching when dropped.
+    pub fn watch_file(
+        &self,
+        path: std::path::PathBuf,
+        interval: std::time::Duration,
+    ) -> FileWatchHandle {
+        let running = Arc::new(std::sync::atomic::AtomicBool::new(true));
+        let running_clone = running.clone();
+        let inner = self.inner.clone();
+
+        let handle = std::thread::spawn(move || {
+            let mut last_mtime: Option<std::time::SystemTime> = None;
+            while running_clone.load(std::sync::atomic::Ordering::Relaxed) {
+                if let Ok(meta) = std::fs::metadata(&path) {
+                    if let Ok(mtime) = meta.modified() {
+                        let should_reload = match last_mtime {
+                            Some(last) => mtime > last,
+                            None => true,
+                        };
+                        if should_reload {
+                            if let Ok(data) = std::fs::read(&path) {
+                                let new_policy: Result<PolicyBundle, _> = serde_json::from_slice(&data);
+                                if let Ok(new_policy) = new_policy {
+                                    let mut guard = inner.write().unwrap();
+                                    let old_policy = guard.manager.current_policy().cloned();
+                                    let old_version = old_policy.as_ref().map(|p| p.version).unwrap_or(0);
+
+                                    // Version checks
+                                    let version_ok = if let Some(ref current) = old_policy {
+                                        new_policy.version >= current.version
+                                            && current.version >= new_policy.min_compatible_version
+                                    } else {
+                                        true
+                                    };
+
+                                    if version_ok {
+                                        if guard.manager.load_policy(&data).is_ok() {
+                                            if let Some(old) = old_policy {
+                                                guard.history.push(old);
+                                                while guard.history.len() > guard.max_history {
+                                                    guard.history.remove(0);
+                                                }
+                                            }
+                                            let new_ver = guard.manager.current_policy().map(|p| p.version).unwrap_or(0);
+                                            guard.version_history.record_transition(old_version, new_ver, "file_watch");
+                                            last_mtime = Some(mtime);
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                std::thread::sleep(interval);
+            }
+        });
+
+        FileWatchHandle {
+            running,
+            _handle: Some(handle),
+        }
+    }
+}
+
+/// Handle for stopping file watching. Stops when dropped.
+pub struct FileWatchHandle {
+    running: Arc<std::sync::atomic::AtomicBool>,
+    _handle: Option<std::thread::JoinHandle<()>>,
+}
+
+impl FileWatchHandle {
+    pub fn stop(&self) {
+        self.running.store(false, std::sync::atomic::Ordering::Relaxed);
+    }
+}
+
+impl Drop for FileWatchHandle {
+    fn drop(&mut self) {
+        self.stop();
+        // Don't join — the thread will exit on its next loop iteration
     }
 }
 
@@ -474,15 +794,291 @@ mod tests {
         // Load should succeed
         assert!(manager.load_policy(&policy_data).is_ok());
         
-        // Tamper
+        // Tamper with created_at instead of version (version=2 is now allowed)
         let mut bad_policy = policy.clone();
-        bad_policy.version = 2; // Change data
+        bad_policy.created_at = 999;
         let bad_policy_data = serde_json::to_vec(&bad_policy).unwrap();
         
         // Verification should fail (signature mismatch with data)
-        // Note: verify_policy_signature is called inside load_policy.
-        // But in mock mode, it might pass if we don't ensure verify_policy_signature enforces it?
-        // My implementation checks signature first.
         assert!(manager.load_policy(&bad_policy_data).is_err());
+    }
+
+    // ==================== Task 17 Tests ====================
+
+    /// Helper: create a signed policy with the given version
+    fn make_signed_policy(signing_key: &ed25519_dalek::SigningKey, version: u32, min_compat: u32) -> (Vec<u8>, PolicyBundle) {
+        use ed25519_dalek::Signer;
+        use base64::{Engine as _, engine::general_purpose::STANDARD};
+
+        let verifying_key = signing_key.verifying_key();
+        let root_key_str = format!("ed25519:{}", STANDARD.encode(verifying_key.to_bytes()));
+        let temp_manager = PolicyManager::with_root_key(root_key_str);
+
+        let mut policy = PolicyManager::create_default_policy();
+        policy.version = version;
+        policy.min_compatible_version = min_compat;
+
+        let canonical_bytes = temp_manager.create_canonical_policy_data(&policy).unwrap();
+        let signature = signing_key.sign(&canonical_bytes);
+        policy.signature = signature.to_bytes().to_vec();
+
+        let data = serde_json::to_vec(&policy).unwrap();
+        (data, policy)
+    }
+
+    #[test]
+    fn test_policy_update_valid_signature() {
+        use ed25519_dalek::SigningKey;
+        use rand::rngs::OsRng;
+        use base64::{Engine as _, engine::general_purpose::STANDARD};
+
+        let signing_key = SigningKey::generate(&mut OsRng);
+        let verifying_key = signing_key.verifying_key();
+        let root_key_str = format!("ed25519:{}", STANDARD.encode(verifying_key.to_bytes()));
+
+        let manager = PolicyManager::with_root_key(root_key_str);
+        let update_mgr = PolicyUpdateManager::new(manager);
+
+        let (data_v1, _) = make_signed_policy(&signing_key, 1, 1);
+        assert!(update_mgr.apply_update(&data_v1).is_ok());
+        assert!(update_mgr.current_policy().is_some());
+        assert_eq!(update_mgr.current_policy().unwrap().version, 1);
+    }
+
+    #[test]
+    fn test_policy_update_invalid_signature_preserves_old() {
+        use ed25519_dalek::SigningKey;
+        use rand::rngs::OsRng;
+        use base64::{Engine as _, engine::general_purpose::STANDARD};
+
+        let signing_key = SigningKey::generate(&mut OsRng);
+        let verifying_key = signing_key.verifying_key();
+        let root_key_str = format!("ed25519:{}", STANDARD.encode(verifying_key.to_bytes()));
+
+        let manager = PolicyManager::with_root_key(root_key_str);
+        let update_mgr = PolicyUpdateManager::new(manager);
+
+        // Load valid v1
+        let (data_v1, _) = make_signed_policy(&signing_key, 1, 1);
+        assert!(update_mgr.apply_update(&data_v1).is_ok());
+
+        // Attempt update with a different signing key (invalid sig for our manager)
+        let bad_key = SigningKey::generate(&mut OsRng);
+        let (bad_data, _) = make_signed_policy(&bad_key, 2, 1);
+        assert!(update_mgr.apply_update(&bad_data).is_err());
+
+        // Old policy preserved
+        assert_eq!(update_mgr.current_policy().unwrap().version, 1);
+    }
+
+    #[test]
+    fn test_version_downgrade_rejected() {
+        use ed25519_dalek::SigningKey;
+        use rand::rngs::OsRng;
+        use base64::{Engine as _, engine::general_purpose::STANDARD};
+
+        let signing_key = SigningKey::generate(&mut OsRng);
+        let verifying_key = signing_key.verifying_key();
+        let root_key_str = format!("ed25519:{}", STANDARD.encode(verifying_key.to_bytes()));
+
+        let manager = PolicyManager::with_root_key(root_key_str);
+        let update_mgr = PolicyUpdateManager::new(manager);
+
+        // Load v2 first
+        let (data_v2, _) = make_signed_policy(&signing_key, 2, 1);
+        assert!(update_mgr.apply_update(&data_v2).is_ok());
+
+        // Try to downgrade to v1
+        let (data_v1, _) = make_signed_policy(&signing_key, 1, 1);
+        let result = update_mgr.apply_update(&data_v1);
+        assert!(result.is_err());
+        match result.unwrap_err() {
+            PolicyError::VersionDowngrade { new: 1, current: 2 } => {}
+            e => panic!("Expected VersionDowngrade, got: {:?}", e),
+        }
+
+        // v2 still active
+        assert_eq!(update_mgr.current_policy().unwrap().version, 2);
+    }
+
+    #[test]
+    fn test_version_compatibility_validation() {
+        use ed25519_dalek::SigningKey;
+        use rand::rngs::OsRng;
+        use base64::{Engine as _, engine::general_purpose::STANDARD};
+
+        let signing_key = SigningKey::generate(&mut OsRng);
+        let verifying_key = signing_key.verifying_key();
+        let root_key_str = format!("ed25519:{}", STANDARD.encode(verifying_key.to_bytes()));
+
+        let manager = PolicyManager::with_root_key(root_key_str);
+        let update_mgr = PolicyUpdateManager::new(manager);
+
+        // Load v1
+        let (data_v1, _) = make_signed_policy(&signing_key, 1, 1);
+        assert!(update_mgr.apply_update(&data_v1).is_ok());
+
+        // Try to update to v3 with min_compatible_version=2 (current=1 < 2 → reject)
+        let (data_v3, _) = make_signed_policy(&signing_key, 3, 2);
+        let result = update_mgr.apply_update(&data_v3);
+        assert!(result.is_err());
+        match result.unwrap_err() {
+            PolicyError::VersionIncompatible { current: 1, min_compatible: 2 } => {}
+            e => panic!("Expected VersionIncompatible, got: {:?}", e),
+        }
+
+        // But v2 with min_compatible_version=1 should work
+        let (data_v2, _) = make_signed_policy(&signing_key, 2, 1);
+        assert!(update_mgr.apply_update(&data_v2).is_ok());
+        assert_eq!(update_mgr.current_policy().unwrap().version, 2);
+    }
+
+    #[test]
+    fn test_rollback() {
+        use ed25519_dalek::SigningKey;
+        use rand::rngs::OsRng;
+        use base64::{Engine as _, engine::general_purpose::STANDARD};
+
+        let signing_key = SigningKey::generate(&mut OsRng);
+        let verifying_key = signing_key.verifying_key();
+        let root_key_str = format!("ed25519:{}", STANDARD.encode(verifying_key.to_bytes()));
+
+        let manager = PolicyManager::with_root_key(root_key_str);
+        let update_mgr = PolicyUpdateManager::new(manager);
+
+        // No rollback possible initially
+        assert!(update_mgr.rollback().is_err());
+
+        // Load v1 then v2
+        let (data_v1, _) = make_signed_policy(&signing_key, 1, 1);
+        assert!(update_mgr.apply_update(&data_v1).is_ok());
+
+        let (data_v2, _) = make_signed_policy(&signing_key, 2, 1);
+        assert!(update_mgr.apply_update(&data_v2).is_ok());
+        assert_eq!(update_mgr.current_policy().unwrap().version, 2);
+
+        // Rollback to v1
+        assert!(update_mgr.rollback().is_ok());
+        assert_eq!(update_mgr.current_policy().unwrap().version, 1);
+
+        // Rollback again → no previous
+        assert!(update_mgr.rollback().is_err());
+    }
+
+    #[test]
+    fn test_measurement_allowlist_hot_update() {
+        use ed25519_dalek::SigningKey;
+        use rand::rngs::OsRng;
+        use base64::{Engine as _, engine::general_purpose::STANDARD};
+
+        let signing_key = SigningKey::generate(&mut OsRng);
+        let verifying_key = signing_key.verifying_key();
+        let root_key_str = format!("ed25519:{}", STANDARD.encode(verifying_key.to_bytes()));
+
+        let manager = PolicyManager::with_root_key(root_key_str.clone());
+        let update_mgr = PolicyUpdateManager::new(manager);
+
+        // Load v1
+        let (data_v1, _) = make_signed_policy(&signing_key, 1, 1);
+        assert!(update_mgr.apply_update(&data_v1).is_ok());
+
+        let old_pcr0 = update_mgr.current_policy().unwrap().measurement_allowlist.allowed_pcr0.clone();
+
+        // Create v2 with updated measurement allowlist
+        use ed25519_dalek::Signer;
+        let temp_manager = PolicyManager::with_root_key(root_key_str);
+        let mut policy_v2 = PolicyManager::create_default_policy();
+        policy_v2.version = 2;
+        policy_v2.min_compatible_version = 1;
+        policy_v2.measurement_allowlist.allowed_pcr0.push(
+            "aabbccddeeff00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff00112233445566778899".to_string()
+        );
+        let canonical = temp_manager.create_canonical_policy_data(&policy_v2).unwrap();
+        let sig = signing_key.sign(&canonical);
+        policy_v2.signature = sig.to_bytes().to_vec();
+        let data_v2 = serde_json::to_vec(&policy_v2).unwrap();
+
+        assert!(update_mgr.apply_update(&data_v2).is_ok());
+        let new_pcr0 = update_mgr.current_policy().unwrap().measurement_allowlist.allowed_pcr0.clone();
+        assert!(new_pcr0.len() > old_pcr0.len());
+        assert!(new_pcr0.contains(
+            &"aabbccddeeff00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff00112233445566778899".to_string()
+        ));
+    }
+
+    #[test]
+    fn test_version_history_tracking() {
+        use ed25519_dalek::SigningKey;
+        use rand::rngs::OsRng;
+        use base64::{Engine as _, engine::general_purpose::STANDARD};
+
+        let signing_key = SigningKey::generate(&mut OsRng);
+        let verifying_key = signing_key.verifying_key();
+        let root_key_str = format!("ed25519:{}", STANDARD.encode(verifying_key.to_bytes()));
+
+        let manager = PolicyManager::with_root_key(root_key_str);
+        let update_mgr = PolicyUpdateManager::new(manager);
+
+        let (data_v1, _) = make_signed_policy(&signing_key, 1, 1);
+        assert!(update_mgr.apply_update(&data_v1).is_ok());
+
+        let (data_v2, _) = make_signed_policy(&signing_key, 2, 1);
+        assert!(update_mgr.apply_update(&data_v2).is_ok());
+
+        let history = update_mgr.version_history();
+        assert_eq!(history.transitions.len(), 2);
+        assert_eq!(history.transitions[0].from_version, 0);
+        assert_eq!(history.transitions[0].to_version, 1);
+        assert_eq!(history.transitions[1].from_version, 1);
+        assert_eq!(history.transitions[1].to_version, 2);
+        assert_eq!(history.current_version(), Some(2));
+    }
+
+    #[test]
+    #[cfg(feature = "mock")]
+    fn test_load_from_file() {
+        let manager = PolicyManager::new();
+        let update_mgr = PolicyUpdateManager::new(manager);
+
+        let policy = PolicyManager::create_default_policy();
+        let data = serde_json::to_vec(&policy).unwrap();
+
+        let dir = std::env::temp_dir().join("ephemeral_ml_test_policy");
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("test_policy.json");
+        std::fs::write(&path, &data).unwrap();
+
+        assert!(update_mgr.load_from_file(&path).is_ok());
+        assert!(update_mgr.current_policy().is_some());
+
+        // Cleanup
+        let _ = std::fs::remove_file(&path);
+        let _ = std::fs::remove_dir(&dir);
+    }
+
+    #[test]
+    fn test_min_compatible_version_default() {
+        // Test backward compatibility: deserialize a PolicyBundle without min_compatible_version
+        let json = r#"{
+            "version": 1,
+            "created_at": 1000000,
+            "expires_at": 9999999999,
+            "measurement_allowlist": {
+                "allowed_pcr0": ["000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f202122232425262728292a2b2c2d2e2f"],
+                "allowed_pcr1": ["000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f202122232425262728292a2b2c2d2e2f"],
+                "allowed_pcr2": ["000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f202122232425262728292a2b2c2d2e2f"],
+                "required_measurements": ["pcr0"]
+            },
+            "key_release_policies": [],
+            "config": {
+                "max_concurrent_sessions": 10,
+                "session_timeout": 900,
+                "enable_shield_mode": false,
+                "feature_flags": {}
+            },
+            "signature": []
+        }"#;
+        let bundle: PolicyBundle = serde_json::from_str(json).unwrap();
+        assert_eq!(bundle.min_compatible_version, 1);
     }
 }
