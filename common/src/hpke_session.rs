@@ -837,4 +837,113 @@ mod tests {
         bad_session.session_id = "wrong".to_string();
         assert!(server_session.decrypt(&bad_session).is_err());
     }
+
+    mod prop_tests {
+        use super::*;
+        use proptest::prelude::*;
+        use x25519_dalek::{StaticSecret, PublicKey};
+
+        proptest! {
+            #[test]
+            fn test_hpke_roundtrip_prop(
+                session_id in ".*",
+                protocol_version in 0..100u32,
+                attestation_hash in any::<[u8; 32]>(),
+                local_key_seed in any::<[u8; 32]>(),
+                peer_key_seed in any::<[u8; 32]>(),
+                client_nonce in any::<[u8; 12]>(),
+                payload in any::<Vec<u8>>()
+            ) {
+                let local_secret = StaticSecret::from(local_key_seed);
+                let local_public = PublicKey::from(&local_secret);
+                
+                let peer_secret = StaticSecret::from(peer_key_seed);
+                let peer_public = PublicKey::from(&peer_secret);
+
+                let mut client_session = HPKESession::new(
+                    session_id.clone(),
+                    protocol_version,
+                    attestation_hash,
+                    *local_public.as_bytes(),
+                    *peer_public.as_bytes(),
+                    client_nonce,
+                    3600,
+                ).unwrap();
+                client_session.establish(local_secret.as_bytes()).unwrap();
+
+                let mut server_session = HPKESession::new(
+                    session_id,
+                    protocol_version,
+                    attestation_hash,
+                    *peer_public.as_bytes(),
+                    *local_public.as_bytes(),
+                    client_nonce,
+                    3600,
+                ).unwrap();
+                server_session.establish(peer_secret.as_bytes()).unwrap();
+
+                let encrypted = client_session.encrypt(&payload).unwrap();
+                let decrypted = server_session.decrypt(&encrypted).unwrap();
+                prop_assert_eq!(payload, decrypted);
+            }
+
+            #[test]
+            fn test_transcript_hash_uniqueness(
+                attestation_hash in any::<[u8; 32]>(),
+                local_public_key in any::<[u8; 32]>(),
+                peer_public_key in any::<[u8; 32]>(),
+                client_nonce in any::<[u8; 12]>(),
+                protocol_version in any::<u32>(),
+                different_attestation_hash in any::<[u8; 32]>(),
+            ) {
+                prop_assume!(attestation_hash != different_attestation_hash);
+                
+                let hash1 = HPKESession::derive_transcript_hash(
+                    &attestation_hash,
+                    &local_public_key,
+                    &peer_public_key,
+                    &client_nonce,
+                    protocol_version
+                ).unwrap();
+                
+                let hash2 = HPKESession::derive_transcript_hash(
+                    &different_attestation_hash,
+                    &local_public_key,
+                    &peer_public_key,
+                    &client_nonce,
+                    protocol_version
+                ).unwrap();
+                
+                prop_assert_ne!(hash1, hash2);
+            }
+
+            #[test]
+            fn test_replay_protection_prop(payload in any::<Vec<u8>>()) {
+                let local_secret = StaticSecret::from([1u8; 32]);
+                let local_public = PublicKey::from(&local_secret);
+                let peer_secret = StaticSecret::from([2u8; 32]);
+                let peer_public = PublicKey::from(&peer_secret);
+
+                let mut client_session = HPKESession::new(
+                    "test".into(), 1, [0u8; 32],
+                    *local_public.as_bytes(), *peer_public.as_bytes(), [0u8; 12], 3600
+                ).unwrap();
+                client_session.establish(local_secret.as_bytes()).unwrap();
+
+                let mut server_session = HPKESession::new(
+                    "test".into(), 1, [0u8; 32],
+                    *peer_public.as_bytes(), *local_public.as_bytes(), [0u8; 12], 3600
+                ).unwrap();
+                server_session.establish(peer_secret.as_bytes()).unwrap();
+
+                let encrypted = client_session.encrypt(&payload).unwrap();
+                
+                // First time ok
+                prop_assert!(server_session.decrypt(&encrypted).is_ok());
+                
+                // Second time (replay) should fail
+                prop_assert!(server_session.decrypt(&encrypted).is_err());
+            }
+        }
+    }
 }

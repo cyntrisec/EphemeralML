@@ -96,31 +96,34 @@ impl<A: AttestationProvider + Clone + Send + Sync + 'static, I: InferenceEngine 
                     client_hello.validate()?;
 
                     // Generate server keys and attestation
-                    // In real flow, we generate a fresh session private key (KEM)
-                    // and include the public key in attestation.
-                    let enclave_private_key = [0u8; 32]; // TODO: use real keypair gen
+                    // In real flow, we use the ephemeral keypair bound to the attestation
+                    let enclave_private_key = provider.get_hpke_private_key();
                     
                     let attestation = provider.generate_attestation(&client_hello.client_nonce)?;
                     
                     // Establish HPKE session
+                    let mut hasher = sha2::Sha256::new();
+                    sha2::Digest::update(&mut hasher, &attestation.signature);
+                    let attestation_hash: [u8; 32] = hasher.finalize().into();
+
                     let mut hpke = HPKESession::new(
                         ephemeral_ml_common::generate_id(),
                         PROTOCOL_VERSION_V1,
-                        client_hello.ephemeral_public_key,
+                        attestation_hash,
                         provider.get_hpke_public_key(),
                         client_hello.ephemeral_public_key, // peer
                         client_hello.client_nonce,
                         3600
                     ).map_err(|e| EnclaveError::Enclave(e))?;
 
-                    // For mock/v1 we might use a simplified establishment
+                    // Use the ephemeral private key bound to the attestation
                     hpke.establish(&enclave_private_key).map_err(|e| EnclaveError::Enclave(e))?;
 
                     let session = EnclaveSession::new(
                         hpke.session_id.clone(),
                         hpke,
-                        ephemeral_ml_common::ReceiptSigningKey::generate()?, // TODO: persistent or ephemeral?
-                        [0u8; 32], // attestation hash placeholder
+                        ephemeral_ml_common::ReceiptSigningKey::generate()?, 
+                        attestation_hash,
                         client_hello.client_id.clone(),
                     );
                     

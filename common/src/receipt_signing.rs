@@ -545,4 +545,81 @@ mod tests {
         // Canonical encoding should be deterministic
         assert_eq!(encoding1, encoding2);
     }
+
+    mod prop_tests {
+        use super::*;
+        use proptest::prelude::*;
+
+        // Helper to generate a random enclave measurement
+        fn any_measurements() -> impl Strategy<Value = EnclaveMeasurements> {
+            (any::<Vec<u8>>(), any::<Vec<u8>>(), any::<Vec<u8>>())
+                .prop_map(|(p0, p1, p2)| EnclaveMeasurements::new(p0, p1, p2))
+        }
+
+        // Helper to generate a random receipt
+        fn any_receipt() -> impl Strategy<Value = AttestationReceipt> {
+            (
+                ".*", // receipt_id
+                any::<u32>(), // protocol_version
+                any_measurements(),
+                any::<[u8; 32]>(), // attestation_doc_hash
+                any::<[u8; 32]>(), // request_hash
+                any::<[u8; 32]>(), // response_hash
+                ".*", // policy_version
+                any::<u64>(), // sequence_number
+                ".*", // model_id
+                ".*", // model_version
+                any::<u64>(), // execution_time_ms
+                any::<u64>(), // memory_peak_mb
+            ).prop_map(|(id, v, m, ah, rqh, rsh, pv, sn, mid, mv, et, mp)| {
+                AttestationReceipt::new(id, v, SecurityMode::GatewayOnly, m, ah, rqh, rsh, pv, sn, mid, mv, et, mp)
+            })
+        }
+
+        proptest! {
+            #[test]
+            fn test_receipt_sign_verify_prop(receipt in any_receipt()) {
+                let signing_key = ReceiptSigningKey::generate().unwrap();
+                let mut signed_receipt = receipt;
+                signed_receipt.sign(&signing_key).unwrap();
+                
+                prop_assert!(signed_receipt.verify_signature(&signing_key.public_key).unwrap());
+            }
+
+            #[test]
+            fn test_receipt_tamper_prop(
+                receipt in any_receipt(),
+                tampered_id in ".*"
+            ) {
+                let signing_key = ReceiptSigningKey::generate().unwrap();
+                let mut signed_receipt = receipt;
+                signed_receipt.sign(&signing_key).unwrap();
+                
+                prop_assume!(signed_receipt.receipt_id != tampered_id);
+                
+                let mut tampered_receipt = signed_receipt.clone();
+                tampered_receipt.receipt_id = tampered_id;
+                
+                prop_assert!(!tampered_receipt.verify_signature(&signing_key.public_key).unwrap());
+            }
+
+            #[test]
+            fn test_receipt_wrong_key_prop(receipt in any_receipt()) {
+                let signing_key1 = ReceiptSigningKey::generate().unwrap();
+                let signing_key2 = ReceiptSigningKey::generate().unwrap();
+                
+                let mut signed_receipt = receipt;
+                signed_receipt.sign(&signing_key1).unwrap();
+                
+                prop_assert!(!signed_receipt.verify_signature(&signing_key2.public_key).unwrap());
+            }
+            
+            #[test]
+            fn test_canonical_encoding_stable_prop(receipt in any_receipt()) {
+                let enc1 = receipt.canonical_encoding().unwrap();
+                let enc2 = receipt.canonical_encoding().unwrap();
+                prop_assert_eq!(enc1, enc2);
+            }
+        }
+    }
 }

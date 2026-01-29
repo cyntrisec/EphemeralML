@@ -35,18 +35,15 @@ impl EphemeralKeyPair {
     /// Generate a new ephemeral key pair
     pub fn generate() -> Self {
         use rand::rngs::OsRng;
-        use rand::RngCore;
+        use x25519_dalek::{StaticSecret, PublicKey};
         
-        let mut public_key = [0u8; 32];
-        let mut private_key = [0u8; 32];
+        let secret = StaticSecret::random_from_rng(OsRng);
+        let public = PublicKey::from(&secret);
         
-        let mut rng = OsRng;
-        // In a real implementation, we would use x25519_dalek to generate these properly.
-        // For now, keeping the byte array structure for compatibility with existing code.
-        rng.fill_bytes(&mut public_key);
-        rng.fill_bytes(&mut private_key);
-        
-        Self { public_key, private_key }
+        Self { 
+            public_key: *public.as_bytes(), 
+            private_key: *secret.as_bytes() 
+        }
     }
 }
 
@@ -60,6 +57,9 @@ pub trait AttestationProvider: Send + Sync {
     
     /// Get the HPKE public key for session establishment
     fn get_hpke_public_key(&self) -> [u8; 32];
+
+    /// Get the HPKE private key (Sensitive!)
+    fn get_hpke_private_key(&self) -> [u8; 32];
     
     /// Get the receipt signing public key
     fn get_receipt_public_key(&self) -> [u8; 32];
@@ -237,6 +237,10 @@ impl AttestationProvider for NSMAttestationProvider {
         self.hpke_keypair.public_key
     }
     
+    fn get_hpke_private_key(&self) -> [u8; 32] {
+        self.hpke_keypair.private_key
+    }
+    
     fn get_receipt_public_key(&self) -> [u8; 32] {
         self.receipt_keypair.public_key
     }
@@ -328,6 +332,18 @@ impl AttestationProvider for DefaultAttestationProvider {
         #[cfg(not(feature = "production"))]
         {
             return self.mock_provider.get_hpke_public_key();
+        }
+    }
+    
+    fn get_hpke_private_key(&self) -> [u8; 32] {
+        #[cfg(feature = "production")]
+        {
+            return self.nsm_provider.get_hpke_private_key();
+        }
+        
+        #[cfg(not(feature = "production"))]
+        {
+            return self.mock_provider.get_hpke_private_key();
         }
     }
     

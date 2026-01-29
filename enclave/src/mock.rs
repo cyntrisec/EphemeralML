@@ -195,6 +195,10 @@ impl AttestationProvider for MockAttestationProvider {
         self.hpke_keypair.public_key
     }
     
+    fn get_hpke_private_key(&self) -> [u8; 32] {
+        self.hpke_keypair.private_key
+    }
+    
     fn get_receipt_public_key(&self) -> [u8; 32] {
         self.receipt_keypair.public_key
     }

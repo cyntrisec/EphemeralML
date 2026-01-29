@@ -1,6 +1,25 @@
 # EphemeralML Competitive Benchmark & Analysis
 
-This document provides a technical comparison of EphemeralML v1.0 against other Confidential AI solutions. 
+## 🔬 Methodology
+
+Our benchmarking protocol follows the industry standard for Confidential Computing performance evaluation, ensuring transparency and reproducibility.
+
+### Hardware Environment
+*   **Instance**: AWS EC2 `c6a.xlarge` (4 vCPUs, 8GB RAM).
+*   **TEE**: AWS Nitro Enclaves.
+*   **Enclave Allocation**: 2 vCPUs, 4GB RAM.
+*   **Baseline**: Native Rust binary running on the Parent OS (Non-TEE).
+*   **Enclave**: Identical binary running inside the Nitro Enclave with VSock transport.
+
+### Measurement Protocol
+1.  **VSock Microbench**: Ping-pong RTT for payloads ranging from 64B to 1MB; Throughput measurement using streaming payloads.
+2.  **LLM Serving Metrics**:
+    *   **TTFT (Time-To-First-Token)**: Latency from request submission to the first generated token.
+    *   **Tokens/sec**: Sustained generation throughput after prefill.
+    *   **E2E Latency**: Total request time including HPKE encryption/decryption and VSock hops.
+3.  **Statistical Robustness**: All tests performed with 100+ iterations to derive p50, p95, and p99 metrics.
+
+---
 
 ## 🛡️ The "Hardware Native" Advantage
 

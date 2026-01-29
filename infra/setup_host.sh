@@ -18,15 +18,18 @@ sudo usermod -aG ne $USER
 sudo usermod -aG docker $USER
 
 # 4. Configure Enclave Resources
-# We will allocate 2 vCPUs and 2048 MB of RAM for the enclave
-echo "📏 Allocating resources for enclave..."
+# We will allocate resources for the enclave (default 2 vCPUs and 2048 MB of RAM)
+ENCLAVE_CPU=${1:-2}
+ENCLAVE_MEM=${2:-2048}
+
+echo "📏 Allocating resources for enclave: CPU=${ENCLAVE_CPU}, MEM=${ENCLAVE_MEM}..."
 cat <<EOF | sudo tee /etc/nitro_enclaves/allocator.yaml
 ---
 # Enclave resource allocator configuration
 # Total CPU count to be used for enclaves
-cpu_count: 2
+cpu_count: ${ENCLAVE_CPU}
 # Total memory size in MiB to be used for enclaves
-memory_mib: 2048
+memory_mib: ${ENCLAVE_MEM}
 EOF
 
 # 5. Restart services
