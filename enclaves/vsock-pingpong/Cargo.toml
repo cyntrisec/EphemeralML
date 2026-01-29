@@ -17,6 +17,15 @@ rand = "0.8"
 rsa = { version = "0.9", features = ["std", "pem"] }
 ephemeral-ml-common = { path = "../../common" }
 
+# Benchmark mode dependencies (model loading + inference)
+candle-core = { workspace = true }
+candle-nn = { workspace = true }
+candle-transformers = { workspace = true }
+tokenizers = { workspace = true }
+safetensors = { workspace = true }
+chacha20poly1305 = { workspace = true }
+sha2 = { workspace = true }
+
 [profile.release]
 # small binary; enclave images benefit from size.
 strip = true

@@ -1,27 +1,66 @@
-# EphemeralML Competitive Benchmark & Analysis
+# EphemeralML Benchmark & Competitive Analysis
 
-## 🔬 Methodology
+## Methodology
 
-Our benchmarking protocol follows the industry standard for Confidential Computing performance evaluation, ensuring transparency and reproducibility.
+### Reproducibility
+
+All benchmarks are produced by the automated benchmark suite in this repository.
+To reproduce:
+
+```bash
+# 1. Prepare model artifacts (downloads MiniLM-L6-v2, encrypts weights)
+./scripts/prepare_benchmark_model.sh
+
+# 2. Run full benchmark suite on a Nitro Enclaves-enabled EC2 instance
+./scripts/run_benchmark.sh
+
+# 3. Or trigger remotely via SSM
+aws ssm send-command --instance-ids i-XXXX \
+  --document-name "AWS-RunShellScript" \
+  --parameters 'commands=["bash /path/to/ssm_benchmark.sh"]'
+```
+
+Results are JSON files (`baseline_results.json`, `enclave_results.json`) analyzed by
+`scripts/benchmark_report.py` to compute overhead percentages.
 
 ### Hardware Environment
-*   **Instance**: AWS EC2 `c6a.xlarge` (4 vCPUs, 8GB RAM).
-*   **TEE**: AWS Nitro Enclaves.
-*   **Enclave Allocation**: 2 vCPUs, 4GB RAM.
-*   **Baseline**: Native Rust binary running on the Parent OS (Non-TEE).
-*   **Enclave**: Identical binary running inside the Nitro Enclave with VSock transport.
+
+- **Instance**: AWS EC2 `c6i.xlarge` (4 vCPUs, 8GB RAM)
+- **TEE**: AWS Nitro Enclaves
+- **Enclave Allocation**: 2 vCPUs, 1024MB RAM
+- **Baseline**: Native Rust binary on the parent OS (no enclave)
+- **Enclave**: Same inference code running inside Nitro Enclave with VSock transport
+
+### Model Under Test
+
+- **Model**: MiniLM-L6-v2 (sentence-transformers/all-MiniLM-L6-v2)
+- **Parameters**: 22.7M
+- **Architecture**: BERT (6-layer, 384-dim)
+- **Format**: safetensors (~90MB), encrypted with ChaCha20-Poly1305
+- **Task**: Sentence embedding (mean pooling)
 
 ### Measurement Protocol
-1.  **VSock Microbench**: Ping-pong RTT for payloads ranging from 64B to 1MB; Throughput measurement using streaming payloads.
-2.  **LLM Serving Metrics**:
-    *   **TTFT (Time-To-First-Token)**: Latency from request submission to the first generated token.
-    *   **Tokens/sec**: Sustained generation throughput after prefill.
-    *   **E2E Latency**: Total request time including HPKE encryption/decryption and VSock hops.
-3.  **Statistical Robustness**: All tests performed with 100+ iterations to derive p50, p95, and p99 metrics.
+
+1. **Statistical robustness**: 100 iterations per metric, 3 warmup iterations discarded
+2. **Percentiles**: p50, p95, p99 computed from sorted latency arrays
+3. **Memory**: Peak RSS read from `/proc/self/status` (VmPeak)
+4. **Timing**: `std::time::Instant` (monotonic clock), sub-microsecond precision
+5. **VSock RTT**: Payload sizes 64B, 1KB, 64KB, 1MB measured via round-trip
+
+### Six Must-Have Metrics
+
+| # | Metric | How Measured | Baseline |
+|---|--------|-------------|----------|
+| 1 | Inference latency | Per-inference timing (p50/p95/p99) | Same model, bare EC2 |
+| 2 | Model load time | S3 fetch + decrypt + deserialize, per stage | Direct file load on host |
+| 3 | Cold start | `nitro-cli run-enclave` to first inference | N/A (enclave-only) |
+| 4 | Attestation + KMS | NSM doc generation + KMS Decrypt w/ RecipientInfo | N/A (enclave-only) |
+| 5 | VSock overhead | RTT and throughput at various payload sizes | localhost TCP |
+| 6 | Memory usage | Peak RSS during model load + inference | Bare metal RSS |
 
 ---
 
-## 🛡️ The "Hardware Native" Advantage
+## The "Hardware Native" Advantage
 
 Unlike solutions that use Library OS (LibOS) wrappers like Anjuna or Fortanix, EphemeralML uses a lean, **Hardware Native** approach based on AWS Nitro Enclaves and the Rust-based Candle inference engine.
 
@@ -34,51 +73,109 @@ Unlike solutions that use Library OS (LibOS) wrappers like Anjuna or Fortanix, E
 
 ---
 
-## 🚀 Performance Benchmarks (v1.0)
+## Performance Results
 
-Verified on `c6a.xlarge` (4 vCPUs, 8GB RAM). 
+> **Status**: The numbers below are **projected estimates** pending first automated benchmark run.
+> Run `./scripts/run_benchmark.sh` on a Nitro instance to generate real measured data.
+> The report generator (`scripts/benchmark_report.py`) will produce an updated table.
 
-### 1. Communication Latency (The VSock Factor)
+### 1. Communication Latency (VSock)
+
 EphemeralML uses optimized VSock message framing, bypassing the TCP/IP stack.
 
-*   **Internal VSock RTT**: **0.15ms** (Typical TCP: 1-5ms)
-*   **Encrypted Message Framing Overhead**: **<0.1ms**
-*   **Result**: Communication overhead is virtually invisible compared to inference time.
+| Payload Size | Expected VSock RTT | Typical TCP RTT |
+|-------------|-------------------|-----------------|
+| 64 bytes | ~0.15ms | 1-5ms |
+| 1 KB | ~0.18ms | 1-5ms |
+| 64 KB | ~0.45ms | 2-6ms |
+| 1 MB | ~3.2ms | 5-15ms |
 
-### 2. Inference Latency (Native Candle Engine)
-| Model | Type | Inference Latency | Vs. Standard (Non-TEE) |
-|-------|------|-------------------|------------------------|
-| **MiniLM-L6** | Embedding | **18ms** | ~17ms (+5%) |
-| **DistilBERT** | Classifier | **52ms** | ~48ms (+8%) |
-| **Llama-3-8B** | LLM (4-bit) | **~180ms/token** | ~160ms/token (+12%) |
+### 2. Inference Latency (MiniLM-L6-v2, N=100)
 
-*Note: LibOS solutions typically report 25-40% overhead for these models due to syscall interception.*
+| Percentile | Bare Metal (est.) | Enclave (est.) | Overhead (est.) |
+|-----------|------------------|---------------|----------------|
+| Mean | ~17ms | ~18ms | ~+5% |
+| P50 | ~16ms | ~17ms | ~+5% |
+| P95 | ~20ms | ~22ms | ~+10% |
+| P99 | ~23ms | ~25ms | ~+9% |
 
-### 3. End-to-End "Zero-Trust" Lifecycle
-Total time for a client to get a verified result:
-1.  **Handshake + Attestation**: 350ms
-2.  **Encrypted Upload**: (Network speed dependent)
-3.  **Inference**: 50ms (MiniLM)
-4.  **AER Receipt Generation**: 5ms
-5.  **TOTAL**: **~405ms** for first request (warm session < 60ms)
+### 3. Stage Timing (Cold Start Breakdown)
 
----
+| Stage | Bare Metal (est.) | Enclave (est.) |
+|-------|------------------|---------------|
+| Attestation | N/A | ~45ms |
+| KMS Key Release | N/A | ~120ms |
+| Model Fetch (S3 via VSock) | ~2s (direct) | ~3.2s |
+| Model Decrypt | ~12ms | ~12ms |
+| Model Load (safetensors) | ~800ms | ~850ms |
+| **Cold Start Total** | ~3s | ~4.2s |
 
-## 🥊 Comparison with Key Competitors
+### 4. Memory Usage
 
-### **1. Mithril Security (BlindLlama)**
-*   **Difference**: BlindLlama focuses on SaaS-style "Private AI" using Python/C++.
-*   **Our Edge**: EphemeralML is **Native Rust**. This reduces memory consumption by 60% and avoids Python's Global Interpreter Lock (GIL), allowing for better multi-session scaling. Our **AER Receipts** are also more detailed for regulated industries (Audit Trail).
-
-### **2. Anjuna / Fortanix**
-*   **Difference**: General-purpose "Lift-and-Shift" containers.
-*   **Our Edge**: No "Hidden Overhead". LibOS containers include an entire OS kernel emulation, which adds 20-30% CPU penalty. EphemeralML's enclave binary is stripped and optimized for the Nitro Security Module.
-
-### **3. Secret Network / Oasis**
-*   **Difference**: Distributed TEEs for decentralized apps.
-*   **Our Edge**: **1000x lower latency**. Blockchain-based solutions are bound by consensus speed (seconds to minutes). EphemeralML is built for high-performance enterprise inference.
+| Metric | Bare Metal (est.) | Enclave (est.) |
+|--------|------------------|---------------|
+| Peak RSS | ~280MB | ~312MB |
+| Model Size | ~90MB | ~90MB |
 
 ---
 
-## 📈 Summary for Investors/Stakeholders
-EphemeralML provides the **highest security-to-performance ratio** in the industry by building on Rust/Candle and utilizing the leanest possible enclave runtime. We deliver "Non-TEE" performance with "Hardware-TEE" security guarantees.
+## Comparison with Key Competitors
+
+### 1. Mithril Security (BlindLlama)
+- **Approach**: SaaS-style "Private AI" using Python/C++
+- **Our advantage**: Native Rust reduces memory consumption ~60% and avoids Python GIL bottleneck. AER receipts provide auditable proof for regulated industries.
+
+### 2. Anjuna / Fortanix
+- **Approach**: General-purpose "Lift-and-Shift" LibOS containers
+- **Our advantage**: No hidden LibOS overhead. LibOS containers include full OS kernel emulation adding 20-30% CPU penalty. EphemeralML's enclave binary is stripped and LTO-optimized.
+
+### 3. Secret Network / Oasis
+- **Approach**: Distributed TEEs for decentralized apps
+- **Our advantage**: ~1000x lower latency. Blockchain consensus takes seconds to minutes. EphemeralML is built for real-time enterprise inference.
+
+### 4. Azure Confidential AI (ACC)
+- **Approach**: SGX/SEV-based confidential VMs with GPU passthrough
+- **Our advantage**: Simpler threat model (Nitro = VM isolation, not instruction-level). Lower attack surface. No sidechain or SGX microarchitectural risks.
+
+---
+
+## JSON Output Format
+
+Both the enclave and baseline benchmarks output structured JSON for automated comparison:
+
+```json
+{
+  "environment": "enclave | bare_metal",
+  "model": "MiniLM-L6-v2",
+  "model_params": 22700000,
+  "hardware": "c6i.xlarge",
+  "timestamp": "2026-01-30T...",
+  "commit": "abc1234",
+  "stages": {
+    "attestation_ms": 45.2,
+    "kms_key_release_ms": 120.5,
+    "model_fetch_ms": 3200.0,
+    "model_decrypt_ms": 12.3,
+    "model_load_ms": 850.0,
+    "cold_start_total_ms": 4228.0
+  },
+  "inference": {
+    "input_texts": ["What is the capital of France?", "..."],
+    "num_iterations": 100,
+    "latency_ms": { "mean": 18.5, "p50": 17.8, "p95": 22.1, "p99": 25.3, "min": 16.2, "max": 28.7 },
+    "throughput_inferences_per_sec": 54.05
+  },
+  "memory": { "peak_rss_mb": 312, "model_size_mb": 90 },
+  "vsock": { "rtt_64b_ms": 0.15, "rtt_1kb_ms": 0.18, "rtt_64kb_ms": 0.45, "rtt_1mb_ms": 3.2, "throughput_mbps": 14.2 }
+}
+```
+
+---
+
+## How to Update This Document
+
+After running the benchmark suite, replace the estimated tables above with the generated
+`benchmark_report.md` from `scripts/benchmark_report.py`. Include the commit hash and
+instance type for reproducibility.
+
+*Generated from benchmark suite at commit `{commit}` on `{instance_type}`.*
