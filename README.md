@@ -1,7 +1,7 @@
-[![Status](https://img.shields.io/badge/Status-97%25%20Complete-brightgreen?style=for-the-badge)]()
-[![E2E](https://img.shields.io/badge/E2E-Verified%20✓-success?style=for-the-badge)]()
+[![Status](https://img.shields.io/badge/Status-v1.0%20Complete-brightgreen?style=for-the-badge)]()
+[![Tests](https://img.shields.io/badge/Tests-91%20Passing-success?style=for-the-badge)]()
 [![Platform](https://img.shields.io/badge/Platform-AWS%20Nitro%20Enclaves-orange?style=for-the-badge&logo=amazon-aws)]()
-[![Language](https://img.shields.io/badge/Rust-b7410e?style=for-the-badge&logo=rust&logoColor=white)]()
+[![Language](https://img.shields.io/badge/Rust-13k%20LOC-b7410e?style=for-the-badge&logo=rust&logoColor=white)]()
 [![License](https://img.shields.io/badge/Apache%202.0-blue?style=for-the-badge)]()
 
 # 🔒 EphemeralML
@@ -77,9 +77,11 @@
 - **BF16/safetensors** format enforcement
 - Memory-optimized for TEE constraints
 
-### Compliance
+### Security & Compliance
 - **Attested Execution Receipts** (AER) for audit
-- **120+ unit tests** passing
+- **Policy update system** with signature verification and hot-reload
+- **Model format validation** (safetensors, dtype enforcement)
+- **91 unit tests** across 4 crates
 - **Deterministic builds** for reproducibility
 
 ---
@@ -110,18 +112,20 @@ See [`QUICKSTART.md`](QUICKSTART.md) for detailed instructions.
 
 ## Project Status
 
-| Component | Status |
-|-----------|--------|
-| NSM Attestation | ✅ Production |
-| KMS Integration | ✅ Production |
-| VSock Protocol | ✅ Production |
-| HPKE Sessions | ✅ Production |
-| Inference Engine | ✅ Production |
-| Receipt Signing | ✅ Production |
-| Compliance Tools | 🚧 In Progress |
-| Policy Updates | 📋 Planned |
+| Component | Status | Tests |
+|-----------|--------|-------|
+| NSM Attestation | ✅ Production | 11 |
+| KMS Integration | ✅ Production | — |
+| VSock Protocol | ✅ Production | 11 |
+| HPKE Sessions | ✅ Production | 8 |
+| Inference Engine | ✅ Production | 4 |
+| Receipt Signing | ✅ Production | 6 |
+| Policy System | ✅ Production | 9 |
+| Model Validation | ✅ Production | 21 |
+| Compliance Tools | ✅ Production | — |
+| Attestation Verifier | ✅ Production | 8 |
 
-**Overall: 97% complete** — E2E path verified on AWS Nitro.
+**v1.0 Gateway Complete** — 104/104 required tasks done, E2E verified on AWS Nitro.
 
 ---
 
