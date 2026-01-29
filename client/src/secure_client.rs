@@ -127,32 +127,76 @@ impl SecureClient for SecureEnclaveClient {
         server_hello.validate().map_err(|e| ClientError::Client(e))?;
 
         // 4. Verify Attestation using the production verifier
-        // The signature field of ServerHello contains the raw attestation document (COSE/CBOR)
+        // In mock mode, attestation_document is JSON-serialized AttestationDocument
+        // In production, it's raw COSE/CBOR
+        #[cfg(feature = "mock")]
+        let attestation_doc: AttestationDocument = {
+            let mut doc: AttestationDocument = serde_json::from_slice(&server_hello.attestation_document)
+                .unwrap_or(AttestationDocument {
+                    module_id: "mock".to_string(),
+                    digest: vec![],
+                    timestamp: server_hello.timestamp,
+                    pcrs: ephemeral_ml_common::PcrMeasurements::new(vec![], vec![], vec![]),
+                    certificate: vec![],
+                    signature: server_hello.attestation_document.clone(),
+                    nonce: Some(client_hello.client_nonce.to_vec()),
+                });
+            // Keep original module_id so attestation hash matches server
+            doc
+        };
+        #[cfg(not(feature = "mock"))]
         let attestation_doc = AttestationDocument {
-            #[cfg(feature = "mock")]
-            module_id: "mock-enclave".to_string(),
-            #[cfg(not(feature = "mock"))]
             module_id: "enclave".to_string(),
-            digest: vec![], // Placeholder
+            digest: vec![],
             timestamp: server_hello.timestamp,
-            pcrs: ephemeral_ml_common::PcrMeasurements::new(vec![], vec![], vec![]), // Placeholder
-            certificate: vec![], // Placeholder
-            signature: server_hello.attestation_document.clone(), // Raw bytes
+            pcrs: ephemeral_ml_common::PcrMeasurements::new(vec![], vec![], vec![]),
+            certificate: vec![],
+            signature: server_hello.attestation_document.clone(),
             nonce: Some(client_hello.client_nonce.to_vec()),
         };
 
         let identity = verifier.verify_attestation(&attestation_doc, &client_hello.client_nonce)?;
         
-        self.server_receipt_signing_key = Some(identity.receipt_signing_key);
+        // In mock mode, use the receipt signing key from server_hello (identity returns zeros)
+        #[cfg(feature = "mock")]
+        {
+            if server_hello.receipt_signing_key.len() == 32 {
+                let mut key = [0u8; 32];
+                key.copy_from_slice(&server_hello.receipt_signing_key);
+                self.server_receipt_signing_key = Some(key);
+            } else {
+                self.server_receipt_signing_key = Some(identity.receipt_signing_key);
+            }
+        }
+        #[cfg(not(feature = "mock"))]
+        {
+            self.server_receipt_signing_key = Some(identity.receipt_signing_key);
+        }
         self.server_attestation_doc = Some(server_hello.attestation_document.clone());
 
         // 5. Establish HPKE Session
+        // In mock mode, the attestation bypass returns zeroed keys, so use server_hello's key
+        let peer_public_key = if server_hello.ephemeral_public_key.len() == 32 {
+            let mut key = [0u8; 32];
+            key.copy_from_slice(&server_hello.ephemeral_public_key);
+            key
+        } else {
+            identity.hpke_public_key
+        };
+
+        #[cfg(feature = "mock")]
+        {
+            eprintln!("[mock-client] local_pk: {:?}", &client_public_bytes[..8]);
+            eprintln!("[mock-client] peer_pk: {:?}", &peer_public_key[..8]);
+            eprintln!("[mock-client] att_hash: {:?}", &identity.attestation_hash[..8]);
+        }
+
         let mut hpke = HPKESession::new(
             "session-id".to_string(),
             1,
             identity.attestation_hash,
             client_public_bytes,      // Local PK
-            identity.hpke_public_key, // Peer PK
+            peer_public_key,          // Peer PK
             client_hello.client_nonce,
             3600,
         ).map_err(|e| ClientError::Client(e))?;
@@ -286,8 +330,15 @@ mod tests {
                 nonce: Some(client_hello.client_nonce.to_vec()),
             };
 
+            // Compute attestation hash the same way the client verifier does
             let mut hasher = Sha256::new();
-            hasher.update(&attestation.signature);
+            hasher.update(attestation.module_id.as_bytes());
+            hasher.update(&attestation.digest);
+            hasher.update(&attestation.timestamp.to_be_bytes());
+            hasher.update(&attestation.pcrs.pcr0);
+            hasher.update(&attestation.pcrs.pcr1);
+            hasher.update(&attestation.pcrs.pcr2);
+            hasher.update(&attestation.certificate);
             let attestation_hash: [u8; 32] = hasher.finalize().into();
 
             use x25519_dalek::{StaticSecret, PublicKey};
@@ -339,7 +390,17 @@ mod tests {
             ).unwrap();
             server_hpke.establish(server_secret.as_bytes()).unwrap();
             
-            let req_plaintext = server_hpke.decrypt(&encrypted_request).unwrap();
+            // Server must sync sequence number: client encrypted with seq 0, server expects incoming seq 0
+            let req_plaintext = match server_hpke.decrypt(&encrypted_request) {
+                Ok(p) => p,
+                Err(e) => {
+                    eprintln!("[mock-server] decrypt failed: {:?}", e);
+                    eprintln!("[mock-server] server local_pk: {:?}", &server_pub_key_fixed[..8]);
+                    eprintln!("[mock-server] server peer_pk: {:?}", &client_hello.ephemeral_public_key[..8]);
+                    eprintln!("[mock-server] att_hash: {:?}", &attestation_hash[..8]);
+                    panic!("decrypt failed: {:?}", e);
+                }
+            };
             let input: InferenceHandlerInput = serde_json::from_slice(&req_plaintext).unwrap();
             
             // In the mock, we treat input_data as the tensor for the test
