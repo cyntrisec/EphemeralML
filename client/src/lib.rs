@@ -5,6 +5,7 @@ pub mod secure_client;
 pub mod policy;
 pub mod attestation_verifier;
 pub mod freshness;
+pub mod model_validation;
 
 #[cfg(feature = "mock")]
 pub mod mock;
@@ -17,3 +18,4 @@ pub use secure_client::{SecureClient, SecureEnclaveClient};
 pub use policy::{PolicyManager, PolicyBundle, MeasurementAllowlist, KeyReleasePolicy, PolicyError, PolicyUpdateManager, PolicyVersionHistory};
 pub use attestation_verifier::{AttestationVerifier, EnclaveIdentity, AttestationError};
 pub use freshness::{FreshnessEnforcer, NonceManager, FreshnessValidator, FreshnessError, NonceStats, FreshnessStats};
+pub use model_validation::{ModelValidator, ModelValidationError, ModelType, SafetensorsInfo, ModelInfo, TensorInfo};
