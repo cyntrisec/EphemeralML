@@ -186,9 +186,6 @@ impl SecureClient for SecureEnclaveClient {
 
         #[cfg(feature = "mock")]
         {
-            eprintln!("[mock-client] local_pk: {:?}", &client_public_bytes[..8]);
-            eprintln!("[mock-client] peer_pk: {:?}", &peer_public_key[..8]);
-            eprintln!("[mock-client] att_hash: {:?}", &identity.attestation_hash[..8]);
         }
 
         let mut hpke = HPKESession::new(
@@ -394,10 +391,6 @@ mod tests {
             let req_plaintext = match server_hpke.decrypt(&encrypted_request) {
                 Ok(p) => p,
                 Err(e) => {
-                    eprintln!("[mock-server] decrypt failed: {:?}", e);
-                    eprintln!("[mock-server] server local_pk: {:?}", &server_pub_key_fixed[..8]);
-                    eprintln!("[mock-server] server peer_pk: {:?}", &client_hello.ephemeral_public_key[..8]);
-                    eprintln!("[mock-server] att_hash: {:?}", &attestation_hash[..8]);
                     panic!("decrypt failed: {:?}", e);
                 }
             };
