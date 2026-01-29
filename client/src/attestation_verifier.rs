@@ -1,12 +1,10 @@
 use crate::{ClientError, Result, PolicyManager, FreshnessEnforcer};
 use ephemeral_ml_common::{AttestationDocument, PcrMeasurements, current_timestamp};
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use std::collections::{HashMap, BTreeMap};
 use thiserror::Error;
-use coset::{CoseSign1, AsCbor};
-use x509_parser::prelude::*;
+use coset::{CoseSign1, CborSerializable, Label};
 use openssl::x509::X509;
-use openssl::pkey::PKey;
 use openssl::hash::MessageDigest;
 use openssl::sign::Verifier;
 
@@ -64,8 +62,15 @@ pub struct AttestationUserData {
 }
 
 /// AWS Nitro Enclaves Root CA (G1)
-/// Fingerprint: 64:1A:03:21:A3:E2:44:EF:E4:56:46:31:95:D6:06:31:7E:D7:CD:CC:3C:17:56:E0:98:93:F3:C6:8F:79:BB:5B
 const AWS_NITRO_ROOT_CA: &[u8] = include_bytes!("aws_nitro_root_ca.der");
+
+/// Helper to extract a map from serde_cbor::Value
+fn cbor_as_map(val: &serde_cbor::Value) -> Option<&BTreeMap<serde_cbor::Value, serde_cbor::Value>> {
+    match val {
+        serde_cbor::Value::Map(m) => Some(m),
+        _ => None,
+    }
+}
 
 /// Attestation verifier for client-side verification
 pub struct AttestationVerifier {
@@ -89,11 +94,20 @@ impl AttestationVerifier {
     
     /// Verify attestation document and extract enclave identity
     pub fn verify_attestation(&mut self, doc: &AttestationDocument, expected_nonce: &[u8]) -> Result<EnclaveIdentity> {
-        // Mock Bypass
+        // Mock Bypass — skip COSE/CBOR parsing entirely in mock mode
         #[cfg(feature = "mock")]
         if doc.module_id == "mock-enclave" {
-            let payload = doc.signature.clone();
-            return self.parse_and_validate_payload(payload, expected_nonce, doc);
+            let attestation_hash = self.calculate_attestation_hash(doc)?;
+            return Ok(EnclaveIdentity {
+                module_id: "mock-enclave".to_string(),
+                measurements: doc.pcrs.clone(),
+                hpke_public_key: [0u8; 32],
+                receipt_signing_key: [0u8; 32],
+                protocol_version: 1,
+                supported_features: vec![],
+                attestation_hash,
+                kms_public_key: None,
+            });
         }
 
         // 1. Parse and verify the COSE structure and signature
@@ -112,12 +126,12 @@ impl AttestationVerifier {
                 format!("Failed to parse attestation payload: {}", e)
             )))?;
         
-        let payload_map = attestation_payload.as_map().ok_or_else(|| {
+        let payload_map = cbor_as_map(&attestation_payload).ok_or_else(|| {
              ClientError::Client(crate::EphemeralError::AttestationError("Payload is not a map".to_string()))
         })?;
 
         // 4. Validate nonce
-        let doc_nonce = self.get_bytes_field(payload_map, "nonce")?;
+        let doc_nonce = get_bytes_field(payload_map, "nonce")?;
         if doc_nonce != expected_nonce {
             return Err(ClientError::Client(crate::EphemeralError::AttestationError(
                 format!("Nonce mismatch: expected {}, got {}", 
@@ -126,7 +140,7 @@ impl AttestationVerifier {
         }
 
         // 5. Validate freshness timestamp
-        let timestamp = self.get_int_field(payload_map, "timestamp")? as u64;
+        let timestamp = get_int_field(payload_map, "timestamp")? as u64;
         self.freshness_enforcer.validate_attestation_response(expected_nonce, timestamp)?;
 
         // 6. Extract and validate PCRs
@@ -134,17 +148,17 @@ impl AttestationVerifier {
         self.validate_pcr_measurements(&pcrs)?;
 
         // 7. Extract module_id
-        let module_id = self.get_str_field(payload_map, "module_id")?;
+        let module_id = get_str_field(payload_map, "module_id")?;
 
         // 8. Extract user_data and keys
-        let user_data_bytes = self.get_bytes_field(payload_map, "user_data")?;
+        let user_data_bytes = get_bytes_field(payload_map, "user_data")?;
         let user_data: AttestationUserData = serde_json::from_slice(&user_data_bytes)
             .map_err(|e| ClientError::Client(crate::EphemeralError::AttestationError(
                 format!("Failed to parse user data: {}", e)
             )))?;
         
         // 9. Extract optional KMS public key
-        let kms_public_key = self.get_bytes_field(payload_map, "public_key").ok();
+        let kms_public_key = get_bytes_field(payload_map, "public_key").ok();
 
         // 10. Calculate attestation hash for binding
         let attestation_hash = self.calculate_attestation_hash(doc)?;
@@ -163,20 +177,26 @@ impl AttestationVerifier {
 
     fn verify_cose_signature(&self, cose_data: &[u8]) -> Result<(Vec<u8>, Vec<Vec<u8>>)> {
         let cose_sign1 = CoseSign1::from_slice(cose_data)
-            .map_err(|e| ClientError::Client(crate::EphemeralError::AttestationError(format!("COSE parse error: {}", e))))?;
+            .map_err(|e| ClientError::Client(crate::EphemeralError::AttestationError(format!("COSE parse error: {:?}", e))))?;
         
+        // Extract certificate chain from unprotected header
+        // In COSE, label 33 is "x5chain" (certificate chain)
         let mut cert_chain = Vec::new();
-        for (label, value) in &cose_sign1.unprotected {
-            if let coset::Label::Int(33) = label {
-                 if let coset::Value::Bytes(b) = value {
-                     cert_chain.push(b.clone());
-                 } else if let coset::Value::Array(a) = value {
-                     for v in a {
-                         if let coset::Value::Bytes(b) = v {
-                             cert_chain.push(b.clone());
-                         }
-                     }
-                 }
+        for (label, value) in &cose_sign1.unprotected.rest {
+            if *label == Label::Int(33) {
+                match value {
+                    ciborium::Value::Bytes(b) => {
+                        cert_chain.push(b.clone());
+                    }
+                    ciborium::Value::Array(a) => {
+                        for v in a {
+                            if let ciborium::Value::Bytes(b) = v {
+                                cert_chain.push(b.clone());
+                            }
+                        }
+                    }
+                    _ => {}
+                }
             }
         }
 
@@ -191,12 +211,31 @@ impl AttestationVerifier {
         let pubkey = leaf_cert.public_key()
             .map_err(|e| ClientError::Client(crate::EphemeralError::AttestationError(format!("Failed to get pubkey: {}", e))))?;
 
-        // Verify COSE signature
-        cose_sign1.verify_signature(b"", |sig, data| {
-            let mut verifier = Verifier::new(MessageDigest::sha384(), &pubkey).unwrap();
-            verifier.update(data).unwrap();
-            verifier.verify(sig).unwrap()
-        }).map_err(|e| ClientError::Client(crate::EphemeralError::AttestationError(format!("COSE signature verification failed: {:?}", e))))?;
+        // Verify COSE_Sign1 signature
+        // The signature is over the Sig_structure: ["Signature1", protected, external_aad, payload]
+        let protected_bytes = cose_sign1.protected.original_data
+            .clone()
+            .unwrap_or_default();
+        let payload_bytes = cose_sign1.payload.as_deref().unwrap_or(&[]);
+        
+        // Build Sig_structure manually
+        let sig_structure = serde_cbor::Value::Array(vec![
+            serde_cbor::Value::Text("Signature1".to_string()),
+            serde_cbor::Value::Bytes(protected_bytes),
+            serde_cbor::Value::Bytes(vec![]), // external_aad
+            serde_cbor::Value::Bytes(payload_bytes.to_vec()),
+        ]);
+        let sig_data = serde_cbor::to_vec(&sig_structure)
+            .map_err(|e| ClientError::Client(crate::EphemeralError::AttestationError(format!("Failed to encode Sig_structure: {}", e))))?;
+        
+        let mut verifier = Verifier::new(MessageDigest::sha384(), &pubkey)
+            .map_err(|e| ClientError::Client(crate::EphemeralError::AttestationError(format!("Verifier init failed: {}", e))))?;
+        verifier.update(&sig_data)
+            .map_err(|e| ClientError::Client(crate::EphemeralError::AttestationError(format!("Verifier update failed: {}", e))))?;
+        
+        if !verifier.verify(&cose_sign1.signature).unwrap_or(false) {
+            return Err(ClientError::Client(crate::EphemeralError::AttestationError("COSE signature verification failed".to_string())));
+        }
 
         let payload = cose_sign1.payload.ok_or_else(|| ClientError::Client(crate::EphemeralError::AttestationError("COSE payload missing".to_string())))?;
         
@@ -246,9 +285,9 @@ impl AttestationVerifier {
         Ok(())
     }
 
-    fn extract_pcrs(&self, payload_map: &Vec<(serde_cbor::Value, serde_cbor::Value)>) -> Result<PcrMeasurements> {
-        let pcrs_val = self.get_field(payload_map, "pcrs")?;
-        let pcrs_map = pcrs_val.as_map().ok_or_else(|| ClientError::Client(crate::EphemeralError::AttestationError("PCRs is not a map".to_string())))?;
+    fn extract_pcrs(&self, payload_map: &BTreeMap<serde_cbor::Value, serde_cbor::Value>) -> Result<PcrMeasurements> {
+        let pcrs_val = get_field(payload_map, "pcrs")?;
+        let pcrs_map = cbor_as_map(pcrs_val).ok_or_else(|| ClientError::Client(crate::EphemeralError::AttestationError("PCRs is not a map".to_string())))?;
         
         let mut pcr0 = vec![];
         let mut pcr1 = vec![];
@@ -281,7 +320,7 @@ impl AttestationVerifier {
         use sha2::{Sha256, Digest};
         
         let mut hasher = Sha256::new();
-        hasher.update(&doc.module_id.as_bytes());
+        hasher.update(doc.module_id.as_bytes());
         hasher.update(&doc.digest);
         hasher.update(&doc.timestamp.to_be_bytes());
         hasher.update(&doc.pcrs.pcr0);
@@ -295,36 +334,33 @@ impl AttestationVerifier {
         Ok(result)
     }
 
-    // Helper methods for CBOR parsing
-    fn get_field<'a>(&self, map: &'a Vec<(serde_cbor::Value, serde_cbor::Value)>, key: &str) -> Result<&'a serde_cbor::Value> {
-        for (k, v) in map {
-            if let serde_cbor::Value::Text(s) = k {
-                if s == key {
-                    return Ok(v);
-                }
-            }
-        }
-        Err(ClientError::Client(crate::EphemeralError::AttestationError(format!("Missing field: {}", key))))
-    }
+}
 
-    fn get_bytes_field(&self, map: &Vec<(serde_cbor::Value, serde_cbor::Value)>, key: &str) -> Result<Vec<u8>> {
-        match self.get_field(map, key)? {
-            serde_cbor::Value::Bytes(b) => Ok(b.clone()),
-            _ => Err(ClientError::Client(crate::EphemeralError::AttestationError(format!("Field {} is not bytes", key))))
-        }
-    }
+// Free-standing CBOR map helpers (work with BTreeMap)
+fn get_field<'a>(map: &'a BTreeMap<serde_cbor::Value, serde_cbor::Value>, key: &str) -> Result<&'a serde_cbor::Value> {
+    let key_val = serde_cbor::Value::Text(key.to_string());
+    map.get(&key_val).ok_or_else(|| {
+        ClientError::Client(crate::EphemeralError::AttestationError(format!("Missing field: {}", key)))
+    })
+}
 
-    fn get_str_field(&self, map: &Vec<(serde_cbor::Value, serde_cbor::Value)>, key: &str) -> Result<String> {
-        match self.get_field(map, key)? {
-            serde_cbor::Value::Text(s) => Ok(s.clone()),
-            _ => Err(ClientError::Client(crate::EphemeralError::AttestationError(format!("Field {} is not text", key))))
-        }
+fn get_bytes_field(map: &BTreeMap<serde_cbor::Value, serde_cbor::Value>, key: &str) -> Result<Vec<u8>> {
+    match get_field(map, key)? {
+        serde_cbor::Value::Bytes(b) => Ok(b.clone()),
+        _ => Err(ClientError::Client(crate::EphemeralError::AttestationError(format!("Field {} is not bytes", key))))
     }
+}
 
-    fn get_int_field(&self, map: &Vec<(serde_cbor::Value, serde_cbor::Value)>, key: &str) -> Result<i128> {
-        match self.get_field(map, key)? {
-            serde_cbor::Value::Integer(i) => Ok(*i),
-            _ => Err(ClientError::Client(crate::EphemeralError::AttestationError(format!("Field {} is not integer", key))))
-        }
+fn get_str_field(map: &BTreeMap<serde_cbor::Value, serde_cbor::Value>, key: &str) -> Result<String> {
+    match get_field(map, key)? {
+        serde_cbor::Value::Text(s) => Ok(s.clone()),
+        _ => Err(ClientError::Client(crate::EphemeralError::AttestationError(format!("Field {} is not text", key))))
+    }
+}
+
+fn get_int_field(map: &BTreeMap<serde_cbor::Value, serde_cbor::Value>, key: &str) -> Result<i128> {
+    match get_field(map, key)? {
+        serde_cbor::Value::Integer(i) => Ok(*i),
+        _ => Err(ClientError::Client(crate::EphemeralError::AttestationError(format!("Field {} is not integer", key))))
     }
 }

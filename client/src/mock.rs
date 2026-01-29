@@ -6,7 +6,7 @@ use crate::{
 };
 use std::path::Path;
 use uuid::Uuid;
-use sha2::{Sha256, Digest};
+// sha2 available if needed for hashing
 use tokio::net::TcpStream;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 

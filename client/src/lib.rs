@@ -15,5 +15,5 @@ pub use error::{ClientError, Result};
 pub use decomposer::ModelDecomposer;
 pub use secure_client::{SecureClient, SecureEnclaveClient};
 pub use policy::{PolicyManager, PolicyBundle, MeasurementAllowlist, KeyReleasePolicy, PolicyError};
-pub use attestation_verifier::{AttestationVerifier, EnclaveIdentity, FreshnessTracker, AttestationError};
+pub use attestation_verifier::{AttestationVerifier, EnclaveIdentity, AttestationError};
 pub use freshness::{FreshnessEnforcer, NonceManager, FreshnessValidator, FreshnessError, NonceStats, FreshnessStats};

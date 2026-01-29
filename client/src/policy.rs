@@ -92,6 +92,7 @@ pub struct PolicyConfig {
 }
 
 /// Policy manager for handling policy verification and updates
+#[derive(Clone)]
 pub struct PolicyManager {
     /// Current active policy bundle
     current_policy: Option<PolicyBundle>,

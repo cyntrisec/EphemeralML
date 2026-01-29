@@ -129,7 +129,10 @@ impl SecureClient for SecureEnclaveClient {
         // 4. Verify Attestation using the production verifier
         // The signature field of ServerHello contains the raw attestation document (COSE/CBOR)
         let attestation_doc = AttestationDocument {
-            module_id: "enclave".to_string(), // Placeholder, verifier extracts real one
+            #[cfg(feature = "mock")]
+            module_id: "mock-enclave".to_string(),
+            #[cfg(not(feature = "mock"))]
+            module_id: "enclave".to_string(),
             digest: vec![], // Placeholder
             timestamp: server_hello.timestamp,
             pcrs: ephemeral_ml_common::PcrMeasurements::new(vec![], vec![], vec![]), // Placeholder
