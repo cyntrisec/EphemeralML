@@ -491,25 +491,50 @@ fn fetch_artifact(model_key: &str) -> Vec<u8> {
     }
 }
 
+/// Measure VSock round-trip time using a Storage request.
+///
+/// We send a StorageRequest for a non-existent key with a dummy payload padded
+/// to the desired size. The host proxy will return a StorageResponse::Error,
+/// which is fine — we're measuring the transport RTT, not the S3 fetch.
+/// We repeat `ROUNDS` times and return the median.
 fn measure_vsock_rtt(payload_size: usize) -> f64 {
-    use ephemeral_ml_common::{MessageType, VSockMessage};
+    use ephemeral_ml_common::{
+        storage_protocol::StorageRequest,
+        MessageType, VSockMessage,
+    };
 
-    let data = vec![0xABu8; payload_size];
-    let msg = VSockMessage::new(MessageType::Data, 0, data).unwrap();
+    const ROUNDS: usize = 10;
+    let mut samples = Vec::with_capacity(ROUNDS);
+
+    // Build a StorageRequest whose JSON is padded to approximate the desired payload size.
+    // The actual on-wire framing adds a few bytes, but we're measuring RTT not throughput.
+    let padding = "x".repeat(payload_size.saturating_sub(40)); // subtract base JSON overhead
+    let req = StorageRequest {
+        model_id: format!("__bench_rtt_{}", padding),
+        part_index: 0,
+    };
+    let req_payload = serde_json::to_vec(&req).unwrap();
+    let msg = VSockMessage::new(MessageType::Storage, 0, req_payload).unwrap();
     let encoded = msg.encode();
 
-    let mut stream = vsock_connect(8082);
-    let start = Instant::now();
-    stream.write_all(&encoded).unwrap();
+    for _ in 0..ROUNDS {
+        let mut stream = vsock_connect(8082);
+        let start = Instant::now();
+        stream.write_all(&encoded).unwrap();
 
-    // Read response
-    let mut len_buf = [0u8; 4];
-    stream.read_exact(&mut len_buf).unwrap();
-    let len = u32::from_be_bytes(len_buf) as usize;
-    let mut body = vec![0u8; len];
-    stream.read_exact(&mut body).unwrap();
+        // Read response (will be StorageResponse::Error for non-existent key)
+        let mut len_buf = [0u8; 4];
+        stream.read_exact(&mut len_buf).unwrap();
+        let len = u32::from_be_bytes(len_buf) as usize;
+        let mut body = vec![0u8; len];
+        stream.read_exact(&mut body).unwrap();
 
-    start.elapsed().as_secs_f64() * 1000.0
+        samples.push(start.elapsed().as_secs_f64() * 1000.0);
+    }
+
+    samples.sort_by(|a, b| a.partial_cmp(b).unwrap());
+    // Return median
+    samples[samples.len() / 2]
 }
 
 async fn run_benchmark() {
@@ -521,17 +546,31 @@ async fn run_benchmark() {
     let total_start = Instant::now();
     let device = Device::Cpu;
 
-    // ── Stage 1: Attestation timing ──
+    // ── Stage 1: Attestation + KMS key release timing ──
+    // We measure both together: RSA keygen + NSM attestation doc + KMS GenerateDataKey +
+    // KMS Decrypt with RecipientInfo (the real attestation-bound key release flow).
     eprintln!("[bench] Stage 1: Attestation document generation");
     let attest_start = Instant::now();
     let nsm_fd = aws_nitro_enclaves_nsm_api::driver::nsm_init();
     if nsm_fd < 0 {
         eprintln!("[bench] WARNING: NSM driver not available (running outside enclave?)");
     }
-    let attestation_ms = if nsm_fd >= 0 {
-        // Generate RSA keypair for RecipientInfo
+
+    // These will hold the real measured DEK (or fallback to hardcoded if KMS unavailable)
+    let mut attestation_ms: f64 = 0.0;
+    let mut kms_key_release_ms: f64 = 0.0;
+
+    // Try to get a real DEK via the KMS flow; fall back to hardcoded if NSM/KMS unavailable.
+    let fixed_dek = if nsm_fd >= 0 {
+        use ephemeral_ml_common::{
+            KmsRequest, KmsResponse, MessageType, VSockMessage,
+            KmsProxyRequestEnvelope, KmsProxyResponseEnvelope,
+            generate_id,
+        };
         use rand::rngs::OsRng;
         use rsa::{pkcs8::EncodePublicKey, RsaPrivateKey};
+
+        // 1a. Generate RSA keypair for RecipientInfo
         let rsa_priv = RsaPrivateKey::new(&mut OsRng, 2048).expect("rsa keygen");
         let rsa_pub_der = rsa_priv
             .to_public_key()
@@ -539,29 +578,129 @@ async fn run_benchmark() {
             .expect("rsa pub der")
             .to_vec();
 
+        // 1b. Get attestation document with embedded public key
         let request = aws_nitro_enclaves_nsm_api::api::Request::Attestation {
             user_data: None,
             nonce: Some(serde_bytes::ByteBuf::from(vec![1u8; 32])),
             public_key: Some(serde_bytes::ByteBuf::from(rsa_pub_der)),
         };
-        let _response =
+        let response =
             aws_nitro_enclaves_nsm_api::driver::nsm_process_request(nsm_fd, request);
-        aws_nitro_enclaves_nsm_api::driver::nsm_exit(nsm_fd);
-        attest_start.elapsed().as_secs_f64() * 1000.0
+        let attestation_doc = match response {
+            aws_nitro_enclaves_nsm_api::api::Response::Attestation { document } => document,
+            _ => {
+                eprintln!("[bench] WARNING: failed to get attestation doc, falling back to hardcoded DEK");
+                aws_nitro_enclaves_nsm_api::driver::nsm_exit(nsm_fd);
+                attestation_ms = attest_start.elapsed().as_secs_f64() * 1000.0;
+                hex::decode("0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef").unwrap()
+            }
+        };
+
+        // If we got the attestation doc, proceed with real KMS round-trip
+        if attestation_doc.len() > 100 {
+            aws_nitro_enclaves_nsm_api::driver::nsm_exit(nsm_fd);
+            attestation_ms = attest_start.elapsed().as_secs_f64() * 1000.0;
+            eprintln!("[bench] attestation_ms = {:.2} (doc {} bytes)", attestation_ms, attestation_doc.len());
+
+            // 2. KMS GenerateDataKey + Decrypt with RecipientInfo
+            eprintln!("[bench] Stage 2: KMS key release (GenerateDataKey + Decrypt w/ attestation)");
+            let kms_start = Instant::now();
+
+            // 2a. GenerateDataKey
+            let gen_req = KmsRequest::GenerateDataKey {
+                key_id: "alias/ephemeral-ml-test".to_string(),
+                key_spec: "AES_256".to_string(),
+            };
+            let gen_env = KmsProxyRequestEnvelope {
+                request_id: generate_id(),
+                trace_id: Some("bench-genkey".to_string()),
+                request: gen_req,
+            };
+            let payload = serde_json::to_vec(&gen_env).unwrap();
+            let msg = VSockMessage::new(MessageType::KmsProxy, 0, payload).unwrap();
+            let mut stream = vsock_connect(8082);
+            stream.write_all(&msg.encode()).unwrap();
+
+            let mut len_buf = [0u8; 4];
+            stream.read_exact(&mut len_buf).unwrap();
+            let len = u32::from_be_bytes(len_buf) as usize;
+            let mut body = vec![0u8; len];
+            stream.read_exact(&mut body).unwrap();
+            let mut full_msg = len_buf.to_vec();
+            full_msg.extend_from_slice(&body);
+            let resp_msg = VSockMessage::decode(&full_msg).unwrap();
+            let resp_env: KmsProxyResponseEnvelope = serde_json::from_slice(&resp_msg.payload).unwrap();
+
+            match resp_env.response {
+                KmsResponse::GenerateDataKey { key_id, ciphertext_blob, .. } => {
+                    eprintln!("[bench] GenerateDataKey OK for {}", key_id);
+
+                    // 2b. Decrypt with RecipientInfo (attestation-bound)
+                    let decrypt_req = KmsRequest::Decrypt {
+                        ciphertext_blob,
+                        key_id: Some(key_id),
+                        encryption_context: None,
+                        grant_tokens: None,
+                        recipient: Some(attestation_doc),
+                    };
+                    let decrypt_env = KmsProxyRequestEnvelope {
+                        request_id: generate_id(),
+                        trace_id: Some("bench-decrypt".to_string()),
+                        request: decrypt_req,
+                    };
+                    let payload = serde_json::to_vec(&decrypt_env).unwrap();
+                    let msg = VSockMessage::new(MessageType::KmsProxy, 1, payload).unwrap();
+                    let mut stream2 = vsock_connect(8082);
+                    stream2.write_all(&msg.encode()).unwrap();
+
+                    let mut len_buf = [0u8; 4];
+                    stream2.read_exact(&mut len_buf).unwrap();
+                    let len = u32::from_be_bytes(len_buf) as usize;
+                    let mut body = vec![0u8; len];
+                    stream2.read_exact(&mut body).unwrap();
+                    let mut full_msg = len_buf.to_vec();
+                    full_msg.extend_from_slice(&body);
+                    let resp_msg = VSockMessage::decode(&full_msg).unwrap();
+                    let resp_env: KmsProxyResponseEnvelope = serde_json::from_slice(&resp_msg.payload).unwrap();
+
+                    match resp_env.response {
+                        KmsResponse::Decrypt { ciphertext_for_recipient, .. } => {
+                            if ciphertext_for_recipient.is_some() {
+                                eprintln!("[bench] KMS Decrypt with RecipientInfo: SUCCESS");
+                            } else {
+                                eprintln!("[bench] KMS Decrypt: no wrapped key returned (policy issue?)");
+                            }
+                        }
+                        KmsResponse::Error { code, message } => {
+                            eprintln!("[bench] KMS Decrypt Error ({:?}): {}", code, message);
+                        }
+                        _ => {
+                            eprintln!("[bench] KMS Decrypt: unexpected response");
+                        }
+                    }
+                }
+                KmsResponse::Error { code, message } => {
+                    eprintln!("[bench] KMS GenerateDataKey Error ({:?}): {}", code, message);
+                }
+                _ => {
+                    eprintln!("[bench] KMS GenerateDataKey: unexpected response");
+                }
+            }
+
+            kms_key_release_ms = kms_start.elapsed().as_secs_f64() * 1000.0;
+            eprintln!("[bench] kms_key_release_ms = {:.2}", kms_key_release_ms);
+
+            // Use the fixed DEK for model decryption (the KMS-returned key is for
+            // the benchmark key, not the model encryption key)
+            hex::decode("0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef").unwrap()
+        } else {
+            attestation_doc // This branch shouldn't happen but satisfies the type system
+        }
     } else {
-        0.0
+        eprintln!("[bench] NSM unavailable — skipping attestation & KMS, using hardcoded DEK");
+        hex::decode("0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef").unwrap()
     };
     eprintln!("[bench] attestation_ms = {:.2}", attestation_ms);
-
-    // ── Stage 2: KMS key release timing ──
-    eprintln!("[bench] Stage 2: KMS DEK decryption");
-    let kms_start = Instant::now();
-    // In real enclave, this would do KMS Decrypt with RecipientInfo.
-    // For benchmark, we use the fixed test DEK to measure model crypto overhead.
-    let fixed_dek =
-        hex::decode("0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef")
-            .unwrap();
-    let kms_key_release_ms = kms_start.elapsed().as_secs_f64() * 1000.0;
     eprintln!("[bench] kms_key_release_ms = {:.2}", kms_key_release_ms);
 
     // ── Stage 3: Model fetch via VSock ──
@@ -609,12 +748,13 @@ async fn run_benchmark() {
     let model_load_ms = load_start.elapsed().as_secs_f64() * 1000.0;
     eprintln!("[bench] model_load_ms = {:.2}", model_load_ms);
 
-    let cold_start_total_ms = total_start.elapsed().as_secs_f64() * 1000.0;
-    eprintln!("[bench] cold_start_total_ms = {:.2}", cold_start_total_ms);
-
     // ── Stage 6: Tokenizer setup ──
     let tokenizer = tokenizers::Tokenizer::from_bytes(&tokenizer_bytes)
         .expect("failed to load tokenizer");
+
+    // cold_start_total_ms includes everything up to "ready to serve first inference"
+    let cold_start_total_ms = total_start.elapsed().as_secs_f64() * 1000.0;
+    eprintln!("[bench] cold_start_total_ms = {:.2}", cold_start_total_ms);
 
     // ── Stage 7: Warmup inferences ──
     eprintln!("[bench] Stage 7: Warmup ({} iterations)", NUM_WARMUP);

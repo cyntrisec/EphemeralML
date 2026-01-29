@@ -169,11 +169,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let model_load_ms = load_start.elapsed().as_secs_f64() * 1000.0;
     eprintln!("[baseline] model_load_ms = {:.2}", model_load_ms);
 
-    let cold_start_total_ms = total_start.elapsed().as_secs_f64() * 1000.0;
-
     // ── Stage 4: Tokenizer setup ──
     let tokenizer =
         tokenizers::Tokenizer::from_bytes(&tokenizer_bytes).map_err(|e| e.to_string())?;
+
+    // cold_start_total_ms includes everything up to "ready to serve first inference"
+    let cold_start_total_ms = total_start.elapsed().as_secs_f64() * 1000.0;
 
     // ── Stage 5: Warmup ──
     eprintln!("[baseline] Stage 5: Warmup ({} iterations)", NUM_WARMUP);
