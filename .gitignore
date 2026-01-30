@@ -153,6 +153,7 @@ GEMINI.md
 
 # Large reference docs (keep locally, don't commit)
 docs/aws-reference/
+docs/papers/
 
 # Test artifacts (generated)
 test_artifacts/
