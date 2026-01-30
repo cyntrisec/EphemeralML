@@ -174,11 +174,30 @@ Both the enclave and baseline benchmarks output structured JSON for automated co
 
 ## Published TEE Overhead Reference Data
 
-No prior work has published ML inference overhead numbers specifically for AWS Nitro
-Enclaves. The table below collects all publicly available TEE overhead measurements
-for ML workloads, which serve as the reference points for evaluating our results.
+No prior work has published quantitative ML inference overhead numbers for AWS Nitro
+Enclaves. AWS demonstrates Bloom 560M on r5.8xlarge but provides no latency or
+throughput metrics. The only Nitro-specific overhead figure comes from an AI safety
+benchmarking paper reporting 21.7x cost overhead vs GPU (reduced to 2x for a
+CPU-constant variant) — but this measures evaluation suite cost, not inference latency.
 
-### Inference Overhead by Platform
+The tables below collect all publicly available data for evaluating our results.
+
+### AWS Nitro Enclaves: What Exists
+
+| Source | Model / Workload | Finding |
+|--------|-----------------|---------|
+| AWS Blog + GitHub sample (Mar 2024) | Bloom 560M on r5.8xlarge (8 vCPUs, 68 GiB) | Working implementation; no latency/throughput numbers published |
+| "Attestable Audits" (arXiv:2506.23706, Jun 2025) | AI safety benchmark suite in Nitro | 21.7x cost vs GPU; 2x for CPU-constant variant |
+| Anthropic Confidential Inference whitepaper | Principles for confidential LLM inference | References Nitro Enclaves; no performance data |
+| "Confidential Inter-CVM Communication" (arXiv:2512.01594, Dec 2025) | llama.cpp in confidential settings | Focuses on communication efficiency, not enclave overhead |
+| "Confidential Prompting" (arXiv:2409.19134, Aug 2025) | Privacy-preserving LLM inference | References Nitro Enclaves; no independent benchmarks |
+| Anjuna Performance Guidelines | CPU-bound workloads in Nitro | "Can be faster than outside enclave"; I/O-heavy sees degradation; no numbers |
+
+**Bottom line:** Nitro Enclaves are CPU-only (no GPU passthrough), so they suit smaller
+or quantized models. No one has published per-inference latency overhead % for any model
+size on this platform.
+
+### Cross-Platform TEE Inference Overhead
 
 | Platform | Model / Workload | Overhead | Source |
 |----------|-----------------|----------|--------|
@@ -195,7 +214,6 @@ for ML workloads, which serve as the reference points for evaluating our results
 | Occlum-SGX | TensorFlow inference | Up to 6x | arXiv:2408.00443 |
 | SGXv2 (Ice Lake) | MLP / AlexNet (fits EPC) | Negligible | DaMoN 2022 |
 | ARM CCA | On-device inference | Up to 22% | arXiv:2504.08508 |
-| AWS Nitro Enclaves | CPU-bound (qualitative) | "Near-native" | Anjuna docs (no numbers) |
 | Fortanix Confidential AI | — | No published data | — |
 | Mithril Security BlindAI | — | No published data | — |
 
@@ -223,44 +241,77 @@ Use these thresholds to evaluate EphemeralML benchmark results:
 
 ### Key Observation
 
-EphemeralML would be the **first published, reproducible ML inference benchmark on AWS
-Nitro Enclaves**. Neither AWS, Anjuna, Fortanix, nor Mithril Security have published
-measured overhead numbers for this platform. The competitive claim is not just low
-overhead — it is having overhead numbers at all.
+EphemeralML would be the **first published, reproducible per-inference latency benchmark
+on AWS Nitro Enclaves**. The existing landscape:
+
+- **AWS** published an implementation (Bloom 560M) with zero performance data.
+- **Anjuna** says "near-native" with no numbers.
+- **Fortanix, Mithril** publish nothing.
+- **Academic papers** reference Nitro Enclaves but measure cost (21.7x) or communication
+  efficiency, not per-inference overhead %.
+
+The competitive claim is not just low overhead — it is having measured, reproducible
+overhead numbers for this platform at all.
 
 ---
 
 ## References
 
-1. Fan et al., "Confidential Computing on NVIDIA Hopper GPUs: A Performance Benchmark
+### AWS Nitro Enclaves (Direct)
+
+1. AWS, "Large Language Model Inference over Confidential Data Using AWS Nitro
+   Enclaves," AWS Machine Learning Blog, Mar 2024.
+   https://aws.amazon.com/blogs/machine-learning/large-language-model-inference-over-confidential-data-using-aws-nitro-enclaves/
+
+2. AWS Samples, "aws-nitro-enclaves-llm" (Bloom 560M implementation).
+   https://github.com/aws-samples/aws-nitro-enclaves-llm
+
+3. "Attestable Audits: Verifiable AI Safety Benchmarks Using Trusted Execution
+   Environments," arXiv:2506.23706, Jun 2025.
+   https://arxiv.org/pdf/2506.23706.pdf
+
+4. Anthropic, "Confidential Inference Systems" (whitepaper).
+   https://assets.anthropic.com/m/c52125297b85a42/original/Confidential_Inference_Paper.pdf
+
+5. "Confidential, Attestable, and Efficient Inter-CVM Communication,"
+   arXiv:2512.01594, Dec 2025.
+   https://arxiv.org/pdf/2512.01594.pdf
+
+6. "Confidential Prompting: Privacy-Preserving LLM Inference on Cloud,"
+   arXiv:2409.19134, Aug 2025.
+   https://arxiv.org/html/2409.19134v4
+
+7. Anjuna, "Nitro Enclaves Performance Guidelines."
+   https://docs.anjuna.io/nitro/latest/getting_started/best_practices/performance_guidelines.html
+
+### Cross-Platform TEE Benchmarks
+
+8. Fan et al., "Confidential Computing on NVIDIA Hopper GPUs: A Performance Benchmark
    Study," arXiv:2409.03992, Sep 2024.
    https://arxiv.org/abs/2409.03992
 
-2. Sabt et al., "Confidential LLM Inference: Performance and Cost Across CPU and GPU
+9. Sabt et al., "Confidential LLM Inference: Performance and Cost Across CPU and GPU
    TEEs," arXiv:2509.18886, Sep 2025.
    https://arxiv.org/abs/2509.18886
 
-3. Wilkens et al., "Confidential VMs Explained: An Empirical Analysis of AMD SEV-SNP
-   and Intel TDX," ACM SIGMETRICS, Dec 2024.
-   https://dl.acm.org/doi/10.1145/3700418
+10. Wilkens et al., "Confidential VMs Explained: An Empirical Analysis of AMD SEV-SNP
+    and Intel TDX," ACM SIGMETRICS, Dec 2024.
+    https://dl.acm.org/doi/10.1145/3700418
 
-4. "An Experimental Evaluation of TEE Technology: Benchmarking Transparent Approaches
-   based on SGX, SEV, and TDX," arXiv:2408.00443, Aug 2024.
-   https://arxiv.org/html/2408.00443v1
+11. "An Experimental Evaluation of TEE Technology: Benchmarking Transparent Approaches
+    based on SGX, SEV, and TDX," arXiv:2408.00443, Aug 2024.
+    https://arxiv.org/html/2408.00443v1
 
-5. "Benchmarking the Second Generation of Intel SGX for Machine Learning Workloads,"
-   DaMoN 2022 / GI 2022.
-   https://dl.acm.org/doi/10.1145/3533737.3535098
+12. "Benchmarking the Second Generation of Intel SGX for Machine Learning Workloads,"
+    DaMoN 2022 / GI 2022.
+    https://dl.acm.org/doi/10.1145/3533737.3535098
 
-6. "An Early Experience with Confidential Computing Architecture for On-Device Model
-   Protection," SysTEX 2025, arXiv:2504.08508.
-   https://arxiv.org/html/2504.08508v1
+13. "An Early Experience with Confidential Computing Architecture for On-Device Model
+    Protection," SysTEX 2025, arXiv:2504.08508.
+    https://arxiv.org/html/2504.08508v1
 
-7. Intel, "Confidential Computing for AI Whitepaper," 2024.
-   https://cdrdv2-public.intel.com/861663/confidential-computing-ai-whitepaper.pdf
-
-8. Anjuna, "Nitro Enclaves Performance Guidelines."
-   https://docs.anjuna.io/latest/nitro/latest/getting_started/best_practices/performance_guidelines.html
+14. Intel, "Confidential Computing for AI Whitepaper," 2024.
+    https://cdrdv2-public.intel.com/861663/confidential-computing-ai-whitepaper.pdf
 
 ---
 
