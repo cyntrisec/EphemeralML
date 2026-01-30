@@ -172,6 +172,98 @@ Both the enclave and baseline benchmarks output structured JSON for automated co
 
 ---
 
+## Published TEE Overhead Reference Data
+
+No prior work has published ML inference overhead numbers specifically for AWS Nitro
+Enclaves. The table below collects all publicly available TEE overhead measurements
+for ML workloads, which serve as the reference points for evaluating our results.
+
+### Inference Overhead by Platform
+
+| Platform | Model / Workload | Overhead | Source |
+|----------|-----------------|----------|--------|
+| NVIDIA H100 cGPU (SEV-SNP host) | Llama-3.1-8B throughput | 6.85% | Fan et al., arXiv:2409.03992 |
+| NVIDIA H100 cGPU | Llama-3.1-70B throughput | ~0% | Fan et al., arXiv:2409.03992 |
+| NVIDIA H100 cGPU | Llama-3.1-8B TTFT | 19% | Fan et al., arXiv:2409.03992 |
+| NVIDIA H200 cGPU (TDX host) | Llama-3.1-8B throughput | 8.84% | Fan et al., arXiv:2409.03992 |
+| Intel SGX (1 socket) | Llama2 throughput | 4.8–6.15% | Sabt et al., arXiv:2509.18886 |
+| Intel TDX (1 socket) | Llama2 throughput | 5.5–10.7% | Sabt et al., arXiv:2509.18886 |
+| Intel TDX (2 socket) | Llama2-70B throughput | 12–24% | Sabt et al., arXiv:2509.18886 |
+| AMD SEV-SNP | TensorFlow BERT inference | ~16% | Wilkens et al., ACM SIGMETRICS 2024 |
+| AMD SEV-SNP | Memory bandwidth (avg) | ~2.9% | Wilkens et al., ACM SIGMETRICS 2024 |
+| Gramine-SGX | PyTorch BERT / ResNet / StarGAN | Near-native | arXiv:2408.00443 |
+| Occlum-SGX | TensorFlow inference | Up to 6x | arXiv:2408.00443 |
+| SGXv2 (Ice Lake) | MLP / AlexNet (fits EPC) | Negligible | DaMoN 2022 |
+| ARM CCA | On-device inference | Up to 22% | arXiv:2504.08508 |
+| AWS Nitro Enclaves | CPU-bound (qualitative) | "Near-native" | Anjuna docs (no numbers) |
+| Fortanix Confidential AI | — | No published data | — |
+| Mithril Security BlindAI | — | No published data | — |
+
+### Interpretation Guide
+
+Use these thresholds to evaluate EphemeralML benchmark results:
+
+| Inference Overhead | Verdict |
+|-------------------|---------|
+| < 5% | Excellent — matches or beats SGX/TDX single-socket, validates "hardware native" claim |
+| 5–10% | Good — competitive with GPU TEEs (H100 cGPU) and CPU TEEs (SGX/TDX) |
+| 10–15% | Acceptable — on par with AMD SEV-SNP BERT numbers |
+| > 15% | Investigate — likely VSock bottleneck or memory pressure in enclave |
+
+| Cold Start | Verdict |
+|-----------|---------|
+| < 5s | Competitive (SGX/TDX LibOS containers take minutes) |
+| 5–15s | Acceptable for session-based serving |
+| > 30s | Problem — investigate EIF size or model fetch path |
+
+| Memory Overhead | Verdict |
+|----------------|---------|
+| < 15% peak RSS increase | Normal (enclave runtime + crypto state) |
+| > 30% | Investigate — possible allocation leak or double-buffering |
+
+### Key Observation
+
+EphemeralML would be the **first published, reproducible ML inference benchmark on AWS
+Nitro Enclaves**. Neither AWS, Anjuna, Fortanix, nor Mithril Security have published
+measured overhead numbers for this platform. The competitive claim is not just low
+overhead — it is having overhead numbers at all.
+
+---
+
+## References
+
+1. Fan et al., "Confidential Computing on NVIDIA Hopper GPUs: A Performance Benchmark
+   Study," arXiv:2409.03992, Sep 2024.
+   https://arxiv.org/abs/2409.03992
+
+2. Sabt et al., "Confidential LLM Inference: Performance and Cost Across CPU and GPU
+   TEEs," arXiv:2509.18886, Sep 2025.
+   https://arxiv.org/abs/2509.18886
+
+3. Wilkens et al., "Confidential VMs Explained: An Empirical Analysis of AMD SEV-SNP
+   and Intel TDX," ACM SIGMETRICS, Dec 2024.
+   https://dl.acm.org/doi/10.1145/3700418
+
+4. "An Experimental Evaluation of TEE Technology: Benchmarking Transparent Approaches
+   based on SGX, SEV, and TDX," arXiv:2408.00443, Aug 2024.
+   https://arxiv.org/html/2408.00443v1
+
+5. "Benchmarking the Second Generation of Intel SGX for Machine Learning Workloads,"
+   DaMoN 2022 / GI 2022.
+   https://dl.acm.org/doi/10.1145/3533737.3535098
+
+6. "An Early Experience with Confidential Computing Architecture for On-Device Model
+   Protection," SysTEX 2025, arXiv:2504.08508.
+   https://arxiv.org/html/2504.08508v1
+
+7. Intel, "Confidential Computing for AI Whitepaper," 2024.
+   https://cdrdv2-public.intel.com/861663/confidential-computing-ai-whitepaper.pdf
+
+8. Anjuna, "Nitro Enclaves Performance Guidelines."
+   https://docs.anjuna.io/latest/nitro/latest/getting_started/best_practices/performance_guidelines.html
+
+---
+
 ## How to Update This Document
 
 After running the benchmark suite, replace the estimated tables above with the generated
