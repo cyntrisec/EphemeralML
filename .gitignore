@@ -154,6 +154,7 @@ GEMINI.md
 # Large reference docs (keep locally, don't commit)
 docs/aws-reference/
 docs/papers/
+docs/papers_llm/
 docs/E2E_DEPLOY_GUIDE.md
 
 # Test artifacts (generated)
