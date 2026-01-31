@@ -138,21 +138,27 @@ impl HPKESession {
         Ok(())
     }
     
-    /// Derive session key using shared secret and transcript binding
+    /// Derive session key using HKDF-SHA256 per RFC 5869
+    /// 
+    /// Uses extract-then-expand pattern with shared_secret as IKM and
+    /// transcript_hash as context info for domain separation.
     fn derive_session_key(
         shared_secret: &[u8; 32],
         transcript_hash: &[u8; 32],
     ) -> Result<[u8; 32]> {
-        use sha2::{Sha256, Digest};
+        use hkdf::Hkdf;
+        use sha2::Sha256;
         
-        let mut hasher = Sha256::new();
-        hasher.update(shared_secret);
-        hasher.update(transcript_hash);
-        hasher.update(b"EphemeralML-HPKE-v1");
-        
-        let hash = hasher.finalize();
+        // HKDF-Extract + Expand per RFC 5869
+        let hkdf = Hkdf::<Sha256>::new(None, shared_secret);
         let mut key = [0u8; 32];
-        key.copy_from_slice(&hash);
+        
+        // Domain separation with protocol identifier
+        hkdf.expand(transcript_hash, &mut key)
+            .map_err(|e| EphemeralError::EncryptionError(
+                format!("HKDF key derivation failed: {:?}", e)
+            ))?;
+        
         Ok(key)
     }
     

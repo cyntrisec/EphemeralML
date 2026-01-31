@@ -95,7 +95,8 @@ impl AttestationVerifier {
     /// Verify attestation document and extract enclave identity
     pub fn verify_attestation(&mut self, doc: &AttestationDocument, expected_nonce: &[u8]) -> Result<EnclaveIdentity> {
         // Mock Bypass — skip COSE/CBOR parsing entirely in mock mode
-        #[cfg(feature = "mock")]
+        // SECURITY: This bypass is ONLY allowed in mock mode AND when production feature is disabled
+        #[cfg(all(feature = "mock", not(feature = "production")))]
         if doc.module_id == "mock-enclave" || doc.module_id == "mock" {
             let attestation_hash = self.calculate_attestation_hash(doc)?;
             return Ok(EnclaveIdentity {

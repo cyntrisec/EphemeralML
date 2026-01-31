@@ -34,8 +34,9 @@ impl<A: crate::attestation::AttestationProvider> KmsClient<A> {
 
     /// Request decryption of a ciphertext using attestation binding
     pub async fn decrypt(&self, ciphertext: &[u8]) -> Result<Vec<u8>> {
-        // 1. Generate attestation document
-        let nonce = [0u8; 16]; 
+        // 1. Generate attestation document with random nonce
+        let mut nonce = [0u8; 16];
+        rand::RngCore::fill_bytes(&mut rand::thread_rng(), &mut nonce);
         let attestation_doc = self.attestation_provider.generate_attestation(&nonce)?;
         
         let recipient_bytes = attestation_doc.signature; // In our impl, signature holds the CBOR bytes

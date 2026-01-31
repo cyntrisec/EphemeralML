@@ -80,16 +80,16 @@ pub fn current_timestamp() -> u64 {
         .as_secs()
 }
 
-/// Generate a random nonce for cryptographic operations
+/// Generate a cryptographically secure random nonce for cryptographic operations
+/// 
+/// Uses OsRng for secure random number generation. Each call produces a unique,
+/// unpredictable 12-byte nonce suitable for use with ChaCha20-Poly1305.
 pub fn generate_nonce() -> [u8; 12] {
-    use sha2::{Sha256, Digest};
-    let mut hasher = Sha256::new();
-    hasher.update(uuid::Uuid::new_v4().as_bytes());
-    hasher.update(&current_timestamp().to_be_bytes());
+    use rand::rngs::OsRng;
+    use rand::RngCore;
     
-    let hash = hasher.finalize();
     let mut nonce = [0u8; 12];
-    nonce.copy_from_slice(&hash[0..12]);
+    OsRng.fill_bytes(&mut nonce);
     nonce
 }
 
