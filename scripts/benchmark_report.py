@@ -152,6 +152,46 @@ def generate_report(baseline: dict, enclave: dict) -> str:
             lines.append("ERROR: Significant embedding divergence detected. Investigate model loading.")
         lines.append("")
 
+    # Cost analysis
+    AWS_PRICING = {
+        "m6i.xlarge": 0.192,
+        "c6i.xlarge": 0.170,
+        "c6i.2xlarge": 0.340,
+        "m6i.2xlarge": 0.384,
+    }
+
+    hardware = enclave.get("hardware", "unknown")
+    b_tp = baseline.get("inference", {}).get("throughput_inferences_per_sec", 0.0)
+    e_tp = enclave.get("inference", {}).get("throughput_inferences_per_sec", 0.0)
+    price_hr = AWS_PRICING.get(hardware, 0.0)
+
+    if price_hr > 0 and (b_tp > 0 or e_tp > 0):
+        lines.append("## Cost Analysis")
+        lines.append("")
+        lines.append(f"**Instance:** {hardware} @ ${price_hr:.3f}/hr (on-demand, us-east-1)")
+        lines.append("")
+        lines.append("| Metric | Bare Metal | Enclave |")
+        lines.append("|--------|-----------|---------|")
+        if b_tp > 0:
+            b_inf_hr = b_tp * 3600
+            b_cost_1k = (price_hr / b_inf_hr) * 1000
+            b_cost_1m = (price_hr / b_inf_hr) * 1_000_000
+        else:
+            b_inf_hr = b_cost_1k = b_cost_1m = 0.0
+        if e_tp > 0:
+            e_inf_hr = e_tp * 3600
+            e_cost_1k = (price_hr / e_inf_hr) * 1000
+            e_cost_1m = (price_hr / e_inf_hr) * 1_000_000
+        else:
+            e_inf_hr = e_cost_1k = e_cost_1m = 0.0
+        lines.append(f"| Inferences/hour | {b_inf_hr:,.0f} | {e_inf_hr:,.0f} |")
+        lines.append(f"| Cost per 1K inferences | ${b_cost_1k:.4f} | ${e_cost_1k:.4f} |")
+        lines.append(f"| Cost per 1M inferences | ${b_cost_1m:.2f} | ${e_cost_1m:.2f} |")
+        if e_cost_1k > 0 and b_cost_1k > 0:
+            multiplier = e_cost_1k / b_cost_1k
+            lines.append(f"| Enclave cost multiplier | — | {multiplier:.2f}x |")
+        lines.append("")
+
     # Summary
     lines.append("## Summary")
     lines.append("")
@@ -168,6 +208,9 @@ def generate_report(baseline: dict, enclave: dict) -> str:
     attest_ms = e_stages.get("attestation_ms", 0.0)
     if attest_ms > 0:
         lines.append(f"- **Attestation cost:** {attest_ms:.1f}ms (one-time per session)")
+
+    if price_hr > 0 and e_tp > 0:
+        lines.append(f"- **Cost per 1M inferences:** ${e_cost_1m:.2f} (enclave on {hardware})")
 
     lines.append("")
     lines.append("---")
