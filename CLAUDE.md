@@ -130,7 +130,7 @@ aws ssm send-command --instance-ids i-XXXX \
 - **Enclave**: `enclaves/vsock-pingpong` with `--mode benchmark` — runs inside Nitro Enclave, outputs JSON via `nitro-cli console`
 - **Crypto**: `enclave/src/bin/benchmark_crypto.rs` — Tier 4 crypto primitives (HPKE, Ed25519, receipts), runs on host
 - **Orchestration**: `scripts/run_benchmark.sh` — builds, runs, captures, compares
-- **Report**: `scripts/benchmark_report.py` — generates markdown comparison from two JSON files
+- **Report**: `scripts/benchmark_report.py` — generates markdown comparison (`--baseline`, `--enclave`, optional `--crypto`)
 - **Model prep**: `scripts/prepare_benchmark_model.sh` — downloads MiniLM, encrypts, optionally uploads to S3
 - DEK for benchmarking is hardcoded (`0123456789abcdef...`) in all three places (prep script, baseline, enclave). Keep in sync.
 
@@ -311,4 +311,6 @@ Avoid inline Python with quotes/parens in SSM `--parameters` — SSM's JSON pars
 7. Capture: `nitro-cli console --enclave-id $ID > console.log &`
 8. Wait for `BENCHMARK_RESULTS_JSON_END` marker in console log
 9. Extract JSON between `BENCHMARK_RESULTS_JSON_BEGIN` and `BENCHMARK_RESULTS_JSON_END` markers
-10. Cleanup: terminate enclave, kill proxy
+10. Run crypto benchmark: `target/release/benchmark_crypto --instance-type m6i.xlarge > crypto_v1.json`
+11. Generate report: `python3 scripts/benchmark_report.py --baseline baseline.json --enclave enclave.json --crypto crypto.json --output report.md`
+12. Cleanup: terminate enclave, kill proxy

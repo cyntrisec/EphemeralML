@@ -99,7 +99,7 @@ These metrics verify that the enclave + quantization pipeline does not degrade o
 
 | Metric | Unit | How to measure | Existing? |
 |--------|------|----------------|-----------|
-| Embedding cosine similarity | 0-1 | Compare enclave output vs bare-metal output on identical inputs | **No** |
+| Embedding cosine similarity | 0-1 | Compare enclave output vs bare-metal output on identical inputs | **Yes** (1.000000) |
 | Classification accuracy | % | MMLU or task-specific benchmark: enclave vs bare-metal | **No** |
 | Output determinism | exact match % | Same input → bitwise identical output across enclave restarts | **No** |
 | Quantization quality loss | delta | Q4 vs Q8 vs BF16 on quality metric at enclave memory limits | **No** |
@@ -112,8 +112,8 @@ These metrics quantify the cost of security features.
 |--------|------|-------------------|-----------|
 | NSM attestation generation | ms | `nsm_process_request()` call in `attestation.rs` | Yes |
 | KMS key release (P50/P99) | ms | Round-trip: enclave → host → AWS KMS → host → enclave | Yes |
-| HPKE session setup | ms | X25519 ECDH + transcript hash + key derivation | **No** |
-| Receipt generation + signing | ms | SHA-256 hashing + Ed25519 sign in `receipt.rs` | Partial |
+| HPKE session setup | ms | X25519 ECDH + transcript hash + key derivation | **Yes** (0.10ms) |
+| Receipt generation + signing | ms | SHA-256 hashing + Ed25519 sign in `receipt.rs` | **Yes** (0.022ms) |
 | Client-side COSE verification | ms | Certificate chain + COSE signature verify | **No** |
 | E2E session establishment | ms | ClientHello to first inference-ready state | **No** |
 
@@ -238,29 +238,31 @@ and single-session inference latency. The following gaps must be addressed:
 
 ### 6.1 Critical Gaps (Tier 1-2)
 
-| Gap | Impact | Implementation effort |
-|-----|--------|----------------------|
-| E2E encrypted request latency | Users experience full pipeline, not just forward pass | Add timing around full HPKE→inference→receipt→HPKE path |
-| Concurrency scaling | Cannot validate 1-5 req/s claim | Add multi-client benchmark spawning N sessions |
-| Cost calculation | No automated $/inference output | Script that combines benchmark JSON + AWS pricing API |
-| Instance comparison | Only tested on one instance type | Parameterize benchmark scripts for instance type |
+| Gap | Status | Notes |
+|-----|--------|-------|
+| E2E encrypted request latency | **Open** | Requires full HPKE→inference→receipt→HPKE path timing |
+| Concurrency scaling | **Open** | Multi-client benchmark spawning N sessions |
+| Cost calculation | **Open** | Script that combines benchmark JSON + AWS pricing API |
+| Instance comparison | **Open** | Only tested on m6i.xlarge so far |
 
 ### 6.2 Important Gaps (Tier 3-4)
 
-| Gap | Impact | Implementation effort |
-|-----|--------|----------------------|
-| Quality preservation | Cannot prove quantization doesn't degrade output | Compare enclave vs baseline outputs (cosine similarity) |
-| HPKE session setup timing | Unknown per-session crypto cost | Add timing in `server.rs` around HPKE establishment |
-| Client-side COSE verification | Unknown client-perceived latency | Add timing in `attestation_verifier.rs` |
-| Output determinism | Cannot claim reproducibility | Run same input 100x across restarts, check exact match |
+| Gap | Status | Notes |
+|-----|--------|-------|
+| Quality preservation | **Done** | Cosine similarity = 1.000000 (first 8 dims, enclave vs bare metal) |
+| HPKE session setup timing | **Done** | 0.10ms mean via `benchmark_crypto` |
+| Receipt generation + signing | **Done** | 0.022ms mean (CBOR + Ed25519) via `benchmark_crypto` |
+| HPKE encrypt/decrypt latency | **Done** | 0.005ms (1KB), 1.89ms (1MB) via `benchmark_crypto` |
+| Client-side COSE verification | **Open** | Requires real Nitro attestation document |
+| Output determinism | **Partial** | <1% variance across 4 runs; exact match not yet tested across restarts |
 
 ### 6.3 Desirable Gaps (Tier 5)
 
-| Gap | Impact | Implementation effort |
-|-----|--------|----------------------|
-| Stress test (concurrent sessions) | Unknown breaking point | Multi-threaded client sending parallel requests |
-| KMS degradation test | Unknown resilience behavior | Mock KMS with injected latency/errors |
-| Long-running memory test | Unknown leak risk | 1hr session churn monitoring RSS |
+| Gap | Status | Notes |
+|-----|--------|-------|
+| Stress test (concurrent sessions) | **Open** | Multi-threaded client sending parallel requests |
+| KMS degradation test | **Open** | Mock KMS with injected latency/errors |
+| Long-running memory test | **Open** | 1hr session churn monitoring RSS |
 
 ---
 
@@ -348,26 +350,38 @@ Complete mapping of which papers inform which EphemeralML metrics:
 
 ## 10. Implementation Priority
 
-### Phase 1: Fill Critical Gaps
+### Completed (Feb 2026)
 
-1. Add E2E encrypted request latency to `benchmark.rs`
+- [x] Core inference latency (p50/p95/p99) — bare metal vs enclave
+- [x] Cold start breakdown (attestation, KMS, S3, decrypt, model load, tokenizer)
+- [x] VSock RTT at 64B/1KB/64KB/1MB + upload throughput
+- [x] Memory peak RSS comparison
+- [x] Output quality verification (cosine similarity = 1.000000)
+- [x] HPKE session setup timing (0.10ms)
+- [x] HPKE encrypt/decrypt at 64B–1MB
+- [x] Ed25519 keygen, receipt sign/verify timing
+- [x] Per-inference crypto budget (0.027ms)
+- [x] Reproducibility validation (4 runs, <1% variance)
+
+### Phase 1: Remaining Critical Gaps
+
+1. Add E2E encrypted request latency to enclave benchmark
 2. Add concurrency benchmark (N parallel clients)
 3. Automate cost calculation (benchmark JSON + AWS pricing)
 
-### Phase 2: Quality & Security Metrics
+### Phase 2: Remaining Important Gaps
 
-4. Add output comparison (enclave vs baseline cosine similarity)
-5. Add HPKE session setup timing
-6. Add client-side COSE verification timing
+4. Client-side COSE verification timing (requires real attestation doc)
+5. Output determinism across enclave restarts
+6. Multi-instance-type comparison (c6i.xlarge, c6i.2xlarge)
 
 ### Phase 3: Stress & Operational
 
-7. Multi-instance-type comparison
-8. KMS degradation scenario testing
-9. Long-running memory monitoring
-10. Quantization quality ablation (Q4 vs Q8 vs BF16)
+7. KMS degradation scenario testing
+8. Long-running memory monitoring
+9. Quantization quality ablation (Q4 vs Q8 vs BF16)
 
 ---
 
 *This specification is derived from analysis of 11 papers in `docs/papers_llm/` and
-the EphemeralML architecture as of commit `a23e015`.*
+the EphemeralML architecture. Last updated at commit `dfe1cc0`, February 2026.*

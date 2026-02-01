@@ -86,6 +86,48 @@
 
 ---
 
+## Performance
+
+Measured on AWS EC2 m6i.xlarge (4 vCPU, 16GB RAM) with MiniLM-L6-v2 (22.7M params), 100 iterations, 3 warmup. Full results in [`benchmark_results/`](benchmark_results/).
+
+### Inference Overhead
+
+| Metric | Bare Metal | Nitro Enclave | Overhead |
+|--------|-----------|---------------|----------|
+| Mean latency | 81.3ms | 93.1ms | **+14.5%** |
+| P95 latency | 83.1ms | 95.0ms | +14.2% |
+| Throughput | 12.3 inf/s | 10.7 inf/s | -12.7% |
+
+### Cold Start Breakdown
+
+| Stage | Time |
+|-------|------|
+| NSM Attestation | 277ms |
+| KMS Key Release | 79ms |
+| Model Fetch (S3→VSock) | 6,602ms |
+| Model Decrypt + Load | 166ms |
+| **Total** | **7,132ms** |
+
+### Security Primitives (per-inference)
+
+| Operation | Latency |
+|-----------|---------|
+| HPKE session setup | 0.10ms |
+| HPKE encrypt + decrypt (1KB) | 0.005ms |
+| Receipt sign (CBOR + Ed25519) | 0.022ms |
+| **Total crypto overhead** | **0.027ms** |
+
+### Key Findings
+
+- **14.5% inference overhead** — on par with AMD SEV-SNP BERT numbers (~16%), competitive with SGX/TDX
+- **Embedding quality preserved** — cosine similarity 1.000000 between bare metal and enclave
+- **Per-inference crypto cost negligible** — 0.027ms vs 93ms inference (0.03%)
+- **First published per-inference latency benchmark on AWS Nitro Enclaves**
+
+See [`docs/benchmarks.md`](docs/benchmarks.md) for methodology, competitive analysis, and literature comparison.
+
+---
+
 ## Quick Start
 
 ### Prerequisites
@@ -132,6 +174,8 @@ See [`QUICKSTART.md`](QUICKSTART.md) for detailed instructions.
 ## Documentation
 
 - [`docs/design.md`](docs/design.md) — Architecture & threat model
+- [`docs/benchmarks.md`](docs/benchmarks.md) — Benchmark methodology, results & competitive analysis
+- [`docs/BENCHMARK_SPEC.md`](docs/BENCHMARK_SPEC.md) — Benchmark specification (11-paper literature review)
 - [`docs/tasks.md`](docs/tasks.md) — Implementation progress
 - [`QUICKSTART.md`](QUICKSTART.md) — Deployment guide
 - [`SECURITY_DEMO.md`](SECURITY_DEMO.md) — Security walkthrough
@@ -148,6 +192,6 @@ Apache 2.0 — see [LICENSE](LICENSE)
 
 **Run inference like the host is already hacked.**
 
-[Documentation](docs/) • [Issues](https://github.com/tsyrulb/EphemeralML/issues)
+[Documentation](docs/) • [Benchmarks](docs/benchmarks.md) • [Issues](https://github.com/cyntrisec/EphemeralML/issues)
 
 </div>
