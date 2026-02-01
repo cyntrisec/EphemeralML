@@ -3,7 +3,7 @@
 
 FROM rust:alpine AS build
 
-RUN apk add --no-cache musl-dev
+RUN apk add --no-cache musl-dev g++ perl make
 WORKDIR /app
 
 # Build context is the repo root. Copy manifests first for better caching.
