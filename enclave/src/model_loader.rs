@@ -1,11 +1,11 @@
-use crate::{EnclaveError, Result, EphemeralError};
-use crate::kms_client::KmsClient;
 use crate::attestation::AttestationProvider;
-use ephemeral_ml_common::ModelManifest;
-use sha2::{Sha256, Digest};
-use chacha20poly1305::{ChaCha20Poly1305, Key, Nonce, KeyInit};
+use crate::kms_client::KmsClient;
+use crate::{EnclaveError, EphemeralError, Result};
 use chacha20poly1305::aead::Aead;
+use chacha20poly1305::{ChaCha20Poly1305, Key, KeyInit, Nonce};
+use ephemeral_ml_common::ModelManifest;
 use safetensors::SafeTensors;
+use sha2::{Digest, Sha256};
 
 pub struct ModelLoader<A: AttestationProvider> {
     kms_client: KmsClient<A>,
@@ -32,40 +32,59 @@ impl<A: AttestationProvider> ModelLoader<A> {
         wrapped_dek: &[u8],
     ) -> Result<Vec<u8>> {
         // 1. Verify Manifest Signature
-        manifest.verify(&self.trusted_signing_key)
-            .map_err(|e| EnclaveError::Enclave(EphemeralError::Validation(
-                crate::ValidationError::InvalidSignature(format!("Manifest verification failed: {}", e))
-            )))?;
+        manifest.verify(&self.trusted_signing_key).map_err(|e| {
+            EnclaveError::Enclave(EphemeralError::Validation(
+                crate::ValidationError::InvalidSignature(format!(
+                    "Manifest verification failed: {}",
+                    e
+                )),
+            ))
+        })?;
 
         // 2. Fetch Encrypted Artifact from Host
-        let encrypted_artifact = self.kms_client.proxy_client().fetch_model(&manifest.model_id).await?;
+        let encrypted_artifact = self
+            .kms_client
+            .proxy_client()
+            .fetch_model(&manifest.model_id)
+            .await?;
 
         // 3. Unwrap DEK using KMS
         let dek_bytes = self.kms_client.decrypt(wrapped_dek).await?;
-        
+
         if dek_bytes.len() != 32 {
-            return Err(EnclaveError::Enclave(EphemeralError::KmsError(
-                format!("Invalid DEK length: expected 32, got {}", dek_bytes.len())
-            )));
+            return Err(EnclaveError::Enclave(EphemeralError::KmsError(format!(
+                "Invalid DEK length: expected 32, got {}",
+                dek_bytes.len()
+            ))));
         }
 
         // 3. Decrypt Artifact
         if encrypted_artifact.len() < 12 + 16 {
-             return Err(EnclaveError::Enclave(EphemeralError::DecryptionError("Artifact too short".to_string())));
+            return Err(EnclaveError::Enclave(EphemeralError::DecryptionError(
+                "Artifact too short".to_string(),
+            )));
         }
 
         let (nonce_bytes, ciphertext) = encrypted_artifact.split_at(12);
         use std::convert::TryInto;
-        let key_array: [u8; 32] = dek_bytes.as_slice().try_into()
-            .map_err(|_| EnclaveError::Enclave(EphemeralError::KmsError("Invalid DEK length".to_string())))?;
+        let key_array: [u8; 32] = dek_bytes.as_slice().try_into().map_err(|_| {
+            EnclaveError::Enclave(EphemeralError::KmsError("Invalid DEK length".to_string()))
+        })?;
         let key: &Key = (&key_array).into();
         let cipher = ChaCha20Poly1305::new(key);
-        let nonce_array: [u8; 12] = nonce_bytes.try_into()
-            .map_err(|_| EnclaveError::Enclave(EphemeralError::DecryptionError("Invalid nonce length".to_string())))?;
+        let nonce_array: [u8; 12] = nonce_bytes.try_into().map_err(|_| {
+            EnclaveError::Enclave(EphemeralError::DecryptionError(
+                "Invalid nonce length".to_string(),
+            ))
+        })?;
         let nonce: &Nonce = (&nonce_array).into();
 
-        let plaintext = cipher.decrypt(nonce, ciphertext)
-            .map_err(|e| EnclaveError::Enclave(EphemeralError::DecryptionError(format!("Model decryption failed: {}", e))))?;
+        let plaintext = cipher.decrypt(nonce, ciphertext).map_err(|e| {
+            EnclaveError::Enclave(EphemeralError::DecryptionError(format!(
+                "Model decryption failed: {}",
+                e
+            )))
+        })?;
 
         // 4. Verify Hash
         let mut hasher = Sha256::new();
@@ -74,13 +93,17 @@ impl<A: AttestationProvider> ModelLoader<A> {
 
         if calculated_hash.as_slice() != manifest.model_hash.as_slice() {
             return Err(EnclaveError::Enclave(EphemeralError::Validation(
-                crate::ValidationError::IntegrityCheckFailed("Model hash mismatch".to_string())
+                crate::ValidationError::IntegrityCheckFailed("Model hash mismatch".to_string()),
             )));
         }
-        
+
         // 5. Validate Safetensors format
-        let st = SafeTensors::deserialize(&plaintext)
-             .map_err(|e| EnclaveError::Enclave(EphemeralError::DecompositionError(format!("Safetensors parse failed: {}", e))))?;
+        let st = SafeTensors::deserialize(&plaintext).map_err(|e| {
+            EnclaveError::Enclave(EphemeralError::DecompositionError(format!(
+                "Safetensors parse failed: {}",
+                e
+            )))
+        })?;
 
         // 6. Enforce dtype constraints (Task 18.2)
         Self::validate_model_format(&st)?;
@@ -98,7 +121,7 @@ impl<A: AttestationProvider> ModelLoader<A> {
                 }
                 _ => {
                     return Err(EnclaveError::Enclave(EphemeralError::ValidationError(
-                        format!("Unsupported dtype {:?} for tensor {}", dtype, name)
+                        format!("Unsupported dtype {:?} for tensor {}", dtype, name),
                     )));
                 }
             }
@@ -112,15 +135,15 @@ mod tests {
     use super::*;
     use crate::attestation::DefaultAttestationProvider;
     use crate::kms_proxy_client::KmsProxyClient;
-    use ed25519_dalek::{SigningKey, Signer};
+    use chacha20poly1305::aead::Aead;
+    use ed25519_dalek::{Signer, SigningKey};
+    use ephemeral_ml_common::{KmsResponse, MessageType, VSockMessage};
+    use hpke::{kem::X25519HkdfSha256, Deserializable, OpModeS, Serializable};
     use rand::rngs::OsRng;
     use rand::RngCore;
     use serde::Serialize;
-    use chacha20poly1305::aead::Aead;
-    use tokio::net::TcpListener;
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
-    use ephemeral_ml_common::{VSockMessage, MessageType, KmsResponse};
-    use hpke::{kem::X25519HkdfSha256, OpModeS, Serializable, Deserializable};
+    use tokio::net::TcpListener;
 
     #[tokio::test]
     async fn test_load_model_mock() {
@@ -128,13 +151,13 @@ mod tests {
         let mut csprng = OsRng;
         let signing_key = SigningKey::generate(&mut csprng);
         let verifying_key = signing_key.verifying_key();
-        
+
         let dek = [0x42u8; 32]; // Mock DEK
-        
+
         // Setup Provider and get HPKE public key
         let provider = DefaultAttestationProvider::new().unwrap();
         let hpke_pk_bytes = provider.get_hpke_public_key();
-        
+
         // Create Mock Safetensors Artifact
         let json_header = r#"{"test": {"dtype":"F32", "shape":[1], "data_offsets":[0, 4]}}"#;
         let json_bytes = json_header.as_bytes();
@@ -143,12 +166,12 @@ mod tests {
         plaintext_model.extend_from_slice(&n.to_le_bytes());
         plaintext_model.extend_from_slice(json_bytes);
         plaintext_model.extend_from_slice(&[0u8; 4]); // 4 bytes of data
-        
+
         // Hash it
         let mut hasher = Sha256::new();
         hasher.update(&plaintext_model);
         let model_hash = hasher.finalize().to_vec();
-        
+
         // Encrypt it
         let mut nonce_bytes = [0u8; 12];
         csprng.fill_bytes(&mut nonce_bytes);
@@ -160,63 +183,74 @@ mod tests {
         let key = CKey::from_slice(&key_array);
         let cipher = ChaCha20Poly1305::new(key);
         let ciphertext = cipher.encrypt(nonce, plaintext_model.as_slice()).unwrap();
-        
+
         let mut encrypted_artifact = nonce_bytes.to_vec();
         encrypted_artifact.extend_from_slice(&ciphertext);
-        
+
         let dek_clone = dek.clone();
         let encrypted_artifact_clone = encrypted_artifact.clone();
-        
+
         // FIX: defined before tokio::spawn
         let hpke_pk_bytes_clone = hpke_pk_bytes.clone();
 
         // Start Mock KMS Server
         let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
         let port = listener.local_addr().unwrap().port();
-        
+
         tokio::spawn(async move {
             while let Ok((mut socket, _)) = listener.accept().await {
                 let mut len_buf = [0u8; 4];
-                if socket.read_exact(&mut len_buf).await.is_err() { break; }
+                if socket.read_exact(&mut len_buf).await.is_err() {
+                    break;
+                }
                 let total_len = u32::from_be_bytes(len_buf) as usize;
-                
+
                 if total_len > ephemeral_ml_common::vsock::MAX_MESSAGE_SIZE {
                     panic!("Message too large");
                 }
 
                 let mut body = vec![0u8; total_len];
-                if socket.read_exact(&mut body).await.is_err() { break; }
-                
+                if socket.read_exact(&mut body).await.is_err() {
+                    break;
+                }
+
                 let mut full_buf = Vec::with_capacity(4 + total_len);
                 full_buf.extend_from_slice(&len_buf);
                 full_buf.extend_from_slice(&body);
-                
+
                 let msg = VSockMessage::decode(&full_buf).unwrap();
                 match msg.msg_type {
                     MessageType::KmsProxy => {
                         let request_env: ephemeral_ml_common::KmsProxyRequestEnvelope =
                             serde_json::from_slice(&msg.payload).unwrap();
-                        
+
                         let mut rng = OsRng;
-                        let kem_pub = <X25519HkdfSha256 as hpke::Kem>::PublicKey::from_bytes(&hpke_pk_bytes_clone).unwrap();
-                        
-                        let (encapped_key, mut sender_ctx) = hpke::setup_sender::<
-                            hpke::aead::ChaCha20Poly1305,
-                            hpke::kdf::HkdfSha256,
-                            X25519HkdfSha256,
-                            _,
-                        >(&OpModeS::Base, &kem_pub, b"KMS_DEK", &mut rng).unwrap();
-                        
+                        let kem_pub = <X25519HkdfSha256 as hpke::Kem>::PublicKey::from_bytes(
+                            &hpke_pk_bytes_clone,
+                        )
+                        .unwrap();
+
+                        let (encapped_key, mut sender_ctx) =
+                            hpke::setup_sender::<
+                                hpke::aead::ChaCha20Poly1305,
+                                hpke::kdf::HkdfSha256,
+                                X25519HkdfSha256,
+                                _,
+                            >(
+                                &OpModeS::Base, &kem_pub, b"KMS_DEK", &mut rng
+                            )
+                            .unwrap();
+
                         let ciphertext = sender_ctx.seal(&dek_clone, b"").unwrap();
                         let mut encrypted_dek = encapped_key.to_bytes().to_vec();
                         encrypted_dek.extend_from_slice(&ciphertext);
-                        
+
                         let response = KmsResponse::Decrypt {
                             ciphertext_for_recipient: Some(encrypted_dek),
                             plaintext: None,
                             key_id: None,
                         };
-                        
+
                         let response_env = ephemeral_ml_common::KmsProxyResponseEnvelope {
                             request_id: request_env.request_id,
                             trace_id: request_env.trace_id,
@@ -225,7 +259,12 @@ mod tests {
                         };
 
                         let response_payload = serde_json::to_vec(&response_env).unwrap();
-                        let response_msg = VSockMessage::new(MessageType::KmsProxy, msg.sequence, response_payload).unwrap();
+                        let response_msg = VSockMessage::new(
+                            MessageType::KmsProxy,
+                            msg.sequence,
+                            response_payload,
+                        )
+                        .unwrap();
                         socket.write_all(&response_msg.encode()).await.unwrap();
                     }
                     MessageType::Storage => {
@@ -235,22 +274,24 @@ mod tests {
                             is_last: true,
                         };
                         let resp_payload = serde_json::to_vec(&response).unwrap();
-                        let resp_msg = VSockMessage::new(MessageType::Storage, msg.sequence, resp_payload).unwrap();
+                        let resp_msg =
+                            VSockMessage::new(MessageType::Storage, msg.sequence, resp_payload)
+                                .unwrap();
                         socket.write_all(&resp_msg.encode()).await.unwrap();
                     }
                     _ => panic!("Unexpected msg type: {:?}", msg.msg_type),
                 }
             }
         });
-        
+
         // Setup Client with Proxy
         let proxy_client = KmsProxyClient::new().with_addr(format!("127.0.0.1:{}", port));
         let kms_client = KmsClient::new_with_proxy(provider, proxy_client);
         let loader = ModelLoader::new(kms_client, verifying_key.to_bytes());
-        
+
         // Mock KMS Wrapped DEK (dummy for this test since our mock server ignores input and returns `dek` encrypted)
-        let wrapped_dek = vec![0u8; 32]; 
-        
+        let wrapped_dek = vec![0u8; 32];
+
         // Create Manifest
         #[derive(Serialize)]
         struct Payload {
@@ -270,7 +311,7 @@ mod tests {
         };
         let payload_bytes = serde_json::to_vec(&payload).unwrap();
         let signature = signing_key.sign(&payload_bytes);
-        
+
         let manifest = ModelManifest {
             model_id: "test".to_string(),
             version: "v1".to_string(),
@@ -279,7 +320,7 @@ mod tests {
             key_id: "key".to_string(),
             signature: signature.to_bytes().to_vec(),
         };
-        
+
         // Test Load
         let loaded_bytes = loader.load_model(&manifest, &wrapped_dek).await.unwrap();
         assert_eq!(loaded_bytes, plaintext_model);

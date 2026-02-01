@@ -1,5 +1,5 @@
+use crate::{current_timestamp, generate_id, AuditEventType, AuditLogEntry, AuditSeverity};
 use serde::{Deserialize, Serialize};
-use crate::{AuditLogEntry, AuditEventType, AuditSeverity, current_timestamp, generate_id};
 use std::collections::HashMap;
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
@@ -34,10 +34,7 @@ impl AuditLogEntry {
         }
     }
 
-    pub fn metric(
-        event_type: AuditEventType,
-        session_id: Option<String>,
-    ) -> Self {
+    pub fn metric(event_type: AuditEventType, session_id: Option<String>) -> Self {
         Self {
             entry_id: generate_id(),
             timestamp: current_timestamp(),
@@ -51,7 +48,11 @@ impl AuditLogEntry {
         }
     }
 
-    pub fn with_detail<S: Into<String>, V: Into<serde_json::Value>>(mut self, key: S, value: V) -> Self {
+    pub fn with_detail<S: Into<String>, V: Into<serde_json::Value>>(
+        mut self,
+        key: S,
+        value: V,
+    ) -> Self {
         self.details.insert(key.into(), value.into());
         self
     }

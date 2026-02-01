@@ -36,7 +36,11 @@ impl RetryPolicy {
         // Full jitter: random in [0, capped]
         // gen_range() is on Rng (not RngCore); implement manually.
         // Avoid modulo bias? Here jitter is cosmetic; keep it simple but safe.
-        let jittered = if capped == 0 { 0 } else { (rng.next_u64() % (capped + 1)) };
+        let jittered = if capped == 0 {
+            0
+        } else {
+            (rng.next_u64() % (capped + 1))
+        };
         Duration::from_millis(jittered)
     }
 }

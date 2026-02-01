@@ -1,68 +1,74 @@
 //! Common types and utilities for the EphemeralNet zero-trust AI inference system
-//! 
+//!
 //! This crate provides shared data structures, error types, and utilities that are used
 //! across all components of the EphemeralNet system (client, host, and enclave).
 
+pub mod audit;
 pub mod error;
-pub mod types;
-pub mod validation;
 pub mod hpke_session;
 pub mod kms_proxy;
 pub mod model_manifest;
 pub mod protocol;
 pub mod receipt_signing;
-pub mod vsock;
 pub mod storage_protocol;
-pub mod audit;
-
+pub mod types;
+pub mod validation;
+pub mod vsock;
 
 // Re-export commonly used types and errors
 pub use error::{
-    EphemeralError, ClientError, HostError, EnclaveError,
-    Result, ClientResult, HostResult, EnclaveResult,
+    ClientError, ClientResult, EnclaveError, EnclaveResult, EphemeralError, HostError, HostResult,
+    Result,
 };
 
 pub use types::{
-    // Core data structures
-    TopologyKey, GraphNode, GraphEdge, TensorShape, ModelMetadata,
-    WeightArrays, WeightIndex, WeightType, OperationType,
-    
-    // Encrypted communication types
-    EncryptedTopologyKey, EncryptedTensor, EncryptedPayload, PayloadType,
-    InferenceRequest, InferenceResponse,
-    
     // Attestation types
-    AttestationDocument, PcrMeasurements, SecureChannel,
-    
+    AttestationDocument,
+    AuditEventType,
+    AuditLogEntry,
+    AuditSeverity,
+    EncryptedPayload,
+    EncryptedTensor,
+    // Encrypted communication types
+    EncryptedTopologyKey,
+    GraphEdge,
+    GraphNode,
+    InferenceRequest,
+    InferenceResponse,
+
+    ModelMetadata,
+    OperationType,
+
+    PayloadType,
+    PcrMeasurements,
+    SecureChannel,
+
     // Session and audit types
-    SessionInfo, SessionStatus, AuditLogEntry, AuditEventType, AuditSeverity,
+    SessionInfo,
+    SessionStatus,
+    TensorShape,
+    // Core data structures
+    TopologyKey,
+    WeightArrays,
+    WeightIndex,
+    WeightType,
 };
 
-pub use hpke_session::{
-    HPKESession, HPKESessionManager, HPKEConfig, EncryptedMessage, SessionId,
-};
+pub use hpke_session::{EncryptedMessage, HPKEConfig, HPKESession, HPKESessionManager, SessionId};
 
 pub use kms_proxy::{
-    KmsRequest,
-    KmsResponse,
-    KmsProxyRequestEnvelope,
-    KmsProxyResponseEnvelope,
-    KmsProxyErrorCode,
+    KmsProxyErrorCode, KmsProxyRequestEnvelope, KmsProxyResponseEnvelope, KmsRequest, KmsResponse,
 };
 pub use model_manifest::ModelManifest;
 
 pub use receipt_signing::{
-    ReceiptSigningKey, AttestationUserData, AttestationReceipt, SecurityMode,
-    EnclaveMeasurements, ReceiptBinding, ReceiptVerifier,
+    AttestationReceipt, AttestationUserData, EnclaveMeasurements, ReceiptBinding,
+    ReceiptSigningKey, ReceiptVerifier, SecurityMode,
 };
 
-pub use vsock::{
-    VSockMessage, MessageType,
-};
+pub use vsock::{MessageType, VSockMessage};
 
-pub use validation::{
-    ValidationLimits, ValidationError, InputValidator,
-};
+pub use validation::{InputValidator, ValidationError, ValidationLimits};
 
 /// Version information for the common crate
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -81,13 +87,13 @@ pub fn current_timestamp() -> u64 {
 }
 
 /// Generate a cryptographically secure random nonce for cryptographic operations
-/// 
+///
 /// Uses OsRng for secure random number generation. Each call produces a unique,
 /// unpredictable 12-byte nonce suitable for use with ChaCha20-Poly1305.
 pub fn generate_nonce() -> [u8; 12] {
     use rand::rngs::OsRng;
     use rand::RngCore;
-    
+
     let mut nonce = [0u8; 12];
     OsRng.fill_bytes(&mut nonce);
     nonce
@@ -126,7 +132,7 @@ mod tests {
     fn test_pcr_measurements_validation() {
         let pcr = PcrMeasurements::new(vec![0u8; 48], vec![1u8; 48], vec![2u8; 48]);
         assert!(pcr.is_valid());
-        
+
         let invalid_pcr = PcrMeasurements::new(vec![0u8; 32], vec![1u8; 48], vec![2u8; 48]);
         assert!(!invalid_pcr.is_valid());
     }
@@ -135,7 +141,7 @@ mod tests {
     fn test_secure_channel_expiration() {
         let channel = SecureChannel::new("test_endpoint".to_string(), vec![0u8; 32], 1);
         assert!(!channel.is_expired());
-        
+
         // Wait for expiration (in a real test, you'd mock the time)
         std::thread::sleep(std::time::Duration::from_secs(2));
         assert!(channel.is_expired());
@@ -145,10 +151,10 @@ mod tests {
     fn test_utility_functions() {
         let id = generate_id();
         assert!(!id.is_empty());
-        
+
         let timestamp = current_timestamp();
         assert!(timestamp > 0);
-        
+
         let nonce = generate_nonce();
         assert_eq!(nonce.len(), 12);
     }

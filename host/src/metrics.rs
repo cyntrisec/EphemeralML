@@ -26,7 +26,9 @@ struct Inner {
 
 impl Metrics {
     pub fn inc_requests(&self) {
-        self.inner.kms_requests_total.fetch_add(1, Ordering::Relaxed);
+        self.inner
+            .kms_requests_total
+            .fetch_add(1, Ordering::Relaxed);
     }
 
     pub fn inc_success(&self) {
@@ -50,11 +52,15 @@ impl Metrics {
     }
 
     pub fn inc_rate_limited(&self) {
-        self.inner.rate_limited_total.fetch_add(1, Ordering::Relaxed);
+        self.inner
+            .rate_limited_total
+            .fetch_add(1, Ordering::Relaxed);
     }
 
     pub fn inc_circuit_wait(&self) {
-        self.inner.circuit_wait_total.fetch_add(1, Ordering::Relaxed);
+        self.inner
+            .circuit_wait_total
+            .fetch_add(1, Ordering::Relaxed);
     }
 
     pub fn snapshot(&self) -> MetricsSnapshot {

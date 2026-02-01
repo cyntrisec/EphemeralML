@@ -15,7 +15,11 @@ impl ConcurrencyLimiter {
     }
 
     pub async fn acquire(&self) -> tokio::sync::OwnedSemaphorePermit {
-        self.sem.clone().acquire_owned().await.expect("semaphore closed")
+        self.sem
+            .clone()
+            .acquire_owned()
+            .await
+            .expect("semaphore closed")
     }
 }
 

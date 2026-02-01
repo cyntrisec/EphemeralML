@@ -104,10 +104,7 @@ impl ModelValidator {
     /// Validate a model file at the given path
     pub fn validate_model(&self, path: &Path) -> Result<ModelInfo, ModelValidationError> {
         // Check file extension
-        let ext = path
-            .extension()
-            .and_then(|e| e.to_str())
-            .unwrap_or("");
+        let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("");
         if ext != "safetensors" {
             return Err(ModelValidationError::UnsupportedFormat {
                 expected: "safetensors".to_string(),
@@ -156,13 +153,11 @@ impl ModelValidator {
         }
 
         // First 8 bytes: header size as u64 LE
-        let header_size = u64::from_le_bytes(
-            data[..8]
-                .try_into()
-                .map_err(|_| ModelValidationError::InvalidHeader {
-                    reason: "Failed to read header size".to_string(),
-                })?,
-        );
+        let header_size = u64::from_le_bytes(data[..8].try_into().map_err(|_| {
+            ModelValidationError::InvalidHeader {
+                reason: "Failed to read header size".to_string(),
+            }
+        })?);
 
         // Sanity check header size
         if header_size == 0 {
@@ -183,18 +178,17 @@ impl ModelValidator {
         }
 
         // Parse JSON header
-        let header_json: serde_json::Value =
-            serde_json::from_slice(&data[8..total_header]).map_err(|e| {
-                ModelValidationError::InvalidHeader {
-                    reason: format!("Invalid JSON header: {}", e),
-                }
+        let header_json: serde_json::Value = serde_json::from_slice(&data[8..total_header])
+            .map_err(|e| ModelValidationError::InvalidHeader {
+                reason: format!("Invalid JSON header: {}", e),
             })?;
 
-        let header_map = header_json.as_object().ok_or_else(|| {
-            ModelValidationError::InvalidHeader {
-                reason: "Header is not a JSON object".to_string(),
-            }
-        })?;
+        let header_map =
+            header_json
+                .as_object()
+                .ok_or_else(|| ModelValidationError::InvalidHeader {
+                    reason: "Header is not a JSON object".to_string(),
+                })?;
 
         let mut tensors = HashMap::new();
         let mut metadata = None;
@@ -214,11 +208,12 @@ impl ModelValidator {
                 continue;
             }
 
-            let tensor_obj = value.as_object().ok_or_else(|| {
-                ModelValidationError::InvalidHeader {
-                    reason: format!("Tensor '{}' is not a JSON object", key),
-                }
-            })?;
+            let tensor_obj =
+                value
+                    .as_object()
+                    .ok_or_else(|| ModelValidationError::InvalidHeader {
+                        reason: format!("Tensor '{}' is not a JSON object", key),
+                    })?;
 
             let dtype = tensor_obj
                 .get("dtype")
@@ -247,10 +242,7 @@ impl ModelValidator {
 
             if data_offsets.len() != 2 {
                 return Err(ModelValidationError::InvalidHeader {
-                    reason: format!(
-                        "Tensor '{}' data_offsets must have exactly 2 elements",
-                        key
-                    ),
+                    reason: format!("Tensor '{}' data_offsets must have exactly 2 elements", key),
                 });
             }
 
@@ -414,17 +406,18 @@ mod tests {
         let validator = ModelValidator::new();
         let data = make_bytes(vec![
             ("encoder.layer.0.weight", "BF16", vec![384, 384]),
-            ("embeddings.word_embeddings.weight", "BF16", vec![30522, 384]),
+            (
+                "embeddings.word_embeddings.weight",
+                "BF16",
+                vec![30522, 384],
+            ),
         ]);
 
         let info = validator.validate_safetensors_format(&data).unwrap();
         assert_eq!(info.tensors.len(), 2);
         assert!(info.tensors.contains_key("encoder.layer.0.weight"));
         assert_eq!(info.tensors["encoder.layer.0.weight"].dtype, "BF16");
-        assert_eq!(
-            info.tensors["encoder.layer.0.weight"].shape,
-            vec![384, 384]
-        );
+        assert_eq!(info.tensors["encoder.layer.0.weight"].shape, vec![384, 384]);
     }
 
     #[test]
@@ -497,7 +490,11 @@ mod tests {
         let validator = ModelValidator::new();
         let data = make_bytes(vec![
             ("encoder.layer.0.attention.weight", "BF16", vec![384, 384]),
-            ("embeddings.word_embeddings.weight", "BF16", vec![30522, 384]),
+            (
+                "embeddings.word_embeddings.weight",
+                "BF16",
+                vec![30522, 384],
+            ),
             ("pooler.dense.weight", "BF16", vec![384, 384]),
         ]);
         let info = validator.validate_safetensors_format(&data).unwrap();
@@ -510,7 +507,11 @@ mod tests {
         let validator = ModelValidator::new();
         let data = make_bytes(vec![
             ("encoder.layer.0.attention.weight", "BF16", vec![768, 768]),
-            ("embeddings.word_embeddings.weight", "BF16", vec![30522, 768]),
+            (
+                "embeddings.word_embeddings.weight",
+                "BF16",
+                vec![30522, 768],
+            ),
             ("classifier.weight", "BF16", vec![2, 768]),
             ("classifier.bias", "BF16", vec![2]),
         ]);
@@ -699,7 +700,11 @@ mod tests {
         let validator = ModelValidator::new();
         let data = make_bytes(vec![
             ("encoder.layer.0.weight", "BF16", vec![768, 768]),
-            ("embeddings.position_embeddings.weight", "BF16", vec![512, 768]),
+            (
+                "embeddings.position_embeddings.weight",
+                "BF16",
+                vec![512, 768],
+            ),
             ("pre_classifier.weight", "BF16", vec![768, 768]),
         ]);
         let info = validator.validate_safetensors_format(&data).unwrap();

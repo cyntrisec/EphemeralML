@@ -1,14 +1,14 @@
 use crate::{
-    ClientError, Result, SecureChannel, EncryptedPayload, TopologyKey, AttestationDocument,
-    PcrMeasurements, ModelDecomposer, SecureClient, WeightArrays, ModelMetadata, GraphNode,
-    GraphEdge, TensorShape, OperationType, WeightIndex, WeightType, EphemeralError, PayloadType,
-    current_timestamp, generate_nonce
+    current_timestamp, generate_nonce, AttestationDocument, ClientError, EncryptedPayload,
+    EphemeralError, GraphEdge, GraphNode, ModelDecomposer, ModelMetadata, OperationType,
+    PayloadType, PcrMeasurements, Result, SecureChannel, SecureClient, TensorShape, TopologyKey,
+    WeightArrays, WeightIndex, WeightType,
 };
 use std::path::Path;
 use uuid::Uuid;
 // sha2 available if needed for hashing
-use tokio::net::TcpStream;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use tokio::net::TcpStream;
 
 /// Mock model decomposer for local development and testing
 pub struct MockModelDecomposer;
@@ -26,7 +26,9 @@ impl ModelDecomposer for MockModelDecomposer {
                     weight_indices: vec![WeightIndex {
                         start_idx: 0,
                         length: 100,
-                        shape: TensorShape { dimensions: vec![10, 10] },
+                        shape: TensorShape {
+                            dimensions: vec![10, 10],
+                        },
                         weight_type: WeightType::Weights,
                     }],
                 },
@@ -40,12 +42,21 @@ impl ModelDecomposer for MockModelDecomposer {
             edges: vec![GraphEdge {
                 from_node: "input".to_string(),
                 to_node: "output".to_string(),
-                tensor_shape: TensorShape { dimensions: vec![1, 10] },
+                tensor_shape: TensorShape {
+                    dimensions: vec![1, 10],
+                },
             }],
-            input_shapes: vec![TensorShape { dimensions: vec![1, 10] }],
-            output_shapes: vec![TensorShape { dimensions: vec![1, 10] }],
+            input_shapes: vec![TensorShape {
+                dimensions: vec![1, 10],
+            }],
+            output_shapes: vec![TensorShape {
+                dimensions: vec![1, 10],
+            }],
             metadata: ModelMetadata {
-                name: format!("mock_model_{}", onnx_path.file_name().unwrap_or_default().to_string_lossy()),
+                name: format!(
+                    "mock_model_{}",
+                    onnx_path.file_name().unwrap_or_default().to_string_lossy()
+                ),
                 version: "1.0.0".to_string(),
                 description: Some("Mock model for testing".to_string()),
                 created_at: current_timestamp(),
@@ -69,7 +80,12 @@ impl ModelDecomposer for MockModelDecomposer {
         // Mock check - reject operators containing "unsupported"
         for op in operators {
             if op.to_lowercase().contains("unsupported") {
-                return Err(ClientError::Client(EphemeralError::UnsupportedOperatorError(format!("Operator {} not supported", op))));
+                return Err(ClientError::Client(
+                    EphemeralError::UnsupportedOperatorError(format!(
+                        "Operator {} not supported",
+                        op
+                    )),
+                ));
             }
         }
         Ok(())
@@ -91,7 +107,7 @@ impl MockSecureClient {
             tcp_port: 8080,
         }
     }
-    
+
     pub fn with_tcp_endpoint(host: String, port: u16) -> Self {
         Self {
             mock_attestation_valid: true,
@@ -138,23 +154,47 @@ impl MockSecureClient {
 
         // Create Payload map
         let mut payload = BTreeMap::new();
-        payload.insert(serde_cbor::Value::Text("module_id".to_string()), serde_cbor::Value::Text("mock-enclave".to_string()));
-        payload.insert(serde_cbor::Value::Text("timestamp".to_string()), serde_cbor::Value::Integer(current_timestamp() as i128));
-        payload.insert(serde_cbor::Value::Text("nonce".to_string()), serde_cbor::Value::Bytes(b"mock_nonce".to_vec()));
-        payload.insert(serde_cbor::Value::Text("user_data".to_string()), serde_cbor::Value::Bytes(user_data_json));
-        
+        payload.insert(
+            serde_cbor::Value::Text("module_id".to_string()),
+            serde_cbor::Value::Text("mock-enclave".to_string()),
+        );
+        payload.insert(
+            serde_cbor::Value::Text("timestamp".to_string()),
+            serde_cbor::Value::Integer(current_timestamp() as i128),
+        );
+        payload.insert(
+            serde_cbor::Value::Text("nonce".to_string()),
+            serde_cbor::Value::Bytes(b"mock_nonce".to_vec()),
+        );
+        payload.insert(
+            serde_cbor::Value::Text("user_data".to_string()),
+            serde_cbor::Value::Bytes(user_data_json),
+        );
+
         let mut pcrs_map = BTreeMap::new();
-        pcrs_map.insert(serde_cbor::Value::Integer(0), serde_cbor::Value::Bytes(pcr0_bytes.clone()));
-        pcrs_map.insert(serde_cbor::Value::Integer(1), serde_cbor::Value::Bytes(pcr1_bytes.clone()));
-        pcrs_map.insert(serde_cbor::Value::Integer(2), serde_cbor::Value::Bytes(pcr2_bytes.clone()));
-        payload.insert(serde_cbor::Value::Text("pcrs".to_string()), serde_cbor::Value::Map(pcrs_map));
+        pcrs_map.insert(
+            serde_cbor::Value::Integer(0),
+            serde_cbor::Value::Bytes(pcr0_bytes.clone()),
+        );
+        pcrs_map.insert(
+            serde_cbor::Value::Integer(1),
+            serde_cbor::Value::Bytes(pcr1_bytes.clone()),
+        );
+        pcrs_map.insert(
+            serde_cbor::Value::Integer(2),
+            serde_cbor::Value::Bytes(pcr2_bytes.clone()),
+        );
+        payload.insert(
+            serde_cbor::Value::Text("pcrs".to_string()),
+            serde_cbor::Value::Map(pcrs_map),
+        );
 
         let payload_bytes = serde_cbor::to_vec(&serde_cbor::Value::Map(payload)).unwrap();
 
         // We wrap it in a pseudo-COSE if possible, but for mock we can just make verify_cose_signature return payload
         // In this implementation, the verifier will see module_id == "mock-enclave" and skip COSE signature check in a real scenario?
         // Let's actually add a mock bypass in attestation_verifier.rs
-        
+
         AttestationDocument {
             module_id: "mock-enclave".to_string(),
             digest: vec![0u8; 48],
@@ -169,31 +209,50 @@ impl MockSecureClient {
             nonce: Some(b"mock_nonce".to_vec()),
         }
     }
-    
+
     /// Send TCP request to mock host/enclave
     pub async fn send_tcp_request(&self, payload: &[u8]) -> Result<Vec<u8>> {
         let mut stream = TcpStream::connect(format!("{}:{}", self.tcp_host, self.tcp_port))
             .await
-            .map_err(|e| ClientError::Client(EphemeralError::CommunicationError(format!("Failed to connect to mock endpoint: {}", e))))?;
-        
+            .map_err(|e| {
+                ClientError::Client(EphemeralError::CommunicationError(format!(
+                    "Failed to connect to mock endpoint: {}",
+                    e
+                )))
+            })?;
+
         // Send payload
-        stream.write_all(payload).await
-            .map_err(|e| ClientError::Client(EphemeralError::CommunicationError(format!("Failed to send data: {}", e))))?;
-        stream.flush().await
-            .map_err(|e| ClientError::Client(EphemeralError::CommunicationError(format!("Failed to flush stream: {}", e))))?;
-        
+        stream.write_all(payload).await.map_err(|e| {
+            ClientError::Client(EphemeralError::CommunicationError(format!(
+                "Failed to send data: {}",
+                e
+            )))
+        })?;
+        stream.flush().await.map_err(|e| {
+            ClientError::Client(EphemeralError::CommunicationError(format!(
+                "Failed to flush stream: {}",
+                e
+            )))
+        })?;
+
         // Read response
         let mut response = Vec::new();
-        stream.read_to_end(&mut response).await
-            .map_err(|e| ClientError::Client(EphemeralError::CommunicationError(format!("Failed to read response: {}", e))))?;
-        
+        stream.read_to_end(&mut response).await.map_err(|e| {
+            ClientError::Client(EphemeralError::CommunicationError(format!(
+                "Failed to read response: {}",
+                e
+            )))
+        })?;
+
         Ok(response)
     }
 
     // Helper for old sync API
     pub fn establish_attested_channel(&mut self, enclave_endpoint: &str) -> Result<SecureChannel> {
         if !self.mock_attestation_valid {
-            return Err(ClientError::Client(EphemeralError::AttestationError("Mock attestation failed".to_string())));
+            return Err(ClientError::Client(EphemeralError::AttestationError(
+                "Mock attestation failed".to_string(),
+            )));
         }
 
         let mut channel = SecureChannel::new(
@@ -205,18 +264,27 @@ impl MockSecureClient {
         Ok(channel)
     }
 
-    pub fn encrypt_inference_request(&self, topology: &TopologyKey, data: &[f32]) -> Result<EncryptedPayload> {
+    pub fn encrypt_inference_request(
+        &self,
+        topology: &TopologyKey,
+        data: &[f32],
+    ) -> Result<EncryptedPayload> {
         // Mock encryption - just serialize and "encrypt" with XOR
         let mut payload_data = Vec::new();
         let topology_bytes = serde_json::to_vec(topology)
             .map_err(|e| ClientError::Client(EphemeralError::SerializationError(e.to_string())))?;
         payload_data.extend_from_slice(&topology_bytes);
-        payload_data.extend_from_slice(&data.iter().flat_map(|f| f.to_le_bytes()).collect::<Vec<u8>>());
-        
+        payload_data.extend_from_slice(
+            &data
+                .iter()
+                .flat_map(|f| f.to_le_bytes())
+                .collect::<Vec<u8>>(),
+        );
+
         // Mock encryption with simple XOR
         let key = 0x42u8;
         let encrypted_data: Vec<u8> = payload_data.iter().map(|b| b ^ key).collect();
-        
+
         Ok(EncryptedPayload {
             data: encrypted_data,
             nonce: generate_nonce(),
@@ -240,12 +308,19 @@ impl Default for MockSecureClient {
 impl SecureClient for MockSecureClient {
     async fn establish_channel(&mut self, _addr: &str) -> Result<()> {
         if !self.mock_attestation_valid {
-            return Err(ClientError::Client(EphemeralError::AttestationError("Mock attestation failed".to_string())));
+            return Err(ClientError::Client(EphemeralError::AttestationError(
+                "Mock attestation failed".to_string(),
+            )));
         }
         Ok(())
     }
 
-    async fn execute_inference(&mut self, _addr: &str, _model_id: &str, input_tensor: Vec<f32>) -> Result<Vec<f32>> {
+    async fn execute_inference(
+        &mut self,
+        _addr: &str,
+        _model_id: &str,
+        input_tensor: Vec<f32>,
+    ) -> Result<Vec<f32>> {
         // Return dummy result
         Ok(input_tensor.iter().map(|x| x + 0.1).collect())
     }

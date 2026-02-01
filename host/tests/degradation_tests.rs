@@ -8,7 +8,10 @@ use tokio::time::Instant;
 
 #[tokio::test]
 async fn degradation_rate_limiter_throttles() {
-    let rl = RateLimiter::new(RateLimitConfig { rps: 5.0, burst: 1.0 });
+    let rl = RateLimiter::new(RateLimitConfig {
+        rps: 5.0,
+        burst: 1.0,
+    });
 
     assert!(!rl.acquire(1.0).await);
     let t0 = Instant::now();

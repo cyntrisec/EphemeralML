@@ -132,7 +132,8 @@ fn run(mode: Mode) {
 
             for i in 0..16 {
                 let request = aws_nitro_enclaves_nsm_api::api::Request::DescribePCR { index: i };
-                let response = aws_nitro_enclaves_nsm_api::driver::nsm_process_request(nsm_fd, request);
+                let response =
+                    aws_nitro_enclaves_nsm_api::driver::nsm_process_request(nsm_fd, request);
                 match response {
                     aws_nitro_enclaves_nsm_api::api::Response::DescribePCR { data, .. } => {
                         eprintln!("PCR {}: {}", i, hex::encode(data));
@@ -153,7 +154,10 @@ fn run(mode: Mode) {
             let response = aws_nitro_enclaves_nsm_api::driver::nsm_process_request(nsm_fd, request);
             match response {
                 aws_nitro_enclaves_nsm_api::api::Response::Attestation { document } => {
-                    eprintln!("[enclave] successfully generated attestation document ({} bytes)", document.len());
+                    eprintln!(
+                        "[enclave] successfully generated attestation document ({} bytes)",
+                        document.len()
+                    );
                 }
                 _ => {
                     eprintln!("[enclave] ERROR: Failed to generate attestation document");
@@ -168,13 +172,13 @@ fn run(mode: Mode) {
         }
         Mode::Kms => {
             eprintln!("[enclave] KMS mode: testing KMS data key generation and decryption");
-            
+
             // We use tokio for the KMS test
             let rt = tokio::runtime::Builder::new_current_thread()
                 .enable_all()
                 .build()
                 .unwrap();
-            
+
             rt.block_on(async {
                 use ephemeral_ml_common::{
                     KmsRequest, KmsResponse, MessageType, VSockMessage,
@@ -225,7 +229,7 @@ fn run(mode: Mode) {
                 if res < 0 {
                     die("connect to host KMS proxy failed");
                 }
-                
+
                 let mut stream = unsafe { std::fs::File::from_raw_fd(fd) };
 
                 // 3. Send GenerateDataKey request (wrapped in Envelope)
@@ -241,29 +245,29 @@ fn run(mode: Mode) {
                 let payload = serde_json::to_vec(&req_env).unwrap();
                 let msg = VSockMessage::new(MessageType::KmsProxy, 0, payload).unwrap();
                 stream.write_all(&msg.encode()).unwrap();
-                
+
                 // 4. Read response
                 let mut len_buf = [0u8; 4];
                 stream.read_exact(&mut len_buf).unwrap();
                 let len = u32::from_be_bytes(len_buf) as usize;
                 let mut body = vec![0u8; len];
                 stream.read_exact(&mut body).unwrap();
-                
+
                 let mut full_msg = len_buf.to_vec();
                 full_msg.extend_from_slice(&body);
                 let msg = VSockMessage::decode(&full_msg).unwrap();
-                
+
                 if msg.msg_type == MessageType::Error {
                     die(&format!("KMS proxy returned error message: {}", String::from_utf8_lossy(&msg.payload)));
                 }
 
                 let resp_env: KmsProxyResponseEnvelope = serde_json::from_slice(&msg.payload).unwrap();
                 let kms_resp = resp_env.response;
-                
+
                 match kms_resp {
                     KmsResponse::GenerateDataKey { key_id, ciphertext_blob, .. } => {
                         eprintln!("[enclave] successfully generated data key for {}", key_id);
-                        
+
                         // 5. Test Decryption with Attestation
                         let decrypt_req = KmsRequest::Decrypt {
                             ciphertext_blob,
@@ -298,7 +302,7 @@ fn run(mode: Mode) {
                         let mut full_msg = len_buf.to_vec();
                         full_msg.extend_from_slice(&body);
                         let msg = VSockMessage::decode(&full_msg).unwrap();
-                        
+
                         if msg.msg_type == MessageType::Error {
                             die(&format!("KMS proxy returned error message for decrypt: {}", String::from_utf8_lossy(&msg.payload)));
                         }
@@ -322,7 +326,7 @@ fn run(mode: Mode) {
                     _ => eprintln!("[enclave] Unexpected response from KMS"),
                 }
             });
-            
+
             eprintln!("[enclave] KMS test complete; sleeping");
             loop {
                 std::thread::sleep(std::time::Duration::from_secs(60));
@@ -343,14 +347,16 @@ fn run(mode: Mode) {
             }
         }
         Mode::Vsock => {
-            eprintln!("[enclave] vsock mode: starting vsock server on port {}", PORT);
+            eprintln!(
+                "[enclave] vsock mode: starting vsock server on port {}",
+                PORT
+            );
 
             let listen_fd = make_listener(PORT);
 
             loop {
-                let client_fd = unsafe {
-                    libc::accept(listen_fd, std::ptr::null_mut(), std::ptr::null_mut())
-                };
+                let client_fd =
+                    unsafe { libc::accept(listen_fd, std::ptr::null_mut(), std::ptr::null_mut()) };
                 if client_fd < 0 {
                     die("accept");
                 }
@@ -486,7 +492,10 @@ fn fetch_artifact(model_key: &str) -> Vec<u8> {
     match resp {
         StorageResponse::Data { payload, .. } => payload,
         StorageResponse::Error { message } => {
-            die(&format!("fetch_artifact({}): storage error: {}", model_key, message));
+            die(&format!(
+                "fetch_artifact({}): storage error: {}",
+                model_key, message
+            ));
         }
     }
 }
@@ -500,7 +509,7 @@ fn fetch_artifact(model_key: &str) -> Vec<u8> {
 fn measure_vsock_rtt(payload_size: usize) -> f64 {
     use ephemeral_ml_common::{
         audit::{AuditLogRequest, AuditLogResponse},
-        MessageType, VSockMessage, AuditLogEntry, AuditEventType, AuditSeverity,
+        AuditEventType, AuditLogEntry, AuditSeverity, MessageType, VSockMessage,
     };
 
     const ROUNDS: usize = 10;
@@ -527,14 +536,20 @@ fn measure_vsock_rtt(payload_size: usize) -> f64 {
     };
     let req = AuditLogRequest { entry };
     let req_payload = serde_json::to_vec(&req).unwrap();
-    eprintln!("[bench] RTT payload_size={} actual_json_len={}", payload_size, req_payload.len());
+    eprintln!(
+        "[bench] RTT payload_size={} actual_json_len={}",
+        payload_size,
+        req_payload.len()
+    );
     let msg = VSockMessage::new(MessageType::Audit, 0, req_payload).unwrap();
     let encoded = msg.encode();
 
     // Warmup rounds (not counted)
     for _ in 0..WARMUP {
-        let Ok(mut stream) = std::panic::catch_unwind(|| vsock_connect(8082))
-            .map_err(|_| ()) else { return 0.0; };
+        let Ok(mut stream) = std::panic::catch_unwind(|| vsock_connect(8082)).map_err(|_| ())
+        else {
+            return 0.0;
+        };
         let _ = stream.write_all(&encoded);
         let mut len_buf = [0u8; 4];
         let _ = stream.read_exact(&mut len_buf);
@@ -545,8 +560,8 @@ fn measure_vsock_rtt(payload_size: usize) -> f64 {
     }
 
     for _ in 0..ROUNDS {
-        let Ok(mut stream) = std::panic::catch_unwind(|| vsock_connect(8082))
-            .map_err(|_| ()) else {
+        let Ok(mut stream) = std::panic::catch_unwind(|| vsock_connect(8082)).map_err(|_| ())
+        else {
             eprintln!("[bench] vsock_connect failed for RTT measurement");
             return 0.0;
         };
@@ -585,10 +600,10 @@ fn measure_vsock_rtt(payload_size: usize) -> f64 {
 }
 
 async fn run_benchmark() {
-    use chacha20poly1305::{aead::Aead, ChaCha20Poly1305, Key, KeyInit, Nonce};
     use candle_core::{Device, Tensor};
     use candle_nn::VarBuilder;
     use candle_transformers::models::bert::{BertModel, Config as BertConfig};
+    use chacha20poly1305::{aead::Aead, ChaCha20Poly1305, Key, KeyInit, Nonce};
 
     let total_start = Instant::now();
     let device = Device::Cpu;
@@ -610,9 +625,8 @@ async fn run_benchmark() {
     // Try to get a real DEK via the KMS flow; fall back to hardcoded if NSM/KMS unavailable.
     let fixed_dek = if nsm_fd >= 0 {
         use ephemeral_ml_common::{
-            KmsRequest, KmsResponse, MessageType, VSockMessage,
-            KmsProxyRequestEnvelope, KmsProxyResponseEnvelope,
-            generate_id,
+            generate_id, KmsProxyRequestEnvelope, KmsProxyResponseEnvelope, KmsRequest,
+            KmsResponse, MessageType, VSockMessage,
         };
         use rand::rngs::OsRng;
         use rsa::{pkcs8::EncodePublicKey, RsaPrivateKey};
@@ -631,15 +645,17 @@ async fn run_benchmark() {
             nonce: Some(serde_bytes::ByteBuf::from(vec![1u8; 32])),
             public_key: Some(serde_bytes::ByteBuf::from(rsa_pub_der)),
         };
-        let response =
-            aws_nitro_enclaves_nsm_api::driver::nsm_process_request(nsm_fd, request);
+        let response = aws_nitro_enclaves_nsm_api::driver::nsm_process_request(nsm_fd, request);
         let attestation_doc = match response {
             aws_nitro_enclaves_nsm_api::api::Response::Attestation { document } => document,
             _ => {
-                eprintln!("[bench] WARNING: failed to get attestation doc, falling back to hardcoded DEK");
+                eprintln!(
+                    "[bench] WARNING: failed to get attestation doc, falling back to hardcoded DEK"
+                );
                 aws_nitro_enclaves_nsm_api::driver::nsm_exit(nsm_fd);
                 attestation_ms = attest_start.elapsed().as_secs_f64() * 1000.0;
-                hex::decode("0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef").unwrap()
+                hex::decode("0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef")
+                    .unwrap()
             }
         };
 
@@ -647,10 +663,16 @@ async fn run_benchmark() {
         if attestation_doc.len() > 100 {
             aws_nitro_enclaves_nsm_api::driver::nsm_exit(nsm_fd);
             attestation_ms = attest_start.elapsed().as_secs_f64() * 1000.0;
-            eprintln!("[bench] attestation_ms = {:.2} (doc {} bytes)", attestation_ms, attestation_doc.len());
+            eprintln!(
+                "[bench] attestation_ms = {:.2} (doc {} bytes)",
+                attestation_ms,
+                attestation_doc.len()
+            );
 
             // 2. KMS GenerateDataKey + Decrypt with RecipientInfo
-            eprintln!("[bench] Stage 2: KMS key release (GenerateDataKey + Decrypt w/ attestation)");
+            eprintln!(
+                "[bench] Stage 2: KMS key release (GenerateDataKey + Decrypt w/ attestation)"
+            );
             let kms_start = Instant::now();
 
             // 2a. GenerateDataKey
@@ -676,10 +698,15 @@ async fn run_benchmark() {
             let mut full_msg = len_buf.to_vec();
             full_msg.extend_from_slice(&body);
             let resp_msg = VSockMessage::decode(&full_msg).unwrap();
-            let resp_env: KmsProxyResponseEnvelope = serde_json::from_slice(&resp_msg.payload).unwrap();
+            let resp_env: KmsProxyResponseEnvelope =
+                serde_json::from_slice(&resp_msg.payload).unwrap();
 
             match resp_env.response {
-                KmsResponse::GenerateDataKey { key_id, ciphertext_blob, .. } => {
+                KmsResponse::GenerateDataKey {
+                    key_id,
+                    ciphertext_blob,
+                    ..
+                } => {
                     eprintln!("[bench] GenerateDataKey OK for {}", key_id);
 
                     // 2b. Decrypt with RecipientInfo (attestation-bound)
@@ -708,14 +735,20 @@ async fn run_benchmark() {
                     let mut full_msg = len_buf.to_vec();
                     full_msg.extend_from_slice(&body);
                     let resp_msg = VSockMessage::decode(&full_msg).unwrap();
-                    let resp_env: KmsProxyResponseEnvelope = serde_json::from_slice(&resp_msg.payload).unwrap();
+                    let resp_env: KmsProxyResponseEnvelope =
+                        serde_json::from_slice(&resp_msg.payload).unwrap();
 
                     match resp_env.response {
-                        KmsResponse::Decrypt { ciphertext_for_recipient, .. } => {
+                        KmsResponse::Decrypt {
+                            ciphertext_for_recipient,
+                            ..
+                        } => {
                             if ciphertext_for_recipient.is_some() {
                                 eprintln!("[bench] KMS Decrypt with RecipientInfo: SUCCESS");
                             } else {
-                                eprintln!("[bench] KMS Decrypt: no wrapped key returned (policy issue?)");
+                                eprintln!(
+                                    "[bench] KMS Decrypt: no wrapped key returned (policy issue?)"
+                                );
                             }
                         }
                         KmsResponse::Error { code, message } => {
@@ -727,7 +760,10 @@ async fn run_benchmark() {
                     }
                 }
                 KmsResponse::Error { code, message } => {
-                    eprintln!("[bench] KMS GenerateDataKey Error ({:?}): {}", code, message);
+                    eprintln!(
+                        "[bench] KMS GenerateDataKey Error ({:?}): {}",
+                        code, message
+                    );
                 }
                 _ => {
                     eprintln!("[bench] KMS GenerateDataKey: unexpected response");
@@ -777,8 +813,7 @@ async fn run_benchmark() {
     let plaintext_size = weights_plaintext.len();
     eprintln!(
         "[bench] model_decrypt_ms = {:.2} (plaintext={}B)",
-        model_decrypt_ms,
-        plaintext_size
+        model_decrypt_ms, plaintext_size
     );
 
     // ── Stage 5: Model deserialization (safetensors → Candle BertModel) ──
@@ -786,20 +821,17 @@ async fn run_benchmark() {
     let load_start = Instant::now();
     let config: BertConfig =
         serde_json::from_slice(&config_bytes).expect("failed to parse config.json");
-    let vb = VarBuilder::from_buffered_safetensors(
-        weights_plaintext,
-        candle_core::DType::F32,
-        &device,
-    )
-    .expect("failed to build VarBuilder from safetensors");
+    let vb =
+        VarBuilder::from_buffered_safetensors(weights_plaintext, candle_core::DType::F32, &device)
+            .expect("failed to build VarBuilder from safetensors");
     let model = BertModel::load(vb, &config).expect("failed to load BertModel");
     let model_load_ms = load_start.elapsed().as_secs_f64() * 1000.0;
     eprintln!("[bench] model_load_ms = {:.2}", model_load_ms);
 
     // ── Stage 6: Tokenizer setup ──
     let tokenizer_start = Instant::now();
-    let tokenizer = tokenizers::Tokenizer::from_bytes(&tokenizer_bytes)
-        .expect("failed to load tokenizer");
+    let tokenizer =
+        tokenizers::Tokenizer::from_bytes(&tokenizer_bytes).expect("failed to load tokenizer");
     let tokenizer_setup_ms = tokenizer_start.elapsed().as_secs_f64() * 1000.0;
     eprintln!("[bench] tokenizer_setup_ms = {:.2}", tokenizer_setup_ms);
 
@@ -810,10 +842,13 @@ async fn run_benchmark() {
     // ── Stage 6b: Capture reference embedding for quality verification ──
     // Run inference on the first input text and store the embedding vector.
     // This allows cosine similarity comparison between bare-metal and enclave outputs.
-    let reference_embedding = run_single_inference(&model, &tokenizer, BENCHMARK_INPUT_TEXTS[0], &device);
-    eprintln!("[bench] reference_embedding: dim={}, first_5={:?}",
+    let reference_embedding =
+        run_single_inference(&model, &tokenizer, BENCHMARK_INPUT_TEXTS[0], &device);
+    eprintln!(
+        "[bench] reference_embedding: dim={}, first_5={:?}",
         reference_embedding.len(),
-        &reference_embedding[..5.min(reference_embedding.len())]);
+        &reference_embedding[..5.min(reference_embedding.len())]
+    );
 
     // ── Stage 7: Warmup inferences ──
     eprintln!("[bench] Stage 7: Warmup ({} iterations)", NUM_WARMUP);
@@ -927,17 +962,25 @@ fn run_single_inference(
     text: &str,
     device: &candle_core::Device,
 ) -> Vec<f32> {
-    use candle_core::{Tensor, DType};
+    use candle_core::{DType, Tensor};
 
     let encoding = tokenizer.encode(text, true).expect("tokenization failed");
     let input_ids = encoding.get_ids();
     let token_type_ids = encoding.get_type_ids();
-    let attention_mask: Vec<u32> = encoding.get_attention_mask().iter().map(|&v| v as u32).collect();
+    let attention_mask: Vec<u32> = encoding
+        .get_attention_mask()
+        .iter()
+        .map(|&v| v as u32)
+        .collect();
 
-    let input_ids_t =
-        Tensor::new(input_ids, device).unwrap().unsqueeze(0).unwrap();
-    let token_type_ids_t =
-        Tensor::new(token_type_ids, device).unwrap().unsqueeze(0).unwrap();
+    let input_ids_t = Tensor::new(input_ids, device)
+        .unwrap()
+        .unsqueeze(0)
+        .unwrap();
+    let token_type_ids_t = Tensor::new(token_type_ids, device)
+        .unwrap()
+        .unsqueeze(0)
+        .unwrap();
 
     let output = model
         .forward(&input_ids_t, &token_type_ids_t, None)
@@ -958,11 +1001,7 @@ fn run_single_inference(
     let count = mask.sum(1).unwrap();
     let mean_pooled = summed.broadcast_div(&count).unwrap();
 
-    mean_pooled
-        .squeeze(0)
-        .unwrap()
-        .to_vec1::<f32>()
-        .unwrap()
+    mean_pooled.squeeze(0).unwrap().to_vec1::<f32>().unwrap()
 }
 
 fn round2(v: f64) -> f64 {

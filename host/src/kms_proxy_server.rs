@@ -68,7 +68,10 @@ impl KmsProxyServer {
         self.metrics.snapshot()
     }
 
-    pub async fn handle_envelope(&mut self, env: KmsProxyRequestEnvelope) -> KmsProxyResponseEnvelope {
+    pub async fn handle_envelope(
+        &mut self,
+        env: KmsProxyRequestEnvelope,
+    ) -> KmsProxyResponseEnvelope {
         self.metrics.inc_requests();
 
         let request_id = env.request_id;
@@ -78,7 +81,9 @@ impl KmsProxyServer {
         let deadline = Duration::from_millis(800);
         let started = Instant::now();
 
-        let (response, kms_request_id) = self.handle_request_with_deadline(env.request, started, deadline).await;
+        let (response, kms_request_id) = self
+            .handle_request_with_deadline(env.request, started, deadline)
+            .await;
 
         match &response {
             KmsResponse::Error { code, .. } => {
@@ -122,8 +127,8 @@ impl KmsProxyServer {
                     }
                     // rand::thread_rng() is !Send and will poison any future we spawn onto
                     // the multithread Tokio runtime. Use a Send RNG.
-                    let mut rng = StdRng::from_rng(OsRng)
-                        .unwrap_or_else(|_| StdRng::from_seed([0u8; 32]));
+                    let mut rng =
+                        StdRng::from_rng(OsRng).unwrap_or_else(|_| StdRng::from_seed([0u8; 32]));
 
                     for attempt in 1..=self.retry.max_attempts {
                         let elapsed = started.elapsed();
@@ -150,8 +155,12 @@ impl KmsProxyServer {
                         let ks_norm = key_spec.trim().to_ascii_uppercase();
                         let mut builder = client.generate_data_key().key_id(key_id.clone());
                         builder = match ks_norm.as_str() {
-                            "AES_256" | "AES256" => builder.key_spec(aws_sdk_kms::types::DataKeySpec::Aes256),
-                            "AES_128" | "AES128" => builder.key_spec(aws_sdk_kms::types::DataKeySpec::Aes128),
+                            "AES_256" | "AES256" => {
+                                builder.key_spec(aws_sdk_kms::types::DataKeySpec::Aes256)
+                            }
+                            "AES_128" | "AES128" => {
+                                builder.key_spec(aws_sdk_kms::types::DataKeySpec::Aes128)
+                            }
                             _ => builder.number_of_bytes(32),
                         };
 
@@ -203,7 +212,10 @@ impl KmsProxyServer {
 
                         // Backoff (full jitter), but never exceed remaining budget.
                         self.metrics.inc_retry();
-                        let sleep_for = self.retry.compute_backoff(attempt, &mut rng).min(deadline - started.elapsed());
+                        let sleep_for = self
+                            .retry
+                            .compute_backoff(attempt, &mut rng)
+                            .min(deadline - started.elapsed());
                         if sleep_for.is_zero() {
                             continue;
                         }
@@ -222,17 +234,23 @@ impl KmsProxyServer {
                 // Mock implementation
                 let mut key = [0u8; 32];
                 rand::thread_rng().fill_bytes(&mut key);
-                
+
                 (
-                KmsResponse::GenerateDataKey {
-                    key_id: key_id,
-                    ciphertext_blob: key.to_vec(),
-                    plaintext: key.to_vec(),
-                },
-                None,
+                    KmsResponse::GenerateDataKey {
+                        key_id: key_id,
+                        ciphertext_blob: key.to_vec(),
+                        plaintext: key.to_vec(),
+                    },
+                    None,
                 )
             }
-            KmsRequest::Decrypt { ciphertext_blob, key_id, recipient, encryption_context, .. } => {
+            KmsRequest::Decrypt {
+                ciphertext_blob,
+                key_id,
+                recipient,
+                encryption_context,
+                ..
+            } => {
                 // If we have a real KMS client and a recipient (attestation doc), use real KMS.
                 #[cfg(feature = "production")]
                 if let Some(client) = &self.kms_client {
@@ -295,15 +313,18 @@ impl KmsProxyServer {
                                 Ok(Ok(output)) => {
                                     self.circuit.record_result(true).await;
                                     let kms_request_id = aws_request_id(&output);
-                                    let ciphertext_for_recipient =
-                                        output.ciphertext_for_recipient().map(|b| b.as_ref().to_vec());
+                                    let ciphertext_for_recipient = output
+                                        .ciphertext_for_recipient()
+                                        .map(|b| b.as_ref().to_vec());
 
                                     // Fail-closed: when using RecipientInfo, never forward plaintext.
                                     if ciphertext_for_recipient.is_none() {
                                         return (
                                             KmsResponse::Error {
                                                 code: KmsProxyErrorCode::Internal,
-                                                message: "Recipient-bound decrypt returned no ciphertext".to_string(),
+                                                message:
+                                                    "Recipient-bound decrypt returned no ciphertext"
+                                                        .to_string(),
                                             },
                                             kms_request_id,
                                         );
@@ -346,8 +367,10 @@ impl KmsProxyServer {
                             }
 
                             self.metrics.inc_retry();
-                            let sleep_for =
-                                self.retry.compute_backoff(attempt, &mut rng).min(deadline - started.elapsed());
+                            let sleep_for = self
+                                .retry
+                                .compute_backoff(attempt, &mut rng)
+                                .min(deadline - started.elapsed());
                             if !sleep_for.is_zero() {
                                 sleep(sleep_for).await;
                             }
@@ -365,7 +388,7 @@ impl KmsProxyServer {
 
                 // Mock implementation or fallback
                 let key_material = ciphertext_blob;
-                
+
                 if let Some(attestation_bytes) = recipient {
                     match self.process_attestation(&attestation_bytes, &key_material) {
                         Ok(wrapped_key) => (
@@ -397,63 +420,72 @@ impl KmsProxyServer {
             }
         }
     }
-    
-    fn process_attestation(&self, attestation_bytes: &[u8], key_material: &[u8]) -> Result<Vec<u8>, String> {
+
+    fn process_attestation(
+        &self,
+        attestation_bytes: &[u8],
+        key_material: &[u8],
+    ) -> Result<Vec<u8>, String> {
         // Parse CBOR
         let value: serde_cbor::Value = serde_cbor::from_slice(attestation_bytes)
             .map_err(|e| format!("Failed to parse attestation doc: {}", e))?;
-            
+
         let map = match value {
             serde_cbor::Value::Map(m) => m,
             _ => return Err("Attestation doc is not a map".to_string()),
         };
-        
+
         // Validate PCRs (Mock Allowlist)
-        if let Some(serde_cbor::Value::Map(pcrs)) = map.get(&serde_cbor::Value::Text("pcrs".to_string())) {
+        if let Some(serde_cbor::Value::Map(pcrs)) =
+            map.get(&serde_cbor::Value::Text("pcrs".to_string()))
+        {
             // Check PCR0 existence and length as a basic check
             if let Some(serde_cbor::Value::Bytes(pcr0)) = pcrs.get(&serde_cbor::Value::Integer(0)) {
                 if pcr0.len() != 48 {
-                     return Err(format!("Invalid PCR0 length: {}", pcr0.len()));
+                    return Err(format!("Invalid PCR0 length: {}", pcr0.len()));
                 }
             }
         }
-        
+
         // Extract User Data
         let user_data_bytes = match map.get(&serde_cbor::Value::Text("user_data".to_string())) {
-             Some(serde_cbor::Value::Bytes(b)) => b,
-             _ => return Err("Missing user_data in attestation".to_string()),
+            Some(serde_cbor::Value::Bytes(b)) => b,
+            _ => return Err("Missing user_data in attestation".to_string()),
         };
-        
+
         // Parse User Data (JSON)
         #[derive(serde::Deserialize)]
         struct UserData {
             hpke_public_key: [u8; 32],
         }
-        
+
         let user_data: UserData = serde_json::from_slice(user_data_bytes)
             .map_err(|e| format!("Failed to parse user_data: {}", e))?;
-            
+
         // Encrypt key_material with HPKE public key
         let mut rng = OsRng;
-        
-        let kem_pub = <X25519HkdfSha256 as hpke::Kem>::PublicKey::from_bytes(&user_data.hpke_public_key)
-            .map_err(|e| format!("Invalid HPKE public key: {}", e))?;
-            
-        let (encapped_key, mut sender_ctx) = hpke::setup_sender::<
-            ChaCha20Poly1305,
-            hpke::kdf::HkdfSha256,
-            X25519HkdfSha256,
-            _,
-        >(&OpModeS::Base, &kem_pub, b"KMS_DEK", &mut rng)
-        .map_err(|e| format!("HPKE setup failed: {}", e))?;
-        
-        let ciphertext = sender_ctx.seal(key_material, b"")
+
+        let kem_pub =
+            <X25519HkdfSha256 as hpke::Kem>::PublicKey::from_bytes(&user_data.hpke_public_key)
+                .map_err(|e| format!("Invalid HPKE public key: {}", e))?;
+
+        let (encapped_key, mut sender_ctx) =
+            hpke::setup_sender::<ChaCha20Poly1305, hpke::kdf::HkdfSha256, X25519HkdfSha256, _>(
+                &OpModeS::Base,
+                &kem_pub,
+                b"KMS_DEK",
+                &mut rng,
+            )
+            .map_err(|e| format!("HPKE setup failed: {}", e))?;
+
+        let ciphertext = sender_ctx
+            .seal(key_material, b"")
             .map_err(|e| format!("HPKE seal failed: {}", e))?;
-            
+
         // Return: encapped_key || ciphertext
         let mut result = encapped_key.to_bytes().to_vec();
         result.extend_from_slice(&ciphertext);
-        
+
         Ok(result)
     }
 }
@@ -461,7 +493,9 @@ impl KmsProxyServer {
 fn is_retryable(code: KmsProxyErrorCode) -> bool {
     matches!(
         code,
-        KmsProxyErrorCode::Timeout | KmsProxyErrorCode::UpstreamThrottled | KmsProxyErrorCode::UpstreamUnavailable
+        KmsProxyErrorCode::Timeout
+            | KmsProxyErrorCode::UpstreamThrottled
+            | KmsProxyErrorCode::UpstreamUnavailable
     )
 }
 
@@ -492,7 +526,7 @@ mod tests {
     #[tokio::test]
     async fn test_host_blindness_enforced() {
         let mut server = KmsProxyServer::new();
-        
+
         // Generate a valid HPKE public key
         use hpke::{kem::X25519HkdfSha256, Kem, Serializable};
         let (_, public_key_obj) = X25519HkdfSha256::derive_keypair(&[0u8; 32]);
@@ -501,7 +535,7 @@ mod tests {
         // Setup a mock attestation with a dummy HPKE public key
         use std::collections::BTreeMap;
         let mut map = BTreeMap::new();
-        
+
         // Create user data JSON with real PK bytes
         #[derive(serde::Serialize)]
         struct UserData {
@@ -512,10 +546,13 @@ mod tests {
         };
         let user_data_json = serde_json::to_vec(&user_data).unwrap();
 
-        map.insert(serde_cbor::Value::Text("user_data".to_string()), serde_cbor::Value::Bytes(user_data_json));
-        
+        map.insert(
+            serde_cbor::Value::Text("user_data".to_string()),
+            serde_cbor::Value::Bytes(user_data_json),
+        );
+
         let attestation_cbor = serde_cbor::to_vec(&serde_cbor::Value::Map(map)).unwrap();
-        
+
         let request = KmsRequest::Decrypt {
             ciphertext_blob: vec![1, 2, 3, 4],
             key_id: None,
@@ -531,9 +568,13 @@ mod tests {
                 request,
             })
             .await;
-        
+
         match response.response {
-            KmsResponse::Decrypt { ciphertext_for_recipient, plaintext, .. } => {
+            KmsResponse::Decrypt {
+                ciphertext_for_recipient,
+                plaintext,
+                ..
+            } => {
                 // MUST have ciphertext for recipient
                 assert!(ciphertext_for_recipient.is_some());
                 // MUST NOT have plaintext

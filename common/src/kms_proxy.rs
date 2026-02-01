@@ -41,11 +41,11 @@ pub enum KmsProxyErrorCode {
 #[serde(tag = "op", content = "payload")]
 pub enum KmsRequest {
     Decrypt {
-         ciphertext_blob: Vec<u8>,
-         key_id: Option<String>,
-         encryption_context: Option<HashMap<String, String>>,
-         grant_tokens: Option<Vec<String>>,
-         recipient: Option<Vec<u8>>, // Attestation document
+        ciphertext_blob: Vec<u8>,
+        key_id: Option<String>,
+        encryption_context: Option<HashMap<String, String>>,
+        grant_tokens: Option<Vec<String>>,
+        recipient: Option<Vec<u8>>, // Attestation document
     },
     GenerateDataKey {
         key_id: String,

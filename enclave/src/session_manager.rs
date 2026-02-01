@@ -1,7 +1,6 @@
-use crate::{Result, EnclaveError, EphemeralError};
+use crate::{EnclaveError, EphemeralError, Result};
 use ephemeral_ml_common::{
-    HPKESession, ReceiptSigningKey, SessionId, EncryptedMessage,
-    AttestationReceipt
+    AttestationReceipt, EncryptedMessage, HPKESession, ReceiptSigningKey, SessionId,
 };
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
@@ -36,13 +35,15 @@ impl EnclaveSession {
 
     /// Decrypt an incoming message
     pub fn decrypt(&mut self, message: &EncryptedMessage) -> Result<Vec<u8>> {
-        self.hpke.decrypt(message)
+        self.hpke
+            .decrypt(message)
             .map_err(|e| EnclaveError::Enclave(e))
     }
 
     /// Encrypt an outgoing message
     pub fn encrypt(&mut self, plaintext: &[u8]) -> Result<EncryptedMessage> {
-        self.hpke.encrypt(plaintext)
+        self.hpke
+            .encrypt(plaintext)
             .map_err(|e| EnclaveError::Enclave(e))
     }
 
@@ -50,11 +51,12 @@ impl EnclaveSession {
     pub fn sign_receipt(&mut self, receipt: &mut AttestationReceipt) -> Result<()> {
         // Enforce sequence number consistency
         if receipt.sequence_number != self.hpke.get_next_sequence() {
-             // This is a check to ensure the receipt matches the session state.
-             // In practice, we might set the sequence number here.
+            // This is a check to ensure the receipt matches the session state.
+            // In practice, we might set the sequence number here.
         }
-        
-        receipt.sign(&self.receipt_signing_key)
+
+        receipt
+            .sign(&self.receipt_signing_key)
             .map_err(|e| EnclaveError::Enclave(e))
     }
 
@@ -87,7 +89,7 @@ impl SessionManager {
         })?;
         if sessions.len() >= self.max_sessions {
             return Err(EnclaveError::Enclave(EphemeralError::ResourceExhausted(
-                "Max sessions reached".to_string()
+                "Max sessions reached".to_string(),
             )));
         }
         sessions.insert(session.hpke.session_id.clone(), session);
@@ -95,7 +97,7 @@ impl SessionManager {
     }
 
     /// Access a session to perform operations
-    /// Returns a guard or closure result? 
+    /// Returns a guard or closure result?
     /// For simplicity, we'll expose a method to run a closure on the session
     pub fn with_session<F, R>(&self, _session_id: &str, f: F) -> Result<R>
     where
@@ -104,12 +106,15 @@ impl SessionManager {
         let mut sessions = self.sessions.lock().map_err(|_| {
             EnclaveError::Enclave(EphemeralError::Internal("Lock poisoned".to_string()))
         })?;
-        let session = sessions.get_mut(_session_id)
-            .ok_or_else(|| EnclaveError::Enclave(EphemeralError::InvalidInput("Session not found".to_string())))?;
-        
+        let session = sessions.get_mut(_session_id).ok_or_else(|| {
+            EnclaveError::Enclave(EphemeralError::InvalidInput(
+                "Session not found".to_string(),
+            ))
+        })?;
+
         f(session)
     }
-    
+
     /// Remove a session
     pub fn remove_session(&self, session_id: &str) {
         if let Ok(mut sessions) = self.sessions.lock() {
@@ -135,24 +140,37 @@ mod tests {
     #[test]
     fn test_max_sessions_enforced() {
         let manager = SessionManager::new(2);
-        
+
         let create_session = |id: &str| {
             let hpke = HPKESession::new(
-                id.to_string(), 1, [0u8; 32], [0u8; 32], [0u8; 32], [0u8; 12], 3600
-            ).unwrap();
+                id.to_string(),
+                1,
+                [0u8; 32],
+                [0u8; 32],
+                [0u8; 32],
+                [0u8; 12],
+                3600,
+            )
+            .unwrap();
             let receipt_key = ReceiptSigningKey::generate().unwrap();
-            EnclaveSession::new(id.to_string(), hpke, receipt_key, [0u8; 32], "client".to_string())
+            EnclaveSession::new(
+                id.to_string(),
+                hpke,
+                receipt_key,
+                [0u8; 32],
+                "client".to_string(),
+            )
         };
 
         // Add 2 sessions
         assert!(manager.add_session(create_session("s1")).is_ok());
         assert!(manager.add_session(create_session("s2")).is_ok());
-        
+
         // Add 3rd session (should fail)
         let result = manager.add_session(create_session("s3"));
         assert!(result.is_err());
         assert!(format!("{:?}", result.err().unwrap()).contains("Max sessions reached"));
-        
+
         // Remove one and add again
         manager.remove_session("s1");
         assert!(manager.add_session(create_session("s3")).is_ok());

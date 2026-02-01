@@ -1,4 +1,4 @@
-use crate::{HostError, Result, EphemeralError};
+use crate::{EphemeralError, HostError, Result};
 use std::collections::HashMap;
 use std::sync::Arc;
 
@@ -10,13 +10,13 @@ use aws_sdk_s3::Client as S3Client;
 pub trait WeightStorage: Send + Sync {
     /// Store weights for a model (encrypted)
     async fn store(&self, model_id: &str, weights: &[u8]) -> Result<()>;
-    
+
     /// Retrieve weights for a model (encrypted)
     async fn retrieve(&self, model_id: &str) -> Result<Vec<u8>>;
-    
+
     /// Check if weights exist for a model
     async fn exists(&self, model_id: &str) -> bool;
-    
+
     /// Remove weights for a model
     async fn remove(&self, model_id: &str) -> Result<()>;
 }
@@ -44,26 +44,37 @@ impl Default for InMemoryWeightStorage {
 #[async_trait::async_trait]
 impl WeightStorage for InMemoryWeightStorage {
     async fn store(&self, model_id: &str, weights: &[u8]) -> Result<()> {
-        let mut storage = self.storage.write().map_err(|_| HostError::Host(EphemeralError::Internal("Lock poisoned".to_string())))?;
+        let mut storage = self
+            .storage
+            .write()
+            .map_err(|_| HostError::Host(EphemeralError::Internal("Lock poisoned".to_string())))?;
         storage.insert(model_id.to_string(), weights.to_vec());
         Ok(())
     }
-    
+
     async fn retrieve(&self, model_id: &str) -> Result<Vec<u8>> {
-        let storage = self.storage.read().map_err(|_| HostError::Host(EphemeralError::Internal("Lock poisoned".to_string())))?;
-        storage
-            .get(model_id)
-            .cloned()
-            .ok_or_else(|| HostError::Host(EphemeralError::StorageError(format!("Weights not found for model {}", model_id))))
+        let storage = self
+            .storage
+            .read()
+            .map_err(|_| HostError::Host(EphemeralError::Internal("Lock poisoned".to_string())))?;
+        storage.get(model_id).cloned().ok_or_else(|| {
+            HostError::Host(EphemeralError::StorageError(format!(
+                "Weights not found for model {}",
+                model_id
+            )))
+        })
     }
-    
+
     async fn exists(&self, model_id: &str) -> bool {
         let storage = self.storage.read().unwrap();
         storage.contains_key(model_id)
     }
-    
+
     async fn remove(&self, model_id: &str) -> Result<()> {
-        let mut storage = self.storage.write().map_err(|_| HostError::Host(EphemeralError::Internal("Lock poisoned".to_string())))?;
+        let mut storage = self
+            .storage
+            .write()
+            .map_err(|_| HostError::Host(EphemeralError::Internal("Lock poisoned".to_string())))?;
         storage.remove(model_id);
         Ok(())
     }
@@ -88,32 +99,51 @@ impl S3WeightStorage {
 #[async_trait::async_trait]
 impl WeightStorage for S3WeightStorage {
     async fn store(&self, model_id: &str, weights: &[u8]) -> Result<()> {
-        self.client.put_object()
+        self.client
+            .put_object()
             .bucket(&self.bucket)
             .key(model_id)
             .body(weights.to_vec().into())
             .send()
             .await
-            .map_err(|e| HostError::Host(EphemeralError::StorageError(format!("S3 upload failed: {}", e))))?;
+            .map_err(|e| {
+                HostError::Host(EphemeralError::StorageError(format!(
+                    "S3 upload failed: {}",
+                    e
+                )))
+            })?;
         Ok(())
     }
 
     async fn retrieve(&self, model_id: &str) -> Result<Vec<u8>> {
-        let res = self.client.get_object()
+        let res = self
+            .client
+            .get_object()
             .bucket(&self.bucket)
             .key(model_id)
             .send()
             .await
-            .map_err(|e| HostError::Host(EphemeralError::StorageError(format!("S3 download failed: {}", e))))?;
+            .map_err(|e| {
+                HostError::Host(EphemeralError::StorageError(format!(
+                    "S3 download failed: {}",
+                    e
+                )))
+            })?;
 
-        let data = res.body.collect().await
-            .map_err(|e| HostError::Host(EphemeralError::StorageError(format!("S3 body collection failed: {}", e))))?;
-        
+        let data = res.body.collect().await.map_err(|e| {
+            HostError::Host(EphemeralError::StorageError(format!(
+                "S3 body collection failed: {}",
+                e
+            )))
+        })?;
+
         Ok(data.to_vec())
     }
 
     async fn exists(&self, model_id: &str) -> bool {
-        let res = self.client.head_object()
+        let res = self
+            .client
+            .head_object()
             .bucket(&self.bucket)
             .key(model_id)
             .send()
@@ -122,12 +152,18 @@ impl WeightStorage for S3WeightStorage {
     }
 
     async fn remove(&self, model_id: &str) -> Result<()> {
-        self.client.delete_object()
+        self.client
+            .delete_object()
             .bucket(&self.bucket)
             .key(model_id)
             .send()
             .await
-            .map_err(|e| HostError::Host(EphemeralError::StorageError(format!("S3 deletion failed: {}", e))))?;
+            .map_err(|e| {
+                HostError::Host(EphemeralError::StorageError(format!(
+                    "S3 deletion failed: {}",
+                    e
+                )))
+            })?;
         Ok(())
     }
 }

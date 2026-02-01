@@ -1,5 +1,5 @@
 //! Compliance Report Generator CLI Tool
-//! 
+//!
 //! Usage: generate_compliance_report --receipts-dir <dir> --output <report.json> [--format html|json|csv]
 //!
 //! Generates compliance reports for auditors including:
@@ -13,8 +13,8 @@ use clap::Parser;
 use ephemeral_ml_common::AttestationReceipt;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use std::path::PathBuf;
 use std::fs;
+use std::path::PathBuf;
 
 #[derive(Parser, Debug)]
 #[command(name = "generate_compliance_report")]
@@ -50,16 +50,16 @@ struct ComplianceReport {
     /// Report metadata
     generated_at: u64,
     report_version: String,
-    
+
     /// Summary statistics
     summary: ReportSummary,
-    
+
     /// Per-model breakdown
     model_breakdown: Vec<ModelStats>,
-    
+
     /// Execution timeline
     timeline: Vec<TimelineEntry>,
-    
+
     /// Individual receipt details
     receipts: Vec<ReceiptDetail>,
 }
@@ -111,18 +111,18 @@ struct ReceiptDetail {
 
 fn main() -> Result<()> {
     let args = Args::parse();
-    
+
     // Load all receipts from directory
     let receipts = load_receipts(&args.receipts_dir, &args)?;
-    
+
     if receipts.is_empty() {
         eprintln!("No receipts found in {:?}", args.receipts_dir);
         std::process::exit(1);
     }
-    
+
     // Generate report
     let report = generate_report(receipts)?;
-    
+
     // Output in requested format
     match args.format.as_str() {
         "json" => output_json(&report, &args.output)?,
@@ -133,29 +133,30 @@ fn main() -> Result<()> {
             output_json(&report, &args.output)?;
         }
     }
-    
+
     println!("✓ Compliance report generated: {:?}", args.output);
     println!("  Total receipts: {}", report.summary.total_receipts);
     println!("  Total models: {}", report.summary.total_models);
-    println!("  Time range: {} - {}", 
+    println!(
+        "  Time range: {} - {}",
         format_timestamp(report.summary.earliest_timestamp),
         format_timestamp(report.summary.latest_timestamp)
     );
-    
+
     Ok(())
 }
 
 fn load_receipts(dir: &PathBuf, args: &Args) -> Result<Vec<AttestationReceipt>> {
     let mut receipts = Vec::new();
-    
+
     for entry in fs::read_dir(dir).context("Failed to read receipts directory")? {
         let entry = entry?;
         let path = entry.path();
-        
+
         if path.extension().map(|e| e == "json").unwrap_or(false) {
-            let content = fs::read_to_string(&path)
-                .with_context(|| format!("Failed to read {:?}", path))?;
-            
+            let content =
+                fs::read_to_string(&path).with_context(|| format!("Failed to read {:?}", path))?;
+
             match serde_json::from_str::<AttestationReceipt>(&content) {
                 Ok(receipt) => {
                     // Apply filters
@@ -182,16 +183,16 @@ fn load_receipts(dir: &PathBuf, args: &Args) -> Result<Vec<AttestationReceipt>> 
             }
         }
     }
-    
+
     // Sort by timestamp
     receipts.sort_by_key(|r| r.execution_timestamp);
-    
+
     Ok(receipts)
 }
 
 fn generate_report(receipts: Vec<AttestationReceipt>) -> Result<ComplianceReport> {
     let now = ephemeral_ml_common::current_timestamp();
-    
+
     // Calculate summary
     let total_receipts = receipts.len();
     let total_execution_time_ms: u64 = receipts.iter().map(|r| r.execution_time_ms).sum();
@@ -200,17 +201,25 @@ fn generate_report(receipts: Vec<AttestationReceipt>) -> Result<ComplianceReport
     } else {
         0
     };
-    
-    let earliest = receipts.iter().map(|r| r.execution_timestamp).min().unwrap_or(0);
-    let latest = receipts.iter().map(|r| r.execution_timestamp).max().unwrap_or(0);
-    
+
+    let earliest = receipts
+        .iter()
+        .map(|r| r.execution_timestamp)
+        .min()
+        .unwrap_or(0);
+    let latest = receipts
+        .iter()
+        .map(|r| r.execution_timestamp)
+        .max()
+        .unwrap_or(0);
+
     // Count unique models and sessions
     let mut models: HashMap<String, ModelStats> = HashMap::new();
     let mut sessions: std::collections::HashSet<String> = std::collections::HashSet::new();
-    
+
     for receipt in &receipts {
         let key = format!("{}@{}", receipt.model_id, receipt.model_version);
-        
+
         let stats = models.entry(key.clone()).or_insert(ModelStats {
             model_id: receipt.model_id.clone(),
             model_version: receipt.model_version.clone(),
@@ -220,40 +229,45 @@ fn generate_report(receipts: Vec<AttestationReceipt>) -> Result<ComplianceReport
             first_seen: receipt.execution_timestamp,
             last_seen: receipt.execution_timestamp,
         });
-        
+
         stats.total_executions += 1;
         stats.total_execution_time_ms += receipt.execution_time_ms;
         stats.first_seen = stats.first_seen.min(receipt.execution_timestamp);
         stats.last_seen = stats.last_seen.max(receipt.execution_timestamp);
-        
+
         // Extract session from receipt_id (assuming format: session-xxx-receipt-yyy)
         if let Some(session) = receipt.receipt_id.split('-').next() {
             sessions.insert(session.to_string());
         }
     }
-    
+
     // Finalize model stats
-    let model_breakdown: Vec<ModelStats> = models.into_values().map(|mut m| {
-        if m.total_executions > 0 {
-            m.avg_execution_time_ms = m.total_execution_time_ms / m.total_executions as u64;
-        }
-        m
-    }).collect();
-    
+    let model_breakdown: Vec<ModelStats> = models
+        .into_values()
+        .map(|mut m| {
+            if m.total_executions > 0 {
+                m.avg_execution_time_ms = m.total_execution_time_ms / m.total_executions as u64;
+            }
+            m
+        })
+        .collect();
+
     // Generate timeline
-    let timeline: Vec<TimelineEntry> = receipts.iter().map(|r| {
-        TimelineEntry {
+    let timeline: Vec<TimelineEntry> = receipts
+        .iter()
+        .map(|r| TimelineEntry {
             timestamp: r.execution_timestamp,
             timestamp_human: format_timestamp(r.execution_timestamp),
             receipt_id: r.receipt_id.clone(),
             model_id: r.model_id.clone(),
             execution_time_ms: r.execution_time_ms,
-        }
-    }).collect();
-    
+        })
+        .collect();
+
     // Generate receipt details
-    let receipt_details: Vec<ReceiptDetail> = receipts.iter().map(|r| {
-        ReceiptDetail {
+    let receipt_details: Vec<ReceiptDetail> = receipts
+        .iter()
+        .map(|r| ReceiptDetail {
             receipt_id: r.receipt_id.clone(),
             model_id: r.model_id.clone(),
             model_version: r.model_version.clone(),
@@ -264,9 +278,9 @@ fn generate_report(receipts: Vec<AttestationReceipt>) -> Result<ComplianceReport
             policy_version: r.policy_version.clone(),
             has_signature: r.signature.is_some(),
             pcr0_hash: hex::encode(&r.enclave_measurements.pcr0[..8]),
-        }
-    }).collect();
-    
+        })
+        .collect();
+
     let summary = ReportSummary {
         total_receipts,
         total_models: model_breakdown.len(),
@@ -276,7 +290,7 @@ fn generate_report(receipts: Vec<AttestationReceipt>) -> Result<ComplianceReport
         latest_timestamp: latest,
         unique_sessions: sessions.len(),
     };
-    
+
     Ok(ComplianceReport {
         generated_at: now,
         report_version: "1.0.0".to_string(),
@@ -295,10 +309,10 @@ fn output_json(report: &ComplianceReport, path: &PathBuf) -> Result<()> {
 
 fn output_csv(report: &ComplianceReport, path: &PathBuf) -> Result<()> {
     let mut csv = String::new();
-    
+
     // Header
     csv.push_str("receipt_id,model_id,model_version,timestamp,execution_time_ms,memory_peak_mb,sequence_number,policy_version,has_signature\n");
-    
+
     // Data
     for r in &report.receipts {
         csv.push_str(&format!(
@@ -314,13 +328,14 @@ fn output_csv(report: &ComplianceReport, path: &PathBuf) -> Result<()> {
             r.has_signature
         ));
     }
-    
+
     fs::write(path, csv)?;
     Ok(())
 }
 
 fn output_html(report: &ComplianceReport, path: &PathBuf) -> Result<()> {
-    let html = format!(r#"<!DOCTYPE html>
+    let html = format!(
+        r#"<!DOCTYPE html>
 <html>
 <head>
     <title>EphemeralML Compliance Report</title>
@@ -393,27 +408,46 @@ fn output_html(report: &ComplianceReport, path: &PathBuf) -> Result<()> {
         report.summary.total_receipts,
         report.summary.total_models,
         report.summary.avg_execution_time_ms,
-        report.model_breakdown.iter().map(|m| format!(
-            "<tr><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td></tr>",
-            m.model_id, m.model_version, m.total_executions, m.avg_execution_time_ms,
-            format_timestamp(m.first_seen), format_timestamp(m.last_seen)
-        )).collect::<Vec<_>>().join("\n        "),
-        report.receipts.iter().take(50).map(|r| format!(
-            "<tr><td><code>{}</code></td><td>{}</td><td>{}</td><td>{} ms</td><td>{}</td></tr>",
-            &r.receipt_id[..r.receipt_id.len().min(16)],
-            r.model_id,
-            format_timestamp(r.execution_timestamp),
-            r.execution_time_ms,
-            if r.has_signature { "<span class='badge badge-success'>✓ Signed</span>" } else { "<span class='badge badge-warning'>⚠ Unsigned</span>" }
-        )).collect::<Vec<_>>().join("\n        ")
+        report
+            .model_breakdown
+            .iter()
+            .map(|m| format!(
+                "<tr><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td></tr>",
+                m.model_id,
+                m.model_version,
+                m.total_executions,
+                m.avg_execution_time_ms,
+                format_timestamp(m.first_seen),
+                format_timestamp(m.last_seen)
+            ))
+            .collect::<Vec<_>>()
+            .join("\n        "),
+        report
+            .receipts
+            .iter()
+            .take(50)
+            .map(|r| format!(
+                "<tr><td><code>{}</code></td><td>{}</td><td>{}</td><td>{} ms</td><td>{}</td></tr>",
+                &r.receipt_id[..r.receipt_id.len().min(16)],
+                r.model_id,
+                format_timestamp(r.execution_timestamp),
+                r.execution_time_ms,
+                if r.has_signature {
+                    "<span class='badge badge-success'>✓ Signed</span>"
+                } else {
+                    "<span class='badge badge-warning'>⚠ Unsigned</span>"
+                }
+            ))
+            .collect::<Vec<_>>()
+            .join("\n        ")
     );
-    
+
     fs::write(path, html)?;
     Ok(())
 }
 
 fn format_timestamp(ts: u64) -> String {
-    use std::time::{UNIX_EPOCH, Duration};
+    use std::time::{Duration, UNIX_EPOCH};
     let d = UNIX_EPOCH + Duration::from_secs(ts);
     format!("{:?}", d)
 }

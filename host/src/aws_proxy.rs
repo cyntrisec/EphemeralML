@@ -1,8 +1,8 @@
-use crate::{HostError, Result, EphemeralError};
-use serde::{Deserialize, Serialize};
-use ephemeral_ml_common::{KmsRequest, KmsResponse};
-use aws_sdk_kms::Client as KmsClient;
+use crate::{EphemeralError, HostError, Result};
 use aws_config::SdkConfig;
+use aws_sdk_kms::Client as KmsClient;
+use ephemeral_ml_common::{KmsRequest, KmsResponse};
+use serde::{Deserialize, Serialize};
 
 /// AWS API Proxy
 #[derive(Clone)]
@@ -25,7 +25,9 @@ impl AWSApiProxy {
         grant_tokens: Option<Vec<String>>,
         recipient: Option<Vec<u8>>,
     ) -> Result<KmsResponse> {
-        let mut builder = self.client.decrypt()
+        let mut builder = self
+            .client
+            .decrypt()
             .ciphertext_blob(aws_sdk_kms::primitives::Blob::new(ciphertext_blob))
             .encryption_algorithm(aws_sdk_kms::types::EncryptionAlgorithmSpec::SymmetricDefault);
 
@@ -48,14 +50,20 @@ impl AWSApiProxy {
         if let Some(attestation_doc) = recipient {
             builder = builder.recipient(
                 aws_sdk_kms::types::RecipientInfo::builder()
-                    .key_encryption_algorithm(aws_sdk_kms::types::KeyEncryptionMechanism::RsaesOaepSha256)
+                    .key_encryption_algorithm(
+                        aws_sdk_kms::types::KeyEncryptionMechanism::RsaesOaepSha256,
+                    )
                     .attestation_document(aws_sdk_kms::primitives::Blob::new(attestation_doc))
-                    .build()
+                    .build(),
             );
         }
 
-        let resp = builder.send().await
-            .map_err(|e| HostError::Host(EphemeralError::Internal(format!("KMS Decrypt failed: {}", e))))?;
+        let resp = builder.send().await.map_err(|e| {
+            HostError::Host(EphemeralError::Internal(format!(
+                "KMS Decrypt failed: {}",
+                e
+            )))
+        })?;
 
         Ok(KmsResponse::Decrypt {
             plaintext: resp.plaintext().map(|b| b.as_ref().to_vec()),
@@ -78,17 +86,30 @@ impl AWSApiProxy {
             _ => aws_sdk_kms::types::DataKeySpec::Aes256,
         };
 
-        let resp = self.client.generate_data_key()
+        let resp = self
+            .client
+            .generate_data_key()
             .key_id(key_id)
             .key_spec(ks)
             .send()
             .await
-            .map_err(|e| HostError::Host(EphemeralError::Internal(format!("KMS GenerateDataKey failed: {}", e))))?;
+            .map_err(|e| {
+                HostError::Host(EphemeralError::Internal(format!(
+                    "KMS GenerateDataKey failed: {}",
+                    e
+                )))
+            })?;
 
         Ok(KmsResponse::GenerateDataKey {
             key_id: resp.key_id().unwrap_or_default().to_string(),
-            ciphertext_blob: resp.ciphertext_blob().map(|b| b.as_ref().to_vec()).unwrap_or_default(),
-            plaintext: resp.plaintext().map(|b| b.as_ref().to_vec()).unwrap_or_default(),
+            ciphertext_blob: resp
+                .ciphertext_blob()
+                .map(|b| b.as_ref().to_vec())
+                .unwrap_or_default(),
+            plaintext: resp
+                .plaintext()
+                .map(|b| b.as_ref().to_vec())
+                .unwrap_or_default(),
         })
     }
 }

@@ -40,12 +40,12 @@ impl TensorShape {
     pub fn new(dimensions: Vec<usize>) -> Self {
         Self { dimensions }
     }
-    
+
     /// Get the total number of elements in the tensor
     pub fn total_elements(&self) -> usize {
         self.dimensions.iter().product()
     }
-    
+
     /// Check if the shape is valid (no zero dimensions)
     pub fn is_valid(&self) -> bool {
         !self.dimensions.is_empty() && self.dimensions.iter().all(|&d| d > 0)
@@ -58,7 +58,7 @@ pub struct ModelMetadata {
     pub name: String,
     pub version: String,
     pub description: Option<String>,
-    pub created_at: u64, // Unix timestamp
+    pub created_at: u64,  // Unix timestamp
     pub checksum: String, // SHA-256 hash of the original model
 }
 
@@ -69,10 +69,10 @@ pub enum OperationType {
     Conv2d,
     Conv1d,
     ConvTranspose2d,
-    
+
     // Linear operations
     Linear,
-    
+
     // Activation functions
     Relu,
     Sigmoid,
@@ -80,38 +80,38 @@ pub enum OperationType {
     Gelu,
     Softmax,
     LogSoftmax,
-    
+
     // Pooling operations
     MaxPool2d,
     AvgPool2d,
     AdaptiveAvgPool2d,
-    
+
     // Normalization
     BatchNorm,
     LayerNorm,
     GroupNorm,
-    
+
     // Regularization
     Dropout,
-    
+
     // Element-wise operations
     Add,
     Sub,
     Mul,
     Div,
-    
+
     // Shape operations
     Reshape,
     Flatten,
     Transpose,
     Permute,
-    
+
     // Aggregation operations
     Sum,
     Mean,
     Max,
     Min,
-    
+
     // Other operations
     Concat,
     Split,
@@ -129,7 +129,12 @@ pub struct WeightIndex {
 
 impl WeightIndex {
     /// Create a new weight index
-    pub fn new(start_idx: usize, length: usize, shape: TensorShape, weight_type: WeightType) -> Self {
+    pub fn new(
+        start_idx: usize,
+        length: usize,
+        shape: TensorShape,
+        weight_type: WeightType,
+    ) -> Self {
         Self {
             start_idx,
             length,
@@ -137,12 +142,12 @@ impl WeightIndex {
             weight_type,
         }
     }
-    
+
     /// Get the end index (exclusive)
     pub fn end_idx(&self) -> usize {
         self.start_idx + self.length
     }
-    
+
     /// Check if the weight index is valid
     pub fn is_valid(&self) -> bool {
         self.length > 0 && self.shape.is_valid() && self.shape.total_elements() == self.length
@@ -179,7 +184,7 @@ impl WeightArrays {
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap_or_default()
             .as_secs();
-            
+
         Self {
             model_id,
             weight_data,
@@ -188,10 +193,10 @@ impl WeightArrays {
             created_at,
         }
     }
-    
+
     /// Calculate checksum for weight data
     fn calculate_checksum(data: &[f32]) -> u64 {
-        use sha2::{Sha256, Digest};
+        use sha2::{Digest, Sha256};
         let bytes: &[u8] = unsafe {
             std::slice::from_raw_parts(
                 data.as_ptr() as *const u8,
@@ -200,11 +205,10 @@ impl WeightArrays {
         };
         let hash = Sha256::digest(bytes);
         u64::from_be_bytes([
-            hash[0], hash[1], hash[2], hash[3],
-            hash[4], hash[5], hash[6], hash[7],
+            hash[0], hash[1], hash[2], hash[3], hash[4], hash[5], hash[6], hash[7],
         ])
     }
-    
+
     /// Verify checksum integrity
     pub fn verify_checksum(&self) -> bool {
         self.checksum == Self::calculate_checksum(&self.weight_data)
@@ -293,7 +297,7 @@ impl PcrMeasurements {
     pub fn new(pcr0: Vec<u8>, pcr1: Vec<u8>, pcr2: Vec<u8>) -> Self {
         Self { pcr0, pcr1, pcr2 }
     }
-    
+
     /// Validate PCR measurement lengths (should be 48 bytes each for SHA-384)
     pub fn is_valid(&self) -> bool {
         self.pcr0.len() == 48 && self.pcr1.len() == 48 && self.pcr2.len() == 48
@@ -317,7 +321,7 @@ impl SecureChannel {
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap_or_default()
             .as_secs();
-            
+
         Self {
             endpoint,
             session_key,
@@ -326,7 +330,7 @@ impl SecureChannel {
             expires_at: now + ttl_seconds,
         }
     }
-    
+
     /// Check if the channel is expired
     pub fn is_expired(&self) -> bool {
         let now = std::time::SystemTime::now()
@@ -335,7 +339,7 @@ impl SecureChannel {
             .as_secs();
         now >= self.expires_at
     }
-    
+
     /// Mark attestation as verified
     pub fn mark_attestation_verified(&mut self) {
         self.attestation_verified = true;

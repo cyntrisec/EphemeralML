@@ -21,7 +21,10 @@ pub struct Config {
 impl Default for Config {
     fn default() -> Self {
         // v1 defaults (tunable)
-        Self { rps: 200.0, burst: 400.0 }
+        Self {
+            rps: 200.0,
+            burst: 400.0,
+        }
     }
 }
 
@@ -79,7 +82,10 @@ mod tests {
 
     #[tokio::test]
     async fn limiter_allows_burst_then_throttles() {
-        let rl = RateLimiter::new(Config { rps: 10.0, burst: 2.0 });
+        let rl = RateLimiter::new(Config {
+            rps: 10.0,
+            burst: 2.0,
+        });
 
         let t0 = Instant::now();
         assert!(!rl.acquire(1.0).await);

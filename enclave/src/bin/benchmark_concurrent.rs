@@ -4,7 +4,7 @@
 //! how throughput and per-request latency scale with concurrency.
 //! Tests N = 1, 2, 4, 8 threads.
 
-use candle_core::{Device, DType, Tensor};
+use candle_core::{DType, Device, Tensor};
 use candle_nn::VarBuilder;
 use candle_transformers::models::bert::{BertModel, Config as BertConfig};
 use chacha20poly1305::{aead::Aead, ChaCha20Poly1305, Key, KeyInit, Nonce};
@@ -50,7 +50,10 @@ fn run_single_inference(
         .map(|&v| v as u32)
         .collect();
 
-    let input_ids_t = Tensor::new(input_ids, device).unwrap().unsqueeze(0).unwrap();
+    let input_ids_t = Tensor::new(input_ids, device)
+        .unwrap()
+        .unsqueeze(0)
+        .unwrap();
     let token_type_ids_t = Tensor::new(token_type_ids, device)
         .unwrap()
         .unsqueeze(0)
@@ -74,11 +77,7 @@ fn run_single_inference(
     let count = mask.sum(1).unwrap();
     let mean_pooled = summed.broadcast_div(&count).unwrap();
 
-    mean_pooled
-        .squeeze(0)
-        .unwrap()
-        .to_vec1::<f32>()
-        .unwrap()
+    mean_pooled.squeeze(0).unwrap().to_vec1::<f32>().unwrap()
 }
 
 /// Run concurrent inference test at a given concurrency level
@@ -88,7 +87,10 @@ fn bench_concurrent(
     tokenizer: &Arc<tokenizers::Tokenizer>,
     device: &Device,
 ) -> serde_json::Value {
-    eprintln!("[concurrent] Testing N={} threads, {} iterations each...", n_threads, ITERATIONS_PER_THREAD);
+    eprintln!(
+        "[concurrent] Testing N={} threads, {} iterations each...",
+        n_threads, ITERATIONS_PER_THREAD
+    );
 
     // Warmup with single thread
     for i in 0..NUM_WARMUP {
@@ -108,7 +110,8 @@ fn bench_concurrent(
             std::thread::spawn(move || {
                 let mut latencies = Vec::with_capacity(ITERATIONS_PER_THREAD);
                 for i in 0..ITERATIONS_PER_THREAD {
-                    let text = BENCHMARK_INPUT_TEXTS[(thread_id * 7 + i) % BENCHMARK_INPUT_TEXTS.len()];
+                    let text =
+                        BENCHMARK_INPUT_TEXTS[(thread_id * 7 + i) % BENCHMARK_INPUT_TEXTS.len()];
                     let start = Instant::now();
                     let _ = run_single_inference(&model, &tokenizer, text, &device);
                     latencies.push(start.elapsed().as_secs_f64() * 1000.0);
@@ -196,9 +199,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let config: BertConfig = serde_json::from_slice(&config_bytes)?;
     let vb = VarBuilder::from_buffered_safetensors(weights_plaintext, DType::F32, &device)?;
     let model = Arc::new(BertModel::load(vb, &config)?);
-    let tokenizer = Arc::new(
-        tokenizers::Tokenizer::from_bytes(&tokenizer_bytes).map_err(|e| e.to_string())?,
-    );
+    let tokenizer =
+        Arc::new(tokenizers::Tokenizer::from_bytes(&tokenizer_bytes).map_err(|e| e.to_string())?);
 
     eprintln!("[concurrent] Model loaded, starting benchmarks...");
 

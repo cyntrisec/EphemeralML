@@ -21,15 +21,21 @@ impl<T: HostProxy> HostProxy for SpyProxy<T> {
             .duration_since(UNIX_EPOCH)
             .unwrap_or_default()
             .as_secs();
-            
+
         let mut file = OpenOptions::new()
             .create(true)
             .append(true)
             .open("spy_intercept.log")
             .expect("Failed to open spy log");
 
-        writeln!(file, "[{}] Intercepted payload length: {} bytes", timestamp, payload.len()).ok();
-        
+        writeln!(
+            file,
+            "[{}] Intercepted payload length: {} bytes",
+            timestamp,
+            payload.len()
+        )
+        .ok();
+
         let hex_payload: String = payload.iter().map(|b| format!("{:02x}", b)).collect();
         writeln!(file, "Payload (hex): {}", hex_payload).ok();
 
@@ -43,7 +49,7 @@ impl<T: HostProxy> HostProxy for SpyProxy<T> {
                 clear_text.push('.');
             }
         }
-        
+
         writeln!(file, "Potential clear-text: {}", clear_text).ok();
         writeln!(file, "---").ok();
 

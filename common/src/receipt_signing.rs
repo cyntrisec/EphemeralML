@@ -1,12 +1,12 @@
 //! Ed25519 receipt signing keys and Attested Execution Receipt (AER) generation
-//! 
+//!
 //! This module implements separate Ed25519 keypairs for AER signature generation,
 //! binding both HPKE and receipt keys in attestation user data, and canonical
 //! encoding for receipt fields.
 
 use crate::error::{EphemeralError, Result};
-use serde::{Deserialize, Serialize};
 use ed25519_dalek::Signer;
+use serde::{Deserialize, Serialize};
 use zeroize::ZeroizeOnDrop;
 
 /// Ed25519 receipt signing keypair with secure memory management
@@ -27,11 +27,11 @@ impl ReceiptSigningKey {
     /// Generate new Ed25519 keypair for receipt signing
     pub fn generate() -> Result<Self> {
         use rand::rngs::OsRng;
-        
+
         let private_key = ed25519_dalek::SigningKey::generate(&mut OsRng);
         let public_key = private_key.verifying_key();
         let created_at = crate::current_timestamp();
-        
+
         Ok(Self {
             private_key,
             public_key,
@@ -39,7 +39,7 @@ impl ReceiptSigningKey {
             expires_at: None,
         })
     }
-    
+
     /// Generate new Ed25519 keypair with expiration (for per-session keys)
     pub fn generate_with_expiry(ttl_seconds: u64) -> Result<Self> {
         let mut key = Self::generate()?;
@@ -48,7 +48,10 @@ impl ReceiptSigningKey {
     }
 
     /// Create from existing keys (for testing)
-    pub fn from_parts(private_key: ed25519_dalek::SigningKey, public_key: ed25519_dalek::VerifyingKey) -> Self {
+    pub fn from_parts(
+        private_key: ed25519_dalek::SigningKey,
+        public_key: ed25519_dalek::VerifyingKey,
+    ) -> Self {
         Self {
             private_key,
             public_key,
@@ -56,25 +59,27 @@ impl ReceiptSigningKey {
             expires_at: None,
         }
     }
-    
+
     /// Get public key bytes for embedding in attestation user data
     pub fn public_key_bytes(&self) -> [u8; 32] {
         self.public_key.to_bytes()
     }
-    
+
     /// Sign receipt with canonical encoding
     pub fn sign_receipt(&self, receipt: &AttestationReceipt) -> Result<Vec<u8>> {
         if let Some(expires_at) = self.expires_at {
             if crate::current_timestamp() >= expires_at {
-                return Err(EphemeralError::EncryptionError("Signing key expired".to_string()));
+                return Err(EphemeralError::EncryptionError(
+                    "Signing key expired".to_string(),
+                ));
             }
         }
-        
+
         let canonical_encoding = receipt.canonical_encoding()?;
         let signature = self.private_key.sign(&canonical_encoding);
         Ok(signature.to_bytes().to_vec())
     }
-    
+
     /// Check if key is expired
     pub fn is_expired(&self) -> bool {
         if let Some(expires_at) = self.expires_at {
@@ -116,26 +121,27 @@ impl AttestationUserData {
             key_generation_timestamp: crate::current_timestamp(),
         }
     }
-    
+
     /// Serialize to CBOR for embedding in attestation document
     pub fn to_cbor(&self) -> Result<Vec<u8>> {
         serde_cbor::to_vec(self)
             .map_err(|e| EphemeralError::SerializationError(format!("CBOR encoding failed: {}", e)))
     }
-    
+
     /// Deserialize from CBOR attestation user data
     pub fn from_cbor(data: &[u8]) -> Result<Self> {
         serde_cbor::from_slice(data)
             .map_err(|e| EphemeralError::SerializationError(format!("CBOR decoding failed: {}", e)))
     }
-    
+
     /// Validate user data constraints (≤ 1KB for Nitro)
     pub fn validate_size(&self) -> Result<()> {
         let cbor_data = self.to_cbor()?;
         if cbor_data.len() > 1024 {
-            return Err(EphemeralError::ValidationError(
-                format!("User data too large: {} bytes (max 1024)", cbor_data.len())
-            ));
+            return Err(EphemeralError::ValidationError(format!(
+                "User data too large: {} bytes (max 1024)",
+                cbor_data.len()
+            )));
         }
         Ok(())
     }
@@ -211,7 +217,7 @@ impl EnclaveMeasurements {
             pcr8: None,
         }
     }
-    
+
     /// Validate measurement lengths (should be 48 bytes each for SHA-384)
     pub fn is_valid(&self) -> bool {
         self.pcr0.len() == 48 && self.pcr1.len() == 48 && self.pcr2.len() == 48
@@ -253,44 +259,48 @@ impl AttestationReceipt {
             signature: None,
         }
     }
-    
+
     /// Generate canonical encoding for signature (deterministic CBOR)
     pub fn canonical_encoding(&self) -> Result<Vec<u8>> {
         // Create a copy without the signature for canonical encoding
         let mut receipt_for_signing = self.clone();
         receipt_for_signing.signature = None;
-        
+
         // Use deterministic CBOR encoding with sorted keys
-        let cbor_data = serde_cbor::to_vec(&receipt_for_signing)
-            .map_err(|e| EphemeralError::SerializationError(format!("CBOR encoding failed: {}", e)))?;
-        
+        let cbor_data = serde_cbor::to_vec(&receipt_for_signing).map_err(|e| {
+            EphemeralError::SerializationError(format!("CBOR encoding failed: {}", e))
+        })?;
+
         // Ensure deterministic encoding by sorting map keys
         // Note: serde_cbor should handle this, but we document the requirement
         Ok(cbor_data)
     }
-    
+
     /// Sign the receipt with Ed25519 key
     pub fn sign(&mut self, signing_key: &ReceiptSigningKey) -> Result<()> {
         let signature = signing_key.sign_receipt(self)?;
         self.signature = Some(signature);
         Ok(())
     }
-    
+
     /// Verify receipt signature
     pub fn verify_signature(&self, public_key: &ed25519_dalek::VerifyingKey) -> Result<bool> {
-        let signature_bytes = self.signature
+        let signature_bytes = self
+            .signature
             .as_ref()
             .ok_or_else(|| EphemeralError::ValidationError("Receipt not signed".to_string()))?;
-        
+
         if signature_bytes.len() != 64 {
-            return Err(EphemeralError::ValidationError("Invalid signature length".to_string()));
+            return Err(EphemeralError::ValidationError(
+                "Invalid signature length".to_string(),
+            ));
         }
-        
+
         let mut sig_array = [0u8; 64];
         sig_array.copy_from_slice(signature_bytes);
         let signature = ed25519_dalek::Signature::from_bytes(&sig_array);
         let canonical_encoding = self.canonical_encoding()?;
-        
+
         match public_key.verify_strict(&canonical_encoding, &signature) {
             Ok(()) => Ok(true),
             Err(_) => Ok(false),
@@ -320,15 +330,15 @@ impl ReceiptBinding {
         user_data: &AttestationUserData,
         session_id: String,
     ) -> Result<Self> {
-        use sha2::{Sha256, Digest};
-        
+        use sha2::{Digest, Sha256};
+
         // Hash the attestation document
         let mut hasher = Sha256::new();
         hasher.update(attestation_doc);
         let attestation_hash_vec = hasher.finalize();
         let mut attestation_hash = [0u8; 32];
         attestation_hash.copy_from_slice(&attestation_hash_vec);
-        
+
         Ok(Self {
             hpke_public_key: user_data.hpke_public_key,
             receipt_signing_key: user_data.receipt_signing_key,
@@ -337,19 +347,19 @@ impl ReceiptBinding {
             protocol_version: user_data.protocol_version,
         })
     }
-    
+
     /// Verify that a receipt is bound to this attestation
     pub fn verify_receipt_binding(&self, receipt: &AttestationReceipt) -> Result<bool> {
         // Check protocol version match
         if receipt.protocol_version != self.protocol_version {
             return Ok(false);
         }
-        
+
         // Check attestation document hash match
         if receipt.attestation_doc_hash != self.attestation_hash {
             return Ok(false);
         }
-        
+
         Ok(true)
     }
 }
@@ -363,9 +373,11 @@ pub struct ReceiptVerifier {
 impl ReceiptVerifier {
     /// Create new receipt verifier with trusted roots
     pub fn new(trusted_roots: Vec<Vec<u8>>) -> Self {
-        Self { _trusted_roots: trusted_roots }
+        Self {
+            _trusted_roots: trusted_roots,
+        }
     }
-    
+
     /// Verify receipt authenticity and binding
     pub fn verify_receipt(
         &self,
@@ -374,90 +386,83 @@ impl ReceiptVerifier {
     ) -> Result<bool> {
         // Parse user data from attestation document
         let user_data = self.extract_user_data(attestation_doc)?;
-        
+
         // Create Ed25519 verifying key from user data
         let public_key_bytes = user_data.receipt_signing_key;
         let public_key = ed25519_dalek::VerifyingKey::from_bytes(&public_key_bytes)
             .map_err(|e| EphemeralError::ValidationError(format!("Invalid public key: {}", e)))?;
-        
+
         // Verify receipt signature
         let signature_valid = receipt.verify_signature(&public_key)?;
         if !signature_valid {
             return Ok(false);
         }
-        
+
         // Verify receipt binding to attestation
         let binding = ReceiptBinding::from_attestation(
             attestation_doc,
             &user_data,
             "session".to_string(), // Session ID not available in this context
         )?;
-        
+
         binding.verify_receipt_binding(receipt)
     }
-    
+
     /// Extract user data from attestation document (simplified for v1)
     fn extract_user_data(&self, _attestation_doc: &[u8]) -> Result<AttestationUserData> {
         // In production, this would parse the actual attestation document
         // For v1, we return a placeholder
-        Err(EphemeralError::Internal("Attestation parsing not implemented".to_string()))
+        Err(EphemeralError::Internal(
+            "Attestation parsing not implemented".to_string(),
+        ))
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    
+
     #[test]
     fn test_receipt_signing_key_generation() {
         let key = ReceiptSigningKey::generate().unwrap();
         assert_eq!(key.public_key_bytes().len(), 32);
         assert!(!key.is_expired());
     }
-    
+
     #[test]
     fn test_receipt_signing_key_with_expiry() {
         let key = ReceiptSigningKey::generate_with_expiry(1).unwrap();
         assert!(!key.is_expired());
-        
+
         // Wait for expiration
         std::thread::sleep(std::time::Duration::from_secs(2));
         assert!(key.is_expired());
     }
-    
+
     #[test]
     fn test_attestation_user_data() {
         let hpke_key = [1u8; 32];
         let receipt_key = [2u8; 32];
         let features = vec!["feature1".to_string(), "feature2".to_string()];
-        
-        let user_data = AttestationUserData::new(
-            hpke_key,
-            receipt_key,
-            1,
-            features.clone(),
-        );
-        
+
+        let user_data = AttestationUserData::new(hpke_key, receipt_key, 1, features.clone());
+
         assert_eq!(user_data.hpke_public_key, hpke_key);
         assert_eq!(user_data.receipt_signing_key, receipt_key);
         assert_eq!(user_data.protocol_version, 1);
         assert_eq!(user_data.supported_features, features);
-        
+
         // Test CBOR serialization
         let cbor_data = user_data.to_cbor().unwrap();
         let decoded = AttestationUserData::from_cbor(&cbor_data).unwrap();
         assert_eq!(user_data.hpke_public_key, decoded.hpke_public_key);
         assert_eq!(user_data.receipt_signing_key, decoded.receipt_signing_key);
     }
-    
+
     #[test]
     fn test_attestation_receipt_creation() {
-        let measurements = EnclaveMeasurements::new(
-            vec![1u8; 48], 
-            vec![2u8; 48], 
-            vec![3u8; 48]
-        );
-        
+        let measurements = EnclaveMeasurements::new(vec![1u8; 48], vec![2u8; 48], vec![3u8; 48]);
+
         let receipt = AttestationReceipt::new(
             "test-receipt".to_string(),
             1,
@@ -473,23 +478,19 @@ mod tests {
             1000,
             512,
         );
-        
+
         assert_eq!(receipt.receipt_id, "test-receipt");
         assert_eq!(receipt.protocol_version, 1);
         assert_eq!(receipt.security_mode, SecurityMode::GatewayOnly);
         assert_eq!(receipt.sequence_number, 42);
         assert!(receipt.signature.is_none());
     }
-    
+
     #[test]
     fn test_receipt_signing_and_verification() {
         let signing_key = ReceiptSigningKey::generate().unwrap();
-        let measurements = EnclaveMeasurements::new(
-            vec![1u8; 48], 
-            vec![2u8; 48], 
-            vec![3u8; 48]
-        );
-        
+        let measurements = EnclaveMeasurements::new(vec![1u8; 48], vec![2u8; 48], vec![3u8; 48]);
+
         let mut receipt = AttestationReceipt::new(
             "test-receipt".to_string(),
             1,
@@ -505,24 +506,20 @@ mod tests {
             1000,
             512,
         );
-        
+
         // Sign the receipt
         receipt.sign(&signing_key).unwrap();
         assert!(receipt.signature.is_some());
-        
+
         // Verify the signature
         let is_valid = receipt.verify_signature(&signing_key.public_key).unwrap();
         assert!(is_valid);
     }
-    
+
     #[test]
     fn test_canonical_encoding() {
-        let measurements = EnclaveMeasurements::new(
-            vec![1u8; 48], 
-            vec![2u8; 48], 
-            vec![3u8; 48]
-        );
-        
+        let measurements = EnclaveMeasurements::new(vec![1u8; 48], vec![2u8; 48], vec![3u8; 48]);
+
         let receipt = AttestationReceipt::new(
             "test-receipt".to_string(),
             1,
@@ -538,10 +535,10 @@ mod tests {
             1000,
             512,
         );
-        
+
         let encoding1 = receipt.canonical_encoding().unwrap();
         let encoding2 = receipt.canonical_encoding().unwrap();
-        
+
         // Canonical encoding should be deterministic
         assert_eq!(encoding1, encoding2);
     }
@@ -559,21 +556,36 @@ mod tests {
         // Helper to generate a random receipt
         fn any_receipt() -> impl Strategy<Value = AttestationReceipt> {
             (
-                ".*", // receipt_id
+                ".*",         // receipt_id
                 any::<u32>(), // protocol_version
                 any_measurements(),
                 any::<[u8; 32]>(), // attestation_doc_hash
                 any::<[u8; 32]>(), // request_hash
                 any::<[u8; 32]>(), // response_hash
-                ".*", // policy_version
-                any::<u64>(), // sequence_number
-                ".*", // model_id
-                ".*", // model_version
-                any::<u64>(), // execution_time_ms
-                any::<u64>(), // memory_peak_mb
-            ).prop_map(|(id, v, m, ah, rqh, rsh, pv, sn, mid, mv, et, mp)| {
-                AttestationReceipt::new(id, v, SecurityMode::GatewayOnly, m, ah, rqh, rsh, pv, sn, mid, mv, et, mp)
-            })
+                ".*",              // policy_version
+                any::<u64>(),      // sequence_number
+                ".*",              // model_id
+                ".*",              // model_version
+                any::<u64>(),      // execution_time_ms
+                any::<u64>(),      // memory_peak_mb
+            )
+                .prop_map(|(id, v, m, ah, rqh, rsh, pv, sn, mid, mv, et, mp)| {
+                    AttestationReceipt::new(
+                        id,
+                        v,
+                        SecurityMode::GatewayOnly,
+                        m,
+                        ah,
+                        rqh,
+                        rsh,
+                        pv,
+                        sn,
+                        mid,
+                        mv,
+                        et,
+                        mp,
+                    )
+                })
         }
 
         proptest! {
@@ -582,7 +594,7 @@ mod tests {
                 let signing_key = ReceiptSigningKey::generate().unwrap();
                 let mut signed_receipt = receipt;
                 signed_receipt.sign(&signing_key).unwrap();
-                
+
                 prop_assert!(signed_receipt.verify_signature(&signing_key.public_key).unwrap());
             }
 
@@ -594,12 +606,12 @@ mod tests {
                 let signing_key = ReceiptSigningKey::generate().unwrap();
                 let mut signed_receipt = receipt;
                 signed_receipt.sign(&signing_key).unwrap();
-                
+
                 prop_assume!(signed_receipt.receipt_id != tampered_id);
-                
+
                 let mut tampered_receipt = signed_receipt.clone();
                 tampered_receipt.receipt_id = tampered_id;
-                
+
                 prop_assert!(!tampered_receipt.verify_signature(&signing_key.public_key).unwrap());
             }
 
@@ -607,13 +619,13 @@ mod tests {
             fn test_receipt_wrong_key_prop(receipt in any_receipt()) {
                 let signing_key1 = ReceiptSigningKey::generate().unwrap();
                 let signing_key2 = ReceiptSigningKey::generate().unwrap();
-                
+
                 let mut signed_receipt = receipt;
                 signed_receipt.sign(&signing_key1).unwrap();
-                
+
                 prop_assert!(!signed_receipt.verify_signature(&signing_key2.public_key).unwrap());
             }
-            
+
             #[test]
             fn test_canonical_encoding_stable_prop(receipt in any_receipt()) {
                 let enc1 = receipt.canonical_encoding().unwrap();

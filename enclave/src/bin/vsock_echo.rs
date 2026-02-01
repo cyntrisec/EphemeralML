@@ -18,18 +18,28 @@ mod inner {
                 loop {
                     // Read length prefix
                     let mut len_bytes = [0u8; 4];
-                    if stream.read_exact(&mut len_bytes).await.is_err() { break; }
+                    if stream.read_exact(&mut len_bytes).await.is_err() {
+                        break;
+                    }
                     let len = u32::from_be_bytes(len_bytes) as usize;
 
                     // Read body
                     let mut body = vec![0u8; len];
-                    if stream.read_exact(&mut body).await.is_err() { break; }
+                    if stream.read_exact(&mut body).await.is_err() {
+                        break;
+                    }
 
                     // Echo back immediately
                     let total_len = (len as u32).to_be_bytes();
-                    if stream.write_all(&total_len).await.is_err() { break; }
-                    if stream.write_all(&body).await.is_err() { break; }
-                    if stream.flush().await.is_err() { break; }
+                    if stream.write_all(&total_len).await.is_err() {
+                        break;
+                    }
+                    if stream.write_all(&body).await.is_err() {
+                        break;
+                    }
+                    if stream.flush().await.is_err() {
+                        break;
+                    }
                 }
             });
         }

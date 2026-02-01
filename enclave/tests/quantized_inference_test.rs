@@ -1,11 +1,11 @@
-use ephemeral_ml_enclave::candle_engine::CandleInferenceEngine;
 use ephemeral_ml_enclave::assembly::CandleModel;
+use ephemeral_ml_enclave::candle_engine::CandleInferenceEngine;
 use ephemeral_ml_enclave::InferenceEngine;
 
 #[test]
 fn test_register_gguf_api_plumbing() {
     let engine = CandleInferenceEngine::new().expect("Failed to create engine");
-    
+
     // Minimal GGUF header to test that it at least tries to parse
     // Magic: GGUF (4 bytes)
     // Version: 2 (4 bytes, LE)
@@ -18,14 +18,19 @@ fn test_register_gguf_api_plumbing() {
     dummy_gguf.extend_from_slice(&0u64.to_le_bytes());
 
     let dummy_tokenizer = b"{}";
-    
+
     let result = engine.register_model_gguf("test-gguf", &dummy_gguf, dummy_tokenizer);
-    
+
     // It will likely fail during ModelWeights::from_gguf because it expects specific tensors for Llama
     // but the point is to show the registration path exists.
     match result {
-        Err(e) => println!("Got expected error (data is incomplete for a real Llama model): {:?}", e),
-        Ok(_) => println!("Successfully registered (unexpected for empty GGUF but possible if model is empty)"),
+        Err(e) => println!(
+            "Got expected error (data is incomplete for a real Llama model): {:?}",
+            e
+        ),
+        Ok(_) => println!(
+            "Successfully registered (unexpected for empty GGUF but possible if model is empty)"
+        ),
     }
 }
 
@@ -34,17 +39,21 @@ fn test_invalid_gguf_header() {
     let engine = CandleInferenceEngine::new().expect("Failed to create engine");
     let corrupt_gguf = b"NOT_A_GGUF_FILE_FOR_SURE";
     let dummy_tokenizer = b"{}";
-    
+
     let result = engine.register_model_gguf("corrupt-model", corrupt_gguf, dummy_tokenizer);
     assert!(result.is_err(), "Should fail with invalid header");
     let err_msg = format!("{:?}", result.err().unwrap());
-    assert!(err_msg.contains("magic"), "Error should mention magic number mismatch: {}", err_msg);
+    assert!(
+        err_msg.contains("magic"),
+        "Error should mention magic number mismatch: {}",
+        err_msg
+    );
 }
 
 #[test]
 fn test_bert_compatibility() {
     let engine = CandleInferenceEngine::new().expect("Failed to create engine");
-    
+
     // Minimal BERT config
     let config_json = br#"{
         "architectures": ["BertModel"],
@@ -75,5 +84,9 @@ fn test_bert_compatibility() {
     assert!(result.is_err());
     let err_msg = format!("{:?}", result.err().unwrap());
     // Should be a Candle error related to safetensors or memory mapping
-    assert!(err_msg.contains("CandleError") || err_msg.contains("safetensors"), "Expected candle/safetensors error, got: {}", err_msg);
+    assert!(
+        err_msg.contains("CandleError") || err_msg.contains("safetensors"),
+        "Expected candle/safetensors error, got: {}",
+        err_msg
+    );
 }

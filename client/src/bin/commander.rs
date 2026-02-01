@@ -1,4 +1,4 @@
-use ephemeral_ml_client::{SecureEnclaveClient, SecureClient, InferenceRequest};
+use ephemeral_ml_client::{InferenceRequest, SecureClient, SecureEnclaveClient};
 use std::io::{self, Write};
 use uuid::Uuid;
 
@@ -6,7 +6,7 @@ use uuid::Uuid;
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // 2. Initialize SecureEnclaveClient
     let mut client = SecureEnclaveClient::new("commander-cli".to_string());
-    
+
     // Allow port override via CLI argument
     let args: Vec<String> = std::env::args().collect();
     let port = args.get(1).map(|s| s.as_str()).unwrap_or("8082");
@@ -24,7 +24,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             println!("✅ Secure channel established.");
             println!("✅ Attestation verified.");
             println!("✅ End-to-end encryption active.");
-        },
+        }
         Err(e) => {
             eprintln!("❌ Error: Could not establish secure channel: {}", e);
             eprintln!("Please ensure the mock enclave server is running on port 8082.");
@@ -65,22 +65,33 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         // 3. For each user input:
         // Convert text to a dummy tensor (f32 vector)
         // In a real application, this would be handled by a proper tokenizer/embedding model
-        let input_tensor: Vec<f32> = input_text.as_bytes().iter().map(|&b| b as f32 / 255.0).collect();
+        let input_tensor: Vec<f32> = input_text
+            .as_bytes()
+            .iter()
+            .map(|&b| b as f32 / 255.0)
+            .collect();
 
         println!("🔒 Encrypting and sending request...");
 
         // Call client.execute_inference
         // Note: Using the signature from SecureEnclaveClient which requires (addr, model_id, tensor)
-        match client.execute_inference(&addr, model_id, input_tensor).await {
+        match client
+            .execute_inference(&addr, model_id, input_tensor)
+            .await
+        {
             Ok(embeddings) => {
                 sequence_count += 1;
-                
+
                 // Display the result (embeddings vector) in a pretty format
                 println!("\n✨ Enclave Response (Embeddings):");
                 print!("  [");
                 let display_count = std::cmp::min(embeddings.len(), 8);
                 for (i, val) in embeddings.iter().take(display_count).enumerate() {
-                    print!("{:.4}{}", val, if i < display_count - 1 { ", " } else { "" });
+                    print!(
+                        "{:.4}{}",
+                        val,
+                        if i < display_count - 1 { ", " } else { "" }
+                    );
                 }
                 if embeddings.len() > display_count {
                     print!(", ... (total {})", embeddings.len());

@@ -1,5 +1,5 @@
 //! Protocol message format for Confidential Inference Gateway
-//! 
+//!
 //! This module implements the v1 protocol message format with fixed version 1,
 //! ClientHello/ServerHello handshake, and canonical message framing.
 
@@ -37,19 +37,27 @@ pub struct ClientHello {
 
 impl ClientHello {
     /// Create new ClientHello with v1 protocol
-    pub fn new(client_id: String, supported_features: Vec<String>, ephemeral_public_key: [u8; 32]) -> Result<Self> {
+    pub fn new(
+        client_id: String,
+        supported_features: Vec<String>,
+        ephemeral_public_key: [u8; 32],
+    ) -> Result<Self> {
         if client_id.len() > MAX_CLIENT_ID_LENGTH {
-            return Err(EphemeralError::InvalidInput(
-                format!("Client ID too long: {} > {}", client_id.len(), MAX_CLIENT_ID_LENGTH)
-            ));
+            return Err(EphemeralError::InvalidInput(format!(
+                "Client ID too long: {} > {}",
+                client_id.len(),
+                MAX_CLIENT_ID_LENGTH
+            )));
         }
-        
+
         if supported_features.len() > MAX_FEATURES {
-            return Err(EphemeralError::InvalidInput(
-                format!("Too many features: {} > {}", supported_features.len(), MAX_FEATURES)
-            ));
+            return Err(EphemeralError::InvalidInput(format!(
+                "Too many features: {} > {}",
+                supported_features.len(),
+                MAX_FEATURES
+            )));
         }
-        
+
         Ok(Self {
             version: PROTOCOL_VERSION_V1,
             supported_features,
@@ -59,36 +67,43 @@ impl ClientHello {
             timestamp: crate::current_timestamp(),
         })
     }
-    
+
     /// Validate ClientHello message
     pub fn validate(&self) -> Result<()> {
         if self.version != PROTOCOL_VERSION_V1 {
-            return Err(EphemeralError::ProtocolError(
-                format!("Unsupported protocol version: {}. Only version 1 is supported.", self.version)
-            ));
+            return Err(EphemeralError::ProtocolError(format!(
+                "Unsupported protocol version: {}. Only version 1 is supported.",
+                self.version
+            )));
         }
-        
+
         if self.client_id.len() > MAX_CLIENT_ID_LENGTH {
-            return Err(EphemeralError::InvalidInput(
-                format!("Client ID too long: {}", self.client_id.len())
-            ));
+            return Err(EphemeralError::InvalidInput(format!(
+                "Client ID too long: {}",
+                self.client_id.len()
+            )));
         }
-        
+
         if self.supported_features.len() > MAX_FEATURES {
-            return Err(EphemeralError::InvalidInput(
-                format!("Too many features: {}", self.supported_features.len())
-            ));
+            return Err(EphemeralError::InvalidInput(format!(
+                "Too many features: {}",
+                self.supported_features.len()
+            )));
         }
-        
+
         // Validate feature names (alphanumeric + hyphens only)
         for feature in &self.supported_features {
-            if !feature.chars().all(|c| c.is_alphanumeric() || c == '-' || c == '_') {
-                return Err(EphemeralError::InvalidInput(
-                    format!("Invalid feature name: {}", feature)
-                ));
+            if !feature
+                .chars()
+                .all(|c| c.is_alphanumeric() || c == '-' || c == '_')
+            {
+                return Err(EphemeralError::InvalidInput(format!(
+                    "Invalid feature name: {}",
+                    feature
+                )));
             }
         }
-        
+
         Ok(())
     }
 }
@@ -119,21 +134,24 @@ impl ServerHello {
         receipt_signing_key: Vec<u8>,
     ) -> Result<Self> {
         if chosen_features.len() > MAX_FEATURES {
-            return Err(EphemeralError::InvalidInput(
-                format!("Too many chosen features: {}", chosen_features.len())
-            ));
+            return Err(EphemeralError::InvalidInput(format!(
+                "Too many chosen features: {}",
+                chosen_features.len()
+            )));
         }
-        
+
         if ephemeral_public_key.len() != 32 {
-            return Err(EphemeralError::InvalidInput(
-                format!("Invalid ephemeral public key length: {}", ephemeral_public_key.len())
-            ));
+            return Err(EphemeralError::InvalidInput(format!(
+                "Invalid ephemeral public key length: {}",
+                ephemeral_public_key.len()
+            )));
         }
-        
+
         if receipt_signing_key.len() != 32 {
-            return Err(EphemeralError::InvalidInput(
-                format!("Invalid receipt signing key length: {}", receipt_signing_key.len())
-            ));
+            return Err(EphemeralError::InvalidInput(format!(
+                "Invalid receipt signing key length: {}",
+                receipt_signing_key.len()
+            )));
         }
 
         Ok(Self {
@@ -149,25 +167,31 @@ impl ServerHello {
     /// Validate ServerHello message
     pub fn validate(&self) -> Result<()> {
         if self.version != PROTOCOL_VERSION_V1 {
-             return Err(EphemeralError::ProtocolError(
-                format!("Unsupported protocol version: {}. Only version 1 is supported.", self.version)
-            ));
+            return Err(EphemeralError::ProtocolError(format!(
+                "Unsupported protocol version: {}. Only version 1 is supported.",
+                self.version
+            )));
         }
-        
+
         if self.chosen_features.len() > MAX_FEATURES {
-             return Err(EphemeralError::InvalidInput(
-                format!("Too many features: {}", self.chosen_features.len())
+            return Err(EphemeralError::InvalidInput(format!(
+                "Too many features: {}",
+                self.chosen_features.len()
+            )));
+        }
+
+        if self.ephemeral_public_key.len() != 32 {
+            return Err(EphemeralError::InvalidInput(
+                "Invalid ephemeral public key length".to_string(),
             ));
         }
-        
-        if self.ephemeral_public_key.len() != 32 {
-             return Err(EphemeralError::InvalidInput("Invalid ephemeral public key length".to_string()));
-        }
-        
+
         if self.receipt_signing_key.len() != 32 {
-             return Err(EphemeralError::InvalidInput("Invalid receipt signing key length".to_string()));
+            return Err(EphemeralError::InvalidInput(
+                "Invalid receipt signing key length".to_string(),
+            ));
         }
-        
+
         Ok(())
     }
 }

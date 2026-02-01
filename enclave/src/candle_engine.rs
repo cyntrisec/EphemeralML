@@ -1,14 +1,14 @@
-use crate::{EnclaveError, Result, EphemeralError};
 use crate::assembly::CandleModel;
 use crate::inference::InferenceEngine;
+use crate::{EnclaveError, EphemeralError, Result};
 use candle_core::{Device, Tensor};
 use candle_nn::VarBuilder;
 use candle_transformers::models::bert::{BertModel, Config, DTYPE};
 use candle_transformers::models::quantized_llama::ModelWeights as QuantizedLlama;
-use tokenizers::Tokenizer;
-use std::sync::{Arc, RwLock};
 use std::collections::HashMap;
 use std::io::Cursor;
+use std::sync::{Arc, RwLock};
+use tokenizers::Tokenizer;
 
 /// Inference engine powered by Candle for production use
 #[derive(Clone)]
@@ -56,24 +56,31 @@ impl CandleInferenceEngine {
         weights_safetensors: &[u8],
         tokenizer_json: &[u8],
     ) -> Result<()> {
-        let config: Config = serde_json::from_slice(config_json)
-            .map_err(|e| EnclaveError::Enclave(EphemeralError::SerializationError(e.to_string())))?;
-        
-        let vb = VarBuilder::from_buffered_safetensors(weights_safetensors.to_vec(), DTYPE, &self.device)
-            .map_err(|e| EnclaveError::CandleError(e.to_string()))?;
-        
-        let model = BertModel::load(vb, &config)
-            .map_err(|e| EnclaveError::CandleError(e.to_string()))?;
-            
+        let config: Config = serde_json::from_slice(config_json).map_err(|e| {
+            EnclaveError::Enclave(EphemeralError::SerializationError(e.to_string()))
+        })?;
+
+        let vb = VarBuilder::from_buffered_safetensors(
+            weights_safetensors.to_vec(),
+            DTYPE,
+            &self.device,
+        )
+        .map_err(|e| EnclaveError::CandleError(e.to_string()))?;
+
+        let model =
+            BertModel::load(vb, &config).map_err(|e| EnclaveError::CandleError(e.to_string()))?;
+
         let tokenizer = Tokenizer::from_bytes(tokenizer_json)
             .map_err(|e| EnclaveError::CandleError(e.to_string()))?;
 
-        let loaded_model = Arc::new(LoadedModel::Bert(LoadedBertModel { 
-            model, 
+        let loaded_model = Arc::new(LoadedModel::Bert(LoadedBertModel {
+            model,
             tokenizer,
             device: self.device.clone(),
         }));
-        let mut models = self.models.write().map_err(|_| EnclaveError::Enclave(EphemeralError::Internal("Lock poisoned".to_string())))?;
+        let mut models = self.models.write().map_err(|_| {
+            EnclaveError::Enclave(EphemeralError::Internal("Lock poisoned".to_string()))
+        })?;
         models.insert(model_id.to_string(), loaded_model);
         Ok(())
     }
@@ -88,10 +95,10 @@ impl CandleInferenceEngine {
         let mut reader = Cursor::new(gguf_data);
         let content = candle_core::quantized::gguf_file::Content::read(&mut reader)
             .map_err(|e| EnclaveError::CandleError(e.to_string()))?;
-        
+
         let model = QuantizedLlama::from_gguf(content, &mut reader, &self.device)
             .map_err(|e| EnclaveError::CandleError(e.to_string()))?;
-            
+
         let tokenizer = Tokenizer::from_bytes(tokenizer_json)
             .map_err(|e| EnclaveError::CandleError(e.to_string()))?;
 
@@ -100,12 +107,14 @@ impl CandleInferenceEngine {
             tokenizer,
             device: self.device.clone(),
         }));
-        
-        let mut models = self.models.write().map_err(|_| EnclaveError::Enclave(EphemeralError::Internal("Lock poisoned".to_string())))?;
+
+        let mut models = self.models.write().map_err(|_| {
+            EnclaveError::Enclave(EphemeralError::Internal("Lock poisoned".to_string()))
+        })?;
         models.insert(model_id.to_string(), loaded_model);
         Ok(())
     }
-    
+
     /// Helper to get device info
     pub fn device(&self) -> &Device {
         &self.device
@@ -114,9 +123,14 @@ impl CandleInferenceEngine {
 
 impl InferenceEngine for CandleInferenceEngine {
     fn execute(&self, model_info: &CandleModel, input: &[u8]) -> Result<Vec<f32>> {
-        let models = self.models.read().map_err(|_| EnclaveError::Enclave(EphemeralError::Internal("Lock poisoned".to_string())))?;
+        let models = self.models.read().map_err(|_| {
+            EnclaveError::Enclave(EphemeralError::Internal("Lock poisoned".to_string()))
+        })?;
         let loaded = models.get(&model_info.id).ok_or_else(|| {
-            EnclaveError::Enclave(EphemeralError::InferenceError(format!("Model {} not loaded in engine", model_info.id)))
+            EnclaveError::Enclave(EphemeralError::InferenceError(format!(
+                "Model {} not loaded in engine",
+                model_info.id
+            )))
         })?;
 
         match loaded.as_ref() {
@@ -127,82 +141,112 @@ impl InferenceEngine for CandleInferenceEngine {
 
     fn validate_input(&self, _model: &CandleModel, input: &[u8]) -> Result<()> {
         if input.is_empty() {
-             return Err(EnclaveError::Enclave(EphemeralError::InvalidInput("Input cannot be empty".to_string())));
+            return Err(EnclaveError::Enclave(EphemeralError::InvalidInput(
+                "Input cannot be empty".to_string(),
+            )));
         }
-        std::str::from_utf8(input)
-            .map_err(|e| EnclaveError::Enclave(EphemeralError::InvalidInput(format!("Invalid UTF-8 input: {}", e))))?;
+        std::str::from_utf8(input).map_err(|e| {
+            EnclaveError::Enclave(EphemeralError::InvalidInput(format!(
+                "Invalid UTF-8 input: {}",
+                e
+            )))
+        })?;
         Ok(())
     }
 }
 
 impl CandleInferenceEngine {
     fn execute_bert(&self, loaded: &LoadedBertModel, input: &[u8]) -> Result<Vec<f32>> {
-        let text = std::str::from_utf8(input)
-            .map_err(|e| EnclaveError::Enclave(EphemeralError::InvalidInput(format!("Invalid UTF-8 input: {}", e))))?;
+        let text = std::str::from_utf8(input).map_err(|e| {
+            EnclaveError::Enclave(EphemeralError::InvalidInput(format!(
+                "Invalid UTF-8 input: {}",
+                e
+            )))
+        })?;
 
         // Tokenization
-        let tokens = loaded.tokenizer.encode(text, true)
+        let tokens = loaded
+            .tokenizer
+            .encode(text, true)
             .map_err(|e| EnclaveError::CandleError(e.to_string()))?;
-        
+
         let token_ids = tokens.get_ids();
         let attention_mask = tokens.get_attention_mask();
-        
+
         let input_ids = Tensor::new(token_ids, &loaded.device)
             .map_err(|e| EnclaveError::CandleError(e.to_string()))?
             .unsqueeze(0)
             .map_err(|e| EnclaveError::CandleError(e.to_string()))?;
-        
+
         let token_type_ids = Tensor::new(tokens.get_type_ids(), &loaded.device)
             .map_err(|e| EnclaveError::CandleError(e.to_string()))?
             .unsqueeze(0)
             .map_err(|e| EnclaveError::CandleError(e.to_string()))?;
 
         // Forward pass
-        let embeddings = loaded.model.forward(&input_ids, &token_type_ids, None)
+        let embeddings = loaded
+            .model
+            .forward(&input_ids, &token_type_ids, None)
             .map_err(|e| EnclaveError::CandleError(e.to_string()))?
             .squeeze(0)
             .map_err(|e| EnclaveError::CandleError(e.to_string()))?;
-        
+
         // Pooling: Mask-aware mean pooling across the sequence length
         let mask = Tensor::new(attention_mask, &loaded.device)
             .map_err(|e| EnclaveError::CandleError(e.to_string()))?
             .to_dtype(embeddings.dtype())
             .map_err(|e| EnclaveError::CandleError(e.to_string()))?;
-        
+
         // Expand mask for broadcast with embeddings [seq_len, hidden_size]
-        let mask_expanded = mask.unsqueeze(1)
+        let mask_expanded = mask
+            .unsqueeze(1)
             .map_err(|e| EnclaveError::CandleError(e.to_string()))?
             .broadcast_as(embeddings.shape())
             .map_err(|e| EnclaveError::CandleError(e.to_string()))?;
-        
-        let masked_embeddings = embeddings.mul(&mask_expanded)
+
+        let masked_embeddings = embeddings
+            .mul(&mask_expanded)
             .map_err(|e| EnclaveError::CandleError(e.to_string()))?;
-        
-        let sum_embeddings = masked_embeddings.sum(0)
+
+        let sum_embeddings = masked_embeddings
+            .sum(0)
             .map_err(|e| EnclaveError::CandleError(e.to_string()))?;
-        
-        let sum_mask = mask.sum(0)
+
+        let sum_mask = mask
+            .sum(0)
             .map_err(|e| EnclaveError::CandleError(e.to_string()))?
             .to_dtype(embeddings.dtype())
             .map_err(|e| EnclaveError::CandleError(e.to_string()))?;
-        
+
         // Avoid division by zero
-        let mean_embeddings = sum_embeddings.broadcast_div(&sum_mask)
+        let mean_embeddings = sum_embeddings
+            .broadcast_div(&sum_mask)
             .map_err(|e| EnclaveError::CandleError(e.to_string()))?;
-        
-        let res = mean_embeddings.to_vec1::<f32>()
+
+        let res = mean_embeddings
+            .to_vec1::<f32>()
             .map_err(|e| EnclaveError::CandleError(e.to_string()))?;
-            
+
         Ok(res)
     }
 
-    fn execute_quantized_llama(&self, loaded: &LoadedQuantizedLlamaModel, input: &[u8]) -> Result<Vec<f32>> {
-        let text = std::str::from_utf8(input)
-            .map_err(|e| EnclaveError::Enclave(EphemeralError::InvalidInput(format!("Invalid UTF-8 input: {}", e))))?;
+    fn execute_quantized_llama(
+        &self,
+        loaded: &LoadedQuantizedLlamaModel,
+        input: &[u8],
+    ) -> Result<Vec<f32>> {
+        let text = std::str::from_utf8(input).map_err(|e| {
+            EnclaveError::Enclave(EphemeralError::InvalidInput(format!(
+                "Invalid UTF-8 input: {}",
+                e
+            )))
+        })?;
 
-        let tokens = loaded.tokenizer.encode(text, true)
+        let tokens = loaded
+            .tokenizer
+            .encode(text, true)
             .map_err(|e| EnclaveError::CandleError(e.to_string()))?;
-        
+
         let token_ids = tokens.get_ids();
         let input_ids = Tensor::new(token_ids, &loaded.device)
             .map_err(|e| EnclaveError::CandleError(e.to_string()))?
@@ -210,23 +254,32 @@ impl CandleInferenceEngine {
             .map_err(|e| EnclaveError::CandleError(e.to_string()))?;
 
         // Simple forward pass for the whole sequence
-        // We use a dummy mutable clone here because ModelWeights::forward might take &mut self 
+        // We use a dummy mutable clone here because ModelWeights::forward might take &mut self
         // depending on the version, but in 0.9 it usually takes &mut self if it uses KV cache.
         // If we don't care about KV cache (single forward pass), we can just use it.
-        
+
         let mut model = loaded.model.clone();
-        let logits = model.forward(&input_ids, 0)
+        let logits = model
+            .forward(&input_ids, 0)
             .map_err(|e| EnclaveError::CandleError(e.to_string()))?;
-        
+
         // For simplicity, return the logits of the last token as a float vector
         // This is just to demonstrate it's working.
-        let logits = logits.squeeze(0).map_err(|e| EnclaveError::CandleError(e.to_string()))?;
-        let last_idx = logits.dim(0).map_err(|e| EnclaveError::CandleError(e.to_string()))? - 1;
-        let last_logits = logits.get(last_idx).map_err(|e| EnclaveError::CandleError(e.to_string()))?;
-        
-        let res = last_logits.to_vec1::<f32>()
+        let logits = logits
+            .squeeze(0)
             .map_err(|e| EnclaveError::CandleError(e.to_string()))?;
-            
+        let last_idx = logits
+            .dim(0)
+            .map_err(|e| EnclaveError::CandleError(e.to_string()))?
+            - 1;
+        let last_logits = logits
+            .get(last_idx)
+            .map_err(|e| EnclaveError::CandleError(e.to_string()))?;
+
+        let res = last_logits
+            .to_vec1::<f32>()
+            .map_err(|e| EnclaveError::CandleError(e.to_string()))?;
+
         Ok(res)
     }
 }

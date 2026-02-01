@@ -4,7 +4,7 @@
 //! but on the host without any TEE overhead. Outputs JSON results to stdout
 //! for direct comparison with enclave results.
 
-use candle_core::{Device, DType, Tensor};
+use candle_core::{DType, Device, Tensor};
 use candle_nn::VarBuilder;
 use candle_transformers::models::bert::{BertModel, Config as BertConfig};
 use chacha20poly1305::{aead::Aead, ChaCha20Poly1305, Key, KeyInit, Nonce};
@@ -64,7 +64,10 @@ fn run_single_inference(
         .map(|&v| v as u32)
         .collect();
 
-    let input_ids_t = Tensor::new(input_ids, device).unwrap().unsqueeze(0).unwrap();
+    let input_ids_t = Tensor::new(input_ids, device)
+        .unwrap()
+        .unsqueeze(0)
+        .unwrap();
     let token_type_ids_t = Tensor::new(token_type_ids, device)
         .unwrap()
         .unsqueeze(0)
@@ -89,11 +92,7 @@ fn run_single_inference(
     let count = mask.sum(1).unwrap();
     let mean_pooled = summed.broadcast_div(&count).unwrap();
 
-    mean_pooled
-        .squeeze(0)
-        .unwrap()
-        .to_vec1::<f32>()
-        .unwrap()
+    mean_pooled.squeeze(0).unwrap().to_vec1::<f32>().unwrap()
 }
 
 #[tokio::main]
@@ -127,8 +126,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let config_bytes = std::fs::read(format!("{}/config.json", model_dir))?;
     let tokenizer_bytes = std::fs::read(format!("{}/tokenizer.json", model_dir))?;
-    let encrypted_weights =
-        std::fs::read(format!("{}/mini-lm-v2-weights.enc", model_dir))?;
+    let encrypted_weights = std::fs::read(format!("{}/mini-lm-v2-weights.enc", model_dir))?;
 
     let model_fetch_ms = fetch_start.elapsed().as_secs_f64() * 1000.0;
     eprintln!(
@@ -153,19 +151,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let plaintext_size = weights_plaintext.len();
     eprintln!(
         "[baseline] model_decrypt_ms = {:.2} (plaintext={}B)",
-        model_decrypt_ms,
-        plaintext_size
+        model_decrypt_ms, plaintext_size
     );
 
     // ── Stage 3: Model deserialization ──
     eprintln!("[baseline] Stage 3: Loading model into Candle BertModel");
     let load_start = Instant::now();
     let config: BertConfig = serde_json::from_slice(&config_bytes)?;
-    let vb = VarBuilder::from_buffered_safetensors(
-        weights_plaintext,
-        DType::F32,
-        &device,
-    )?;
+    let vb = VarBuilder::from_buffered_safetensors(weights_plaintext, DType::F32, &device)?;
     let model = BertModel::load(vb, &config)?;
     let model_load_ms = load_start.elapsed().as_secs_f64() * 1000.0;
     eprintln!("[baseline] model_load_ms = {:.2}", model_load_ms);
@@ -181,10 +174,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let cold_start_total_ms = total_start.elapsed().as_secs_f64() * 1000.0;
 
     // ── Stage 4b: Reference embedding for quality verification ──
-    let reference_embedding = run_single_inference(&model, &tokenizer, BENCHMARK_INPUT_TEXTS[0], &device);
-    eprintln!("[baseline] reference_embedding: dim={}, first_5={:?}",
+    let reference_embedding =
+        run_single_inference(&model, &tokenizer, BENCHMARK_INPUT_TEXTS[0], &device);
+    eprintln!(
+        "[baseline] reference_embedding: dim={}, first_5={:?}",
         reference_embedding.len(),
-        &reference_embedding[..5.min(reference_embedding.len())]);
+        &reference_embedding[..5.min(reference_embedding.len())]
+    );
 
     // ── Stage 5: Warmup ──
     eprintln!("[baseline] Stage 5: Warmup ({} iterations)", NUM_WARMUP);

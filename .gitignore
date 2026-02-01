@@ -115,6 +115,9 @@ infra/hello-enclave/ssm_diag*.sh
 infra/hello-enclave/logs/
 infra/hello-enclave/tfplan
 
+# Security audit (internal only)
+docs/security_audit_2025-01-31.md
+
 # Large reference docs (keep locally, don't commit)
 docs/aws-reference/
 docs/papers/

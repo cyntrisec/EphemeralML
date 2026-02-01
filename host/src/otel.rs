@@ -32,7 +32,9 @@ pub fn init() {
         .with_config(
             trace::Config::default()
                 .with_resource(resource)
-                .with_sampler(Sampler::ParentBased(Box::new(Sampler::TraceIdRatioBased(0.1))))
+                .with_sampler(Sampler::ParentBased(Box::new(Sampler::TraceIdRatioBased(
+                    0.1,
+                ))))
                 .with_id_generator(RandomIdGenerator::default()),
         )
         .build();

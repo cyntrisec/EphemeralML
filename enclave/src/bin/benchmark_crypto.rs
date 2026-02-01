@@ -10,11 +10,10 @@
 //! These are pure crypto operations that run on bare metal.
 
 use ephemeral_ml_common::{
-    HPKESession, ReceiptSigningKey, AttestationReceipt, SecurityMode,
-    EnclaveMeasurements,
+    AttestationReceipt, EnclaveMeasurements, HPKESession, ReceiptSigningKey, SecurityMode,
 };
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
-use x25519_dalek::{StaticSecret, PublicKey};
+use x25519_dalek::{PublicKey, StaticSecret};
 
 const NUM_WARMUP: usize = 3;
 const NUM_ITERATIONS: usize = 100;
@@ -92,7 +91,7 @@ fn create_test_receipt(seq: u64) -> AttestationReceipt {
         seq,
         "MiniLM-L6-v2".to_string(),
         "1.0.0".to_string(),
-        85, // execution_time_ms
+        85,  // execution_time_ms
         535, // memory_peak_mb
     )
 }
@@ -339,7 +338,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .unwrap_or("unknown");
 
     eprintln!("[crypto] Starting crypto primitives benchmark");
-    eprintln!("[crypto] Iterations: {}, Warmup: {}", NUM_ITERATIONS, NUM_WARMUP);
+    eprintln!(
+        "[crypto] Iterations: {}, Warmup: {}",
+        NUM_ITERATIONS, NUM_WARMUP
+    );
 
     let commit = option_env!("GIT_COMMIT").unwrap_or("unknown");
     let timestamp = SystemTime::now()

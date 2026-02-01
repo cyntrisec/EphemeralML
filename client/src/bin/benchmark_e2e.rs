@@ -6,22 +6,19 @@
 //!
 //! Runs on bare metal using mock mode (no enclave needed).
 
-use ephemeral_ml_client::{
-    SecureClient, SecureEnclaveClient,
-};
-use ephemeral_ml_common::{
-    HPKESession, VSockMessage, MessageType, EncryptedMessage,
-    AttestationDocument, PcrMeasurements, EnclaveMeasurements,
-    SecurityMode, ReceiptSigningKey,
-};
-use ephemeral_ml_common::protocol::{ClientHello, ServerHello};
 use ephemeral_ml_client::secure_client::{InferenceHandlerInput, InferenceHandlerOutput};
+use ephemeral_ml_client::{SecureClient, SecureEnclaveClient};
+use ephemeral_ml_common::protocol::{ClientHello, ServerHello};
 use ephemeral_ml_common::AttestationReceipt;
+use ephemeral_ml_common::{
+    AttestationDocument, EnclaveMeasurements, EncryptedMessage, HPKESession, MessageType,
+    PcrMeasurements, ReceiptSigningKey, SecurityMode, VSockMessage,
+};
 
-use tokio::net::TcpListener;
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
-use sha2::{Sha256, Digest};
+use sha2::{Digest, Sha256};
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use tokio::net::TcpListener;
 
 const NUM_WARMUP: usize = 3;
 const NUM_ITERATIONS: usize = 100;
@@ -57,8 +54,8 @@ async fn spawn_mock_server() -> (u16, tokio::task::JoinHandle<()>) {
 
     let handle = tokio::spawn(async move {
         // Pre-generate server keys (reused across all connections)
-        use x25519_dalek::{StaticSecret, PublicKey};
         use ed25519_dalek::SigningKey;
+        use x25519_dalek::{PublicKey, StaticSecret};
 
         let server_secret = StaticSecret::from([42u8; 32]);
         let server_public = PublicKey::from(&server_secret);
@@ -104,10 +101,14 @@ async fn spawn_mock_server() -> (u16, tokio::task::JoinHandle<()>) {
 
             // Read incoming message
             let mut len_buf = [0u8; 4];
-            if socket.read_exact(&mut len_buf).await.is_err() { continue; }
+            if socket.read_exact(&mut len_buf).await.is_err() {
+                continue;
+            }
             let total_len = u32::from_be_bytes(len_buf) as usize;
             let mut body = vec![0u8; total_len];
-            if socket.read_exact(&mut body).await.is_err() { continue; }
+            if socket.read_exact(&mut body).await.is_err() {
+                continue;
+            }
 
             let mut full_buf = Vec::with_capacity(4 + total_len);
             full_buf.extend_from_slice(&len_buf);
@@ -134,7 +135,8 @@ async fn spawn_mock_server() -> (u16, tokio::task::JoinHandle<()>) {
                     let _ = socket.write_all(&resp_msg.encode()).await;
                 }
                 MessageType::Data => {
-                    let _encrypted_request: EncryptedMessage = serde_json::from_slice(&msg.payload).unwrap();
+                    let _encrypted_request: EncryptedMessage =
+                        serde_json::from_slice(&msg.payload).unwrap();
 
                     // We need to know the client's public key to establish HPKE.
                     // In real server, this comes from the session. For the benchmark,
@@ -149,10 +151,19 @@ async fn spawn_mock_server() -> (u16, tokio::task::JoinHandle<()>) {
 
                     // Generate a mock signed receipt
                     let mut receipt = AttestationReceipt::new(
-                        "bench-receipt".to_string(), 1, SecurityMode::GatewayOnly,
+                        "bench-receipt".to_string(),
+                        1,
+                        SecurityMode::GatewayOnly,
                         EnclaveMeasurements::new(vec![0x01; 48], vec![0x02; 48], vec![0x03; 48]),
-                        attestation_doc_hash, [0u8; 32], [0u8; 32],
-                        "v1".to_string(), 0, "model".to_string(), "v1".to_string(), 85, 535
+                        attestation_doc_hash,
+                        [0u8; 32],
+                        [0u8; 32],
+                        "v1".to_string(),
+                        0,
+                        "model".to_string(),
+                        "v1".to_string(),
+                        85,
+                        535,
                     );
                     receipt.sign(&receipt_signing).unwrap();
 
@@ -184,8 +195,8 @@ async fn spawn_mock_server() -> (u16, tokio::task::JoinHandle<()>) {
 /// This measures: keygen → session setup → encrypt → (mock inference) →
 /// receipt sign → encrypt response → decrypt → receipt verify
 fn bench_e2e_crypto_pipeline() -> (serde_json::Value, serde_json::Value) {
-    use x25519_dalek::{StaticSecret, PublicKey};
     use ed25519_dalek::SigningKey;
+    use x25519_dalek::{PublicKey, StaticSecret};
 
     eprintln!("[e2e] Benchmarking E2E crypto pipeline (in-process)...");
 
@@ -226,7 +237,8 @@ fn bench_e2e_crypto_pipeline() -> (serde_json::Value, serde_json::Value) {
         model_id: "MiniLM-L6-v2".to_string(),
         input_data: vec![0u8; 512],
         input_shape: Some(vec![1, 128]),
-    }).unwrap();
+    })
+    .unwrap();
 
     // Simulate a typical inference response (384-dim embedding + receipt)
     let mock_output_tensor: Vec<f32> = (0..384).map(|i| (i as f32) * 0.001).collect();
@@ -241,17 +253,27 @@ fn bench_e2e_crypto_pipeline() -> (serde_json::Value, serde_json::Value) {
         let server_public = PublicKey::from(&server_secret);
 
         let mut client_session = HPKESession::new(
-            "bench-session".to_string(), 1, attestation_hash,
-            *client_public.as_bytes(), *server_public.as_bytes(),
-            [3u8; 12], 3600,
-        ).unwrap();
+            "bench-session".to_string(),
+            1,
+            attestation_hash,
+            *client_public.as_bytes(),
+            *server_public.as_bytes(),
+            [3u8; 12],
+            3600,
+        )
+        .unwrap();
         client_session.establish(client_secret.as_bytes()).unwrap();
 
         let mut server_session = HPKESession::new(
-            "bench-session".to_string(), 1, attestation_hash,
-            *server_public.as_bytes(), *client_public.as_bytes(),
-            [3u8; 12], 3600,
-        ).unwrap();
+            "bench-session".to_string(),
+            1,
+            attestation_hash,
+            *server_public.as_bytes(),
+            *client_public.as_bytes(),
+            [3u8; 12],
+            3600,
+        )
+        .unwrap();
         server_session.establish(server_secret.as_bytes()).unwrap();
 
         let setup_ms = setup_start.elapsed().as_secs_f64() * 1000.0;
@@ -270,11 +292,19 @@ fn bench_e2e_crypto_pipeline() -> (serde_json::Value, serde_json::Value) {
 
         // Server: generate and sign receipt
         let mut receipt = AttestationReceipt::new(
-            format!("receipt-{}", i), 1, SecurityMode::GatewayOnly,
+            format!("receipt-{}", i),
+            1,
+            SecurityMode::GatewayOnly,
             EnclaveMeasurements::new(vec![0x01; 48], vec![0x02; 48], vec![0x03; 48]),
-            attestation_doc_hash, [0u8; 32], [0u8; 32],
-            "v1".to_string(), i as u64, "MiniLM-L6-v2".to_string(),
-            "1.0.0".to_string(), 93, 1064,
+            attestation_doc_hash,
+            [0u8; 32],
+            [0u8; 32],
+            "v1".to_string(),
+            i as u64,
+            "MiniLM-L6-v2".to_string(),
+            "1.0.0".to_string(),
+            93,
+            1064,
         );
         receipt.sign(&receipt_signing).unwrap();
 
@@ -309,7 +339,10 @@ fn bench_e2e_crypto_pipeline() -> (serde_json::Value, serde_json::Value) {
     let request_stats = latency_stats(&request_latencies);
 
     eprintln!("[e2e] Session setup: mean={:.4}ms", setup_stats["mean"]);
-    eprintln!("[e2e] Per-request E2E crypto: mean={:.4}ms", request_stats["mean"]);
+    eprintln!(
+        "[e2e] Per-request E2E crypto: mean={:.4}ms",
+        request_stats["mean"]
+    );
     eprintln!("[e2e]   (excludes inference time — add ~93ms for enclave, ~81ms for bare metal)");
 
     (setup_stats, request_stats)
@@ -355,7 +388,10 @@ async fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
         .unwrap_or("unknown");
 
     eprintln!("[e2e] Starting E2E encrypted request latency benchmark");
-    eprintln!("[e2e] Iterations: {}, Warmup: {}", NUM_ITERATIONS, NUM_WARMUP);
+    eprintln!(
+        "[e2e] Iterations: {}, Warmup: {}",
+        NUM_ITERATIONS, NUM_WARMUP
+    );
 
     let commit = option_env!("GIT_COMMIT").unwrap_or("unknown");
     let timestamp = SystemTime::now()

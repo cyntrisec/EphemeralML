@@ -1,7 +1,7 @@
-use crate::{Result, AttestationProvider};
 use crate::session_manager::EnclaveSession;
+use crate::{AttestationProvider, Result};
 use ephemeral_ml_common::{AttestationReceipt, EnclaveMeasurements, SecurityMode};
-use sha2::{Sha256, Digest};
+use sha2::{Digest, Sha256};
 
 pub struct ReceiptBuilder;
 

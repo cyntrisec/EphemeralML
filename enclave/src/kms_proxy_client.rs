@@ -1,7 +1,8 @@
-use crate::{Result, EnclaveError, EphemeralError};
+use crate::{EnclaveError, EphemeralError, Result};
 use ephemeral_ml_common::{
-    KmsProxyRequestEnvelope, KmsProxyResponseEnvelope, KmsRequest, KmsResponse, MessageType, VSockMessage,
     storage_protocol::{StorageRequest, StorageResponse},
+    KmsProxyRequestEnvelope, KmsProxyResponseEnvelope, KmsRequest, KmsResponse, MessageType,
+    VSockMessage,
 };
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::time::{Duration, Instant};
@@ -83,25 +84,30 @@ impl KmsProxyClient {
             request,
         };
 
-        let payload = serde_json::to_vec(&env)
-            .map_err(|e| EnclaveError::Enclave(EphemeralError::SerializationError(e.to_string())))?;
+        let payload = serde_json::to_vec(&env).map_err(|e| {
+            EnclaveError::Enclave(EphemeralError::SerializationError(e.to_string()))
+        })?;
 
-        let msg = VSockMessage::new(MessageType::KmsProxy, 0, payload)?; 
+        let msg = VSockMessage::new(MessageType::KmsProxy, 0, payload)?;
         let response_msg = self.send_raw(msg).await?;
-        
+
         if response_msg.msg_type != MessageType::KmsProxy {
-             // If we got Error type, maybe it's a protocol error
-             if response_msg.msg_type == MessageType::Error {
-                 let err_msg = String::from_utf8_lossy(&response_msg.payload);
-                 return Err(EnclaveError::Enclave(EphemeralError::ProtocolError(format!("Host returned error: {}", err_msg))));
-             }
-             return Err(EnclaveError::Enclave(EphemeralError::ProtocolError(
-                format!("Expected KmsProxy message, got {:?}", response_msg.msg_type)
+            // If we got Error type, maybe it's a protocol error
+            if response_msg.msg_type == MessageType::Error {
+                let err_msg = String::from_utf8_lossy(&response_msg.payload);
+                return Err(EnclaveError::Enclave(EphemeralError::ProtocolError(
+                    format!("Host returned error: {}", err_msg),
+                )));
+            }
+            return Err(EnclaveError::Enclave(EphemeralError::ProtocolError(
+                format!("Expected KmsProxy message, got {:?}", response_msg.msg_type),
             )));
         }
-        
+
         let response: KmsProxyResponseEnvelope = serde_json::from_slice(&response_msg.payload)
-            .map_err(|e| EnclaveError::Enclave(EphemeralError::SerializationError(e.to_string())))?;
+            .map_err(|e| {
+                EnclaveError::Enclave(EphemeralError::SerializationError(e.to_string()))
+            })?;
 
         if response.request_id != request_id {
             return Err(EnclaveError::Enclave(EphemeralError::ProtocolError(
@@ -129,21 +135,25 @@ impl KmsProxyClient {
             tokio::net::TcpStream::connect(&self.host_addr),
         )
         .await
-        .map_err(|_| EnclaveError::Enclave(EphemeralError::Timeout("Proxy connect timeout".to_string())))?
+        .map_err(|_| {
+            EnclaveError::Enclave(EphemeralError::Timeout("Proxy connect timeout".to_string()))
+        })?
         .map_err(|e| {
             EnclaveError::Enclave(EphemeralError::NetworkError(format!(
                 "Failed to connect to host proxy (TCP): {}",
                 e
             )))
         })?;
-        
+
         #[cfg(feature = "production")]
         let mut stream = tokio::time::timeout(
             self.timeouts.connect.min(remaining(self.timeouts.overall)),
             tokio_vsock::VsockStream::connect(self.cid, self.port),
         )
         .await
-        .map_err(|_| EnclaveError::Enclave(EphemeralError::Timeout("Proxy connect timeout".to_string())))?
+        .map_err(|_| {
+            EnclaveError::Enclave(EphemeralError::Timeout("Proxy connect timeout".to_string()))
+        })?
         .map_err(|e| {
             EnclaveError::Enclave(EphemeralError::NetworkError(format!(
                 "Failed to connect to host proxy (VSock): {}",
@@ -156,7 +166,9 @@ impl KmsProxyClient {
             stream.write_all(&encoded),
         )
         .await
-        .map_err(|_| EnclaveError::Enclave(EphemeralError::Timeout("Proxy write timeout".to_string())))?
+        .map_err(|_| {
+            EnclaveError::Enclave(EphemeralError::Timeout("Proxy write timeout".to_string()))
+        })?
         .map_err(|e| {
             EnclaveError::Enclave(EphemeralError::NetworkError(format!(
                 "Failed to write to stream: {}",
@@ -171,18 +183,22 @@ impl KmsProxyClient {
             stream.read_exact(&mut len_buf),
         )
         .await
-        .map_err(|_| EnclaveError::Enclave(EphemeralError::Timeout("Proxy read timeout".to_string())))?
+        .map_err(|_| {
+            EnclaveError::Enclave(EphemeralError::Timeout("Proxy read timeout".to_string()))
+        })?
         .map_err(|e| {
             EnclaveError::Enclave(EphemeralError::NetworkError(format!(
                 "Failed to read length prefix: {}",
                 e
             )))
         })?;
-        
+
         let total_len = u32::from_be_bytes(len_buf) as usize;
         if total_len > ephemeral_ml_common::vsock::MAX_MESSAGE_SIZE + 100 {
-             return Err(EnclaveError::Enclave(EphemeralError::Validation(
-                ephemeral_ml_common::ValidationError::SizeLimitExceeded("Response too large".to_string())
+            return Err(EnclaveError::Enclave(EphemeralError::Validation(
+                ephemeral_ml_common::ValidationError::SizeLimitExceeded(
+                    "Response too large".to_string(),
+                ),
             )));
         }
 
@@ -192,18 +208,20 @@ impl KmsProxyClient {
             stream.read_exact(&mut body),
         )
         .await
-        .map_err(|_| EnclaveError::Enclave(EphemeralError::Timeout("Proxy read timeout".to_string())))?
+        .map_err(|_| {
+            EnclaveError::Enclave(EphemeralError::Timeout("Proxy read timeout".to_string()))
+        })?
         .map_err(|e| {
             EnclaveError::Enclave(EphemeralError::NetworkError(format!(
                 "Failed to read body: {}",
                 e
             )))
         })?;
-             
+
         let mut full_buf = Vec::with_capacity(4 + total_len);
         full_buf.extend_from_slice(&len_buf);
         full_buf.extend_from_slice(&body);
-        
+
         Ok(VSockMessage::decode(&full_buf)?)
     }
 
@@ -213,8 +231,9 @@ impl KmsProxyClient {
             part_index: 0,
         };
 
-        let payload = serde_json::to_vec(&req)
-            .map_err(|e| EnclaveError::Enclave(EphemeralError::SerializationError(e.to_string())))?;
+        let payload = serde_json::to_vec(&req).map_err(|e| {
+            EnclaveError::Enclave(EphemeralError::SerializationError(e.to_string()))
+        })?;
 
         let msg = VSockMessage::new(MessageType::Storage, 0, payload)?;
         let encoded = msg.encode();
@@ -234,21 +253,29 @@ impl KmsProxyClient {
             tokio::net::TcpStream::connect(&self.host_addr),
         )
         .await
-        .map_err(|_| EnclaveError::Enclave(EphemeralError::Timeout("Storage proxy connect timeout".to_string())))?
+        .map_err(|_| {
+            EnclaveError::Enclave(EphemeralError::Timeout(
+                "Storage proxy connect timeout".to_string(),
+            ))
+        })?
         .map_err(|e| {
             EnclaveError::Enclave(EphemeralError::NetworkError(format!(
                 "Failed to connect to host proxy (TCP): {}",
                 e
             )))
         })?;
-        
+
         #[cfg(feature = "production")]
         let mut stream = tokio::time::timeout(
             self.timeouts.connect.min(remaining(self.timeouts.overall)),
             tokio_vsock::VsockStream::connect(self.cid, self.port),
         )
         .await
-        .map_err(|_| EnclaveError::Enclave(EphemeralError::Timeout("Storage proxy connect timeout".to_string())))?
+        .map_err(|_| {
+            EnclaveError::Enclave(EphemeralError::Timeout(
+                "Storage proxy connect timeout".to_string(),
+            ))
+        })?
         .map_err(|e| {
             EnclaveError::Enclave(EphemeralError::NetworkError(format!(
                 "Failed to connect to host proxy (VSock): {}",
@@ -256,14 +283,23 @@ impl KmsProxyClient {
             )))
         })?;
 
-        stream.write_all(&encoded).await.map_err(|e| EnclaveError::Enclave(EphemeralError::NetworkError(e.to_string())))?;
+        stream
+            .write_all(&encoded)
+            .await
+            .map_err(|e| EnclaveError::Enclave(EphemeralError::NetworkError(e.to_string())))?;
 
         // Read response
         let mut len_buf = [0u8; 4];
-        stream.read_exact(&mut len_buf).await.map_err(|e| EnclaveError::Enclave(EphemeralError::NetworkError(e.to_string())))?;
+        stream
+            .read_exact(&mut len_buf)
+            .await
+            .map_err(|e| EnclaveError::Enclave(EphemeralError::NetworkError(e.to_string())))?;
         let len = u32::from_be_bytes(len_buf) as usize;
         let mut body = vec![0u8; len];
-        stream.read_exact(&mut body).await.map_err(|e| EnclaveError::Enclave(EphemeralError::NetworkError(e.to_string())))?;
+        stream
+            .read_exact(&mut body)
+            .await
+            .map_err(|e| EnclaveError::Enclave(EphemeralError::NetworkError(e.to_string())))?;
 
         let mut full_buf = Vec::with_capacity(4 + len);
         full_buf.extend_from_slice(&len_buf);
@@ -271,15 +307,21 @@ impl KmsProxyClient {
         let response_msg = VSockMessage::decode(&full_buf)?;
 
         if response_msg.msg_type != MessageType::Storage {
-            return Err(EnclaveError::Enclave(EphemeralError::ProtocolError("Expected Storage response".to_string())));
+            return Err(EnclaveError::Enclave(EphemeralError::ProtocolError(
+                "Expected Storage response".to_string(),
+            )));
         }
 
-        let response: StorageResponse = serde_json::from_slice(&response_msg.payload)
-            .map_err(|e| EnclaveError::Enclave(EphemeralError::SerializationError(e.to_string())))?;
+        let response: StorageResponse =
+            serde_json::from_slice(&response_msg.payload).map_err(|e| {
+                EnclaveError::Enclave(EphemeralError::SerializationError(e.to_string()))
+            })?;
 
         match response {
             StorageResponse::Data { payload, .. } => Ok(payload),
-            StorageResponse::Error { message } => Err(EnclaveError::Enclave(EphemeralError::StorageError(message))),
+            StorageResponse::Error { message } => {
+                Err(EnclaveError::Enclave(EphemeralError::StorageError(message)))
+            }
         }
     }
 }
@@ -328,7 +370,8 @@ mod tests {
             };
 
             let resp_payload = serde_json::to_vec(&resp_env).unwrap();
-            let resp_msg = VSockMessage::new(MessageType::KmsProxy, msg.sequence, resp_payload).unwrap();
+            let resp_msg =
+                VSockMessage::new(MessageType::KmsProxy, msg.sequence, resp_payload).unwrap();
             socket.write_all(&resp_msg.encode()).await.unwrap();
         });
 

@@ -10,11 +10,6 @@ pub struct StorageRequest {
 /// Response containing model data part
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub enum StorageResponse {
-    Data {
-        payload: Vec<u8>,
-        is_last: bool,
-    },
-    Error {
-        message: String,
-    },
+    Data { payload: Vec<u8>, is_last: bool },
+    Error { message: String },
 }

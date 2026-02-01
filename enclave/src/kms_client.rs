@@ -1,5 +1,5 @@
-use crate::{EnclaveError, Result, EphemeralError};
 use crate::kms_proxy_client::KmsProxyClient;
+use crate::{EnclaveError, EphemeralError, Result};
 use ephemeral_ml_common::{KmsProxyErrorCode, KmsRequest, KmsResponse};
 
 /// KMS Stub Client for Enclave
@@ -10,10 +10,10 @@ pub struct KmsClient<A: crate::attestation::AttestationProvider> {
 
 impl<A: crate::attestation::AttestationProvider> KmsClient<A> {
     pub fn new(attestation_provider: A) -> Self {
-         Self { 
-             attestation_provider,
-             proxy_client: KmsProxyClient::new(),
-         }
+        Self {
+            attestation_provider,
+            proxy_client: KmsProxyClient::new(),
+        }
     }
 
     pub fn new_with_proxy(attestation_provider: A, proxy_client: KmsProxyClient) -> Self {
@@ -38,7 +38,7 @@ impl<A: crate::attestation::AttestationProvider> KmsClient<A> {
         let mut nonce = [0u8; 16];
         rand::RngCore::fill_bytes(&mut rand::thread_rng(), &mut nonce);
         let attestation_doc = self.attestation_provider.generate_attestation(&nonce)?;
-        
+
         let recipient_bytes = attestation_doc.signature; // In our impl, signature holds the CBOR bytes
 
         // 2. Construct request
@@ -52,10 +52,14 @@ impl<A: crate::attestation::AttestationProvider> KmsClient<A> {
 
         // 3. Send via Proxy
         let response = self.proxy_client.send_request(request).await?;
-        
+
         // 4. Handle response
         match response.response {
-            KmsResponse::Decrypt { ciphertext_for_recipient, plaintext, .. } => {
+            KmsResponse::Decrypt {
+                ciphertext_for_recipient,
+                plaintext,
+                ..
+            } => {
                 if let Some(enc_key) = ciphertext_for_recipient {
                     // Decrypt using our RSA private key (RecipientInfo flow)
                     self.attestation_provider.decrypt_kms(&enc_key)
@@ -65,7 +69,9 @@ impl<A: crate::attestation::AttestationProvider> KmsClient<A> {
                         "KMS proxy returned plaintext for Recipient-bound decrypt".to_string(),
                     )))
                 } else {
-                    Err(EnclaveError::Enclave(EphemeralError::KmsError("No key returned in response".to_string())))
+                    Err(EnclaveError::Enclave(EphemeralError::KmsError(
+                        "No key returned in response".to_string(),
+                    )))
                 }
             }
             KmsResponse::Error { code, message } => {
@@ -82,7 +88,9 @@ impl<A: crate::attestation::AttestationProvider> KmsClient<A> {
                     prefix, message
                 ))))
             }
-            _ => Err(EnclaveError::Enclave(EphemeralError::KmsError("Unexpected response type".to_string()))),
+            _ => Err(EnclaveError::Enclave(EphemeralError::KmsError(
+                "Unexpected response type".to_string(),
+            ))),
         }
     }
 }
@@ -100,7 +108,7 @@ mod tests {
             grant_tokens: None,
             recipient: Some(vec![1, 2, 3]),
         };
-        
+
         let json = serde_json::to_string(&req).unwrap();
         assert!(json.contains("Decrypt"));
         assert!(json.contains("payload"));

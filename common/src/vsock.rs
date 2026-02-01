@@ -1,5 +1,5 @@
-use crate::{Result, EphemeralError};
-use byteorder::{ByteOrder, BigEndian};
+use crate::{EphemeralError, Result};
+use byteorder::{BigEndian, ByteOrder};
 
 /// Maximum message size (1GB) to prevent DoS while allowing model weights
 pub const MAX_MESSAGE_SIZE: usize = 1024 * 1024 * 1024;
@@ -39,9 +39,12 @@ impl TryFrom<u8> for MessageType {
             0x06 => Ok(MessageType::KmsProxy),
             0x07 => Ok(MessageType::Storage),
             0x08 => Ok(MessageType::Audit),
-            _ => Err(EphemeralError::Validation(crate::ValidationError::InvalidFormat(
-                format!("Unknown message type: 0x{:02x}", value)
-            ))),
+            _ => Err(EphemeralError::Validation(
+                crate::ValidationError::InvalidFormat(format!(
+                    "Unknown message type: 0x{:02x}",
+                    value
+                )),
+            )),
         }
     }
 }
@@ -60,9 +63,13 @@ pub struct VSockMessage {
 impl VSockMessage {
     pub fn new(msg_type: MessageType, sequence: u32, payload: Vec<u8>) -> Result<Self> {
         if payload.len() > MAX_MESSAGE_SIZE {
-            return Err(EphemeralError::Validation(crate::ValidationError::SizeLimitExceeded(
-                 format!("Payload size {} exceeds maximum {}", payload.len(), MAX_MESSAGE_SIZE)
-            )));
+            return Err(EphemeralError::Validation(
+                crate::ValidationError::SizeLimitExceeded(format!(
+                    "Payload size {} exceeds maximum {}",
+                    payload.len(),
+                    MAX_MESSAGE_SIZE
+                )),
+            ));
         }
         Ok(Self {
             msg_type,
@@ -76,23 +83,23 @@ impl VSockMessage {
     pub fn encode(&self) -> Vec<u8> {
         let total_len = 1 + 4 + self.payload.len(); // Type (1) + Seq (4) + Payload (N)
         let mut buffer = Vec::with_capacity(4 + total_len);
-        
+
         // Write total length (excluding the length prefix itself)
         let mut len_buf = [0u8; 4];
         BigEndian::write_u32(&mut len_buf, total_len as u32);
         buffer.extend_from_slice(&len_buf);
-        
+
         // Write type
         buffer.push(self.msg_type as u8);
-        
+
         // Write sequence
         let mut seq_buf = [0u8; 4];
         BigEndian::write_u32(&mut seq_buf, self.sequence);
         buffer.extend_from_slice(&seq_buf);
-        
+
         // Write payload
         buffer.extend_from_slice(&self.payload);
-        
+
         buffer
     }
 
@@ -100,23 +107,30 @@ impl VSockMessage {
     /// Expects the buffer to contain the full frame including length prefix
     pub fn decode(data: &[u8]) -> Result<Self> {
         if data.len() < 4 {
-             return Err(EphemeralError::Validation(crate::ValidationError::InvalidFormat(
-                "Buffer too short for length prefix".to_string()
-            )));
+            return Err(EphemeralError::Validation(
+                crate::ValidationError::InvalidFormat(
+                    "Buffer too short for length prefix".to_string(),
+                ),
+            ));
         }
 
         let total_len = BigEndian::read_u32(&data[0..4]) as usize;
         if data.len() < 4 + total_len {
-             return Err(EphemeralError::Validation(crate::ValidationError::InvalidFormat(
-                format!("Incomplete frame. Expected {} bytes, got {}", 4 + total_len, data.len())
-            )));
+            return Err(EphemeralError::Validation(
+                crate::ValidationError::InvalidFormat(format!(
+                    "Incomplete frame. Expected {} bytes, got {}",
+                    4 + total_len,
+                    data.len()
+                )),
+            ));
         }
-        
-        let frame_data = &data[4..4+total_len];
-        if frame_data.len() < 5 { // Type (1) + Seq (4)
-             return Err(EphemeralError::Validation(crate::ValidationError::InvalidFormat(
-                "Frame too short for header".to_string()
-            )));
+
+        let frame_data = &data[4..4 + total_len];
+        if frame_data.len() < 5 {
+            // Type (1) + Seq (4)
+            return Err(EphemeralError::Validation(
+                crate::ValidationError::InvalidFormat("Frame too short for header".to_string()),
+            ));
         }
 
         let msg_type = MessageType::try_from(frame_data[0])?;
@@ -124,10 +138,14 @@ impl VSockMessage {
         let payload = frame_data[5..].to_vec();
 
         // Check payload size again just in case
-         if payload.len() > MAX_MESSAGE_SIZE {
-            return Err(EphemeralError::Validation(crate::ValidationError::SizeLimitExceeded(
-                 format!("Payload size {} exceeds maximum {}", payload.len(), MAX_MESSAGE_SIZE)
-            )));
+        if payload.len() > MAX_MESSAGE_SIZE {
+            return Err(EphemeralError::Validation(
+                crate::ValidationError::SizeLimitExceeded(format!(
+                    "Payload size {} exceeds maximum {}",
+                    payload.len(),
+                    MAX_MESSAGE_SIZE
+                )),
+            ));
         }
 
         Ok(Self {
@@ -146,16 +164,16 @@ mod tests {
     fn test_vsock_encoding_roundtrip() {
         let payload = vec![1, 2, 3, 4, 5];
         let msg = VSockMessage::new(MessageType::Data, 42, payload.clone()).unwrap();
-        
+
         let encoded = msg.encode();
         let decoded = VSockMessage::decode(&encoded).unwrap();
-        
+
         assert_eq!(msg, decoded);
         assert_eq!(decoded.msg_type, MessageType::Data);
         assert_eq!(decoded.sequence, 42);
         assert_eq!(decoded.payload, payload);
     }
-    
+
     #[test]
     fn test_message_size_limit() {
         let big_payload = vec![0u8; MAX_MESSAGE_SIZE + 1];
@@ -166,7 +184,7 @@ mod tests {
     #[test]
     fn test_invalid_type() {
         // [Length: 5][Type: 0xFF][Seq: 0][Payload: empty]
-        let data = vec![0, 0, 0, 5, 0xFF, 0, 0, 0, 0]; 
+        let data = vec![0, 0, 0, 5, 0xFF, 0, 0, 0, 0];
         let result = VSockMessage::decode(&data);
         assert!(result.is_err());
     }
@@ -176,7 +194,7 @@ mod tests {
         // Only 3 bytes of length prefix
         let data = vec![0, 0, 1];
         assert!(VSockMessage::decode(&data).is_err());
-        
+
         // Only 4 bytes of length prefix (total_len = 5) but missing body
         let data = vec![0, 0, 0, 5];
         assert!(VSockMessage::decode(&data).is_err());

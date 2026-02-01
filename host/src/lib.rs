@@ -1,15 +1,15 @@
-pub mod error;
 pub mod aws_proxy;
-pub mod kms_proxy_server;
-pub mod retry;
-pub mod limits;
-pub mod rate_limit;
 pub mod circuit_breaker;
+pub mod error;
+pub mod kms_proxy_server;
+pub mod limits;
 pub mod metrics;
 pub mod otel;
 pub mod proxy;
-pub mod storage;
+pub mod rate_limit;
+pub mod retry;
 pub mod spy;
+pub mod storage;
 
 #[cfg(feature = "mock")]
 pub mod mock;
@@ -39,6 +39,6 @@ impl HostProxy for BlindRelay {
     fn forward_to_enclave(&self, _payload: &[u8]) -> Result<Vec<u8>> {
         // Core relay logic would go here. For now, it's a blind relay.
         // In mock mode, this might just echo or return success.
-        Ok(vec![]) 
+        Ok(vec![])
     }
 }

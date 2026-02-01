@@ -1,10 +1,10 @@
 use crate::kms_proxy_client::KmsProxyClient;
 use ephemeral_ml_common::{
-    AuditLogEntry, AuditEventType, AuditSeverity, MessageType, VSockMessage,
     audit::{AuditLogRequest, AuditLogResponse},
+    AuditEventType, AuditLogEntry, AuditSeverity, MessageType, VSockMessage,
 };
-use std::collections::HashMap;
 use serde_json::Value;
+use std::collections::HashMap;
 
 /// Async logger that sends structured audit events to the host via VSock
 #[derive(Clone)]
@@ -70,23 +70,88 @@ impl AuditLogger {
 
     /// Quick helpers
     pub async fn info(&self, event_type: AuditEventType, details: Vec<(&str, Value)>) {
-        self.send(event_type, AuditSeverity::Info, None, None, None, details, false).await;
+        self.send(
+            event_type,
+            AuditSeverity::Info,
+            None,
+            None,
+            None,
+            details,
+            false,
+        )
+        .await;
     }
 
-    pub async fn metric(&self, event_type: AuditEventType, session_id: Option<String>, details: Vec<(&str, Value)>) {
-        self.send(event_type, AuditSeverity::Info, session_id, None, None, details, true).await;
+    pub async fn metric(
+        &self,
+        event_type: AuditEventType,
+        session_id: Option<String>,
+        details: Vec<(&str, Value)>,
+    ) {
+        self.send(
+            event_type,
+            AuditSeverity::Info,
+            session_id,
+            None,
+            None,
+            details,
+            true,
+        )
+        .await;
     }
 
-    pub async fn warn(&self, event_type: AuditEventType, session_id: Option<String>, details: Vec<(&str, Value)>) {
-        self.send(event_type, AuditSeverity::Warning, session_id, None, None, details, false).await;
+    pub async fn warn(
+        &self,
+        event_type: AuditEventType,
+        session_id: Option<String>,
+        details: Vec<(&str, Value)>,
+    ) {
+        self.send(
+            event_type,
+            AuditSeverity::Warning,
+            session_id,
+            None,
+            None,
+            details,
+            false,
+        )
+        .await;
     }
 
-    pub async fn error(&self, event_type: AuditEventType, session_id: Option<String>, details: Vec<(&str, Value)>) {
-        self.send(event_type, AuditSeverity::Error, session_id, None, None, details, false).await;
+    pub async fn error(
+        &self,
+        event_type: AuditEventType,
+        session_id: Option<String>,
+        details: Vec<(&str, Value)>,
+    ) {
+        self.send(
+            event_type,
+            AuditSeverity::Error,
+            session_id,
+            None,
+            None,
+            details,
+            false,
+        )
+        .await;
     }
 
-    pub async fn critical(&self, event_type: AuditEventType, session_id: Option<String>, details: Vec<(&str, Value)>) {
-        self.send(event_type, AuditSeverity::Critical, session_id, None, None, details, false).await;
+    pub async fn critical(
+        &self,
+        event_type: AuditEventType,
+        session_id: Option<String>,
+        details: Vec<(&str, Value)>,
+    ) {
+        self.send(
+            event_type,
+            AuditSeverity::Critical,
+            session_id,
+            None,
+            None,
+            details,
+            false,
+        )
+        .await;
     }
 }
 

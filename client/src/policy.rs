@@ -12,22 +12,22 @@ pub const POLICY_ROOT_PUBLIC_KEY: &str = "ed25519:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
 pub enum PolicyError {
     #[error("Invalid policy signature")]
     InvalidSignature,
-    
+
     #[error("Policy expired at {expired_at}, current time: {current_time}")]
     PolicyExpired { expired_at: u64, current_time: u64 },
-    
+
     #[error("Policy version {version} not supported")]
     UnsupportedVersion { version: u32 },
-    
+
     #[error("Invalid policy format: {reason}")]
     InvalidFormat { reason: String },
-    
+
     #[error("Policy root key not found")]
     RootKeyNotFound,
-    
+
     #[error("Measurement allowlist validation failed: {reason}")]
     AllowlistValidation { reason: String },
-    
+
     #[error("Serialization error: {0}")]
     Serialization(#[from] serde_json::Error),
 
@@ -124,7 +124,7 @@ impl PolicyManager {
             root_public_key: POLICY_ROOT_PUBLIC_KEY.to_string(),
         }
     }
-    
+
     /// Create a policy manager with a custom root key
     pub fn with_root_key(root_key: String) -> Self {
         Self {
@@ -132,80 +132,93 @@ impl PolicyManager {
             root_public_key: root_key,
         }
     }
-    
+
     /// Load and verify a policy bundle
     pub fn load_policy(&mut self, policy_data: &[u8]) -> Result<(), PolicyError> {
         let policy: PolicyBundle = serde_json::from_slice(policy_data)?;
-        
+
         // Verify policy signature
         self.verify_policy_signature(&policy)?;
-        
+
         // Check policy expiration
         let current_time = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap_or_default()
             .as_secs();
-            
+
         if policy.expires_at <= current_time {
             return Err(PolicyError::PolicyExpired {
                 expired_at: policy.expires_at,
                 current_time,
             });
         }
-        
+
         // Validate policy version (support version 1+)
         if policy.version < 1 {
             return Err(PolicyError::UnsupportedVersion {
                 version: policy.version,
             });
         }
-        
+
         // Validate measurement allowlist format
         self.validate_measurement_allowlist(&policy.measurement_allowlist)?;
-        
+
         self.current_policy = Some(policy);
         Ok(())
     }
-    
+
     /// Get the current active policy
     pub fn current_policy(&self) -> Option<&PolicyBundle> {
         self.current_policy.as_ref()
     }
-    
+
     /// Check if a set of measurements is allowed by the current policy
-    pub fn is_measurement_allowed(&self, pcr0: &str, pcr1: &str, pcr2: &str) -> Result<bool, PolicyError> {
-        let policy = self.current_policy.as_ref()
+    pub fn is_measurement_allowed(
+        &self,
+        pcr0: &str,
+        pcr1: &str,
+        pcr2: &str,
+    ) -> Result<bool, PolicyError> {
+        let policy = self
+            .current_policy
+            .as_ref()
             .ok_or(PolicyError::RootKeyNotFound)?;
-            
+
         let allowlist = &policy.measurement_allowlist;
-        
+
         // Check if all measurements are in the allowlist
         let pcr0_allowed = allowlist.allowed_pcr0.contains(&pcr0.to_string());
         let pcr1_allowed = allowlist.allowed_pcr1.contains(&pcr1.to_string());
         let pcr2_allowed = allowlist.allowed_pcr2.contains(&pcr2.to_string());
-        
+
         Ok(pcr0_allowed && pcr1_allowed && pcr2_allowed)
     }
-    
+
     /// Get key release policy for a specific model
-    pub fn get_key_release_policy(&self, model_id: &str) -> Result<Option<&KeyReleasePolicy>, PolicyError> {
-        let policy = self.current_policy.as_ref()
+    pub fn get_key_release_policy(
+        &self,
+        model_id: &str,
+    ) -> Result<Option<&KeyReleasePolicy>, PolicyError> {
+        let policy = self
+            .current_policy
+            .as_ref()
             .ok_or(PolicyError::RootKeyNotFound)?;
-            
-        let matching_policy = policy.key_release_policies
+
+        let matching_policy = policy
+            .key_release_policies
             .iter()
             .find(|p| p.model_ids.contains(&model_id.to_string()));
-            
+
         Ok(matching_policy)
     }
-    
+
     /// Create a default policy bundle for development/testing
     pub fn create_default_policy() -> PolicyBundle {
         let current_time = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap_or_default()
             .as_secs();
-            
+
         PolicyBundle {
             version: 1,
             min_compatible_version: 1,
@@ -244,7 +257,7 @@ impl PolicyManager {
             signature: vec![], // Will be filled by signing process
         }
     }
-    
+
     /// Verify policy signature using the root public key
     fn verify_policy_signature(&self, policy: &PolicyBundle) -> Result<(), PolicyError> {
         #[cfg(feature = "mock")]
@@ -254,48 +267,63 @@ impl PolicyManager {
 
         // Create canonical encoding for signature verification
         let canonical_data = self.create_canonical_policy_data(policy)?;
-        
+
         // Parse the root public key
         // Format expected: "ed25519:<base64_encoded_key>"
         let key_parts: Vec<&str> = self.root_public_key.split(':').collect();
         if key_parts.len() != 2 || key_parts[0] != "ed25519" {
-             #[cfg(feature = "mock")]
-             return Ok(()); // In mock mode, if key is invalid/placeholder, we might skip
-             
-             #[cfg(not(feature = "mock"))]
-             return Err(PolicyError::RootKeyNotFound); // Or invalid format
+            #[cfg(feature = "mock")]
+            return Ok(()); // In mock mode, if key is invalid/placeholder, we might skip
+
+            #[cfg(not(feature = "mock"))]
+            return Err(PolicyError::RootKeyNotFound); // Or invalid format
         }
-        
-        use base64::{Engine as _, engine::general_purpose::STANDARD};
-        let public_key_bytes = STANDARD.decode(key_parts[1])
-            .map_err(|_| PolicyError::InvalidFormat { reason: "Invalid base64 in root key".to_string() })?;
-            
-        use ed25519_dalek::{Verifier, VerifyingKey, Signature};
-        
+
+        use base64::{engine::general_purpose::STANDARD, Engine as _};
+        let public_key_bytes =
+            STANDARD
+                .decode(key_parts[1])
+                .map_err(|_| PolicyError::InvalidFormat {
+                    reason: "Invalid base64 in root key".to_string(),
+                })?;
+
+        use ed25519_dalek::{Signature, Verifier, VerifyingKey};
+
         if public_key_bytes.len() != 32 {
-             #[cfg(feature = "mock")]
-             return Ok(()); // Allow placeholder keys in mock
-             
-             #[cfg(not(feature = "mock"))]
-             return Err(PolicyError::InvalidFormat { reason: "Invalid public key length".to_string() });
+            #[cfg(feature = "mock")]
+            return Ok(()); // Allow placeholder keys in mock
+
+            #[cfg(not(feature = "mock"))]
+            return Err(PolicyError::InvalidFormat {
+                reason: "Invalid public key length".to_string(),
+            });
         }
-        
+
         // For tests where we use a placeholder key that isn't valid, we might want to skip logic if mock
         // BUT if we want to test the VERIFICATION logic, we need a valid key.
         // We will try to verify. If it fails and we are in mock mode, maybe we allow it?
         // Better: Make the test provide a valid key.
-        
-        let verifying_key = VerifyingKey::from_bytes(public_key_bytes.as_slice().try_into().unwrap())
-            .map_err(|_| PolicyError::InvalidFormat { reason: "Invalid public key bytes".to_string() })?;
-            
-        let signature = Signature::from_bytes(policy.signature.as_slice().try_into().map_err(|_| 
-            PolicyError::InvalidSignature
-        )?);
-        
-        verifying_key.verify(&canonical_data, &signature)
+
+        let verifying_key = VerifyingKey::from_bytes(
+            public_key_bytes.as_slice().try_into().unwrap(),
+        )
+        .map_err(|_| PolicyError::InvalidFormat {
+            reason: "Invalid public key bytes".to_string(),
+        })?;
+
+        let signature = Signature::from_bytes(
+            policy
+                .signature
+                .as_slice()
+                .try_into()
+                .map_err(|_| PolicyError::InvalidSignature)?,
+        );
+
+        verifying_key
+            .verify(&canonical_data, &signature)
             .map_err(|_| PolicyError::InvalidSignature)
     }
-    
+
     /// Create canonical encoding of policy data for signature verification
     fn create_canonical_policy_data(&self, policy: &PolicyBundle) -> Result<Vec<u8>, PolicyError> {
         // Create a copy without the signature field for canonical encoding
@@ -308,65 +336,76 @@ impl PolicyManager {
             key_release_policies: policy.key_release_policies.clone(),
             config: policy.config.clone(),
         };
-        
+
         // Use deterministic JSON encoding for signature verification
         let canonical_json = serde_json::to_vec(&policy_for_signing)?;
         Ok(canonical_json)
     }
-    
+
     /// Validate measurement allowlist format
-    fn validate_measurement_allowlist(&self, allowlist: &MeasurementAllowlist) -> Result<(), PolicyError> {
+    fn validate_measurement_allowlist(
+        &self,
+        allowlist: &MeasurementAllowlist,
+    ) -> Result<(), PolicyError> {
         // Check that all measurement lists are non-empty
         if allowlist.allowed_pcr0.is_empty() {
             return Err(PolicyError::AllowlistValidation {
                 reason: "PCR0 allowlist cannot be empty".to_string(),
             });
         }
-        
+
         if allowlist.allowed_pcr1.is_empty() {
             return Err(PolicyError::AllowlistValidation {
                 reason: "PCR1 allowlist cannot be empty".to_string(),
             });
         }
-        
+
         if allowlist.allowed_pcr2.is_empty() {
             return Err(PolicyError::AllowlistValidation {
                 reason: "PCR2 allowlist cannot be empty".to_string(),
             });
         }
-        
+
         // Validate measurement format (should be hex strings of correct length)
         for pcr in &allowlist.allowed_pcr0 {
             self.validate_measurement_format(pcr, "PCR0")?;
         }
-        
+
         for pcr in &allowlist.allowed_pcr1 {
             self.validate_measurement_format(pcr, "PCR1")?;
         }
-        
+
         for pcr in &allowlist.allowed_pcr2 {
             self.validate_measurement_format(pcr, "PCR2")?;
         }
-        
+
         Ok(())
     }
-    
+
     /// Validate individual measurement format
-    fn validate_measurement_format(&self, measurement: &str, pcr_name: &str) -> Result<(), PolicyError> {
+    fn validate_measurement_format(
+        &self,
+        measurement: &str,
+        pcr_name: &str,
+    ) -> Result<(), PolicyError> {
         // PCR measurements should be 48 bytes (96 hex characters) for SHA-384
         if measurement.len() != 96 {
             return Err(PolicyError::AllowlistValidation {
-                reason: format!("{} measurement must be 96 hex characters, got {}", pcr_name, measurement.len()),
+                reason: format!(
+                    "{} measurement must be 96 hex characters, got {}",
+                    pcr_name,
+                    measurement.len()
+                ),
             });
         }
-        
+
         // Check that it's valid hex
         if !measurement.chars().all(|c| c.is_ascii_hexdigit()) {
             return Err(PolicyError::AllowlistValidation {
                 reason: format!("{} measurement must be valid hex", pcr_name),
             });
         }
-        
+
         Ok(())
     }
 }
@@ -416,7 +455,9 @@ pub struct PolicyVersionHistory {
 
 impl PolicyVersionHistory {
     pub fn new() -> Self {
-        Self { transitions: Vec::new() }
+        Self {
+            transitions: Vec::new(),
+        }
     }
 
     pub fn record_transition(&mut self, from: u32, to: u32, reason: &str) {
@@ -525,8 +566,14 @@ impl PolicyUpdateManager {
                         inner.history.remove(0);
                     }
                 }
-                let new_version = inner.manager.current_policy().map(|p| p.version).unwrap_or(0);
-                inner.version_history.record_transition(old_version, new_version, "policy_update");
+                let new_version = inner
+                    .manager
+                    .current_policy()
+                    .map(|p| p.version)
+                    .unwrap_or(0);
+                inner
+                    .version_history
+                    .record_transition(old_version, new_version, "policy_update");
                 Ok(())
             }
             Err(e) => {
@@ -542,10 +589,16 @@ impl PolicyUpdateManager {
     pub fn rollback(&self) -> Result<(), PolicyError> {
         let mut inner = self.inner.write().unwrap();
         let previous = inner.history.pop().ok_or(PolicyError::NoPreviousPolicy)?;
-        let old_version = inner.manager.current_policy().map(|p| p.version).unwrap_or(0);
+        let old_version = inner
+            .manager
+            .current_policy()
+            .map(|p| p.version)
+            .unwrap_or(0);
         let new_version = previous.version;
         inner.manager.current_policy = Some(previous);
-        inner.version_history.record_transition(old_version, new_version, "rollback");
+        inner
+            .version_history
+            .record_transition(old_version, new_version, "rollback");
         Ok(())
     }
 
@@ -585,7 +638,9 @@ impl PolicyUpdateManager {
     /// Returns Ok(true) if reloaded, Ok(false) if unchanged.
     pub fn poll_file(&self, path: &std::path::Path) -> Result<bool, PolicyError> {
         let meta = std::fs::metadata(path).map_err(|e| PolicyError::Io(e.to_string()))?;
-        let mtime = meta.modified().map_err(|e| PolicyError::Io(e.to_string()))?;
+        let mtime = meta
+            .modified()
+            .map_err(|e| PolicyError::Io(e.to_string()))?;
 
         let should_reload = {
             let inner = self.inner.read().unwrap();
@@ -628,11 +683,13 @@ impl PolicyUpdateManager {
                         };
                         if should_reload {
                             if let Ok(data) = std::fs::read(&path) {
-                                let new_policy: Result<PolicyBundle, _> = serde_json::from_slice(&data);
+                                let new_policy: Result<PolicyBundle, _> =
+                                    serde_json::from_slice(&data);
                                 if let Ok(new_policy) = new_policy {
                                     let mut guard = inner.write().unwrap();
                                     let old_policy = guard.manager.current_policy().cloned();
-                                    let old_version = old_policy.as_ref().map(|p| p.version).unwrap_or(0);
+                                    let old_version =
+                                        old_policy.as_ref().map(|p| p.version).unwrap_or(0);
 
                                     // Version checks
                                     let version_ok = if let Some(ref current) = old_policy {
@@ -650,8 +707,16 @@ impl PolicyUpdateManager {
                                                     guard.history.remove(0);
                                                 }
                                             }
-                                            let new_ver = guard.manager.current_policy().map(|p| p.version).unwrap_or(0);
-                                            guard.version_history.record_transition(old_version, new_ver, "file_watch");
+                                            let new_ver = guard
+                                                .manager
+                                                .current_policy()
+                                                .map(|p| p.version)
+                                                .unwrap_or(0);
+                                            guard.version_history.record_transition(
+                                                old_version,
+                                                new_ver,
+                                                "file_watch",
+                                            );
                                             last_mtime = Some(mtime);
                                         }
                                     }
@@ -679,7 +744,8 @@ pub struct FileWatchHandle {
 
 impl FileWatchHandle {
     pub fn stop(&self) {
-        self.running.store(false, std::sync::atomic::Ordering::Relaxed);
+        self.running
+            .store(false, std::sync::atomic::Ordering::Relaxed);
     }
 }
 
@@ -691,30 +757,30 @@ impl Drop for FileWatchHandle {
 }
 
 /// Key rotation documentation for v2
-/// 
+///
 /// # Key Rotation Strategy (Deferred to v2)
-/// 
+///
 /// The current v1 implementation uses a static policy root key checked into the client
 /// configuration. This approach is suitable for controlled deployments but has limitations
 /// for production key lifecycle management.
-/// 
+///
 /// ## V2 Key Rotation Plan:
-/// 
+///
 /// 1. **Multi-Key Support**: Support multiple valid root keys with key IDs
 /// 2. **Key Rollover**: Implement gradual key rotation with overlap periods
 /// 3. **Revocation**: Support for emergency key revocation and blacklisting
 /// 4. **Distribution**: Secure key distribution mechanism (possibly via signed updates)
 /// 5. **Validation**: Enhanced validation with key expiration and usage limits
-/// 
+///
 /// ## Security Considerations:
-/// 
+///
 /// - Root key compromise requires coordinated client updates
 /// - Policy updates must be backward compatible during transition periods
 /// - Emergency revocation must be fast and reliable
 /// - Key rotation should not disrupt active sessions
-/// 
+///
 /// ## Implementation Notes:
-/// 
+///
 /// The current PolicyManager structure is designed to accommodate these future
 /// enhancements with minimal breaking changes. The root_public_key field can
 /// be extended to support multiple keys, and the verification logic can be
@@ -731,38 +797,44 @@ mod tests {
         assert!(!policy.measurement_allowlist.allowed_pcr0.is_empty());
         assert!(!policy.key_release_policies.is_empty());
     }
-    
+
     #[test]
     fn test_policy_manager_creation() {
         let manager = PolicyManager::new();
         assert!(manager.current_policy.is_none());
         assert_eq!(manager.root_public_key, POLICY_ROOT_PUBLIC_KEY);
     }
-    
+
     #[test]
     fn test_measurement_validation() {
         let manager = PolicyManager::new();
-        
+
         // Valid measurement (96 hex characters)
         let valid_measurement = "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f202122232425262728292a2b2c2d2e2f";
-        assert!(manager.validate_measurement_format(valid_measurement, "PCR0").is_ok());
-        
+        assert!(manager
+            .validate_measurement_format(valid_measurement, "PCR0")
+            .is_ok());
+
         // Invalid length
         let invalid_length = "00010203";
-        assert!(manager.validate_measurement_format(invalid_length, "PCR0").is_err());
-        
+        assert!(manager
+            .validate_measurement_format(invalid_length, "PCR0")
+            .is_err());
+
         // Invalid hex
         let invalid_hex = "gggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggg";
-        assert!(manager.validate_measurement_format(invalid_hex, "PCR0").is_err());
+        assert!(manager
+            .validate_measurement_format(invalid_hex, "PCR0")
+            .is_err());
     }
-    
+
     #[test]
     #[cfg(feature = "mock")]
     fn test_policy_loading_mock_mode() {
         let mut manager = PolicyManager::new();
         let policy = PolicyManager::create_default_policy();
         let policy_data = serde_json::to_vec(&policy).unwrap();
-        
+
         // Should succeed in mock mode
         assert!(manager.load_policy(&policy_data).is_ok());
         assert!(manager.current_policy().is_some());
@@ -770,35 +842,35 @@ mod tests {
 
     #[test]
     fn test_signed_policy_verification() {
-        use ed25519_dalek::{SigningKey, Signer};
+        use base64::{engine::general_purpose::STANDARD, Engine as _};
+        use ed25519_dalek::{Signer, SigningKey};
         use rand::rngs::OsRng;
-        use base64::{Engine as _, engine::general_purpose::STANDARD};
 
         // Generate key pair
         let mut csprng = OsRng;
         let signing_key = SigningKey::generate(&mut csprng);
         let verifying_key = signing_key.verifying_key();
-        
+
         let root_key_str = format!("ed25519:{}", STANDARD.encode(verifying_key.to_bytes()));
-        
+
         let mut manager = PolicyManager::with_root_key(root_key_str);
         let mut policy = PolicyManager::create_default_policy();
-        
+
         // Canonicalize and sign
         let canonical_bytes = manager.create_canonical_policy_data(&policy).unwrap();
         let signature = signing_key.sign(&canonical_bytes);
         policy.signature = signature.to_bytes().to_vec();
-        
+
         let policy_data = serde_json::to_vec(&policy).unwrap();
-        
+
         // Load should succeed
         assert!(manager.load_policy(&policy_data).is_ok());
-        
+
         // Tamper with created_at instead of version (version=2 is now allowed)
         let mut bad_policy = policy.clone();
         bad_policy.created_at = 999;
         let bad_policy_data = serde_json::to_vec(&bad_policy).unwrap();
-        
+
         // Verification should fail (signature mismatch with data)
         assert!(manager.load_policy(&bad_policy_data).is_err());
     }
@@ -806,9 +878,13 @@ mod tests {
     // ==================== Task 17 Tests ====================
 
     /// Helper: create a signed policy with the given version
-    fn make_signed_policy(signing_key: &ed25519_dalek::SigningKey, version: u32, min_compat: u32) -> (Vec<u8>, PolicyBundle) {
+    fn make_signed_policy(
+        signing_key: &ed25519_dalek::SigningKey,
+        version: u32,
+        min_compat: u32,
+    ) -> (Vec<u8>, PolicyBundle) {
+        use base64::{engine::general_purpose::STANDARD, Engine as _};
         use ed25519_dalek::Signer;
-        use base64::{Engine as _, engine::general_purpose::STANDARD};
 
         let verifying_key = signing_key.verifying_key();
         let root_key_str = format!("ed25519:{}", STANDARD.encode(verifying_key.to_bytes()));
@@ -828,9 +904,9 @@ mod tests {
 
     #[test]
     fn test_policy_update_valid_signature() {
+        use base64::{engine::general_purpose::STANDARD, Engine as _};
         use ed25519_dalek::SigningKey;
         use rand::rngs::OsRng;
-        use base64::{Engine as _, engine::general_purpose::STANDARD};
 
         let signing_key = SigningKey::generate(&mut OsRng);
         let verifying_key = signing_key.verifying_key();
@@ -847,9 +923,9 @@ mod tests {
 
     #[test]
     fn test_policy_update_invalid_signature_preserves_old() {
+        use base64::{engine::general_purpose::STANDARD, Engine as _};
         use ed25519_dalek::SigningKey;
         use rand::rngs::OsRng;
-        use base64::{Engine as _, engine::general_purpose::STANDARD};
 
         let signing_key = SigningKey::generate(&mut OsRng);
         let verifying_key = signing_key.verifying_key();
@@ -873,9 +949,9 @@ mod tests {
 
     #[test]
     fn test_version_downgrade_rejected() {
+        use base64::{engine::general_purpose::STANDARD, Engine as _};
         use ed25519_dalek::SigningKey;
         use rand::rngs::OsRng;
-        use base64::{Engine as _, engine::general_purpose::STANDARD};
 
         let signing_key = SigningKey::generate(&mut OsRng);
         let verifying_key = signing_key.verifying_key();
@@ -903,9 +979,9 @@ mod tests {
 
     #[test]
     fn test_version_compatibility_validation() {
+        use base64::{engine::general_purpose::STANDARD, Engine as _};
         use ed25519_dalek::SigningKey;
         use rand::rngs::OsRng;
-        use base64::{Engine as _, engine::general_purpose::STANDARD};
 
         let signing_key = SigningKey::generate(&mut OsRng);
         let verifying_key = signing_key.verifying_key();
@@ -923,7 +999,10 @@ mod tests {
         let result = update_mgr.apply_update(&data_v3);
         assert!(result.is_err());
         match result.unwrap_err() {
-            PolicyError::VersionIncompatible { current: 1, min_compatible: 2 } => {}
+            PolicyError::VersionIncompatible {
+                current: 1,
+                min_compatible: 2,
+            } => {}
             e => panic!("Expected VersionIncompatible, got: {:?}", e),
         }
 
@@ -935,9 +1014,9 @@ mod tests {
 
     #[test]
     fn test_rollback() {
+        use base64::{engine::general_purpose::STANDARD, Engine as _};
         use ed25519_dalek::SigningKey;
         use rand::rngs::OsRng;
-        use base64::{Engine as _, engine::general_purpose::STANDARD};
 
         let signing_key = SigningKey::generate(&mut OsRng);
         let verifying_key = signing_key.verifying_key();
@@ -967,9 +1046,9 @@ mod tests {
 
     #[test]
     fn test_measurement_allowlist_hot_update() {
+        use base64::{engine::general_purpose::STANDARD, Engine as _};
         use ed25519_dalek::SigningKey;
         use rand::rngs::OsRng;
-        use base64::{Engine as _, engine::general_purpose::STANDARD};
 
         let signing_key = SigningKey::generate(&mut OsRng);
         let verifying_key = signing_key.verifying_key();
@@ -982,7 +1061,12 @@ mod tests {
         let (data_v1, _) = make_signed_policy(&signing_key, 1, 1);
         assert!(update_mgr.apply_update(&data_v1).is_ok());
 
-        let old_pcr0 = update_mgr.current_policy().unwrap().measurement_allowlist.allowed_pcr0.clone();
+        let old_pcr0 = update_mgr
+            .current_policy()
+            .unwrap()
+            .measurement_allowlist
+            .allowed_pcr0
+            .clone();
 
         // Create v2 with updated measurement allowlist
         use ed25519_dalek::Signer;
@@ -993,13 +1077,20 @@ mod tests {
         policy_v2.measurement_allowlist.allowed_pcr0.push(
             "aabbccddeeff00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff00112233445566778899".to_string()
         );
-        let canonical = temp_manager.create_canonical_policy_data(&policy_v2).unwrap();
+        let canonical = temp_manager
+            .create_canonical_policy_data(&policy_v2)
+            .unwrap();
         let sig = signing_key.sign(&canonical);
         policy_v2.signature = sig.to_bytes().to_vec();
         let data_v2 = serde_json::to_vec(&policy_v2).unwrap();
 
         assert!(update_mgr.apply_update(&data_v2).is_ok());
-        let new_pcr0 = update_mgr.current_policy().unwrap().measurement_allowlist.allowed_pcr0.clone();
+        let new_pcr0 = update_mgr
+            .current_policy()
+            .unwrap()
+            .measurement_allowlist
+            .allowed_pcr0
+            .clone();
         assert!(new_pcr0.len() > old_pcr0.len());
         assert!(new_pcr0.contains(
             &"aabbccddeeff00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff00112233445566778899".to_string()
@@ -1008,9 +1099,9 @@ mod tests {
 
     #[test]
     fn test_version_history_tracking() {
+        use base64::{engine::general_purpose::STANDARD, Engine as _};
         use ed25519_dalek::SigningKey;
         use rand::rngs::OsRng;
-        use base64::{Engine as _, engine::general_purpose::STANDARD};
 
         let signing_key = SigningKey::generate(&mut OsRng);
         let verifying_key = signing_key.verifying_key();
