@@ -177,17 +177,101 @@ def generate_report(baseline: dict, enclave: dict) -> str:
     return "\n".join(lines)
 
 
+def generate_crypto_report(crypto: dict) -> str:
+    """Generate markdown section for crypto primitives benchmark."""
+    lines = []
+    lines.append("")
+    lines.append("## Security Primitives Overhead (Tier 4)")
+    lines.append("")
+
+    # HPKE section
+    hpke = crypto.get("hpke", {})
+    setup = hpke.get("session_setup_ms", {})
+    keygen = hpke.get("x25519_keygen_ms", {})
+    lines.append("### HPKE Session Setup")
+    lines.append("")
+    lines.append("| Operation | Mean | P50 | P95 | P99 |")
+    lines.append("|-----------|------|-----|-----|-----|")
+    if setup:
+        lines.append(f"| Full session setup (both sides) | {setup.get('mean', 0):.4f}ms | {setup.get('p50', 0):.4f}ms | {setup.get('p95', 0):.4f}ms | {setup.get('p99', 0):.4f}ms |")
+    if keygen:
+        lines.append(f"| X25519 keypair generation | {keygen.get('mean', 0):.4f}ms | {keygen.get('p50', 0):.4f}ms | {keygen.get('p95', 0):.4f}ms | {keygen.get('p99', 0):.4f}ms |")
+    lines.append("")
+
+    # HPKE encrypt/decrypt
+    enc_dec = hpke.get("encrypt_decrypt", {})
+    if enc_dec:
+        lines.append("### HPKE Encrypt/Decrypt Latency")
+        lines.append("")
+        lines.append("| Payload | Encrypt Mean | Decrypt Mean | Total |")
+        lines.append("|---------|-------------|-------------|-------|")
+        for size_label in ["64B", "1KB", "64KB", "1MB"]:
+            data = enc_dec.get(size_label, {})
+            enc = data.get("encrypt", {})
+            dec = data.get("decrypt", {})
+            enc_mean = enc.get("mean", 0)
+            dec_mean = dec.get("mean", 0)
+            total = enc_mean + dec_mean
+            lines.append(f"| {size_label} | {enc_mean:.4f}ms | {dec_mean:.4f}ms | {total:.4f}ms |")
+        lines.append("")
+
+    # Receipt section
+    receipt = crypto.get("receipt", {})
+    ed_keygen = receipt.get("ed25519_keygen_ms", {})
+    sign = receipt.get("sign_ms", {})
+    verify = receipt.get("verify_ms", {})
+    cbor = receipt.get("canonical_encoding", {})
+
+    lines.append("### Receipt Generation & Verification")
+    lines.append("")
+    lines.append("| Operation | Mean | P50 | P95 | P99 |")
+    lines.append("|-----------|------|-----|-----|-----|")
+    if ed_keygen:
+        lines.append(f"| Ed25519 keypair generation | {ed_keygen.get('mean', 0):.4f}ms | {ed_keygen.get('p50', 0):.4f}ms | {ed_keygen.get('p95', 0):.4f}ms | {ed_keygen.get('p99', 0):.4f}ms |")
+    if sign:
+        lines.append(f"| Receipt sign (CBOR + Ed25519) | {sign.get('mean', 0):.4f}ms | {sign.get('p50', 0):.4f}ms | {sign.get('p95', 0):.4f}ms | {sign.get('p99', 0):.4f}ms |")
+    if verify:
+        lines.append(f"| Receipt verify | {verify.get('mean', 0):.4f}ms | {verify.get('p50', 0):.4f}ms | {verify.get('p95', 0):.4f}ms | {verify.get('p99', 0):.4f}ms |")
+    if cbor:
+        cbor_lat = cbor.get("latency", {})
+        enc_size = cbor.get("encoding_size_bytes", 0)
+        lines.append(f"| CBOR canonical encoding ({enc_size}B) | {cbor_lat.get('mean', 0):.4f}ms | {cbor_lat.get('p50', 0):.4f}ms | {cbor_lat.get('p95', 0):.4f}ms | {cbor_lat.get('p99', 0):.4f}ms |")
+    lines.append("")
+
+    # Per-inference crypto budget
+    if sign and enc_dec:
+        enc_1kb = enc_dec.get("1KB", {}).get("encrypt", {}).get("mean", 0)
+        dec_1kb = enc_dec.get("1KB", {}).get("decrypt", {}).get("mean", 0)
+        sign_mean = sign.get("mean", 0)
+        total_crypto = enc_1kb + dec_1kb + sign_mean
+        lines.append("### Per-Inference Crypto Budget (1KB payload)")
+        lines.append("")
+        lines.append(f"| Component | Cost |")
+        lines.append(f"|-----------|------|")
+        lines.append(f"| HPKE decrypt (request) | {dec_1kb:.4f}ms |")
+        lines.append(f"| Receipt sign | {sign_mean:.4f}ms |")
+        lines.append(f"| HPKE encrypt (response) | {enc_1kb:.4f}ms |")
+        lines.append(f"| **Total crypto overhead** | **{total_crypto:.4f}ms** |")
+        lines.append("")
+
+    return "\n".join(lines)
+
+
 def main():
     parser = argparse.ArgumentParser(description="EphemeralML Benchmark Report Generator")
     parser.add_argument("--baseline", required=True, help="Path to baseline_results.json")
     parser.add_argument("--enclave", required=True, help="Path to enclave_results.json")
+    parser.add_argument("--crypto", default=None, help="Path to crypto benchmark results JSON")
     parser.add_argument("--output", default=None, help="Output markdown file (default: stdout)")
     args = parser.parse_args()
 
     baseline = load_results(args.baseline)
     enclave = load_results(args.enclave)
+    crypto = load_results(args.crypto) if args.crypto else None
 
     report = generate_report(baseline, enclave)
+    if crypto:
+        report += generate_crypto_report(crypto)
 
     if args.output:
         with open(args.output, "w") as f:
