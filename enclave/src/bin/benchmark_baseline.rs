@@ -171,11 +171,20 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     eprintln!("[baseline] model_load_ms = {:.2}", model_load_ms);
 
     // ── Stage 4: Tokenizer setup ──
+    let tokenizer_start = Instant::now();
     let tokenizer =
         tokenizers::Tokenizer::from_bytes(&tokenizer_bytes).map_err(|e| e.to_string())?;
+    let tokenizer_setup_ms = tokenizer_start.elapsed().as_secs_f64() * 1000.0;
+    eprintln!("[baseline] tokenizer_setup_ms = {:.2}", tokenizer_setup_ms);
 
     // cold_start_total_ms includes everything up to "ready to serve first inference"
     let cold_start_total_ms = total_start.elapsed().as_secs_f64() * 1000.0;
+
+    // ── Stage 4b: Reference embedding for quality verification ──
+    let reference_embedding = run_single_inference(&model, &tokenizer, BENCHMARK_INPUT_TEXTS[0], &device);
+    eprintln!("[baseline] reference_embedding: dim={}, first_5={:?}",
+        reference_embedding.len(),
+        &reference_embedding[..5.min(reference_embedding.len())]);
 
     // ── Stage 5: Warmup ──
     eprintln!("[baseline] Stage 5: Warmup ({} iterations)", NUM_WARMUP);
@@ -231,6 +240,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             "model_fetch_ms": round2(model_fetch_ms),
             "model_decrypt_ms": round2(model_decrypt_ms),
             "model_load_ms": round2(model_load_ms),
+            "tokenizer_setup_ms": round2(tokenizer_setup_ms),
             "cold_start_total_ms": round2(cold_start_total_ms)
         },
         "inference": {
@@ -256,6 +266,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             "rtt_64kb_ms": 0.0,
             "rtt_1mb_ms": 0.0,
             "upload_throughput_mbps": 0.0
+        },
+        "quality": {
+            "reference_text": BENCHMARK_INPUT_TEXTS[0],
+            "embedding_dim": reference_embedding.len(),
+            "embedding_first_8": &reference_embedding[..8.min(reference_embedding.len())]
         }
     });
 

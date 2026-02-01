@@ -499,24 +499,50 @@ fn fetch_artifact(model_key: &str) -> Vec<u8> {
 /// We repeat `ROUNDS` times and return the median.
 fn measure_vsock_rtt(payload_size: usize) -> f64 {
     use ephemeral_ml_common::{
-        storage_protocol::StorageRequest,
-        MessageType, VSockMessage,
+        audit::{AuditLogRequest, AuditLogResponse},
+        MessageType, VSockMessage, AuditLogEntry, AuditEventType, AuditSeverity,
     };
 
     const ROUNDS: usize = 10;
+    const WARMUP: usize = 3;
     let mut samples = Vec::with_capacity(ROUNDS);
 
-    // Build a StorageRequest whose JSON is padded to approximate the desired payload size.
-    // Cap model_id at 64KB to avoid overwhelming the S3 key lookup on the proxy side.
-    let effective_size = payload_size.min(65536);
-    let padding = "x".repeat(effective_size.saturating_sub(40)); // subtract base JSON overhead
-    let req = StorageRequest {
-        model_id: format!("__bench_rtt_{}", padding),
-        part_index: 0,
+    // Use Audit messages for RTT measurement — they're lightweight, always get a response,
+    // and don't trigger S3 lookups. Pad the details field to approximate desired payload size.
+    let padding = "x".repeat(payload_size.saturating_sub(200)); // subtract base JSON overhead
+    let entry = AuditLogEntry {
+        entry_id: "bench-rtt".to_string(),
+        timestamp: 0,
+        event_type: AuditEventType::InferenceCompleted,
+        session_id: None,
+        client_id: None,
+        model_id: None,
+        details: {
+            let mut m = std::collections::HashMap::new();
+            m.insert("padding".to_string(), serde_json::Value::String(padding));
+            m
+        },
+        severity: AuditSeverity::Info,
+        is_metric: true,
     };
+    let req = AuditLogRequest { entry };
     let req_payload = serde_json::to_vec(&req).unwrap();
-    let msg = VSockMessage::new(MessageType::Storage, 0, req_payload).unwrap();
+    eprintln!("[bench] RTT payload_size={} actual_json_len={}", payload_size, req_payload.len());
+    let msg = VSockMessage::new(MessageType::Audit, 0, req_payload).unwrap();
     let encoded = msg.encode();
+
+    // Warmup rounds (not counted)
+    for _ in 0..WARMUP {
+        let Ok(mut stream) = std::panic::catch_unwind(|| vsock_connect(8082))
+            .map_err(|_| ()) else { return 0.0; };
+        let _ = stream.write_all(&encoded);
+        let mut len_buf = [0u8; 4];
+        let _ = stream.read_exact(&mut len_buf);
+        if let Ok(len) = len_buf.try_into().map(u32::from_be_bytes) {
+            let mut body = vec![0u8; len as usize];
+            let _ = stream.read_exact(&mut body);
+        }
+    }
 
     for _ in 0..ROUNDS {
         let Ok(mut stream) = std::panic::catch_unwind(|| vsock_connect(8082))
@@ -530,7 +556,7 @@ fn measure_vsock_rtt(payload_size: usize) -> f64 {
             continue;
         }
 
-        // Read response (will be StorageResponse::Error for non-existent key)
+        // Read response
         let mut len_buf = [0u8; 4];
         if stream.read_exact(&mut len_buf).is_err() {
             eprintln!("[bench] RTT read len failed");
@@ -771,12 +797,23 @@ async fn run_benchmark() {
     eprintln!("[bench] model_load_ms = {:.2}", model_load_ms);
 
     // ── Stage 6: Tokenizer setup ──
+    let tokenizer_start = Instant::now();
     let tokenizer = tokenizers::Tokenizer::from_bytes(&tokenizer_bytes)
         .expect("failed to load tokenizer");
+    let tokenizer_setup_ms = tokenizer_start.elapsed().as_secs_f64() * 1000.0;
+    eprintln!("[bench] tokenizer_setup_ms = {:.2}", tokenizer_setup_ms);
 
     // cold_start_total_ms includes everything up to "ready to serve first inference"
     let cold_start_total_ms = total_start.elapsed().as_secs_f64() * 1000.0;
     eprintln!("[bench] cold_start_total_ms = {:.2}", cold_start_total_ms);
+
+    // ── Stage 6b: Capture reference embedding for quality verification ──
+    // Run inference on the first input text and store the embedding vector.
+    // This allows cosine similarity comparison between bare-metal and enclave outputs.
+    let reference_embedding = run_single_inference(&model, &tokenizer, BENCHMARK_INPUT_TEXTS[0], &device);
+    eprintln!("[bench] reference_embedding: dim={}, first_5={:?}",
+        reference_embedding.len(),
+        &reference_embedding[..5.min(reference_embedding.len())]);
 
     // ── Stage 7: Warmup inferences ──
     eprintln!("[bench] Stage 7: Warmup ({} iterations)", NUM_WARMUP);
@@ -816,8 +853,9 @@ async fn run_benchmark() {
     let rtt_1kb = measure_vsock_rtt(1024);
     let rtt_64kb = measure_vsock_rtt(64 * 1024);
     let rtt_1mb = measure_vsock_rtt(1024 * 1024);
+    // Upload throughput: payload_bytes / rtt_seconds
     let vsock_upload_throughput_mbps = if rtt_1mb > 0.0 {
-        1.0 / (rtt_1mb / 1000.0) // MB/s (upload direction only)
+        (1024.0 * 1024.0) / (rtt_1mb / 1000.0) / (1024.0 * 1024.0) // MB/s
     } else {
         0.0
     };
@@ -843,6 +881,7 @@ async fn run_benchmark() {
             "model_fetch_ms": round2(model_fetch_ms),
             "model_decrypt_ms": round2(model_decrypt_ms),
             "model_load_ms": round2(model_load_ms),
+            "tokenizer_setup_ms": round2(tokenizer_setup_ms),
             "cold_start_total_ms": round2(cold_start_total_ms)
         },
         "inference": {
@@ -868,6 +907,11 @@ async fn run_benchmark() {
             "rtt_64kb_ms": round2(rtt_64kb),
             "rtt_1mb_ms": round2(rtt_1mb),
             "upload_throughput_mbps": round2(vsock_upload_throughput_mbps)
+        },
+        "quality": {
+            "reference_text": BENCHMARK_INPUT_TEXTS[0],
+            "embedding_dim": reference_embedding.len(),
+            "embedding_first_8": &reference_embedding[..8.min(reference_embedding.len())]
         }
     });
 

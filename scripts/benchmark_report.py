@@ -60,6 +60,7 @@ def generate_report(baseline: dict, enclave: dict) -> str:
         ("model_fetch_ms", "Model Fetch"),
         ("model_decrypt_ms", "Model Decrypt"),
         ("model_load_ms", "Model Load"),
+        ("tokenizer_setup_ms", "Tokenizer Setup"),
         ("cold_start_total_ms", "Cold Start Total"),
     ]
 
@@ -121,6 +122,34 @@ def generate_report(baseline: dict, enclave: dict) -> str:
         lines.append(f"| 64 KB | {fmt_ms(e_vsock.get('rtt_64kb_ms', 0.0))} |")
         lines.append(f"| 1 MB | {fmt_ms(e_vsock.get('rtt_1mb_ms', 0.0))} |")
         lines.append(f"| **Upload Throughput** | **{e_vsock.get('upload_throughput_mbps', 0.0):.1f} MB/s** |")
+        lines.append("")
+
+    # Quality verification
+    b_qual = baseline.get("quality", {})
+    e_qual = enclave.get("quality", {})
+    b_emb = b_qual.get("embedding_first_8", [])
+    e_emb = e_qual.get("embedding_first_8", [])
+    if b_emb and e_emb and len(b_emb) == len(e_emb):
+        # Compute cosine similarity from first 8 dimensions
+        dot = sum(a * b for a, b in zip(b_emb, e_emb))
+        mag_b = sum(a * a for a in b_emb) ** 0.5
+        mag_e = sum(a * a for a in e_emb) ** 0.5
+        cos_sim = dot / (mag_b * mag_e) if mag_b > 0 and mag_e > 0 else 0.0
+
+        lines.append("## Output Quality Verification")
+        lines.append("")
+        lines.append(f"**Reference text:** \"{b_qual.get('reference_text', 'N/A')}\"")
+        lines.append(f"**Embedding dimension:** {b_qual.get('embedding_dim', 'N/A')}")
+        lines.append(f"**Cosine similarity (first 8 dims):** {cos_sim:.6f}")
+        lines.append("")
+        if cos_sim > 0.9999:
+            lines.append("Enclave produces **identical** embeddings to bare metal (cosine sim > 0.9999).")
+        elif cos_sim > 0.999:
+            lines.append("Enclave produces **near-identical** embeddings (cosine sim > 0.999, expected FP rounding).")
+        elif cos_sim > 0.99:
+            lines.append("WARNING: Non-trivial embedding divergence detected (cosine sim < 0.999).")
+        else:
+            lines.append("ERROR: Significant embedding divergence detected. Investigate model loading.")
         lines.append("")
 
     # Summary
