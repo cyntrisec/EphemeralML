@@ -2,7 +2,6 @@
 /target/
 **/*.rs.bk
 *.pdb
-Cargo.lock
 
 # IDE files
 .vscode/
@@ -10,6 +9,7 @@ Cargo.lock
 *.swp
 *.swo
 *~
+
 # OS generated files
 .DS_Store
 .DS_Store?
@@ -18,91 +18,51 @@ Cargo.lock
 .Trashes
 ehthumbs.db
 Thumbs.db
+
 # Windows
 *.exe
 *.ilk
 *.exp
 *.lib
+
 # Logs
 *.log
 logs/
-# Runtime data
 pids
 *.pid
 *.seed
 *.pid.lock
-# Coverage directory used by tools like istanbul
-coverage/
-*.lcov
-# nyc test coverage
-.nyc_output
-# Dependency directories
-node_modules/
-# Optional npm cache directory
-.npm
-# Optional eslint cache
-.eslintcache
-# Microbundle cache
-.rpt2_cache/
-.rts2_cache_cjs/
-.rts2_cache_es/
-.rts2_cache_umd/
-# Optional REPL history
-.node_repl_history
-# Output of 'npm pack'
-*.tgz
-# Yarn Integrity file
-.yarn-integrity
-# dotenv environment variables file
+
+# Environment variables
 .env
-.env.test
-.env.local
-.env.production
-# parcel-bundler cache (https://parceljs.org/)
-.cache
-.parcel-cache
-# Next.js build output
-.next
-# Nuxt.js build / generate output
-.nuxt
-dist
-# Gatsby files
-.cache/
-public
-# Storybook build outputs
-.out
-.storybook-out
-# Temporary folders
-tmp/
-temp/
-# AWS Nitro Enclaves specific
+.env.*
+
+# AWS Nitro Enclaves
 *.eif
 enclave.dockerfile
-# Terraform (do not commit local state)
+
+# Terraform
 **/.terraform/
 **/*.tfstate
 **/*.tfstate.*
 **/tfplan
 crash.log
 crash.*.log
+
 # Local run artifacts
 **/logs/
-# Encrypted test assets (generated; do not commit)
+
+# Test assets (generated)
 /test_assets/**/*.encrypted
 /test_assets/**/*.wrapped
+/test_assets/**/*.safetensors
+test_artifacts/
+
 # Build artifacts
 build/
 out/
-# Kiro specific - exclude all spec files and directories
-.kiro/
-# Internal development files
-BUILD_REPRODUCIBILITY.md
-IMPLEMENTATION_GUIDE.md
-PROJECT_SUMMARY.md
-TASK_*_SUMMARY.md
-build.py
-validate_structure.py
-# Python cache (for build scripts)
+
+# Python (for build scripts)
 __pycache__/
 *.py[cod]
 *$py.class
@@ -110,64 +70,38 @@ __pycache__/
 .Python
 env/
 venv/
-ENV/
-env.bak/
-venv.bak/
-# Distribution / packaging
-develop-eggs/
-dist/
-downloads/
-eggs/
-.eggs/
-lib/
-lib64/
-parts/
-sdist/
-var/
-wheels/
 *.egg-info/
-.installed.cfg
 *.egg
-MANIFEST
-# Unit test / coverage reports
+
+# Coverage
 htmlcov/
 .tox/
 .coverage
 .coverage.*
-nosetests.xml
-coverage.xml
 *.cover
 .hypothesis/
 .pytest_cache/
+
 # Backup files
 *.bak
 *.backup
 *.old
 *.orig
 *.tmp
-# Lock files (keep Cargo.lock for applications, ignore for libraries)
-# Uncomment the next line if this is a library
-# Cargo.lock
-# local-only
-GEMINI.md
-/test_assets/**/*.safetensors
 
-# Large reference docs (keep locally, don't commit)
-docs/aws-reference/
-docs/papers/
-docs/papers_llm/
-docs/E2E_DEPLOY_GUIDE.md
-
-# Test artifacts (generated)
-test_artifacts/
-
-# Investor materials (private)
-docs/investors/*.pdf
-
-# Claude Code project memory
+# AI tool configs
+.kiro/
 CLAUDE.md
+GEMINI.md
+Borys_Tsyrulnikov_Resume.md
 
 # Internal development files
+BUILD_REPRODUCIBILITY.md
+IMPLEMENTATION_GUIDE.md
+PROJECT_SUMMARY.md
+TASK_*_SUMMARY.md
+build.py
+validate_structure.py
 AGENTS/
 investor/
 QA_REPORT.md
@@ -180,3 +114,10 @@ infra/hello-enclave/run_diag*.sh
 infra/hello-enclave/ssm_diag*.sh
 infra/hello-enclave/logs/
 infra/hello-enclave/tfplan
+
+# Large reference docs (keep locally, don't commit)
+docs/aws-reference/
+docs/papers/
+docs/papers_llm/
+docs/E2E_DEPLOY_GUIDE.md
+docs/investors/*.pdf

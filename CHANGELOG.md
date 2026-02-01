@@ -1,5 +1,24 @@
 # Changelog
 
+## [1.0.3] - 2026-02-01
+
+### Added
+- **Comprehensive Benchmark Suite**: 6 benchmark binaries covering all performance-critical paths
+  - `benchmark_baseline`: Raw inference throughput (MiniLM, 22.7M params)
+  - `benchmark_enclave`: Full enclave pipeline with VSock + crypto overhead
+  - `benchmark_crypto`: HPKE session + AES-GCM encrypt/decrypt microbenchmarks
+  - `benchmark_e2e`: End-to-end latency from client request to decrypted response
+  - `benchmark_concurrent`: Multi-client throughput scaling (1–64 concurrent sessions)
+  - `benchmark_cose`: COSE_Sign1 attestation verification with P-384 cert chain
+- **Benchmark Results**: All results from m6i.xlarge (Nitro-enabled) in `benchmark_results/`
+- **Benchmark Documentation**: Specification, methodology, and analysis in `docs/`
+
+### Changed
+- **Repository polish**: Added CONTRIBUTING.md, CODE_OF_CONDUCT.md, SECURITY.md
+- **CI pipeline**: GitHub Actions workflow for fmt, clippy, and test checks
+- **Issue/PR templates**: Standardized bug report, feature request, and PR templates
+- Cleaned up old/superseded benchmark result files
+
 ## [1.0.2] - 2026-01-29
 
 ### Fixed

@@ -1,0 +1,51 @@
+# Security Policy
+
+## Reporting a Vulnerability
+
+If you discover a security vulnerability in EphemeralML, please report it responsibly.
+
+**Do NOT open a public GitHub issue for security vulnerabilities.**
+
+Instead, please use one of these channels:
+
+1. **GitHub Security Advisories** (preferred): [Report a vulnerability](https://github.com/cyntrisec/EphemeralML/security/advisories/new)
+2. **Email**: security@cyntrisec.com
+
+### What to Include
+
+- Description of the vulnerability
+- Steps to reproduce
+- Potential impact assessment
+- Suggested fix (if any)
+
+### Response Timeline
+
+- **Acknowledgment**: Within 48 hours
+- **Assessment**: Within 7 days
+- **Fix**: Depends on severity; critical issues prioritized
+
+## Scope
+
+The following are in scope for security reports:
+
+- **Cryptographic implementation** (HPKE, Ed25519, ChaCha20-Poly1305, COSE verification)
+- **Attestation verification** (NSM document parsing, certificate chain validation, PCR checks)
+- **Key material handling** (zeroization, memory safety, key derivation)
+- **Protocol security** (VSock message framing, session establishment, replay protection)
+- **Policy enforcement** (measurement allowlists, key release conditions)
+- **Input validation** (model format validation, safetensors parsing, CBOR/JSON deserialization)
+
+## Supported Versions
+
+| Version | Supported |
+|---------|-----------|
+| 1.0.x   | Yes       |
+| < 1.0   | No        |
+
+## Security Design
+
+For details on the threat model and security architecture, see:
+
+- [`docs/design.md`](docs/design.md) -- Architecture and threat model
+- [`docs/security_audit_2025-01-31.md`](docs/security_audit_2025-01-31.md) -- Security audit results
+- [`SECURITY_DEMO.md`](SECURITY_DEMO.md) -- Security verification walkthrough
