@@ -42,6 +42,9 @@ pub enum PolicyError {
 
     #[error("IO error: {0}")]
     Io(String),
+
+    #[error("Internal lock poisoned")]
+    LockPoisoned,
 }
 
 /// Policy bundle containing signed measurement allowlists and configuration
@@ -525,7 +528,7 @@ impl PolicyUpdateManager {
     /// Apply a policy update with signature verification and version checks.
     /// Atomic: on failure the old policy is preserved.
     pub fn apply_update(&self, new_policy_data: &[u8]) -> Result<(), PolicyError> {
-        let mut inner = self.inner.write().unwrap();
+        let mut inner = self.inner.write().map_err(|_| PolicyError::LockPoisoned)?;
 
         // Parse new policy first (before touching state)
         let new_policy: PolicyBundle = serde_json::from_slice(new_policy_data)?;
@@ -587,7 +590,7 @@ impl PolicyUpdateManager {
 
     /// Rollback to the previous policy
     pub fn rollback(&self) -> Result<(), PolicyError> {
-        let mut inner = self.inner.write().unwrap();
+        let mut inner = self.inner.write().map_err(|_| PolicyError::LockPoisoned)?;
         let previous = inner.history.pop().ok_or(PolicyError::NoPreviousPolicy)?;
         let old_version = inner
             .manager
@@ -604,20 +607,22 @@ impl PolicyUpdateManager {
 
     /// Get the current policy
     pub fn current_policy(&self) -> Option<PolicyBundle> {
-        let inner = self.inner.read().unwrap();
+        let inner = self.inner.read().ok()?;
         inner.manager.current_policy().cloned()
     }
 
     /// Get version history
     pub fn version_history(&self) -> PolicyVersionHistory {
-        let inner = self.inner.read().unwrap();
-        inner.version_history.clone()
+        self.inner
+            .read()
+            .ok()
+            .map(|i| i.version_history.clone())
+            .unwrap_or_default()
     }
 
     /// Get history depth
     pub fn history_depth(&self) -> usize {
-        let inner = self.inner.read().unwrap();
-        inner.history.len()
+        self.inner.read().map(|i| i.history.len()).unwrap_or(0)
     }
 
     /// One-shot load from file
@@ -627,8 +632,9 @@ impl PolicyUpdateManager {
         // Update mtime
         if let Ok(meta) = std::fs::metadata(path) {
             if let Ok(mtime) = meta.modified() {
-                let mut inner = self.inner.write().unwrap();
-                inner.last_mtime = Some(mtime);
+                if let Ok(mut inner) = self.inner.write() {
+                    inner.last_mtime = Some(mtime);
+                }
             }
         }
         Ok(())
@@ -643,7 +649,7 @@ impl PolicyUpdateManager {
             .map_err(|e| PolicyError::Io(e.to_string()))?;
 
         let should_reload = {
-            let inner = self.inner.read().unwrap();
+            let inner = self.inner.read().map_err(|_| PolicyError::LockPoisoned)?;
             match inner.last_mtime {
                 Some(last) => mtime > last,
                 None => true,
@@ -653,7 +659,7 @@ impl PolicyUpdateManager {
         if should_reload {
             let data = std::fs::read(path).map_err(|e| PolicyError::Io(e.to_string()))?;
             self.apply_update(&data)?;
-            let mut inner = self.inner.write().unwrap();
+            let mut inner = self.inner.write().map_err(|_| PolicyError::LockPoisoned)?;
             inner.last_mtime = Some(mtime);
             Ok(true)
         } else {
@@ -686,7 +692,9 @@ impl PolicyUpdateManager {
                                 let new_policy: Result<PolicyBundle, _> =
                                     serde_json::from_slice(&data);
                                 if let Ok(new_policy) = new_policy {
-                                    let mut guard = inner.write().unwrap();
+                                    let Ok(mut guard) = inner.write() else {
+                                        continue;
+                                    };
                                     let old_policy = guard.manager.current_policy().cloned();
                                     let old_version =
                                         old_policy.as_ref().map(|p| p.version).unwrap_or(0);

@@ -66,8 +66,10 @@ impl WeightStorage for InMemoryWeightStorage {
     }
 
     async fn exists(&self, model_id: &str) -> bool {
-        let storage = self.storage.read().unwrap();
-        storage.contains_key(model_id)
+        self.storage
+            .read()
+            .map(|s| s.contains_key(model_id))
+            .unwrap_or(false)
     }
 
     async fn remove(&self, model_id: &str) -> Result<()> {

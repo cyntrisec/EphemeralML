@@ -139,9 +139,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let fixed_dek =
         hex::decode("0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef")?;
     let (nonce_bytes, ciphertext) = encrypted_weights.split_at(12);
-    let cipher = ChaCha20Poly1305::new(&Key::try_from(fixed_dek.as_slice()).unwrap());
+    let cipher = ChaCha20Poly1305::new(Key::from_slice(&fixed_dek));
     let weights_plaintext = cipher
-        .decrypt(&Nonce::try_from(nonce_bytes).unwrap(), ciphertext)
+        .decrypt(Nonce::from_slice(nonce_bytes), ciphertext)
         .map_err(|e| format!("decryption failed: {}", e))?;
     let model_decrypt_ms = decrypt_start.elapsed().as_secs_f64() * 1000.0;
     let plaintext_size = weights_plaintext.len();

@@ -550,15 +550,21 @@ impl MockEnclaveServer {
                     );
                     session_manager.add_session(session)?;
 
+                    let attestation_doc_bytes =
+                        serde_json::to_vec(&attestation_doc).map_err(|e| {
+                            EnclaveError::Enclave(EphemeralError::SerializationError(e.to_string()))
+                        })?;
                     let server_hello = ServerHello::new(
                         vec!["gateway".to_string()],
-                        serde_json::to_vec(&attestation_doc).unwrap(),
+                        attestation_doc_bytes,
                         ephemeral_public_key.to_vec(),
                         receipt_pk.to_vec(),
                     )
                     .map_err(EnclaveError::Enclave)?;
 
-                    let response_payload = serde_json::to_vec(&server_hello).unwrap();
+                    let response_payload = serde_json::to_vec(&server_hello).map_err(|e| {
+                        EnclaveError::Enclave(EphemeralError::SerializationError(e.to_string()))
+                    })?;
                     let response_msg =
                         VSockMessage::new(MessageType::Hello, msg.sequence, response_payload)
                             .map_err(EnclaveError::Enclave)?;
@@ -576,7 +582,10 @@ impl MockEnclaveServer {
 
                     let encrypted_response = handler.handle_request(&encrypted_request).await?;
 
-                    let response_payload = serde_json::to_vec(&encrypted_response).unwrap();
+                    let response_payload =
+                        serde_json::to_vec(&encrypted_response).map_err(|e| {
+                            EnclaveError::Enclave(EphemeralError::SerializationError(e.to_string()))
+                        })?;
                     let response_msg =
                         VSockMessage::new(MessageType::Data, msg.sequence, response_payload)
                             .map_err(EnclaveError::Enclave)?;

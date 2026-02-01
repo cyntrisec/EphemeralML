@@ -102,9 +102,12 @@ impl SecureClient for SecureEnclaveClient {
             client_public_bytes,
         )
         .map_err(ClientError::Client)?;
-        client_hello.client_nonce = challenge_nonce.as_slice().try_into().unwrap();
+        client_hello.client_nonce = challenge_nonce.as_slice().try_into().map_err(|_| {
+            ClientError::Client(EphemeralError::Internal("Nonce size mismatch".into()))
+        })?;
 
-        let hello_payload = serde_json::to_vec(&client_hello).unwrap();
+        let hello_payload = serde_json::to_vec(&client_hello)
+            .map_err(|e| ClientError::Client(EphemeralError::SerializationError(e.to_string())))?;
         let hello_msg =
             VSockMessage::new(MessageType::Hello, 0, hello_payload).map_err(ClientError::Client)?;
 
@@ -217,8 +220,12 @@ impl SecureClient for SecureEnclaveClient {
         )
         .map_err(ClientError::Client)?;
 
-        hpke.establish(&self.client_private_key.unwrap())
-            .map_err(ClientError::Client)?;
+        hpke.establish(&self.client_private_key.ok_or_else(|| {
+            ClientError::Client(EphemeralError::Internal(
+                "Client private key not set".into(),
+            ))
+        })?)
+        .map_err(ClientError::Client)?;
 
         // Eagerly zeroize the ephemeral private key now that the session key is derived.
         // This provides forward secrecy: even if memory is later compromised, the
@@ -254,7 +261,8 @@ impl SecureClient for SecureEnclaveClient {
             input_data,
             input_shape: None,
         };
-        let plaintext = serde_json::to_vec(&input).unwrap();
+        let plaintext = serde_json::to_vec(&input)
+            .map_err(|e| ClientError::Client(EphemeralError::SerializationError(e.to_string())))?;
         let encrypted_request = hpke.encrypt(&plaintext).map_err(ClientError::Client)?;
 
         // 2. Send over VSock (TCP Mock)
@@ -262,7 +270,8 @@ impl SecureClient for SecureEnclaveClient {
             .await
             .map_err(|e| ClientError::Client(EphemeralError::NetworkError(e.to_string())))?;
 
-        let payload = serde_json::to_vec(&encrypted_request).unwrap();
+        let payload = serde_json::to_vec(&encrypted_request)
+            .map_err(|e| ClientError::Client(EphemeralError::SerializationError(e.to_string())))?;
         let msg = VSockMessage::new(MessageType::Data, 1, payload).map_err(ClientError::Client)?;
 
         stream
@@ -330,7 +339,11 @@ impl SecureClient for SecureEnclaveClient {
         }
 
         // Verify binding to attestation
-        let attestation_doc_bytes = self.server_attestation_doc.as_ref().unwrap();
+        let attestation_doc_bytes = self.server_attestation_doc.as_ref().ok_or_else(|| {
+            ClientError::Client(EphemeralError::Internal(
+                "Attestation doc not available".into(),
+            ))
+        })?;
         use sha2::{Digest, Sha256};
         let mut hasher = Sha256::new();
         hasher.update(attestation_doc_bytes);

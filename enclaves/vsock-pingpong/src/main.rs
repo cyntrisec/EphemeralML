@@ -803,9 +803,9 @@ async fn run_benchmark() {
     eprintln!("[bench] Stage 4: Decrypting model weights");
     let decrypt_start = Instant::now();
     let (nonce_bytes, ciphertext) = encrypted_weights.split_at(12);
-    let key: &Key = (&fixed_dek[..]).try_into().expect("invalid key length");
+    let key = Key::from_slice(&fixed_dek);
     let cipher = ChaCha20Poly1305::new(key);
-    let nonce: &Nonce = nonce_bytes.try_into().expect("invalid nonce length");
+    let nonce = Nonce::from_slice(nonce_bytes);
     let weights_plaintext = cipher
         .decrypt(nonce, ciphertext)
         .expect("weight decryption failed");
