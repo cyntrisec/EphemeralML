@@ -162,3 +162,6 @@ test_artifacts/
 
 # Investor materials (private)
 docs/investors/*.pdf
+
+# Claude Code project memory
+CLAUDE.md
