@@ -82,6 +82,7 @@ enclave.dockerfile
 **/.terraform/
 **/*.tfstate
 **/*.tfstate.*
+**/tfplan
 crash.log
 crash.*.log
 # Local run artifacts
