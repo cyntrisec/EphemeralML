@@ -231,7 +231,7 @@ impl InputValidator {
         }
 
         // Check for zero dimensions
-        if dimensions.iter().any(|&d| d == 0) {
+        if dimensions.contains(&0) {
             return Err(ValidationError::InvalidPayloadFormat {
                 reason: "Tensor dimensions cannot be zero".to_string(),
             });

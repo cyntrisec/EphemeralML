@@ -27,6 +27,7 @@ pub trait HostProxy: Send + Sync {
 }
 
 /// Target structure for blind relay operations
+#[derive(Default)]
 pub struct BlindRelay;
 
 impl BlindRelay {

@@ -1,8 +1,7 @@
 use crate::{EnclaveError, EphemeralError, Result};
 use ephemeral_ml_common::{
     storage_protocol::{StorageRequest, StorageResponse},
-    KmsProxyRequestEnvelope, KmsProxyResponseEnvelope, KmsRequest, KmsResponse, MessageType,
-    VSockMessage,
+    KmsProxyRequestEnvelope, KmsProxyResponseEnvelope, KmsRequest, MessageType, VSockMessage,
 };
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::time::{Duration, Instant};
@@ -35,6 +34,12 @@ pub struct KmsProxyClient {
     #[cfg(feature = "production")]
     port: u32,
     timeouts: KmsProxyClientTimeouts,
+}
+
+impl Default for KmsProxyClient {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl KmsProxyClient {
@@ -329,6 +334,7 @@ impl KmsProxyClient {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use ephemeral_ml_common::KmsResponse;
     use tokio::net::TcpListener;
 
     #[tokio::test]

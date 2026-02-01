@@ -1,17 +1,22 @@
 use crate::{
-    inference_handler::InferenceHandler,
-    session_manager::{EnclaveSession, SessionManager},
-    AttestationProvider, EnclaveError, EphemeralError, InferenceEngine, Result,
+    inference_handler::InferenceHandler, session_manager::SessionManager, AttestationProvider,
+    InferenceEngine,
 };
-use ephemeral_ml_common::protocol::{ClientHello, ServerHello, PROTOCOL_VERSION_V1};
-use ephemeral_ml_common::{HPKESession, MessageType, VSockMessage};
-use libc;
 use std::sync::Arc;
+
+#[cfg(feature = "production")]
+use crate::{session_manager::EnclaveSession, EnclaveError, EphemeralError, Result};
+#[cfg(feature = "production")]
+use ephemeral_ml_common::protocol::{ClientHello, ServerHello, PROTOCOL_VERSION_V1};
+#[cfg(feature = "production")]
+use ephemeral_ml_common::{HPKESession, MessageType, VSockMessage};
+#[cfg(feature = "production")]
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
 #[cfg(feature = "production")]
 use tokio_vsock::{VsockListener, VsockStream};
 
+#[allow(dead_code)]
 pub struct ProductionEnclaveServer<
     A: AttestationProvider + Clone + Send + Sync + 'static,
     I: InferenceEngine + Clone + Send + Sync + 'static,

@@ -1,4 +1,4 @@
-use rand::{Rng, RngCore};
+use rand::RngCore;
 use std::time::Duration;
 
 /// Retry/backoff policy for upstream calls (e.g., AWS KMS).
@@ -39,7 +39,7 @@ impl RetryPolicy {
         let jittered = if capped == 0 {
             0
         } else {
-            (rng.next_u64() % (capped + 1))
+            rng.next_u64() % (capped + 1)
         };
         Duration::from_millis(jittered)
     }

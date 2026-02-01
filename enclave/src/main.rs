@@ -1,7 +1,7 @@
 #[cfg(not(feature = "production"))]
 use ephemeral_ml_enclave::{
     current_timestamp,
-    mock::{MockAttestationProvider, MockEnclaveServer, MockEphemeralAssembler},
+    mock::{MockEnclaveServer, MockEphemeralAssembler},
     AttestationProvider, DefaultAttestationProvider, EphemeralAssembler,
 };
 #[cfg(feature = "production")]

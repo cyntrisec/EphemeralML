@@ -78,12 +78,12 @@ async fn spawn_mock_server() -> (u16, tokio::task::JoinHandle<()>) {
         let mut hasher = Sha256::new();
         hasher.update(attestation.module_id.as_bytes());
         hasher.update(&attestation.digest);
-        hasher.update(&attestation.timestamp.to_be_bytes());
+        hasher.update(attestation.timestamp.to_be_bytes());
         hasher.update(&attestation.pcrs.pcr0);
         hasher.update(&attestation.pcrs.pcr1);
         hasher.update(&attestation.pcrs.pcr2);
         hasher.update(&attestation.certificate);
-        let attestation_hash: [u8; 32] = hasher.finalize().into();
+        let _attestation_hash: [u8; 32] = hasher.finalize().into();
 
         // Pre-compute attestation doc hash for receipts
         let attestation_doc_bytes = serde_json::to_vec(&attestation).unwrap();
@@ -217,7 +217,7 @@ fn bench_e2e_crypto_pipeline() -> (serde_json::Value, serde_json::Value) {
     let mut hasher = Sha256::new();
     hasher.update(attestation.module_id.as_bytes());
     hasher.update(&attestation.digest);
-    hasher.update(&attestation.timestamp.to_be_bytes());
+    hasher.update(attestation.timestamp.to_be_bytes());
     hasher.update(&attestation.pcrs.pcr0);
     hasher.update(&attestation.pcrs.pcr1);
     hasher.update(&attestation.pcrs.pcr2);

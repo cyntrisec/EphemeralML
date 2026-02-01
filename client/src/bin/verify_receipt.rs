@@ -11,7 +11,7 @@
 use anyhow::{bail, Context, Result};
 use clap::Parser;
 use ed25519_dalek::VerifyingKey;
-use ephemeral_ml_common::{AttestationReceipt, AttestationUserData, EnclaveMeasurements};
+use ephemeral_ml_common::{AttestationReceipt, AttestationUserData};
 use sha2::{Digest, Sha256};
 use std::fs;
 use std::path::PathBuf;

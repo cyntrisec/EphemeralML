@@ -28,12 +28,18 @@ async fn main() -> Result<()> {
     let cid = 3;
     let vsock_port = 8082;
     let tcp_port = 8082;
+    #[cfg(not(feature = "production"))]
+    let _ = (cid, vsock_port);
+    #[cfg(feature = "production")]
+    let _ = tcp_port;
 
     let config = aws_config::load_defaults(BehaviorVersion::latest()).await;
     let proxy = AWSApiProxy::new(&config);
     let s3_client = aws_sdk_s3::Client::new(&config);
     #[cfg(feature = "production")]
     let storage = S3WeightStorage::new(s3_client, "ephemeral-ml-models-demo".to_string());
+    #[cfg(not(feature = "production"))]
+    let _ = s3_client;
     #[cfg(not(feature = "production"))]
     let storage = ephemeral_ml_host::storage::InMemoryWeightStorage::new();
 
@@ -119,6 +125,7 @@ async fn main() -> Result<()> {
             }
         }
     }
+    #[allow(unreachable_code)]
     Ok(())
 }
 
@@ -128,11 +135,11 @@ impl<T: AsyncReadExt + AsyncWriteExt + Unpin + Send> AsyncStream for T {}
 async fn handle_connection<S: AsyncStream + 'static>(
     mut stream: S,
     proxy: AWSApiProxy,
-    storage: impl WeightStorage + Clone + Send + Sync + 'static,
+    storage: impl WeightStorage + Clone + 'static,
 ) -> Result<()> {
     loop {
         let mut len_buf = [0u8; 4];
-        if let Err(_) = stream.read_exact(&mut len_buf).await {
+        if stream.read_exact(&mut len_buf).await.is_err() {
             break; // Connection closed
         }
         let total_len = u32::from_be_bytes(len_buf) as usize;

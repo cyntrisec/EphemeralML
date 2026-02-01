@@ -699,26 +699,24 @@ impl PolicyUpdateManager {
                                         true
                                     };
 
-                                    if version_ok {
-                                        if guard.manager.load_policy(&data).is_ok() {
-                                            if let Some(old) = old_policy {
-                                                guard.history.push(old);
-                                                while guard.history.len() > guard.max_history {
-                                                    guard.history.remove(0);
-                                                }
+                                    if version_ok && guard.manager.load_policy(&data).is_ok() {
+                                        if let Some(old) = old_policy {
+                                            guard.history.push(old);
+                                            while guard.history.len() > guard.max_history {
+                                                guard.history.remove(0);
                                             }
-                                            let new_ver = guard
-                                                .manager
-                                                .current_policy()
-                                                .map(|p| p.version)
-                                                .unwrap_or(0);
-                                            guard.version_history.record_transition(
-                                                old_version,
-                                                new_ver,
-                                                "file_watch",
-                                            );
-                                            last_mtime = Some(mtime);
                                         }
+                                        let new_ver = guard
+                                            .manager
+                                            .current_policy()
+                                            .map(|p| p.version)
+                                            .unwrap_or(0);
+                                        guard.version_history.record_transition(
+                                            old_version,
+                                            new_ver,
+                                            "file_watch",
+                                        );
+                                        last_mtime = Some(mtime);
                                     }
                                 }
                             }

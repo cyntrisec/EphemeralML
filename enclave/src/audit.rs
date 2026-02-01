@@ -1,7 +1,6 @@
 use crate::kms_proxy_client::KmsProxyClient;
 use ephemeral_ml_common::{
-    audit::{AuditLogRequest, AuditLogResponse},
-    AuditEventType, AuditLogEntry, AuditSeverity, MessageType, VSockMessage,
+    audit::AuditLogRequest, AuditEventType, AuditLogEntry, AuditSeverity, MessageType, VSockMessage,
 };
 use serde_json::Value;
 use std::collections::HashMap;
@@ -12,6 +11,12 @@ pub struct AuditLogger {
     proxy_client: KmsProxyClient,
 }
 
+impl Default for AuditLogger {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl AuditLogger {
     pub fn new() -> Self {
         Self {
@@ -19,7 +24,7 @@ impl AuditLogger {
         }
     }
 
-    /// Send audit log to host via VSock (primary method for production)
+    #[allow(clippy::too_many_arguments)]
     pub async fn send(
         &self,
         event_type: AuditEventType,

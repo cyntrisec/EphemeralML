@@ -1,11 +1,11 @@
 use crate::{ClientError, FreshnessEnforcer, PolicyManager, Result};
 use coset::{CborSerializable, CoseSign1, Label};
-use ephemeral_ml_common::{current_timestamp, AttestationDocument, PcrMeasurements};
+use ephemeral_ml_common::{AttestationDocument, PcrMeasurements};
 use openssl::hash::MessageDigest;
 use openssl::sign::Verifier;
 use openssl::x509::X509;
 use serde::{Deserialize, Serialize};
-use std::collections::{BTreeMap, HashMap};
+use std::collections::BTreeMap;
 use thiserror::Error;
 
 /// Attestation verification errors
@@ -420,7 +420,7 @@ impl AttestationVerifier {
         let mut hasher = Sha256::new();
         hasher.update(doc.module_id.as_bytes());
         hasher.update(&doc.digest);
-        hasher.update(&doc.timestamp.to_be_bytes());
+        hasher.update(doc.timestamp.to_be_bytes());
         hasher.update(&doc.pcrs.pcr0);
         hasher.update(&doc.pcrs.pcr1);
         hasher.update(&doc.pcrs.pcr2);

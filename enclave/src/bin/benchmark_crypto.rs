@@ -279,8 +279,8 @@ fn bench_receipt_verify() -> serde_json::Value {
     let mut latencies = Vec::with_capacity(NUM_ITERATIONS);
 
     // Warmup
-    for i in 0..NUM_WARMUP {
-        let _ = signed_receipts[i].verify_signature(&public_key).unwrap();
+    for receipt in signed_receipts.iter().take(NUM_WARMUP) {
+        let _ = receipt.verify_signature(&public_key).unwrap();
     }
 
     for i in 0..NUM_ITERATIONS {

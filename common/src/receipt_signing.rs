@@ -226,6 +226,7 @@ impl EnclaveMeasurements {
 
 impl AttestationReceipt {
     /// Create new attestation receipt
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         receipt_id: String,
         protocol_version: u32,

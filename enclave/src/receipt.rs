@@ -6,6 +6,7 @@ use sha2::{Digest, Sha256};
 pub struct ReceiptBuilder;
 
 impl ReceiptBuilder {
+    #[allow(clippy::too_many_arguments)]
     pub fn build<A: AttestationProvider>(
         session: &EnclaveSession,
         provider: &A,

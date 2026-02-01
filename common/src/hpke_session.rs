@@ -109,10 +109,10 @@ impl HPKESession {
 
         let mut hasher = Sha256::new();
         hasher.update(attestation_hash);
-        hasher.update(&keys[0]);
-        hasher.update(&keys[1]);
+        hasher.update(keys[0]);
+        hasher.update(keys[1]);
         hasher.update(client_nonce);
-        hasher.update(&protocol_version.to_be_bytes());
+        hasher.update(protocol_version.to_be_bytes());
 
         let hash = hasher.finalize();
         let mut result = [0u8; 32];
@@ -413,9 +413,9 @@ impl HPKESession {
 
         // Derive nonce from session key, specific sequence number, and transcript hash
         let mut hasher = Sha256::new();
-        hasher.update(&self.session_key);
-        hasher.update(&sequence_number.to_be_bytes());
-        hasher.update(&self.transcript_hash);
+        hasher.update(self.session_key);
+        hasher.update(sequence_number.to_be_bytes());
+        hasher.update(self.transcript_hash);
         hasher.update(b"ChaCha20Poly1305-Nonce");
 
         let hash = hasher.finalize();
@@ -466,6 +466,7 @@ impl HPKESessionManager {
     }
 
     /// Create new HPKE session with attestation binding
+    #[allow(clippy::too_many_arguments)]
     pub fn create_session(
         &mut self,
         session_id: SessionId,

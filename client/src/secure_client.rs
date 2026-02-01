@@ -101,12 +101,12 @@ impl SecureClient for SecureEnclaveClient {
             vec!["gateway".to_string()],
             client_public_bytes,
         )
-        .map_err(|e| ClientError::Client(e))?;
+        .map_err(ClientError::Client)?;
         client_hello.client_nonce = challenge_nonce.as_slice().try_into().unwrap();
 
         let hello_payload = serde_json::to_vec(&client_hello).unwrap();
-        let hello_msg = VSockMessage::new(MessageType::Hello, 0, hello_payload)
-            .map_err(|e| ClientError::Client(e))?;
+        let hello_msg =
+            VSockMessage::new(MessageType::Hello, 0, hello_payload).map_err(ClientError::Client)?;
 
         stream
             .write_all(&hello_msg.encode())
@@ -130,7 +130,7 @@ impl SecureClient for SecureEnclaveClient {
         full_buf.extend_from_slice(&len_buf);
         full_buf.extend_from_slice(&body);
 
-        let response_msg = VSockMessage::decode(&full_buf).map_err(|e| ClientError::Client(e))?;
+        let response_msg = VSockMessage::decode(&full_buf).map_err(ClientError::Client)?;
 
         if response_msg.msg_type != MessageType::Hello {
             return Err(ClientError::Client(EphemeralError::ProtocolError(
@@ -141,16 +141,14 @@ impl SecureClient for SecureEnclaveClient {
         let server_hello: ServerHello = serde_json::from_slice(&response_msg.payload)
             .map_err(|e| ClientError::Client(EphemeralError::SerializationError(e.to_string())))?;
 
-        server_hello
-            .validate()
-            .map_err(|e| ClientError::Client(e))?;
+        server_hello.validate().map_err(ClientError::Client)?;
 
         // 4. Verify Attestation using the production verifier
         // In mock mode, attestation_document is JSON-serialized AttestationDocument
         // In production, it's raw COSE/CBOR
         #[cfg(feature = "mock")]
         let attestation_doc: AttestationDocument = {
-            let mut doc: AttestationDocument = serde_json::from_slice(
+            let doc: AttestationDocument = serde_json::from_slice(
                 &server_hello.attestation_document,
             )
             .unwrap_or(AttestationDocument {
@@ -217,10 +215,10 @@ impl SecureClient for SecureEnclaveClient {
             client_hello.client_nonce,
             3600,
         )
-        .map_err(|e| ClientError::Client(e))?;
+        .map_err(ClientError::Client)?;
 
         hpke.establish(&self.client_private_key.unwrap())
-            .map_err(|e| ClientError::Client(e))?;
+            .map_err(ClientError::Client)?;
 
         // Eagerly zeroize the ephemeral private key now that the session key is derived.
         // This provides forward secrecy: even if memory is later compromised, the
@@ -257,9 +255,7 @@ impl SecureClient for SecureEnclaveClient {
             input_shape: None,
         };
         let plaintext = serde_json::to_vec(&input).unwrap();
-        let encrypted_request = hpke
-            .encrypt(&plaintext)
-            .map_err(|e| ClientError::Client(e))?;
+        let encrypted_request = hpke.encrypt(&plaintext).map_err(ClientError::Client)?;
 
         // 2. Send over VSock (TCP Mock)
         let mut stream = TcpStream::connect(addr)
@@ -267,8 +263,7 @@ impl SecureClient for SecureEnclaveClient {
             .map_err(|e| ClientError::Client(EphemeralError::NetworkError(e.to_string())))?;
 
         let payload = serde_json::to_vec(&encrypted_request).unwrap();
-        let msg =
-            VSockMessage::new(MessageType::Data, 1, payload).map_err(|e| ClientError::Client(e))?;
+        let msg = VSockMessage::new(MessageType::Data, 1, payload).map_err(ClientError::Client)?;
 
         stream
             .write_all(&msg.encode())
@@ -292,7 +287,7 @@ impl SecureClient for SecureEnclaveClient {
         full_buf.extend_from_slice(&len_buf);
         full_buf.extend_from_slice(&body);
 
-        let response_msg = VSockMessage::decode(&full_buf).map_err(|e| ClientError::Client(e))?;
+        let response_msg = VSockMessage::decode(&full_buf).map_err(ClientError::Client)?;
 
         if response_msg.msg_type != MessageType::Data {
             return Err(ClientError::Client(EphemeralError::ProtocolError(
@@ -306,7 +301,7 @@ impl SecureClient for SecureEnclaveClient {
         // 4. Decrypt Response
         let response_bytes = hpke
             .decrypt(&encrypted_response)
-            .map_err(|e| ClientError::Client(e))?;
+            .map_err(ClientError::Client)?;
         let output: InferenceHandlerOutput = serde_json::from_slice(&response_bytes)
             .map_err(|e| ClientError::Client(EphemeralError::SerializationError(e.to_string())))?;
 
@@ -327,7 +322,7 @@ impl SecureClient for SecureEnclaveClient {
         if !output
             .receipt
             .verify_signature(&public_key)
-            .map_err(|e| ClientError::Client(e))?
+            .map_err(ClientError::Client)?
         {
             return Err(ClientError::Client(EphemeralError::ValidationError(
                 "Invalid receipt signature".to_string(),

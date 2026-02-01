@@ -1,8 +1,7 @@
 use crate::{EphemeralError, HostError, Result};
 use aws_config::SdkConfig;
 use aws_sdk_kms::Client as KmsClient;
-use ephemeral_ml_common::{KmsRequest, KmsResponse};
-use serde::{Deserialize, Serialize};
+use ephemeral_ml_common::KmsResponse;
 
 /// AWS API Proxy
 #[derive(Clone)]

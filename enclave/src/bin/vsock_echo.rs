@@ -58,5 +58,6 @@ async fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
         eprintln!("Build with: cargo build --features production --bin vsock_echo");
         std::process::exit(1);
     }
+    #[allow(unreachable_code)]
     Ok(())
 }

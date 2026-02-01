@@ -44,11 +44,7 @@ fn run_single_inference(
     let encoding = tokenizer.encode(text, true).expect("tokenization failed");
     let input_ids = encoding.get_ids();
     let token_type_ids = encoding.get_type_ids();
-    let attention_mask: Vec<u32> = encoding
-        .get_attention_mask()
-        .iter()
-        .map(|&v| v as u32)
-        .collect();
+    let attention_mask: Vec<u32> = encoding.get_attention_mask().to_vec();
 
     let input_ids_t = Tensor::new(input_ids, device)
         .unwrap()
@@ -191,9 +187,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let fixed_dek =
         hex::decode("0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef")?;
     let (nonce_bytes, ciphertext) = encrypted_weights.split_at(12);
-    let cipher = ChaCha20Poly1305::new(Key::from_slice(&fixed_dek));
+    let cipher = ChaCha20Poly1305::new(&Key::try_from(fixed_dek.as_slice()).unwrap());
     let weights_plaintext = cipher
-        .decrypt(Nonce::from_slice(nonce_bytes), ciphertext)
+        .decrypt(&Nonce::try_from(nonce_bytes).unwrap(), ciphertext)
         .map_err(|e| format!("decryption failed: {}", e))?;
 
     let config: BertConfig = serde_json::from_slice(&config_bytes)?;

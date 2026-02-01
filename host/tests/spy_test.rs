@@ -5,6 +5,7 @@ use std::fs;
 use std::io::Read;
 
 // Wrapper to satisfy orphan rules for implementing HostProxy in an integration test
+#[allow(dead_code)]
 struct MockProxyWrapper(MockVSockProxy);
 
 impl HostProxy for MockProxyWrapper {

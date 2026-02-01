@@ -198,10 +198,7 @@ impl WeightArrays {
     fn calculate_checksum(data: &[f32]) -> u64 {
         use sha2::{Digest, Sha256};
         let bytes: &[u8] = unsafe {
-            std::slice::from_raw_parts(
-                data.as_ptr() as *const u8,
-                data.len() * std::mem::size_of::<f32>(),
-            )
+            std::slice::from_raw_parts(data.as_ptr() as *const u8, std::mem::size_of_val(data))
         };
         let hash = Sha256::digest(bytes);
         u64::from_be_bytes([

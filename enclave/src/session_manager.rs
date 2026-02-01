@@ -35,16 +35,12 @@ impl EnclaveSession {
 
     /// Decrypt an incoming message
     pub fn decrypt(&mut self, message: &EncryptedMessage) -> Result<Vec<u8>> {
-        self.hpke
-            .decrypt(message)
-            .map_err(|e| EnclaveError::Enclave(e))
+        self.hpke.decrypt(message).map_err(EnclaveError::Enclave)
     }
 
     /// Encrypt an outgoing message
     pub fn encrypt(&mut self, plaintext: &[u8]) -> Result<EncryptedMessage> {
-        self.hpke
-            .encrypt(plaintext)
-            .map_err(|e| EnclaveError::Enclave(e))
+        self.hpke.encrypt(plaintext).map_err(EnclaveError::Enclave)
     }
 
     /// Sign an execution receipt
@@ -57,7 +53,7 @@ impl EnclaveSession {
 
         receipt
             .sign(&self.receipt_signing_key)
-            .map_err(|e| EnclaveError::Enclave(e))
+            .map_err(EnclaveError::Enclave)
     }
 
     /// Explicitly close the session and zeroize sensitive data immediately

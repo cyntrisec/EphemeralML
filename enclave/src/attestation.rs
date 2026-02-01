@@ -1,7 +1,5 @@
 use crate::Result;
-use rsa::{pkcs8::EncodePublicKey, Oaep, RsaPrivateKey};
 use serde::{Deserialize, Serialize};
-use sha2::{Digest, Sha256};
 use zeroize::ZeroizeOnDrop;
 
 // Re-export common types
@@ -377,84 +375,84 @@ impl AttestationProvider for DefaultAttestationProvider {
     fn generate_attestation(&self, nonce: &[u8]) -> Result<AttestationDocument> {
         #[cfg(feature = "production")]
         {
-            return self.nsm_provider.generate_attestation(nonce);
+            self.nsm_provider.generate_attestation(nonce)
         }
 
         #[cfg(not(feature = "production"))]
         {
-            return self.mock_provider.generate_attestation(nonce);
+            self.mock_provider.generate_attestation(nonce)
         }
     }
 
     fn get_pcr_measurements(&self) -> Result<PcrMeasurements> {
         #[cfg(feature = "production")]
         {
-            return self.nsm_provider.get_pcr_measurements();
+            self.nsm_provider.get_pcr_measurements()
         }
 
         #[cfg(not(feature = "production"))]
         {
-            return self.mock_provider.get_pcr_measurements();
+            self.mock_provider.get_pcr_measurements()
         }
     }
 
     fn get_hpke_public_key(&self) -> [u8; 32] {
         #[cfg(feature = "production")]
         {
-            return self.nsm_provider.get_hpke_public_key();
+            self.nsm_provider.get_hpke_public_key()
         }
 
         #[cfg(not(feature = "production"))]
         {
-            return self.mock_provider.get_hpke_public_key();
+            self.mock_provider.get_hpke_public_key()
         }
     }
 
     fn get_hpke_private_key(&self) -> [u8; 32] {
         #[cfg(feature = "production")]
         {
-            return self.nsm_provider.get_hpke_private_key();
+            self.nsm_provider.get_hpke_private_key()
         }
 
         #[cfg(not(feature = "production"))]
         {
-            return self.mock_provider.get_hpke_private_key();
+            self.mock_provider.get_hpke_private_key()
         }
     }
 
     fn get_receipt_public_key(&self) -> [u8; 32] {
         #[cfg(feature = "production")]
         {
-            return self.nsm_provider.get_receipt_public_key();
+            self.nsm_provider.get_receipt_public_key()
         }
 
         #[cfg(not(feature = "production"))]
         {
-            return self.mock_provider.get_receipt_public_key();
+            self.mock_provider.get_receipt_public_key()
         }
     }
 
     fn decrypt_hpke(&self, ciphertext: &[u8]) -> Result<Vec<u8>> {
         #[cfg(feature = "production")]
         {
-            return self.nsm_provider.decrypt_hpke(ciphertext);
+            self.nsm_provider.decrypt_hpke(ciphertext)
         }
 
         #[cfg(not(feature = "production"))]
         {
-            return self.mock_provider.decrypt_hpke(ciphertext);
+            self.mock_provider.decrypt_hpke(ciphertext)
         }
     }
 
     fn decrypt_kms(&self, ciphertext: &[u8]) -> Result<Vec<u8>> {
         #[cfg(feature = "production")]
         {
-            return self.nsm_provider.decrypt_kms(ciphertext);
+            self.nsm_provider.decrypt_kms(ciphertext)
         }
 
         #[cfg(not(feature = "production"))]
         {
-            return self.mock_provider.decrypt_kms(ciphertext);
+            self.mock_provider.decrypt_kms(ciphertext)
         }
     }
 }

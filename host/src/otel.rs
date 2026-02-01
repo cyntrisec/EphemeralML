@@ -1,7 +1,7 @@
 use opentelemetry::{global, trace::TracerProvider, KeyValue};
 use opentelemetry_sdk::{
     runtime::Tokio,
-    trace::{self, RandomIdGenerator, Sampler},
+    trace::{RandomIdGenerator, Sampler},
     Resource,
 };
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
@@ -29,14 +29,11 @@ pub fn init() {
     // Tracer provider (batch exporter on Tokio runtime)
     let provider = opentelemetry_sdk::trace::TracerProvider::builder()
         .with_batch_exporter(exporter, Tokio)
-        .with_config(
-            trace::Config::default()
-                .with_resource(resource)
-                .with_sampler(Sampler::ParentBased(Box::new(Sampler::TraceIdRatioBased(
-                    0.1,
-                ))))
-                .with_id_generator(RandomIdGenerator::default()),
-        )
+        .with_resource(resource)
+        .with_sampler(Sampler::ParentBased(Box::new(Sampler::TraceIdRatioBased(
+            0.1,
+        ))))
+        .with_id_generator(RandomIdGenerator::default())
         .build();
 
     let tracer = provider.tracer("ephemeralml");

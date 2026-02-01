@@ -7,14 +7,20 @@ use ephemeral_ml_common::{
     KmsProxyErrorCode, KmsProxyRequestEnvelope, KmsProxyResponseEnvelope, KmsRequest, KmsResponse,
 };
 use hpke::{aead::ChaCha20Poly1305, kem::X25519HkdfSha256, Deserializable, OpModeS, Serializable};
-use rand::rngs::{OsRng, StdRng};
-use rand::{RngCore, SeedableRng};
+use rand::rngs::OsRng;
+use rand::RngCore;
 use std::collections::HashMap;
 use std::time::Instant;
-use tokio::time::{sleep, timeout, Duration};
+use tokio::time::Duration;
 
 #[cfg(feature = "production")]
 use aws_sdk_kms::Client;
+#[cfg(feature = "production")]
+use rand::rngs::StdRng;
+#[cfg(feature = "production")]
+use rand::SeedableRng;
+#[cfg(feature = "production")]
+use tokio::time::{sleep, timeout};
 
 /// KMS Proxy Server
 pub struct KmsProxyServer {
@@ -41,6 +47,12 @@ impl Clone for KmsProxyServer {
             #[cfg(feature = "production")]
             kms_client: self.kms_client.clone(),
         }
+    }
+}
+
+impl Default for KmsProxyServer {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
@@ -79,10 +91,10 @@ impl KmsProxyServer {
 
         // Hard deadline (end-to-end budget) for the whole operation.
         let deadline = Duration::from_millis(800);
-        let started = Instant::now();
+        let _started = Instant::now();
 
         let (response, kms_request_id) = self
-            .handle_request_with_deadline(env.request, started, deadline)
+            .handle_request_with_deadline(env.request, _started, deadline)
             .await;
 
         match &response {
@@ -109,11 +121,14 @@ impl KmsProxyServer {
     async fn handle_request_with_deadline(
         &mut self,
         request: KmsRequest,
-        started: Instant,
-        deadline: Duration,
+        _started: Instant,
+        _deadline: Duration,
     ) -> (KmsResponse, Option<String>) {
         match request {
-            KmsRequest::GenerateDataKey { key_id, key_spec } => {
+            KmsRequest::GenerateDataKey {
+                key_id,
+                key_spec: _key_spec,
+            } => {
                 // If we have a real KMS client, use it.
                 #[cfg(feature = "production")]
                 if let Some(client) = &self.kms_client {
@@ -237,7 +252,7 @@ impl KmsProxyServer {
 
                 (
                     KmsResponse::GenerateDataKey {
-                        key_id: key_id,
+                        key_id,
                         ciphertext_blob: key.to_vec(),
                         plaintext: key.to_vec(),
                     },
@@ -246,9 +261,9 @@ impl KmsProxyServer {
             }
             KmsRequest::Decrypt {
                 ciphertext_blob,
-                key_id,
+                key_id: _key_id,
                 recipient,
-                encryption_context,
+                encryption_context: _encryption_context,
                 ..
             } => {
                 // If we have a real KMS client and a recipient (attestation doc), use real KMS.
@@ -490,6 +505,7 @@ impl KmsProxyServer {
     }
 }
 
+#[cfg(feature = "production")]
 fn is_retryable(code: KmsProxyErrorCode) -> bool {
     matches!(
         code,
@@ -499,6 +515,7 @@ fn is_retryable(code: KmsProxyErrorCode) -> bool {
     )
 }
 
+#[cfg(feature = "production")]
 fn classify_aws_error(msg: &str) -> KmsProxyErrorCode {
     let m = msg.to_ascii_lowercase();
     if m.contains("accessdenied") || m.contains("notauthorized") || m.contains("unauthorized") {

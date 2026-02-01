@@ -185,7 +185,6 @@ fn run(mode: Mode) {
                     KmsProxyRequestEnvelope, KmsProxyResponseEnvelope,
                     generate_id,
                 };
-                use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
                 // 1. Generate an RSA keypair and request an attestation document that embeds the recipient public key.
                 // KMS requires the enclave public key to be present in the attestation doc when using RecipientInfo.
@@ -274,7 +273,7 @@ fn run(mode: Mode) {
                             key_id: Some(key_id),
                             encryption_context: None,
                             grant_tokens: None,
-                            recipient: Some(attestation_doc.into()),
+                            recipient: Some(attestation_doc),
                         };
                         let decrypt_env = KmsProxyRequestEnvelope {
                             request_id: generate_id(),
@@ -508,8 +507,8 @@ fn fetch_artifact(model_key: &str) -> Vec<u8> {
 /// We repeat `ROUNDS` times and return the median.
 fn measure_vsock_rtt(payload_size: usize) -> f64 {
     use ephemeral_ml_common::{
-        audit::{AuditLogRequest, AuditLogResponse},
-        AuditEventType, AuditLogEntry, AuditSeverity, MessageType, VSockMessage,
+        audit::AuditLogRequest, AuditEventType, AuditLogEntry, AuditSeverity, MessageType,
+        VSockMessage,
     };
 
     const ROUNDS: usize = 10;
@@ -553,10 +552,9 @@ fn measure_vsock_rtt(payload_size: usize) -> f64 {
         let _ = stream.write_all(&encoded);
         let mut len_buf = [0u8; 4];
         let _ = stream.read_exact(&mut len_buf);
-        if let Ok(len) = len_buf.try_into().map(u32::from_be_bytes) {
-            let mut body = vec![0u8; len as usize];
-            let _ = stream.read_exact(&mut body);
-        }
+        let len = u32::from_be_bytes(len_buf);
+        let mut body = vec![0u8; len as usize];
+        let _ = stream.read_exact(&mut body);
     }
 
     for _ in 0..ROUNDS {
@@ -600,7 +598,7 @@ fn measure_vsock_rtt(payload_size: usize) -> f64 {
 }
 
 async fn run_benchmark() {
-    use candle_core::{Device, Tensor};
+    use candle_core::Device;
     use candle_nn::VarBuilder;
     use candle_transformers::models::bert::{BertModel, Config as BertConfig};
     use chacha20poly1305::{aead::Aead, ChaCha20Poly1305, Key, KeyInit, Nonce};
@@ -805,9 +803,11 @@ async fn run_benchmark() {
     eprintln!("[bench] Stage 4: Decrypting model weights");
     let decrypt_start = Instant::now();
     let (nonce_bytes, ciphertext) = encrypted_weights.split_at(12);
-    let cipher = ChaCha20Poly1305::new(Key::from_slice(&fixed_dek));
+    let key: &Key = (&fixed_dek[..]).try_into().expect("invalid key length");
+    let cipher = ChaCha20Poly1305::new(key);
+    let nonce: &Nonce = nonce_bytes.try_into().expect("invalid nonce length");
     let weights_plaintext = cipher
-        .decrypt(Nonce::from_slice(nonce_bytes), ciphertext)
+        .decrypt(nonce, ciphertext)
         .expect("weight decryption failed");
     let model_decrypt_ms = decrypt_start.elapsed().as_secs_f64() * 1000.0;
     let plaintext_size = weights_plaintext.len();
@@ -967,11 +967,7 @@ fn run_single_inference(
     let encoding = tokenizer.encode(text, true).expect("tokenization failed");
     let input_ids = encoding.get_ids();
     let token_type_ids = encoding.get_type_ids();
-    let attention_mask: Vec<u32> = encoding
-        .get_attention_mask()
-        .iter()
-        .map(|&v| v as u32)
-        .collect();
+    let attention_mask: Vec<u32> = encoding.get_attention_mask().to_vec();
 
     let input_ids_t = Tensor::new(input_ids, device)
         .unwrap()
@@ -1025,7 +1021,7 @@ fn main() {
     // If the enclave panics and exits immediately, we lose all visibility.
     // Catch panics, log them, then sleep forever so `nitro-cli console` (or attach-console) can inspect.
     let res = std::panic::catch_unwind(|| run(mode));
-    if let Err(_) = res {
+    if res.is_err() {
         eprintln!("[enclave] PANIC: caught unwind; sleeping forever for debugging");
         loop {
             std::thread::sleep(std::time::Duration::from_secs(60));

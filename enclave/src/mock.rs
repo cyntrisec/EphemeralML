@@ -7,7 +7,7 @@ use crate::assembly::{CandleModel, TopologyKey};
 use crate::inference_handler::InferenceHandler;
 use crate::session_manager::{EnclaveSession, SessionManager};
 pub use ephemeral_ml_common::{AttestationDocument, MessageType, PcrMeasurements, VSockMessage};
-use rsa::{pkcs8::EncodePublicKey, Oaep, RsaPrivateKey, RsaPublicKey};
+use rsa::{pkcs8::EncodePublicKey, Oaep, RsaPrivateKey};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::collections::HashMap;
@@ -499,7 +499,7 @@ impl MockEnclaveServer {
             full_buf.extend_from_slice(&len_buf);
             full_buf.extend_from_slice(&body);
 
-            let msg = VSockMessage::decode(&full_buf).map_err(|e| EnclaveError::Enclave(e))?;
+            let msg = VSockMessage::decode(&full_buf).map_err(EnclaveError::Enclave)?;
 
             match msg.msg_type {
                 MessageType::Hello => {
@@ -508,9 +508,7 @@ impl MockEnclaveServer {
                             EnclaveError::Enclave(EphemeralError::SerializationError(e.to_string()))
                         })?;
 
-                    client_hello
-                        .validate()
-                        .map_err(|e| EnclaveError::Enclave(e))?;
+                    client_hello.validate().map_err(EnclaveError::Enclave)?;
 
                     // Establish Session with per-session ephemeral keys (forward secrecy)
                     let session_id = "session-id".to_string();
@@ -528,19 +526,19 @@ impl MockEnclaveServer {
                         session_id.clone(),
                         1,
                         attestation_hash,
-                        ephemeral_public_key,              // Per-session ephemeral PK
+                        ephemeral_public_key, // Per-session ephemeral PK
                         client_hello.ephemeral_public_key, // Peer PK
                         client_hello.client_nonce,
                         3600,
                     )
-                    .map_err(|e| EnclaveError::Enclave(e))?;
+                    .map_err(EnclaveError::Enclave)?;
 
                     hpke.establish(&session_keypair.private_key)
-                        .map_err(|e| EnclaveError::Enclave(e))?;
+                        .map_err(EnclaveError::Enclave)?;
                     drop(session_keypair);
 
                     let receipt_key =
-                        ReceiptSigningKey::generate().map_err(|e| EnclaveError::Enclave(e))?;
+                        ReceiptSigningKey::generate().map_err(EnclaveError::Enclave)?;
                     let receipt_pk = receipt_key.public_key_bytes();
 
                     let session = EnclaveSession::new(
@@ -558,12 +556,12 @@ impl MockEnclaveServer {
                         ephemeral_public_key.to_vec(),
                         receipt_pk.to_vec(),
                     )
-                    .map_err(|e| EnclaveError::Enclave(e))?;
+                    .map_err(EnclaveError::Enclave)?;
 
                     let response_payload = serde_json::to_vec(&server_hello).unwrap();
                     let response_msg =
                         VSockMessage::new(MessageType::Hello, msg.sequence, response_payload)
-                            .map_err(|e| EnclaveError::Enclave(e))?;
+                            .map_err(EnclaveError::Enclave)?;
 
                     stream
                         .write_all(&response_msg.encode())
@@ -581,7 +579,7 @@ impl MockEnclaveServer {
                     let response_payload = serde_json::to_vec(&encrypted_response).unwrap();
                     let response_msg =
                         VSockMessage::new(MessageType::Data, msg.sequence, response_payload)
-                            .map_err(|e| EnclaveError::Enclave(e))?;
+                            .map_err(EnclaveError::Enclave)?;
 
                     stream
                         .write_all(&response_msg.encode())
@@ -603,20 +601,5 @@ impl MockEnclaveServer {
 impl Clone for MockInferenceEngine {
     fn clone(&self) -> Self {
         Self
-    }
-}
-
-// Note: Clone for InferenceHandler is now derived in inference_handler.rs
-// The manual impl with NewCopyBridge was removed to avoid conflicts.
-
-trait NewCopyBridge {
-    fn new_copy_bridge(&self) -> Self
-    where
-        Self: Sized;
-}
-
-impl NewCopyBridge for MockAttestationProvider {
-    fn new_copy_bridge(&self) -> Self {
-        self.new_copy()
     }
 }
