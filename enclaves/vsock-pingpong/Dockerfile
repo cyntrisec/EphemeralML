@@ -26,7 +26,7 @@ RUN cargo build --release --target x86_64-unknown-linux-musl --manifest-path enc
 
 FROM busybox:1.36
 
-COPY --from=build /app/enclaves/vsock-pingpong/target/x86_64-unknown-linux-musl/release/vsock-pingpong /vsock-pingpong
+COPY --from=build /app/target/x86_64-unknown-linux-musl/release/vsock-pingpong /vsock-pingpong
 COPY enclaves/vsock-pingpong/init.sh /init
 RUN chmod +x /vsock-pingpong /init
 
