@@ -6,9 +6,12 @@ FROM rust:alpine AS build
 RUN apk add --no-cache musl-dev
 WORKDIR /app
 
-# We need the workspace dependency (../../common). Build context is the repo root.
-# Copy manifests first for better caching.
-# (workspace root Cargo.toml not required; common/ is buildable standalone)
+# Build context is the repo root. Copy manifests first for better caching.
+# Workspace root Cargo.toml is required for workspace dependency inheritance.
+# We trim the workspace members to only what we need for the enclave build.
+COPY Cargo.toml ./Cargo.toml
+RUN sed -i 's/members = \[/members = [/' Cargo.toml && \
+    sed -i '/"client"/d; /"host"/d; /"enclave"/d' Cargo.toml
 COPY enclaves/vsock-pingpong/Cargo.toml ./enclaves/vsock-pingpong/Cargo.toml
 COPY Cargo.lock* ./Cargo.lock
 COPY common/Cargo.toml ./common/Cargo.toml
