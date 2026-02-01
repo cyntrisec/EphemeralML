@@ -1,0 +1,78 @@
+{
+  "benchmark": "concurrency_scaling",
+  "commit": "dfda772",
+  "environment": "bare_metal",
+  "hardware": "m6i.xlarge",
+  "model": "MiniLM-L6-v2",
+  "iterations_per_thread": 50,
+  "warmup": 3,
+  "levels": [
+    {
+      "concurrency": 1,
+      "iterations_per_thread": 50,
+      "total_inferences": 50,
+      "wall_time_ms": 4022.48,
+      "throughput_inferences_per_sec": 12.43,
+      "latency_ms": {
+        "mean": 80.44,
+        "p50": 80.38,
+        "p95": 82.72,
+        "p99": 83.35,
+        "min": 78.73,
+        "max": 83.35
+      }
+    },
+    {
+      "concurrency": 2,
+      "iterations_per_thread": 50,
+      "total_inferences": 100,
+      "wall_time_ms": 6985.03,
+      "throughput_inferences_per_sec": 14.32,
+      "latency_ms": {
+        "mean": 139.67,
+        "p50": 138.67,
+        "p95": 145.74,
+        "p99": 151.66,
+        "min": 132.57,
+        "max": 152.34
+      }
+    },
+    {
+      "concurrency": 4,
+      "iterations_per_thread": 50,
+      "total_inferences": 200,
+      "wall_time_ms": 14050.27,
+      "throughput_inferences_per_sec": 14.23,
+      "latency_ms": {
+        "mean": 276.96,
+        "p50": 284.99,
+        "p95": 332.45,
+        "p99": 343.0,
+        "min": 79.21,
+        "max": 380.78
+      }
+    },
+    {
+      "concurrency": 8,
+      "iterations_per_thread": 50,
+      "total_inferences": 400,
+      "wall_time_ms": 28161.72,
+      "throughput_inferences_per_sec": 14.2,
+      "latency_ms": {
+        "mean": 558.71,
+        "p50": 559.96,
+        "p95": 657.11,
+        "p99": 698.08,
+        "min": 255.2,
+        "max": 760.49
+      }
+    }
+  ],
+  "scaling_efficiency": [
+    { "concurrency": 1, "throughput": 12.43, "speedup": 1.0, "efficiency_pct": 100.0 },
+    { "concurrency": 2, "throughput": 14.32, "speedup": 1.15, "efficiency_pct": 57.6 },
+    { "concurrency": 4, "throughput": 14.23, "speedup": 1.14, "efficiency_pct": 28.62 },
+    { "concurrency": 8, "throughput": 14.2, "speedup": 1.14, "efficiency_pct": 14.28 }
+  ],
+  "timestamp": "1769980275Z"
+}

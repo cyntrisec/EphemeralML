@@ -129,6 +129,8 @@ aws ssm send-command --instance-ids i-XXXX \
 - **Baseline**: `enclave/src/bin/benchmark_baseline.rs` — runs on host, outputs JSON to stdout
 - **Enclave**: `enclaves/vsock-pingpong` with `--mode benchmark` — runs inside Nitro Enclave, outputs JSON via `nitro-cli console`
 - **Crypto**: `enclave/src/bin/benchmark_crypto.rs` — Tier 4 crypto primitives (HPKE, Ed25519, receipts), runs on host
+- **E2E**: `client/src/bin/benchmark_e2e.rs` — full HPKE encrypt→decrypt→receipt→encrypt pipeline + TCP handshake, runs on host
+- **Concurrent**: `enclave/src/bin/benchmark_concurrent.rs` — N-thread (1/2/4/8) inference scaling, runs on host
 - **Orchestration**: `scripts/run_benchmark.sh` — builds, runs, captures, compares
 - **Report**: `scripts/benchmark_report.py` — generates markdown comparison (`--baseline`, `--enclave`, optional `--crypto`)
 - **Model prep**: `scripts/prepare_benchmark_model.sh` — downloads MiniLM, encrypts, optionally uploads to S3
@@ -169,6 +171,27 @@ Raw results in `benchmark_results/`. The v3 results are the definitive run (v1/v
 
 **Output Quality:** Cosine similarity = 1.000000 (embeddings are bit-identical between bare-metal and enclave).
 
+**E2E Encrypted Request (bare metal m6i.xlarge):**
+| Component | Mean |
+|-----------|------|
+| Per-request crypto | 0.162ms |
+| Session setup | 0.137ms |
+| TCP handshake | 0.176ms |
+
+**Concurrency Scaling (bare metal m6i.xlarge, 50 iter/thread):**
+| Threads | Throughput | Mean Latency | Efficiency |
+|---------|-----------|-------------|-----------|
+| 1 | 12.43 inf/s | 80.4ms | 100% |
+| 2 | 14.32 inf/s | 139.7ms | 57.6% |
+| 4 | 14.23 inf/s | 277.0ms | 28.6% |
+| 8 | 14.20 inf/s | 558.7ms | 14.3% |
+
+**Cost Analysis (m6i.xlarge @ $0.192/hr):**
+| Metric | Bare Metal | Enclave |
+|--------|-----------|---------|
+| Cost/1M inferences | $4.34 | $4.97 |
+| Cost multiplier | — | 1.15x |
+
 **Crypto Primitives (Tier 4, bare metal m6i.xlarge):**
 | Operation | Mean | P99 |
 |-----------|------|-----|
@@ -201,10 +224,9 @@ Key takeaways:
 
 - Enclave `hardware` field shows "unknown" (IMDS not accessible from inside enclave)
 - `commit` shows "unknown" (Docker build arg not propagated into Rust binary at compile time)
-- **Missing Tier 1 metrics**: E2E encrypted request latency (full HPKE pipeline), concurrency scaling
-- **Missing Tier 2 metrics**: Cost per 1K inferences, instance type comparison
+- **Missing Tier 2 metrics**: Instance type comparison (c6i.xlarge, c6i.2xlarge)
 - **Missing Tier 3 metrics**: Full embedding cosine similarity (all 384 dims), output determinism across sessions
-- **Missing Tier 4 metrics**: COSE attestation verification (requires real attestation doc), E2E session establishment
+- **Missing Tier 4 metrics**: COSE attestation verification (requires real Nitro attestation doc)
 - **Missing Tier 5 metrics**: Max concurrent sessions, throughput at saturation, memory under load
 
 ## EC2 Instance Setup & Troubleshooting
@@ -312,5 +334,7 @@ Avoid inline Python with quotes/parens in SSM `--parameters` — SSM's JSON pars
 8. Wait for `BENCHMARK_RESULTS_JSON_END` marker in console log
 9. Extract JSON between `BENCHMARK_RESULTS_JSON_BEGIN` and `BENCHMARK_RESULTS_JSON_END` markers
 10. Run crypto benchmark: `target/release/benchmark_crypto --instance-type m6i.xlarge > crypto_v1.json`
-11. Generate report: `python3 scripts/benchmark_report.py --baseline baseline.json --enclave enclave.json --crypto crypto.json --output report.md`
-12. Cleanup: terminate enclave, kill proxy
+11. Run E2E benchmark: `target/release/benchmark_e2e --model-dir test_artifacts --instance-type m6i.xlarge > e2e_v1.json`
+12. Run concurrency benchmark: `target/release/benchmark_concurrent --model-dir test_artifacts --instance-type m6i.xlarge > concurrent_v1.json`
+13. Generate report: `python3 scripts/benchmark_report.py --baseline baseline.json --enclave enclave.json --crypto crypto.json --output report.md`
+14. Cleanup: terminate enclave, kill proxy

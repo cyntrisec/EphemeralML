@@ -70,6 +70,8 @@ Unlike solutions that use Library OS (LibOS) wrappers like Anjuna or Fortanix, E
 | **Startup Time** | **7.1s measured** (incl. S3 fetch) | **Minutes** (Container boot) | **Minutes** (Consensus) |
 | **Attack Surface** | **Minimal** (Single 9MB binary) | **Large** (Full OS + Python) | **Complex** (Network nodes) |
 | **Crypto Overhead** | **0.027ms/req measured** | Unmeasured | On-chain Metadata |
+| **E2E Crypto** | **0.162ms/req measured** | Unmeasured | N/A |
+| **Cost/1M inf** | **$4.97 (enclave)** | Unknown | High (consensus) |
 | **Quality** | **Cosine sim 1.000** (verified) | Unverified | Unverified |
 
 ---
@@ -151,6 +153,52 @@ Measured on bare metal m6i.xlarge using `benchmark_crypto` (100 iterations, 3 wa
 | CBOR canonical encoding (568B) | 0.0012ms | 0.0013ms |
 
 **Per-inference crypto budget (1KB payload): 0.027ms** — negligible compared to 93ms inference.
+
+### 7. E2E Encrypted Request Overhead
+
+Measured using `benchmark_e2e` on bare metal m6i.xlarge (100 iterations, 3 warmup). Measures the full
+crypto pipeline per request excluding inference: HPKE encrypt request → decrypt → receipt sign → HPKE
+encrypt response → decrypt → verify.
+
+| Component | Mean | P50 | P95 | P99 |
+|-----------|------|-----|-----|-----|
+| Per-request crypto | 0.162ms | 0.160ms | 0.170ms | 0.181ms |
+| Session setup (keygen + HPKE) | 0.137ms | 0.136ms | 0.145ms | 0.160ms |
+| TCP handshake (ClientHello→ServerHello→HPKE) | 0.176ms | 0.173ms | 0.191ms | 0.193ms |
+
+**Per-request crypto overhead is 0.17% of inference time** — effectively invisible to clients.
+
+### 8. Concurrency Scaling
+
+Measured using `benchmark_concurrent` on bare metal m6i.xlarge (50 iterations per thread, 3 warmup).
+Tests N=1,2,4,8 concurrent inference threads sharing a single loaded model via `Arc<BertModel>`.
+
+| Concurrency | Throughput | Mean Latency | P95 Latency | Scaling Efficiency |
+|-------------|-----------|-------------|-------------|-------------------|
+| 1 | 12.43 inf/s | 80.4ms | 82.7ms | 100% |
+| 2 | 14.32 inf/s | 139.7ms | 145.7ms | 57.6% |
+| 4 | 14.23 inf/s | 277.0ms | 332.5ms | 28.6% |
+| 8 | 14.20 inf/s | 558.7ms | 657.1ms | 14.3% |
+
+**Key finding**: Throughput plateaus at ~14.2 inf/s (1.15x single-thread) regardless of thread count.
+The m6i.xlarge has 4 vCPUs total; with 2 allocated to the enclave, the host has 2 remaining. Candle
+inference is CPU-bound — additional threads increase latency without improving throughput.
+
+### 9. Cost Analysis
+
+Based on AWS on-demand pricing (us-east-1) and measured throughput.
+
+| Metric | Bare Metal | Enclave |
+|--------|-----------|---------|
+| Instance | m6i.xlarge @ $0.192/hr | m6i.xlarge @ $0.192/hr |
+| Inferences/hour | 44,280 | 38,664 |
+| Cost per 1K inferences | $0.0043 | $0.0050 |
+| Cost per 1M inferences | $4.34 | $4.97 |
+| Enclave cost multiplier | — | 1.15x |
+
+At $4.97/1M inferences, enclave inference costs 15% more than bare metal — directly proportional
+to the 14.5% latency overhead. For context, GPU TEEs (H100 cGPU) cost ~$3.54/hr for Llama-8B
+serving, making CPU enclaves significantly cheaper for small embedding models.
 
 ---
 
@@ -361,9 +409,9 @@ python3 scripts/benchmark_report.py \
     --baseline benchmark_results/baseline_v3.json \
     --enclave benchmark_results/enclave_v3.json \
     --crypto benchmark_results/crypto_v1.json \
-    --output benchmark_results/benchmark_report_v4.md
+    --output benchmark_results/benchmark_report_v5.md
 ```
 
 Include the commit hash and instance type for reproducibility.
 
-*Last updated from benchmark suite at commit `6a0e5f9` on `m6i.xlarge`, February 2026.*
+*Last updated from benchmark suite at commit `dfda772` on `m6i.xlarge`, February 2026.*

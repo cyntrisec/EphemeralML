@@ -117,11 +117,38 @@ Measured on AWS EC2 m6i.xlarge (4 vCPU, 16GB RAM) with MiniLM-L6-v2 (22.7M param
 | Receipt sign (CBOR + Ed25519) | 0.022ms |
 | **Total crypto overhead** | **0.027ms** |
 
+### E2E Encrypted Request Overhead
+
+| Component | Latency |
+|-----------|---------|
+| Per-request crypto (encrypt+decrypt+receipt) | 0.162ms |
+| Session setup (keygen+HPKE) | 0.137ms |
+| TCP handshake (ClientHello→ServerHello→HPKE) | 0.176ms |
+
+### Concurrency Scaling (bare metal, m6i.xlarge)
+
+| Threads | Throughput | Mean Latency | Scaling Efficiency |
+|---------|-----------|-------------|-------------------|
+| 1 | 12.4 inf/s | 80ms | 100% |
+| 2 | 14.3 inf/s | 140ms | 57.6% |
+| 4 | 14.2 inf/s | 277ms | 28.6% |
+| 8 | 14.2 inf/s | 559ms | 14.3% |
+
+### Cost Analysis (m6i.xlarge @ $0.192/hr)
+
+| Metric | Bare Metal | Enclave |
+|--------|-----------|---------|
+| Cost per 1M inferences | $4.34 | $4.97 |
+| Enclave cost multiplier | — | 1.15x |
+
 ### Key Findings
 
 - **14.5% inference overhead** — on par with AMD SEV-SNP BERT numbers (~16%), competitive with SGX/TDX
 - **Embedding quality preserved** — cosine similarity 1.000000 between bare metal and enclave
 - **Per-inference crypto cost negligible** — 0.027ms vs 93ms inference (0.03%)
+- **E2E crypto overhead** — 0.162ms per request (0.17% of inference time)
+- **Throughput plateaus at ~14.2 inf/s** — CPU-bound on 2 vCPUs; latency scales linearly with concurrency
+- **$4.97 per 1M inferences** in enclave (1.15x bare metal cost)
 - **First published per-inference latency benchmark on AWS Nitro Enclaves**
 
 See [`docs/benchmarks.md`](docs/benchmarks.md) for methodology, competitive analysis, and literature comparison.
