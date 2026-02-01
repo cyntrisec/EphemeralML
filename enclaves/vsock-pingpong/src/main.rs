@@ -507,8 +507,9 @@ fn measure_vsock_rtt(payload_size: usize) -> f64 {
     let mut samples = Vec::with_capacity(ROUNDS);
 
     // Build a StorageRequest whose JSON is padded to approximate the desired payload size.
-    // The actual on-wire framing adds a few bytes, but we're measuring RTT not throughput.
-    let padding = "x".repeat(payload_size.saturating_sub(40)); // subtract base JSON overhead
+    // Cap model_id at 64KB to avoid overwhelming the S3 key lookup on the proxy side.
+    let effective_size = payload_size.min(65536);
+    let padding = "x".repeat(effective_size.saturating_sub(40)); // subtract base JSON overhead
     let req = StorageRequest {
         model_id: format!("__bench_rtt_{}", padding),
         part_index: 0,
@@ -518,20 +519,40 @@ fn measure_vsock_rtt(payload_size: usize) -> f64 {
     let encoded = msg.encode();
 
     for _ in 0..ROUNDS {
-        let mut stream = vsock_connect(8082);
+        let Ok(mut stream) = std::panic::catch_unwind(|| vsock_connect(8082))
+            .map_err(|_| ()) else {
+            eprintln!("[bench] vsock_connect failed for RTT measurement");
+            return 0.0;
+        };
         let start = Instant::now();
-        stream.write_all(&encoded).unwrap();
+        if stream.write_all(&encoded).is_err() {
+            eprintln!("[bench] RTT write failed");
+            continue;
+        }
 
         // Read response (will be StorageResponse::Error for non-existent key)
         let mut len_buf = [0u8; 4];
-        stream.read_exact(&mut len_buf).unwrap();
+        if stream.read_exact(&mut len_buf).is_err() {
+            eprintln!("[bench] RTT read len failed");
+            continue;
+        }
         let len = u32::from_be_bytes(len_buf) as usize;
+        if len > 10 * 1024 * 1024 {
+            eprintln!("[bench] RTT response too large: {}", len);
+            continue;
+        }
         let mut body = vec![0u8; len];
-        stream.read_exact(&mut body).unwrap();
+        if stream.read_exact(&mut body).is_err() {
+            eprintln!("[bench] RTT read body failed");
+            continue;
+        }
 
         samples.push(start.elapsed().as_secs_f64() * 1000.0);
     }
 
+    if samples.is_empty() {
+        return 0.0;
+    }
     samples.sort_by(|a, b| a.partial_cmp(b).unwrap());
     // Return median
     samples[samples.len() / 2]
