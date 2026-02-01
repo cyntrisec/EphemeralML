@@ -114,7 +114,7 @@ These metrics quantify the cost of security features.
 | KMS key release (P50/P99) | ms | Round-trip: enclave → host → AWS KMS → host → enclave | Yes |
 | HPKE session setup | ms | X25519 ECDH + transcript hash + key derivation | **Yes** (0.10ms) |
 | Receipt generation + signing | ms | SHA-256 hashing + Ed25519 sign in `receipt.rs` | **Yes** (0.022ms) |
-| Client-side COSE verification | ms | Certificate chain + COSE signature verify | **No** |
+| Client-side COSE verification | ms | Certificate chain + COSE signature verify | **Yes** (2.998ms full pipeline) |
 | E2E session establishment | ms | ClientHello to first inference-ready state | **Yes** (0.176ms TCP handshake) |
 
 ### Tier 5: Stress & Limits
@@ -253,7 +253,7 @@ and single-session inference latency. The following gaps must be addressed:
 | HPKE session setup timing | **Done** | 0.10ms mean via `benchmark_crypto` |
 | Receipt generation + signing | **Done** | 0.022ms mean (CBOR + Ed25519) via `benchmark_crypto` |
 | HPKE encrypt/decrypt latency | **Done** | 0.005ms (1KB), 1.89ms (1MB) via `benchmark_crypto` |
-| Client-side COSE verification | **Open** | Requires real Nitro attestation document |
+| Client-side COSE verification | **Done** | 2.998ms full pipeline (P-384 + 3-cert chain) via `benchmark_cose` |
 | Output determinism | **Partial** | <1% variance across 4 runs; exact match not yet tested across restarts |
 
 ### 6.3 Desirable Gaps (Tier 5)
@@ -371,7 +371,7 @@ Complete mapping of which papers inform which EphemeralML metrics:
 
 ### Phase 2: Remaining Important Gaps
 
-4. Client-side COSE verification timing (requires real attestation doc)
+4. ~~Client-side COSE verification timing~~ — **Done** (2.998ms, P-384 + 3-cert chain)
 5. Output determinism across enclave restarts
 6. Multi-instance-type comparison (c6i.xlarge, c6i.2xlarge)
 

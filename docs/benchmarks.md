@@ -154,6 +154,22 @@ Measured on bare metal m6i.xlarge using `benchmark_crypto` (100 iterations, 3 wa
 
 **Per-inference crypto budget (1KB payload): 0.027ms** — negligible compared to 93ms inference.
 
+### 6b. COSE Attestation Verification (Client-Side, Tier 4)
+
+Measured using `benchmark_cose` on bare metal m6i.xlarge (100 iterations, 3 warmup).
+Uses P-384 (secp384r1) with SHA-384 — same curve and hash as the AWS Nitro root CA.
+3-cert chain: Root CA → Intermediate → Leaf (mirrors real NSM attestation documents).
+
+| Operation | Mean | P50 | P95 | P99 |
+|-----------|------|-----|-----|-----|
+| COSE_Sign1 signature verify (ECDSA-P384) | 0.737ms | 0.735ms | 0.751ms | 0.762ms |
+| Certificate chain walk (3 certs) | 2.224ms | 2.221ms | 2.245ms | 2.259ms |
+| CBOR payload parse | 0.001ms | 0.002ms | 0.002ms | 0.002ms |
+| **Full verification pipeline** | **2.998ms** | **2.994ms** | **3.031ms** | **3.038ms** |
+
+**Client-side attestation verification costs ~3ms** — a one-time cost per session, not per inference.
+Dominated by the 3-cert chain walk (2.2ms), which requires 3 ECDSA-P384 signature verifications.
+
 ### 7. E2E Encrypted Request Overhead
 
 Measured using `benchmark_e2e` on bare metal m6i.xlarge (100 iterations, 3 warmup). Measures the full

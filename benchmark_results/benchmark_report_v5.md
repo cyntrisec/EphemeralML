@@ -111,3 +111,12 @@ Enclave produces **identical** embeddings to bare metal (cosine sim > 0.9999).
 | Receipt sign | 0.0221ms |
 | HPKE encrypt (response) | 0.0027ms |
 | **Total crypto overhead** | **0.0274ms** |
+
+### COSE Attestation Verification (Client-Side)
+
+| Operation | Mean | P50 | P95 | P99 |
+|-----------|------|-----|-----|-----|
+| COSE_Sign1 signature verify (ECDSA-P384) | 0.7374ms | 0.7354ms | 0.7512ms | 0.7623ms |
+| Certificate chain walk (3 certs) | 2.2236ms | 2.2214ms | 2.2449ms | 2.2590ms |
+| CBOR payload parse | 0.0014ms | 0.0015ms | 0.0019ms | 0.0019ms |
+| **Full verification pipeline** | **2.9975ms** | **2.9941ms** | **3.0305ms** | **3.0381ms** |

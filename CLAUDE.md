@@ -130,6 +130,7 @@ aws ssm send-command --instance-ids i-XXXX \
 - **Enclave**: `enclaves/vsock-pingpong` with `--mode benchmark` — runs inside Nitro Enclave, outputs JSON via `nitro-cli console`
 - **Crypto**: `enclave/src/bin/benchmark_crypto.rs` — Tier 4 crypto primitives (HPKE, Ed25519, receipts), runs on host
 - **E2E**: `client/src/bin/benchmark_e2e.rs` — full HPKE encrypt→decrypt→receipt→encrypt pipeline + TCP handshake, runs on host
+- **COSE**: `client/src/bin/benchmark_cose.rs` — COSE_Sign1 verification + P-384 cert chain walk, runs on host
 - **Concurrent**: `enclave/src/bin/benchmark_concurrent.rs` — N-thread (1/2/4/8) inference scaling, runs on host
 - **Orchestration**: `scripts/run_benchmark.sh` — builds, runs, captures, compares
 - **Report**: `scripts/benchmark_report.py` — generates markdown comparison (`--baseline`, `--enclave`, optional `--crypto`)
@@ -206,6 +207,14 @@ Raw results in `benchmark_results/`. The v3 results are the definitive run (v1/v
 | Receipt verify | 0.046ms | 0.054ms |
 | **Per-inference crypto budget (1KB)** | **0.027ms** | — |
 
+**COSE Attestation Verification (client-side, bare metal m6i.xlarge):**
+| Operation | Mean | P99 |
+|-----------|------|-----|
+| COSE_Sign1 signature verify (ECDSA-P384) | 0.737ms | 0.762ms |
+| Certificate chain walk (3 certs) | 2.224ms | 2.259ms |
+| CBOR payload parse | 0.001ms | 0.002ms |
+| **Full verification pipeline** | **2.998ms** | **3.038ms** |
+
 Reproducibility (4 runs total, v1/v2 inference variance <1%):
 - Baseline: mean 80.87ms / 81.0ms / 81.32ms
 - Enclave: mean 92.81ms / 93.58ms / 93.08ms
@@ -226,7 +235,6 @@ Key takeaways:
 - `commit` shows "unknown" (Docker build arg not propagated into Rust binary at compile time)
 - **Missing Tier 2 metrics**: Instance type comparison (c6i.xlarge, c6i.2xlarge)
 - **Missing Tier 3 metrics**: Full embedding cosine similarity (all 384 dims), output determinism across sessions
-- **Missing Tier 4 metrics**: COSE attestation verification (requires real Nitro attestation doc)
 - **Missing Tier 5 metrics**: Max concurrent sessions, throughput at saturation, memory under load
 
 ## EC2 Instance Setup & Troubleshooting
@@ -336,5 +344,6 @@ Avoid inline Python with quotes/parens in SSM `--parameters` — SSM's JSON pars
 10. Run crypto benchmark: `target/release/benchmark_crypto --instance-type m6i.xlarge > crypto_v1.json`
 11. Run E2E benchmark: `target/release/benchmark_e2e --model-dir test_artifacts --instance-type m6i.xlarge > e2e_v1.json`
 12. Run concurrency benchmark: `target/release/benchmark_concurrent --model-dir test_artifacts --instance-type m6i.xlarge > concurrent_v1.json`
-13. Generate report: `python3 scripts/benchmark_report.py --baseline baseline.json --enclave enclave.json --crypto crypto.json --output report.md`
-14. Cleanup: terminate enclave, kill proxy
+13. Run COSE benchmark: `target/release/benchmark_cose --instance-type m6i.xlarge > cose_v1.json`
+14. Generate report: `python3 scripts/benchmark_report.py --baseline baseline.json --enclave enclave.json --crypto crypto.json --output report.md`
+15. Cleanup: terminate enclave, kill proxy

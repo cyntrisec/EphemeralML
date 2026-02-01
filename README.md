@@ -108,14 +108,15 @@ Measured on AWS EC2 m6i.xlarge (4 vCPU, 16GB RAM) with MiniLM-L6-v2 (22.7M param
 | Model Decrypt + Load | 166ms |
 | **Total** | **7,132ms** |
 
-### Security Primitives (per-inference)
+### Security Primitives
 
-| Operation | Latency |
-|-----------|---------|
-| HPKE session setup | 0.10ms |
-| HPKE encrypt + decrypt (1KB) | 0.005ms |
-| Receipt sign (CBOR + Ed25519) | 0.022ms |
-| **Total crypto overhead** | **0.027ms** |
+| Operation | Latency | Frequency |
+|-----------|---------|-----------|
+| COSE attestation verification | 2.998ms | Once per session |
+| HPKE session setup | 0.10ms | Once per session |
+| HPKE encrypt + decrypt (1KB) | 0.005ms | Per inference |
+| Receipt sign (CBOR + Ed25519) | 0.022ms | Per inference |
+| **Total per-inference crypto** | **0.027ms** | Per inference |
 
 ### E2E Encrypted Request Overhead
 
