@@ -727,10 +727,11 @@ async fn run_benchmark() {
         .decrypt(Nonce::from_slice(nonce_bytes), ciphertext)
         .expect("weight decryption failed");
     let model_decrypt_ms = decrypt_start.elapsed().as_secs_f64() * 1000.0;
+    let plaintext_size = weights_plaintext.len();
     eprintln!(
         "[bench] model_decrypt_ms = {:.2} (plaintext={}B)",
         model_decrypt_ms,
-        weights_plaintext.len()
+        plaintext_size
     );
 
     // ── Stage 5: Model deserialization (safetensors → Candle BertModel) ──
@@ -786,20 +787,23 @@ async fn run_benchmark() {
     let throughput = if mean > 0.0 { 1000.0 / mean } else { 0.0 };
 
     // ── Stage 9: VSock RTT measurement ──
+    // Note: RTT measures send(payload_size) + recv(small error response).
+    // This captures transport latency at each payload size accurately.
+    // Upload throughput is derived from 1MB RTT (upload direction only).
     eprintln!("[bench] Stage 9: VSock RTT measurements");
     let rtt_64b = measure_vsock_rtt(64);
     let rtt_1kb = measure_vsock_rtt(1024);
     let rtt_64kb = measure_vsock_rtt(64 * 1024);
     let rtt_1mb = measure_vsock_rtt(1024 * 1024);
-    let vsock_throughput_mbps = if rtt_1mb > 0.0 {
-        (1.0 / (rtt_1mb / 1000.0)) // MB/s
+    let vsock_upload_throughput_mbps = if rtt_1mb > 0.0 {
+        1.0 / (rtt_1mb / 1000.0) // MB/s (upload direction only)
     } else {
         0.0
     };
 
     // ── Stage 10: Memory measurement ──
     let peak_rss_mb = get_peak_rss_mb();
-    let model_size_mb = encrypted_weights.len() as f64 / (1024.0 * 1024.0);
+    let model_size_mb = plaintext_size as f64 / (1024.0 * 1024.0);
 
     // ── Get commit hash ──
     let commit = option_env!("GIT_COMMIT").unwrap_or("unknown");
@@ -842,7 +846,7 @@ async fn run_benchmark() {
             "rtt_1kb_ms": round2(rtt_1kb),
             "rtt_64kb_ms": round2(rtt_64kb),
             "rtt_1mb_ms": round2(rtt_1mb),
-            "throughput_mbps": round2(vsock_throughput_mbps)
+            "upload_throughput_mbps": round2(vsock_upload_throughput_mbps)
         }
     });
 

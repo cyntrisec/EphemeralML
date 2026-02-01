@@ -150,10 +150,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .decrypt(Nonce::from_slice(nonce_bytes), ciphertext)
         .map_err(|e| format!("decryption failed: {}", e))?;
     let model_decrypt_ms = decrypt_start.elapsed().as_secs_f64() * 1000.0;
+    let plaintext_size = weights_plaintext.len();
     eprintln!(
         "[baseline] model_decrypt_ms = {:.2} (plaintext={}B)",
         model_decrypt_ms,
-        weights_plaintext.len()
+        plaintext_size
     );
 
     // ── Stage 3: Model deserialization ──
@@ -207,7 +208,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // ── Stage 7: Memory measurement ──
     let peak_rss_mb = get_peak_rss_mb();
-    let model_size_mb = encrypted_weights.len() as f64 / (1024.0 * 1024.0);
+    let model_size_mb = plaintext_size as f64 / (1024.0 * 1024.0);
 
     // ── Stage 8: Localhost TCP RTT for baseline comparison ──
     // Not applicable for bare metal — set to 0
@@ -254,7 +255,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             "rtt_1kb_ms": 0.0,
             "rtt_64kb_ms": 0.0,
             "rtt_1mb_ms": 0.0,
-            "throughput_mbps": 0.0
+            "upload_throughput_mbps": 0.0
         }
     });
 

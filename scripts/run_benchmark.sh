@@ -9,6 +9,16 @@
 # 5. Runs enclave, captures console output → enclave_results.json
 # 6. Runs benchmark_report.py to compare
 #
+# Prerequisites:
+#   - EC2 instance: m6i.xlarge+ with Nitro Enclaves enabled
+#   - Terraform applied: infra/hello-enclave/ (creates KMS key, IAM role, S3 policy)
+#   - S3 bucket "ephemeral-ml-models-demo" exists with model artifacts uploaded:
+#       ./scripts/prepare_benchmark_model.sh --upload
+#   - KMS alias "alias/ephemeral-ml-test" exists (created by Terraform)
+#   - Instance profile attached with S3 + KMS permissions
+#   - Docker and nitro-cli installed
+#   - Rust toolchain installed
+#
 # Usage:
 #   ./scripts/run_benchmark.sh [--skip-baseline] [--skip-build] [--output-dir DIR]
 
@@ -70,13 +80,13 @@ fi
 # ── Step 2: Build enclave Docker image ──
 if ! $SKIP_BUILD; then
     log "Step 2: Building enclave Docker image with MODE=benchmark"
-    (cd "$PROJECT_ROOT/enclaves/vsock-pingpong" && \
-        sudo docker build \
-            --build-arg MODE=benchmark \
-            --build-arg GIT_COMMIT="$GIT_COMMIT" \
-            --build-arg INSTANCE_TYPE="$INSTANCE_TYPE" \
-            -t vsock-pingpong-benchmark:latest \
-            . 2>&1 | tail -10)
+    sudo docker build \
+        -f "$PROJECT_ROOT/enclaves/vsock-pingpong/Dockerfile" \
+        --build-arg MODE=benchmark \
+        --build-arg GIT_COMMIT="$GIT_COMMIT" \
+        --build-arg INSTANCE_TYPE="$INSTANCE_TYPE" \
+        -t vsock-pingpong-benchmark:latest \
+        "$PROJECT_ROOT" 2>&1 | tail -10
     log "  Docker image built"
 else
     log "Step 2: Skipping build (--skip-build)"

@@ -120,7 +120,7 @@ def generate_report(baseline: dict, enclave: dict) -> str:
         lines.append(f"| 1 KB | {fmt_ms(e_vsock.get('rtt_1kb_ms', 0.0))} |")
         lines.append(f"| 64 KB | {fmt_ms(e_vsock.get('rtt_64kb_ms', 0.0))} |")
         lines.append(f"| 1 MB | {fmt_ms(e_vsock.get('rtt_1mb_ms', 0.0))} |")
-        lines.append(f"| **Throughput** | **{e_vsock.get('throughput_mbps', 0.0):.1f} MB/s** |")
+        lines.append(f"| **Upload Throughput** | **{e_vsock.get('upload_throughput_mbps', 0.0):.1f} MB/s** |")
         lines.append("")
 
     # Summary
