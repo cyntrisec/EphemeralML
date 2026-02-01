@@ -215,11 +215,11 @@ From the 11 papers analyzed, these are the published overhead numbers for ML inf
 
 ### 5.3 Hardware Configurations
 
-| Instance | vCPUs | RAM | Enclave alloc | Purpose |
-|----------|-------|-----|--------------|---------|
-| c6i.xlarge | 4 | 8GB | 2 vCPU, 1GB | Primary benchmark target |
-| m6i.xlarge | 4 | 16GB | 2 vCPU, 2GB | Memory-headroom comparison |
-| c6i.2xlarge | 8 | 16GB | 4 vCPU, 4GB | Scaling test |
+| Instance | vCPUs | RAM | Enclave alloc | Purpose | Tested? |
+|----------|-------|-----|--------------|---------|---------|
+| m6i.xlarge | 4 | 16GB | 2 vCPU, 4GB | Primary benchmark target | **Yes** (all results) |
+| c6i.xlarge | 4 | 8GB | 2 vCPU, 1GB | Compute-optimized comparison | Planned |
+| c6i.2xlarge | 8 | 16GB | 4 vCPU, 4GB | Scaling test | Planned |
 
 ### 5.4 Models Under Test
 
@@ -384,4 +384,4 @@ Complete mapping of which papers inform which EphemeralML metrics:
 ---
 
 *This specification is derived from analysis of 11 papers in `docs/papers_llm/` and
-the EphemeralML architecture. Last updated at commit `dfe1cc0`, February 2026.*
+the EphemeralML architecture. Last updated at commit `4cfe606`, February 2026.*
