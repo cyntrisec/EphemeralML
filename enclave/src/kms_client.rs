@@ -1,6 +1,7 @@
 use crate::kms_proxy_client::KmsProxyClient;
 use crate::{EnclaveError, EphemeralError, Result};
 use ephemeral_ml_common::{KmsProxyErrorCode, KmsRequest, KmsResponse};
+use std::collections::HashMap;
 
 /// KMS Stub Client for Enclave
 pub struct KmsClient<A: crate::attestation::AttestationProvider> {
@@ -33,7 +34,14 @@ impl<A: crate::attestation::AttestationProvider> KmsClient<A> {
     }
 
     /// Request decryption of a ciphertext using attestation binding
-    pub async fn decrypt(&self, ciphertext: &[u8]) -> Result<Vec<u8>> {
+    ///
+    /// `encryption_context` binds the decrypt call to a specific model/tenant,
+    /// preventing ciphertext replay across different KMS encryption contexts.
+    pub async fn decrypt(
+        &self,
+        ciphertext: &[u8],
+        encryption_context: Option<HashMap<String, String>>,
+    ) -> Result<Vec<u8>> {
         // 1. Generate attestation document with random nonce
         let mut nonce = [0u8; 16];
         rand::RngCore::fill_bytes(&mut rand::thread_rng(), &mut nonce);
@@ -45,7 +53,7 @@ impl<A: crate::attestation::AttestationProvider> KmsClient<A> {
         let request = KmsRequest::Decrypt {
             ciphertext_blob: ciphertext.to_vec(),
             key_id: None,
-            encryption_context: None,
+            encryption_context,
             grant_tokens: None,
             recipient: Some(recipient_bytes),
         };
@@ -104,7 +112,10 @@ mod tests {
         let req = KmsRequest::Decrypt {
             ciphertext_blob: vec![10, 20],
             key_id: Some("key-id".to_string()),
-            encryption_context: None,
+            encryption_context: Some(HashMap::from([
+                ("model_id".to_string(), "test-model".to_string()),
+                ("version".to_string(), "v1".to_string()),
+            ])),
             grant_tokens: None,
             recipient: Some(vec![1, 2, 3]),
         };
@@ -113,5 +124,6 @@ mod tests {
         assert!(json.contains("Decrypt"));
         assert!(json.contains("payload"));
         assert!(json.contains("recipient"));
+        assert!(json.contains("model_id"));
     }
 }

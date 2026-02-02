@@ -361,10 +361,25 @@ impl HPKESession {
         Ok(frame[offset..].to_vec())
     }
 
+    /// Construct Associated Authenticated Data (AAD) for AEAD
+    ///
+    /// Binds the outer EncryptedMessage metadata (protocol_version, session_id,
+    /// sequence_number) to the AEAD tag so a hostile relay cannot splice
+    /// ciphertext between sessions or reorder messages.
+    fn construct_aad(&self, sequence_number: u64) -> Vec<u8> {
+        let mut aad = Vec::new();
+        aad.extend_from_slice(&self.protocol_version.to_be_bytes());
+        let session_id_bytes = self.session_id.as_bytes();
+        aad.extend_from_slice(&(session_id_bytes.len() as u32).to_be_bytes());
+        aad.extend_from_slice(session_id_bytes);
+        aad.extend_from_slice(&sequence_number.to_be_bytes());
+        aad
+    }
+
     /// Encrypt message frame using ChaCha20-Poly1305 AEAD with specific sequence number
     fn encrypt_frame_with_sequence(&self, frame: &[u8], sequence_number: u64) -> Result<Vec<u8>> {
         use chacha20poly1305::{
-            aead::{Aead, KeyInit},
+            aead::{Aead, KeyInit, Payload},
             ChaCha20Poly1305,
         };
 
@@ -376,9 +391,18 @@ impl HPKESession {
         // Generate nonce from the specific sequence number
         let nonce = self.derive_nonce_for_sequence(sequence_number)?;
 
-        // Encrypt with authenticated encryption
+        // Build AAD from session metadata to bind ciphertext to this session
+        let aad = self.construct_aad(sequence_number);
+
+        // Encrypt with authenticated encryption and associated data
         let ciphertext = cipher
-            .encrypt(&nonce.into(), frame)
+            .encrypt(
+                &nonce.into(),
+                Payload {
+                    msg: frame,
+                    aad: &aad,
+                },
+            )
             .map_err(|e| EphemeralError::EncryptionError(format!("Encryption failed: {}", e)))?;
 
         Ok(ciphertext)
@@ -387,7 +411,7 @@ impl HPKESession {
     /// Decrypt message frame using ChaCha20-Poly1305 AEAD
     fn decrypt_frame(&self, ciphertext: &[u8], sequence_number: u64) -> Result<Vec<u8>> {
         use chacha20poly1305::{
-            aead::{Aead, KeyInit},
+            aead::{Aead, KeyInit, Payload},
             ChaCha20Poly1305,
         };
 
@@ -399,9 +423,18 @@ impl HPKESession {
         // Generate nonce from the specific sequence number used for encryption
         let nonce = self.derive_nonce_for_sequence(sequence_number)?;
 
-        // Decrypt with authentication verification
+        // Reconstruct AAD — must match what was used during encryption
+        let aad = self.construct_aad(sequence_number);
+
+        // Decrypt with authentication verification including AAD
         let plaintext = cipher
-            .decrypt(&nonce.into(), ciphertext)
+            .decrypt(
+                &nonce.into(),
+                Payload {
+                    msg: ciphertext,
+                    aad: &aad,
+                },
+            )
             .map_err(|e| EphemeralError::DecryptionError(format!("Decryption failed: {}", e)))?;
 
         Ok(plaintext)
@@ -956,6 +989,65 @@ mod tests {
         let mut bad_session = encrypted.clone();
         bad_session.session_id = "wrong".to_string();
         assert!(server_session.decrypt(&bad_session).is_err());
+    }
+
+    #[test]
+    fn test_aad_cross_session_splice() {
+        use x25519_dalek::{PublicKey, StaticSecret};
+
+        // Session A
+        let a_secret = StaticSecret::random_from_rng(rand::thread_rng());
+        let a_public = PublicKey::from(&a_secret);
+        let a_peer_secret = StaticSecret::random_from_rng(rand::thread_rng());
+        let a_peer_public = PublicKey::from(&a_peer_secret);
+
+        let mut session_a = HPKESession::new(
+            "session-A".to_string(),
+            1,
+            [1u8; 32],
+            *a_public.as_bytes(),
+            *a_peer_public.as_bytes(),
+            [3u8; 12],
+            3600,
+        )
+        .unwrap();
+        session_a.establish(a_secret.as_bytes()).unwrap();
+
+        // Session B (different session_id, same keys for simplicity)
+        let b_secret = StaticSecret::random_from_rng(rand::thread_rng());
+        let b_public = PublicKey::from(&b_secret);
+        let b_peer_secret = StaticSecret::random_from_rng(rand::thread_rng());
+        let b_peer_public = PublicKey::from(&b_peer_secret);
+
+        let mut session_b_receiver = HPKESession::new(
+            "session-B".to_string(),
+            1,
+            [2u8; 32],
+            *b_peer_public.as_bytes(),
+            *b_public.as_bytes(),
+            [4u8; 12],
+            3600,
+        )
+        .unwrap();
+        session_b_receiver
+            .establish(b_peer_secret.as_bytes())
+            .unwrap();
+
+        // Encrypt with session A
+        let encrypted_a = session_a.encrypt(b"secret data").unwrap();
+
+        // Splice: take ciphertext+tag from session A, put into a message claiming session B
+        let spliced = EncryptedMessage {
+            session_id: "session-B".to_string(),
+            protocol_version: encrypted_a.protocol_version,
+            sequence_number: 0,
+            ciphertext: encrypted_a.ciphertext.clone(),
+            auth_tag: encrypted_a.auth_tag,
+        };
+
+        // Decryption must fail because AAD (session_id) doesn't match what was authenticated
+        let result = session_b_receiver.decrypt(&spliced);
+        assert!(result.is_err(), "Cross-session splice should fail due to AAD mismatch");
     }
 
     mod prop_tests {

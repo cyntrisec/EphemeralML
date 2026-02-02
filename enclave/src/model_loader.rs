@@ -48,8 +48,15 @@ impl<A: AttestationProvider> ModelLoader<A> {
             .fetch_model(&manifest.model_id)
             .await?;
 
-        // 3. Unwrap DEK using KMS
-        let dek_bytes = self.kms_client.decrypt(wrapped_dek).await?;
+        // 3. Unwrap DEK using KMS with encryption context binding
+        let encryption_context = Some(std::collections::HashMap::from([
+            ("model_id".to_string(), manifest.model_id.clone()),
+            ("version".to_string(), manifest.version.clone()),
+        ]));
+        let dek_bytes = self
+            .kms_client
+            .decrypt(wrapped_dek, encryption_context)
+            .await?;
 
         if dek_bytes.len() != 32 {
             return Err(EnclaveError::Enclave(EphemeralError::KmsError(format!(
