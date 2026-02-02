@@ -11,6 +11,9 @@
     <link rel="apple-touch-icon" href="favicon.svg" />
     <meta name="theme-color" content="#3b82f6" />
 
+    <!-- Content Security Policy -->
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'" />
+
     <!-- Open Graph / Social Media -->
     <meta property="og:title" content="EphemeralML - Confidential Inference Gateway" />
     <meta property="og:description" content="Defense-in-depth confidential inference system with attestation-gated key release, HPKE encrypted sessions, and attested execution receipts." />
