@@ -1047,7 +1047,10 @@ mod tests {
 
         // Decryption must fail because AAD (session_id) doesn't match what was authenticated
         let result = session_b_receiver.decrypt(&spliced);
-        assert!(result.is_err(), "Cross-session splice should fail due to AAD mismatch");
+        assert!(
+            result.is_err(),
+            "Cross-session splice should fail due to AAD mismatch"
+        );
     }
 
     mod prop_tests {
