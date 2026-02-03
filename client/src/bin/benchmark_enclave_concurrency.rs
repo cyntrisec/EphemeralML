@@ -222,8 +222,8 @@ fn bench_at_concurrency(
 
                 let mut latencies = Vec::with_capacity(ITERATIONS_PER_CLIENT);
                 for i in 0..ITERATIONS_PER_CLIENT {
-                    let text = BENCHMARK_INPUT_TEXTS
-                        [(client_id * 7 + i) % BENCHMARK_INPUT_TEXTS.len()];
+                    let text =
+                        BENCHMARK_INPUT_TEXTS[(client_id * 7 + i) % BENCHMARK_INPUT_TEXTS.len()];
                     let ms = run_e2e_inference(
                         &mut client_session,
                         &mut server_session,
