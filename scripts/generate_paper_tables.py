@@ -176,6 +176,173 @@ def emit_input_scaling_table(data: Dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
+def emit_crypto_table(data: Dict[str, Any]) -> str:
+    lines = []
+    lines.append("% === Crypto primitives (generated) ===")
+    lines.append("\\begin{tabular}{lrr}")
+    lines.append("\\hline")
+    lines.append("\\textbf{Operation} & \\textbf{Mean} & \\textbf{P99} \\\\")
+    lines.append("\\hline")
+
+    hpke = data.get("hpke", {})
+    setup = hpke.get("session_setup_ms", {})
+    keygen = hpke.get("x25519_keygen_ms", {})
+    lines.append(f"HPKE session setup (both sides) & {fmt_ms(setup.get('mean', 0))} & {fmt_ms(setup.get('p99', 0))} \\\\")
+    lines.append(f"X25519 keypair gen & {fmt_ms(keygen.get('mean', 0), 3)} & {fmt_ms(keygen.get('p99', 0), 3)} \\\\")
+
+    enc_dec = hpke.get("encrypt_decrypt", {})
+    for size in ["64B", "1KB", "64KB", "1MB"]:
+        if size in enc_dec:
+            ed = enc_dec[size]
+            lines.append(
+                f"HPKE encrypt {size} & {fmt_ms(ed['encrypt']['mean'], 3)} & {fmt_ms(ed['encrypt']['p99'], 3)} \\\\"
+            )
+            lines.append(
+                f"HPKE decrypt {size} & {fmt_ms(ed['decrypt']['mean'], 3)} & {fmt_ms(ed['decrypt']['p99'], 3)} \\\\"
+            )
+
+    receipt = data.get("receipt", {})
+    lines.append(f"Ed25519 keypair gen & {fmt_ms(receipt.get('ed25519_keygen_ms', {}).get('mean', 0), 3)} & {fmt_ms(receipt.get('ed25519_keygen_ms', {}).get('p99', 0), 3)} \\\\")
+    lines.append(f"Receipt sign (CBOR+Ed25519) & {fmt_ms(receipt.get('sign_ms', {}).get('mean', 0), 3)} & {fmt_ms(receipt.get('sign_ms', {}).get('p99', 0), 3)} \\\\")
+    lines.append(f"Receipt verify & {fmt_ms(receipt.get('verify_ms', {}).get('mean', 0), 3)} & {fmt_ms(receipt.get('verify_ms', {}).get('p99', 0), 3)} \\\\")
+    lines.append("\\hline")
+    lines.append("\\end{tabular}")
+    return "\n".join(lines)
+
+
+def emit_cose_table(data: Dict[str, Any]) -> str:
+    lines = []
+    lines.append("% === COSE attestation verification (generated) ===")
+    lines.append("\\begin{tabular}{lrr}")
+    lines.append("\\hline")
+    lines.append("\\textbf{Operation} & \\textbf{Mean} & \\textbf{P99} \\\\")
+    lines.append("\\hline")
+
+    for key, label in [
+        ("cose_signature_verify_ms", "COSE\\_Sign1 verify (ECDSA-P384)"),
+        ("cert_chain_verify_ms", "Certificate chain walk"),
+        ("cbor_payload_parse_ms", "CBOR payload parse"),
+        ("full_verification_ms", "Full verification pipeline"),
+    ]:
+        m = data.get(key, {})
+        if m:
+            is_total = key == "full_verification_ms"
+            label_fmt = f"\\textbf{{{label}}}" if is_total else label
+            mean_fmt = f"\\textbf{{{fmt_ms(m.get('mean', 0), 3)}}}" if is_total else fmt_ms(m.get('mean', 0), 3)
+            p99_fmt = f"\\textbf{{{fmt_ms(m.get('p99', 0), 3)}}}" if is_total else fmt_ms(m.get('p99', 0), 3)
+            lines.append(f"{label_fmt} & {mean_fmt} & {p99_fmt} \\\\")
+
+    lines.append("\\hline")
+    lines.append("\\end{tabular}")
+    return "\n".join(lines)
+
+
+def emit_e2e_table(data: Dict[str, Any]) -> str:
+    lines = []
+    lines.append("% === E2E encrypted request (generated) ===")
+    lines.append("\\begin{tabular}{lrrrr}")
+    lines.append("\\hline")
+    lines.append("\\textbf{Component} & \\textbf{Mean} & \\textbf{P50} & \\textbf{P95} & \\textbf{P99} \\\\")
+    lines.append("\\hline")
+
+    for key, label in [
+        ("session_setup_ms", "Session setup"),
+        ("per_request_crypto_ms", "Per-request crypto"),
+        ("tcp_handshake_ms", "TCP handshake"),
+    ]:
+        m = data.get(key, {})
+        if m:
+            lines.append(
+                f"{label} & {fmt_ms(m.get('mean', 0), 3)} & {fmt_ms(m.get('p50', 0), 3)} & {fmt_ms(m.get('p95', 0), 3)} & {fmt_ms(m.get('p99', 0), 3)} \\\\"
+            )
+
+    lines.append("\\hline")
+    lines.append("\\end{tabular}")
+    return "\n".join(lines)
+
+
+def emit_concurrent_table(data: Dict[str, Any]) -> str:
+    lines = []
+    lines.append("% === Concurrency scaling (generated) ===")
+    lines.append("\\begin{tabular}{rrrrr}")
+    lines.append("\\hline")
+    lines.append("\\textbf{Threads} & \\textbf{Throughput} & \\textbf{Mean Latency} & \\textbf{P95} & \\textbf{Efficiency} \\\\")
+    lines.append("\\hline")
+
+    for level in data.get("levels", []):
+        n = level.get("concurrency", "?")
+        tp = level.get("throughput_inferences_per_sec", 0)
+        lat = level.get("latency_ms", {})
+        lines.append(
+            f"{n} & {fmt_inf_s(tp)} & {fmt_ms(lat.get('mean', 0))} & {fmt_ms(lat.get('p95', 0))} & "
+        )
+
+    # Overwrite last entries with efficiency from scaling_efficiency
+    lines_out = lines[:5]  # header
+    for level, eff in zip(data.get("levels", []), data.get("scaling_efficiency", [])):
+        n = level.get("concurrency", "?")
+        tp = level.get("throughput_inferences_per_sec", 0)
+        lat = level.get("latency_ms", {})
+        e_pct = eff.get("efficiency_pct", 0)
+        lines_out.append(
+            f"{n} & {fmt_inf_s(tp)} & {fmt_ms(lat.get('mean', 0))} & {fmt_ms(lat.get('p95', 0))} & {e_pct:.1f}\\% \\\\"
+        )
+
+    lines_out.append("\\hline")
+    lines_out.append("\\end{tabular}")
+    return "\n".join(lines_out)
+
+
+def emit_true_e2e_table(data: Dict[str, Any]) -> str:
+    lines = []
+    lines.append("% === True E2E latency (generated) ===")
+    lines.append("\\begin{tabular}{lrrrr}")
+    lines.append("\\hline")
+    lines.append("\\textbf{Metric} & \\textbf{Mean} & \\textbf{P50} & \\textbf{P95} & \\textbf{P99} \\\\")
+    lines.append("\\hline")
+
+    for key, label in [
+        ("session_setup_ms", "Session setup"),
+        ("per_request_e2e_ms", "Per-request E2E"),
+        ("inference_only_ms", "Inference only"),
+    ]:
+        m = data.get(key, {})
+        if m:
+            lines.append(
+                f"{label} & {fmt_ms(m.get('mean', 0))} & {fmt_ms(m.get('p50', 0))} & {fmt_ms(m.get('p95', 0))} & {fmt_ms(m.get('p99', 0))} \\\\"
+            )
+
+    crypto_overhead = data.get("crypto_overhead_ms", 0)
+    lines.append("\\hline")
+    lines.append(f"\\textbf{{Crypto overhead}} & \\multicolumn{{4}}{{r}}{{\\textbf{{{fmt_ms(crypto_overhead, 4)}}}}} \\\\")
+    lines.append("\\hline")
+    lines.append("\\end{tabular}")
+    return "\n".join(lines)
+
+
+def emit_enclave_concurrency_table(data: Dict[str, Any]) -> str:
+    lines = []
+    lines.append("% === Enclave concurrency scaling (generated) ===")
+    lines.append("\\begin{tabular}{rrrrr}")
+    lines.append("\\hline")
+    lines.append("\\textbf{Clients} & \\textbf{Throughput} & \\textbf{Mean Latency} & \\textbf{P95} & \\textbf{Efficiency} \\\\")
+    lines.append("\\hline")
+
+    for level, eff in zip(data.get("levels", []), data.get("scaling_efficiency", [])):
+        n = level.get("concurrency", "?")
+        tp = level.get("throughput_inferences_per_sec", 0)
+        lat = level.get("latency_ms", {})
+        e_pct = eff.get("efficiency_pct", 0)
+        lines.append(
+            f"{n} & {fmt_inf_s(tp)} & {fmt_ms(lat.get('mean', 0))} & {fmt_ms(lat.get('p95', 0))} & {e_pct:.1f}\\% \\\\"
+        )
+
+    lines.append("\\hline")
+    lines.append("\\end{tabular}")
+    lines.append(f"% Notes: {data.get('notes', '')}")
+    return "\n".join(lines)
+
+
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--baseline", required=True)
@@ -185,6 +352,8 @@ def main() -> None:
     ap.add_argument("--e2e", default=None)
     ap.add_argument("--concurrent", default=None)
     ap.add_argument("--input-scaling", default=None)
+    ap.add_argument("--true-e2e", default=None)
+    ap.add_argument("--enclave-concurrency", default=None)
     args = ap.parse_args()
 
     baseline = load_json(args.baseline)
@@ -200,16 +369,29 @@ def main() -> None:
         print()
         print(emit_input_scaling_table(load_json(args.input_scaling)))
 
-    # Extra files are intentionally not emitted as full LaTeX tables yet (kept minimal).
-    for label, path in [
-        ("crypto", args.crypto),
-        ("cose", args.cose),
-        ("e2e", args.e2e),
-        ("concurrent", args.concurrent),
-    ]:
-        if path:
-            data = load_json(path)
-            print(f"% Loaded {label} from {path} (benchmark={data.get('benchmark','unknown')})")
+    if args.crypto:
+        print()
+        print(emit_crypto_table(load_json(args.crypto)))
+
+    if args.cose:
+        print()
+        print(emit_cose_table(load_json(args.cose)))
+
+    if args.e2e:
+        print()
+        print(emit_e2e_table(load_json(args.e2e)))
+
+    if args.concurrent:
+        print()
+        print(emit_concurrent_table(load_json(args.concurrent)))
+
+    if args.true_e2e:
+        print()
+        print(emit_true_e2e_table(load_json(args.true_e2e)))
+
+    if args.enclave_concurrency:
+        print()
+        print(emit_enclave_concurrency_table(load_json(args.enclave_concurrency)))
 
 
 if __name__ == "__main__":

@@ -1,0 +1,99 @@
+{
+  "benchmark": "concurrency_scaling",
+  "commit": "54af4fc",
+  "environment": "bare_metal",
+  "hardware": "",
+  "iterations_per_thread": 50,
+  "levels": [
+    {
+      "concurrency": 1,
+      "iterations_per_thread": 50,
+      "latency_ms": {
+        "max": 82.79,
+        "mean": 80.34,
+        "min": 78.71,
+        "p50": 80.47,
+        "p95": 81.86,
+        "p99": 82.79
+      },
+      "throughput_inferences_per_sec": 12.45,
+      "total_inferences": 50,
+      "wall_time_ms": 4017.26
+    },
+    {
+      "concurrency": 2,
+      "iterations_per_thread": 50,
+      "latency_ms": {
+        "max": 152.64,
+        "mean": 139.29,
+        "min": 131.56,
+        "p50": 138.53,
+        "p95": 148.56,
+        "p99": 151.14
+      },
+      "throughput_inferences_per_sec": 14.36,
+      "total_inferences": 100,
+      "wall_time_ms": 6965.26
+    },
+    {
+      "concurrency": 4,
+      "iterations_per_thread": 50,
+      "latency_ms": {
+        "max": 364.64,
+        "mean": 277.92,
+        "min": 147.23,
+        "p50": 282.95,
+        "p95": 331.92,
+        "p99": 343.55
+      },
+      "throughput_inferences_per_sec": 14.31,
+      "total_inferences": 200,
+      "wall_time_ms": 13973.77
+    },
+    {
+      "concurrency": 8,
+      "iterations_per_thread": 50,
+      "latency_ms": {
+        "max": 754.57,
+        "mean": 557.48,
+        "min": 96.44,
+        "p50": 561.99,
+        "p95": 654.19,
+        "p99": 691.55
+      },
+      "throughput_inferences_per_sec": 14.22,
+      "total_inferences": 400,
+      "wall_time_ms": 28133.13
+    }
+  ],
+  "model": "MiniLM-L6-v2",
+  "scaling_efficiency": [
+    {
+      "concurrency": 1,
+      "efficiency_pct": 100.0,
+      "speedup": 1.0,
+      "throughput": 12.45
+    },
+    {
+      "concurrency": 2,
+      "efficiency_pct": 57.67,
+      "speedup": 1.15,
+      "throughput": 14.36
+    },
+    {
+      "concurrency": 4,
+      "efficiency_pct": 28.73,
+      "speedup": 1.15,
+      "throughput": 14.31
+    },
+    {
+      "concurrency": 8,
+      "efficiency_pct": 14.28,
+      "speedup": 1.14,
+      "throughput": 14.22
+    }
+  ],
+  "timestamp": "1770140797Z",
+  "warmup": 3
+}
+
