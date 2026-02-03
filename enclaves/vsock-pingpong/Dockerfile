@@ -6,6 +6,13 @@ FROM rust:alpine AS build
 RUN apk add --no-cache musl-dev g++ perl make
 WORKDIR /app
 
+# Embed run metadata into the enclave binary at build time.
+# NOTE: Nitro enclaves cannot access EC2 IMDS, so the host passes INSTANCE_TYPE as a build-arg.
+ARG GIT_COMMIT=unknown
+ARG INSTANCE_TYPE=unknown
+ENV GIT_COMMIT=${GIT_COMMIT}
+ENV INSTANCE_TYPE=${INSTANCE_TYPE}
+
 # Build context is the repo root. Copy manifests first for better caching.
 # Workspace root Cargo.toml is required for workspace dependency inheritance.
 # We trim the workspace members to only what we need for the enclave build.

@@ -39,11 +39,11 @@ SKIP_BUILD=false
 ENCLAVE_MEMORY_MB=4096
 ENCLAVE_CPUS=2
 # IMDSv2 requires a token; fall back to IMDSv1, then "unknown"
-IMDS_TOKEN=$(curl -s -X PUT "http://169.254.169.254/latest/api/token" -H "X-aws-ec2-metadata-token-ttl-seconds: 60" 2>/dev/null || true)
+IMDS_TOKEN=$(curl -sf -X PUT "http://169.254.169.254/latest/api/token" -H "X-aws-ec2-metadata-token-ttl-seconds: 60" 2>/dev/null || true)
 if [ -n "$IMDS_TOKEN" ]; then
-    INSTANCE_TYPE=$(curl -s -H "X-aws-ec2-metadata-token: $IMDS_TOKEN" http://169.254.169.254/latest/meta-data/instance-type 2>/dev/null || echo "unknown")
+    INSTANCE_TYPE=$(curl -sf -H "X-aws-ec2-metadata-token: $IMDS_TOKEN" http://169.254.169.254/latest/meta-data/instance-type 2>/dev/null || echo "unknown")
 else
-    INSTANCE_TYPE=$(curl -s http://169.254.169.254/latest/meta-data/instance-type 2>/dev/null || echo "unknown")
+    INSTANCE_TYPE=$(curl -sf http://169.254.169.254/latest/meta-data/instance-type 2>/dev/null || echo "unknown")
 fi
 [ -z "$INSTANCE_TYPE" ] && INSTANCE_TYPE="unknown"
 GIT_COMMIT=$(cd "$PROJECT_ROOT" && git rev-parse --short HEAD 2>/dev/null || echo "unknown")
@@ -63,6 +63,18 @@ log() { echo "[bench $(date -u +%H:%M:%S)] $*"; }
 mkdir -p "$OUTPUT_DIR"
 
 export GIT_COMMIT INSTANCE_TYPE
+
+# Capture run metadata for reproducibility (separate from per-binary JSON outputs).
+RUN_TS="$(date -u +%s)"
+cat >"$OUTPUT_DIR/run_metadata.json" <<EOF
+{
+  "timestamp": "${RUN_TS}Z",
+  "git_commit": "${GIT_COMMIT}",
+  "instance_type": "${INSTANCE_TYPE}",
+  "enclave_memory_mb": ${ENCLAVE_MEMORY_MB},
+  "enclave_cpus": ${ENCLAVE_CPUS}
+}
+EOF
 
 # ── Step 1: Run bare-metal baseline ──
 if ! $SKIP_BASELINE; then
