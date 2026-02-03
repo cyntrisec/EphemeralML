@@ -17,7 +17,7 @@
 
 EphemeralML is a confidential AI inference system that runs ML models inside AWS Nitro Enclaves with end-to-end encryption. The host acts as a blind relay — it cannot decrypt or inspect sensitive data.
 
-**Current status**: v1.0 crypto core and enclave runtime complete (111 tests, 13k+ LOC Rust, benchmarked at 14.5% overhead). Not yet user-deployable — see **Product Roadmap** below for the path from prototype to product.
+**Current status**: v1.0 crypto core and enclave runtime complete (110 tests, 13k+ LOC Rust, benchmarked at 14.5% overhead). Not yet user-deployable — see **Product Roadmap** below for the path from prototype to product.
 
 Target sectors: Defense, GovCloud, Finance, Healthcare.
 
@@ -37,8 +37,8 @@ v1.0 is a working prototype: the crypto protocol is solid (HPKE + AAD + attestat
 
 | Value | Location | What it should be |
 |-------|----------|-------------------|
-| S3 bucket `ephemeral-ml-models-demo` | `host/src/bin/kms_proxy_host.rs:40` | Env var `EPHEMERALML_S3_BUCKET` |
-| VSock port 8082 (host proxy) | `host/src/bin/kms_proxy_host.rs:29` | CLI arg or env var |
+| ~~S3 bucket `ephemeral-ml-models-demo`~~ | ~~`host/src/bin/kms_proxy_host.rs`~~ | ~~Env var `EPHEMERALML_S3_BUCKET`~~ **DONE** (`b325fdd`) |
+| ~~VSock port 8082 (host proxy)~~ | ~~`host/src/bin/kms_proxy_host.rs`~~ | ~~Env var `EPHEMERALML_VSOCK_PORT`~~ **DONE** (`b325fdd`) |
 | Test model ID `test-model-001` | `enclave/src/main.rs:98` | Baked into EIF via Dockerfile ARG |
 | Test artifact hash `542c469d...` | `enclave/src/main.rs:93` | Baked into EIF or removed (boot check is optional) |
 | Signing key `[0u8; 32]` | `enclave/src/main.rs:87` | Baked into EIF via Dockerfile ARG |
@@ -50,7 +50,7 @@ v1.0 is a working prototype: the crypto protocol is solid (HPKE + AAD + attestat
 
 Goal: a user can `terraform apply` + build EIF with their tokenizer + upload their encrypted model + run inference, without editing Rust source.
 
-1. **Env-var configuration for host proxy** — read `EPHEMERALML_S3_BUCKET`, `EPHEMERALML_VSOCK_PORT` from env in `kms_proxy_host.rs` instead of hardcoded constants. Fall back to current values as defaults. This is the single smallest change that unblocks the most.
+1. ~~**Env-var configuration for host proxy**~~ — **DONE** (commit `b325fdd`). `kms_proxy_host.rs` reads `EPHEMERALML_S3_BUCKET` and `EPHEMERALML_VSOCK_PORT` from env, falling back to `ephemeral-ml-models-demo` and `8082` respectively. Startup log shows configured values.
 
 2. **Boot config via VSock handshake** — the enclave cannot read env vars at runtime (Nitro Enclaves have no runtime environment injection; `nitro-cli run-enclave` does not support passing env vars or args). Instead, on boot the enclave should request a config message from the host over VSock (new `MessageType::BootConfig`). The host reads its own env vars or a config file and sends: model_id, S3 artifact key, manifest path, wrapped DEK path. This replaces the hardcoded `test-model-001` and SHA-256 hash in `main.rs`. Note: this config is not security-sensitive (the host is untrusted anyway) — the enclave verifies model integrity via the signed manifest and KMS-gated decryption.
 
@@ -117,7 +117,7 @@ Both tiers should be supported, with Tier 1 as the default.
 
 Phases 1–2 are prerequisites for any user deployment. Phase 3 widens the user base. Phase 4 is for production scale.
 
-Within Phase 1, the priority is: item 1 (S3 bucket env var) → item 3 (Dockerfile ARGs) → item 5 (PCR script) → item 2 (boot config) → item 4 (Terraform env). Item 1 is the smallest change that unblocks the most.
+Within Phase 1, item 1 (S3 bucket env var) is done (`b325fdd`). Remaining priority: item 3 (Dockerfile ARGs) → item 5 (PCR script) → item 2 (boot config) → item 4 (Terraform env).
 
 Within Phase 2, item 8 (cipher mismatch) is done. The remaining items (CLI binary, manifest-driven loading) are the next priorities.
 
@@ -176,6 +176,14 @@ Infrastructure: `infra/hello-enclave/` (Terraform), scripts in `scripts/`.
 ### Cipher Alignment
 
 All encryption/decryption paths now use **ChaCha20-Poly1305**: `scripts/encrypt_model.py`, `scripts/prepare_benchmark_model.sh`, `enclave/src/model_loader.rs`, and benchmark binaries. The cipher mismatch (formerly AES-256-GCM in `encrypt_model.py`) was fixed in commit `321c1f4`.
+
+### Attestation Hash Alignment
+
+As of commit `b325fdd`, `attestation_hash = SHA-256(attestation.signature)` everywhere — server (`server.rs`, `mock.rs`), client (`attestation_verifier.rs`, `secure_client.rs`), and all benchmark binaries. Previously the server hashed `attestation.signature` while the client hashed individual struct fields (module_id, digest, timestamp, pcrs, certificate), causing a silent mismatch masked by the mock verifier bypass.
+
+The mock attestation wire format was also unified: `ServerHello.attestation_document` now contains raw CBOR bytes (matching production), not JSON-serialized `AttestationDocument`. The mock verifier parses the CBOR to extract real HPKE/receipt keys instead of returning zeroed placeholders.
+
+The production `generate_attestation` in `attestation.rs` no longer attempts to parse COSE_Sign1 as a CBOR map (it's a CBOR array); raw NSM bytes are stored directly. **Note:** the production client verifier (`verify_cose_signature`) has not been tested on real Nitro hardware — only the mock path is exercised by the test suite.
 
 ## Build & Test
 
@@ -405,18 +413,25 @@ Benchmark inference logic (`run_single_inference`: tokenize → BERT forward →
 
 ### Benchmark Re-Run Status
 
-The definitive benchmark run was completed on Feb 3, 2026 (commit `3e7b676`). All JSON artifacts in `benchmark_results/run_20260203_v2/` have:
-- `memory.peak_rss_source: "VmHWM"` — confirmed on both baseline and enclave
-- `quality.embedding_sha256` — present on both (different across environments, as expected for f32)
-- Paper tables generated: `paper_tables.tex` (9 LaTeX tables)
-- Benchmark report generated: `benchmark_report.md`
-- Quality determinism analysis: `quality_determinism_results.json`
+The last benchmark run was completed on Feb 3, 2026 (commit `3e7b676`). Results in `benchmark_results/run_20260203_v2/`. This run has known issues: mixed commit/hardware fields across JSONs, `commit` shows "unknown" in enclave output, not a clean single-commit snapshot. **A fresh rerun is needed for publication-quality results.**
+
+As of commit `b325fdd`, the benchmark runner (`run_benchmark.sh`) includes:
+- `--clean` flag to force `cargo clean` before building (ensures `GIT_COMMIT` is baked in via `option_env!()`)
+- Step 8 post-run validation: checks all JSONs agree on `commit` + `hardware`, validates `VmHWM` and `quality.embedding_sha256`
+- `run_metadata.json` written per run with timestamp, git commit, instance type, enclave config
+
+**Rerun procedure:**
+1. Push latest commit, SSH into m6i.xlarge
+2. `git pull && cargo clean` (one-time after checkout)
+3. `./scripts/run_benchmark.sh --clean --output-dir benchmark_results/run_$(date +%Y%m%d_%H%M%S)/`
+4. Repeat 3–5 times for reproducibility data
+5. Step 8 validates each run; all JSONs must agree on commit + instance type
 
 ### Known Limitations & Future Work
 
-- Enclave `hardware` field shows "unknown" (IMDS not accessible from inside enclave)
-- Baseline `hardware` now shows correctly via IMDSv2 token
-- `commit` shows "unknown" in enclave (Docker build arg not propagated into Rust binary at compile time)
+- **Production attestation verifier untested on Nitro** — `verify_cose_signature` parses COSE_Sign1 and validates cert chain, but this path has never run against real NSM output. Mock tests bypass it entirely.
+- Enclave `hardware` field: should now work via Docker build arg `INSTANCE_TYPE` → `option_env!()`, but not yet verified on Nitro
+- Enclave `commit` field: should now work via Docker build arg `GIT_COMMIT` → `option_env!()`, but not yet verified on Nitro
 - **Missing Tier 2 metrics**: Instance type comparison (c6i.xlarge, c6i.2xlarge)
 - **Missing Tier 3 metrics**: Output determinism across enclave restarts (need multiple enclave runs to compare SHA-256)
 - **Missing Tier 5 metrics**: Max concurrent sessions, throughput at saturation, memory under load
@@ -510,9 +525,9 @@ Avoid inline Python with quotes/parens in SSM `--parameters` — SSM's JSON pars
 
 - Binary: `host/src/bin/kms_proxy_host.rs`
 - Build: `cargo build --release --bin kms_proxy_host --features production`
-- Listens on VSock port 8082 (CID 3 = host)
+- Listens on VSock port (default 8082, configurable via `EPHEMERALML_VSOCK_PORT`, CID 3 = host)
 - Handles: KmsProxy (attestation-gated key release), Storage (S3 model fetch), Audit (log forwarding)
-- S3 bucket currently hardcoded: `ephemeral-ml-models-demo` — **must be made configurable via `EPHEMERALML_S3_BUCKET` env var** (Phase 1, item 1 of roadmap)
+- S3 bucket configurable via `EPHEMERALML_S3_BUCKET` env var (default: `ephemeral-ml-models-demo`)
 - Must be running before enclave starts (enclave connects to host CID 3, port 8082)
 
 ### Benchmark Run Sequence
