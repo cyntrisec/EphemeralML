@@ -146,29 +146,11 @@ impl SecureClient for SecureEnclaveClient {
 
         server_hello.validate().map_err(ClientError::Client)?;
 
-        // 4. Verify Attestation using the production verifier
-        // In mock mode, attestation_document is JSON-serialized AttestationDocument
-        // In production, it's raw COSE/CBOR
-        #[cfg(feature = "mock")]
-        let attestation_doc: AttestationDocument = {
-            let doc: AttestationDocument = serde_json::from_slice(
-                &server_hello.attestation_document,
-            )
-            .unwrap_or(AttestationDocument {
-                module_id: "mock".to_string(),
-                digest: vec![],
-                timestamp: server_hello.timestamp,
-                pcrs: ephemeral_ml_common::PcrMeasurements::new(vec![], vec![], vec![]),
-                certificate: vec![],
-                signature: server_hello.attestation_document.clone(),
-                nonce: Some(client_hello.client_nonce.to_vec()),
-            });
-            // Keep original module_id so attestation hash matches server
-            doc
-        };
-        #[cfg(not(feature = "mock"))]
+        // 4. Verify Attestation
+        // ServerHello.attestation_document always contains raw attestation bytes
+        // (COSE_Sign1 in production, CBOR map in mock). The verifier parses them.
         let attestation_doc = AttestationDocument {
-            module_id: "enclave".to_string(),
+            module_id: "mock-enclave".to_string(),
             digest: vec![],
             timestamp: server_hello.timestamp,
             pcrs: ephemeral_ml_common::PcrMeasurements::new(vec![], vec![], vec![]),
@@ -179,25 +161,11 @@ impl SecureClient for SecureEnclaveClient {
 
         let identity = verifier.verify_attestation(&attestation_doc, &client_hello.client_nonce)?;
 
-        // In mock mode, use the receipt signing key from server_hello (identity returns zeros)
-        #[cfg(feature = "mock")]
-        {
-            if server_hello.receipt_signing_key.len() == 32 {
-                let mut key = [0u8; 32];
-                key.copy_from_slice(&server_hello.receipt_signing_key);
-                self.server_receipt_signing_key = Some(key);
-            } else {
-                self.server_receipt_signing_key = Some(identity.receipt_signing_key);
-            }
-        }
-        #[cfg(not(feature = "mock"))]
-        {
-            self.server_receipt_signing_key = Some(identity.receipt_signing_key);
-        }
+        self.server_receipt_signing_key = Some(identity.receipt_signing_key);
         self.server_attestation_doc = Some(server_hello.attestation_document.clone());
 
         // 5. Establish HPKE Session
-        // In mock mode, the attestation bypass returns zeroed keys, so use server_hello's key
+        // Use the per-session ephemeral key from server_hello (correct for both modes)
         let peer_public_key = if server_hello.ephemeral_public_key.len() == 32 {
             let mut key = [0u8; 32];
             key.copy_from_slice(&server_hello.ephemeral_public_key);
@@ -205,9 +173,6 @@ impl SecureClient for SecureEnclaveClient {
         } else {
             identity.hpke_public_key
         };
-
-        #[cfg(feature = "mock")]
-        {}
 
         let mut hpke = HPKESession::new(
             "session-id".to_string(),
@@ -362,9 +327,7 @@ impl SecureClient for SecureEnclaveClient {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use ephemeral_ml_common::{
-        AttestationDocument, EnclaveMeasurements, PcrMeasurements, ReceiptSigningKey, SecurityMode,
-    };
+    use ephemeral_ml_common::{EnclaveMeasurements, ReceiptSigningKey, SecurityMode};
     use sha2::{Digest, Sha256};
     use tokio::net::TcpListener;
 
@@ -388,43 +351,67 @@ mod tests {
             let msg = VSockMessage::decode(&full_buf).unwrap();
             let client_hello: ClientHello = serde_json::from_slice(&msg.payload).unwrap();
 
-            let pcr_val = hex::decode("000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f202122232425262728292a2b2c2d2e2f").unwrap();
-            let attestation = AttestationDocument {
-                module_id: "mock".to_string(),
-                digest: vec![0u8; 32],
-                timestamp: 0,
-                pcrs: PcrMeasurements::new(pcr_val.clone(), pcr_val.clone(), pcr_val),
-                certificate: vec![],
-                signature: vec![0u8; 64],
-                nonce: Some(client_hello.client_nonce.to_vec()),
-            };
-
-            // Compute attestation hash the same way the client verifier does
-            let mut hasher = Sha256::new();
-            hasher.update(attestation.module_id.as_bytes());
-            hasher.update(&attestation.digest);
-            hasher.update(&attestation.timestamp.to_be_bytes());
-            hasher.update(&attestation.pcrs.pcr0);
-            hasher.update(&attestation.pcrs.pcr1);
-            hasher.update(&attestation.pcrs.pcr2);
-            hasher.update(&attestation.certificate);
-            let attestation_hash: [u8; 32] = hasher.finalize().into();
-
             use x25519_dalek::{PublicKey, StaticSecret};
             let server_secret = StaticSecret::from([0u8; 32]);
             let server_public = PublicKey::from(&server_secret);
             let server_pub_key = server_public.to_bytes().to_vec();
             let server_pub_key_fixed = *server_public.as_bytes();
 
-            // Generate real signature
+            // Generate real signature keys
             use ed25519_dalek::SigningKey;
             let signing_key = SigningKey::from_bytes(&[0u8; 32]);
             let verifying_key = signing_key.verifying_key();
 
+            // Build a mock CBOR attestation document (same format as MockAttestationProvider)
+            use std::collections::BTreeMap;
+            let pcr_val = hex::decode("000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f202122232425262728292a2b2c2d2e2f").unwrap();
+
+            let user_data = serde_json::json!({
+                "hpke_public_key": server_pub_key_fixed,
+                "receipt_signing_key": verifying_key.to_bytes(),
+                "protocol_version": 1u32,
+                "supported_features": ["gateway"]
+            });
+            let user_data_bytes = serde_json::to_vec(&user_data).unwrap();
+
+            let mut cbor_map = BTreeMap::new();
+            cbor_map.insert(
+                serde_cbor::Value::Text("module_id".to_string()),
+                serde_cbor::Value::Text("mock-enclave".to_string()),
+            );
+            cbor_map.insert(
+                serde_cbor::Value::Text("user_data".to_string()),
+                serde_cbor::Value::Bytes(user_data_bytes),
+            );
+            let mut pcrs_map = BTreeMap::new();
+            pcrs_map.insert(
+                serde_cbor::Value::Integer(0),
+                serde_cbor::Value::Bytes(pcr_val.clone()),
+            );
+            pcrs_map.insert(
+                serde_cbor::Value::Integer(1),
+                serde_cbor::Value::Bytes(pcr_val.clone()),
+            );
+            pcrs_map.insert(
+                serde_cbor::Value::Integer(2),
+                serde_cbor::Value::Bytes(pcr_val.clone()),
+            );
+            cbor_map.insert(
+                serde_cbor::Value::Text("pcrs".to_string()),
+                serde_cbor::Value::Map(pcrs_map),
+            );
+            let signature_bytes =
+                serde_cbor::to_vec(&serde_cbor::Value::Map(cbor_map)).unwrap();
+
+            // attestation_hash = SHA-256(signature_bytes), matching verifier
+            let mut hasher = Sha256::new();
+            hasher.update(&signature_bytes);
+            let attestation_hash: [u8; 32] = hasher.finalize().into();
+
             let server_hello = ServerHello {
                 version: 1,
                 chosen_features: vec!["gateway".to_string()],
-                attestation_document: serde_json::to_vec(&attestation).unwrap(),
+                attestation_document: signature_bytes.clone(),
                 ephemeral_public_key: server_pub_key,
                 receipt_signing_key: verifying_key.to_bytes().to_vec(),
                 timestamp: 0,
@@ -460,7 +447,6 @@ mod tests {
             .unwrap();
             server_hpke.establish(server_secret.as_bytes()).unwrap();
 
-            // Server must sync sequence number: client encrypted with seq 0, server expects incoming seq 0
             let req_plaintext = match server_hpke.decrypt(&encrypted_request) {
                 Ok(p) => p,
                 Err(e) => {
@@ -469,14 +455,11 @@ mod tests {
             };
             let input: InferenceHandlerInput = serde_json::from_slice(&req_plaintext).unwrap();
 
-            // In the mock, we treat input_data as the tensor for the test
             let output_tensor: Vec<f32> =
                 input.input_data.iter().map(|&x| (x as f32) + 0.1).collect();
 
-            let attestation_doc_bytes = serde_json::to_vec(&attestation).unwrap();
-            let mut hasher = Sha256::new();
-            hasher.update(&attestation_doc_bytes);
-            let attestation_doc_hash: [u8; 32] = hasher.finalize().into();
+            // attestation_doc_hash = SHA-256(signature_bytes) = attestation_hash
+            let attestation_doc_hash = attestation_hash;
 
             let mut signed_receipt = AttestationReceipt::new(
                 "receipt".to_string(),

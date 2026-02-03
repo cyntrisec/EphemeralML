@@ -203,73 +203,21 @@ impl AttestationProvider for NSMAttestationProvider {
         // Generate attestation document using NSM
         let attestation_doc_bytes = self.generate_nsm_attestation(nonce, &user_data_bytes)?;
 
-        // Parse the CBOR attestation document
-        let parsed_doc: serde_cbor::Value = serde_cbor::from_slice(&attestation_doc_bytes)
-            .map_err(|e| {
-                EnclaveError::Enclave(EphemeralError::SerializationError(format!(
-                    "Failed to parse CBOR attestation document: {}",
-                    e
-                )))
-            })?;
-
-        // Extract fields from the CBOR document
-        let doc_map = if let serde_cbor::Value::Map(m) = parsed_doc {
-            m
-        } else {
-            return Err(EnclaveError::Enclave(EphemeralError::AttestationError(
-                "Attestation document is not a CBOR map".to_string(),
-            )));
-        };
-
-        // Extract module_id
-        let module_id = doc_map
-            .get(&serde_cbor::Value::Text("module_id".to_string()))
-            .and_then(|v| {
-                if let serde_cbor::Value::Text(s) = v {
-                    Some(s)
-                } else {
-                    None
-                }
-            })
-            .cloned()
-            .unwrap_or_else(|| "unknown".to_string());
-
-        // Extract digest (PCR measurements hash)
-        let digest = doc_map
-            .get(&serde_cbor::Value::Text("digest".to_string()))
-            .and_then(|v| {
-                if let serde_cbor::Value::Bytes(b) = v {
-                    Some(b)
-                } else {
-                    None
-                }
-            })
-            .cloned()
-            .unwrap_or_default();
-
-        // Extract certificate
-        let certificate = doc_map
-            .get(&serde_cbor::Value::Text("certificate".to_string()))
-            .and_then(|v| {
-                if let serde_cbor::Value::Bytes(b) = v {
-                    Some(b)
-                } else {
-                    None
-                }
-            })
-            .cloned()
-            .unwrap_or_default();
-
         // Get PCR measurements
         let pcrs = self.get_pcr_measurements()?;
 
+        // Store the raw COSE_Sign1 bytes directly in `signature`.
+        // The client verifier will parse the COSE_Sign1 structure (a CBOR array,
+        // not a map) to verify the signature and extract the payload.
+        // The other fields on AttestationDocument are placeholders — the real
+        // data lives inside the COSE_Sign1 payload.
         Ok(AttestationDocument {
-            module_id,
-            digest,
+            module_id: "nitro-enclave".to_string(),
+            digest: vec![],
             timestamp: current_timestamp(),
             pcrs,
-            certificate,
-            signature: attestation_doc_bytes, // Store the full CBOR document as signature
+            certificate: vec![],
+            signature: attestation_doc_bytes,
             nonce: Some(nonce.to_vec()),
         })
     }

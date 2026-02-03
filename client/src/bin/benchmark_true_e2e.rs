@@ -103,20 +103,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         signature: vec![0u8; 64],
         nonce: None,
     };
-    let attestation_doc_bytes = serde_json::to_vec(&attestation)?;
+    // Unified: attestation_hash = attestation_doc_hash = SHA-256(attestation.signature)
     let mut hasher = Sha256::new();
-    hasher.update(attestation.module_id.as_bytes());
-    hasher.update(&attestation.digest);
-    hasher.update(attestation.timestamp.to_be_bytes());
-    hasher.update(&attestation.pcrs.pcr0);
-    hasher.update(&attestation.pcrs.pcr1);
-    hasher.update(&attestation.pcrs.pcr2);
-    hasher.update(&attestation.certificate);
+    hasher.update(&attestation.signature);
     let attestation_hash: [u8; 32] = hasher.finalize().into();
-
-    let mut hasher = Sha256::new();
-    hasher.update(&attestation_doc_bytes);
-    let attestation_doc_hash: [u8; 32] = hasher.finalize().into();
+    let attestation_doc_hash = attestation_hash;
 
     let signing_key = SigningKey::from_bytes(&[7u8; 32]);
     let verifying_key = signing_key.verifying_key();

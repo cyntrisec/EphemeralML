@@ -98,20 +98,54 @@ impl AttestationVerifier {
         doc: &AttestationDocument,
         expected_nonce: &[u8],
     ) -> Result<EnclaveIdentity> {
-        // Mock Bypass — skip COSE/CBOR parsing entirely in mock mode
+        // Mock Bypass — skip COSE/cert verification but parse the CBOR payload
+        // to extract real keys and PCRs from the mock attestation document.
         // SECURITY: This bypass is ONLY allowed in mock mode AND when production feature is disabled
         #[cfg(all(feature = "mock", not(feature = "production")))]
         if doc.module_id == "mock-enclave" || doc.module_id == "mock" {
             let attestation_hash = self.calculate_attestation_hash(doc)?;
+
+            // Try to parse the CBOR payload in doc.signature to extract real keys
+            let (hpke_public_key, receipt_signing_key, measurements, kms_public_key) =
+                if let Ok(parsed) = serde_cbor::from_slice::<serde_cbor::Value>(&doc.signature) {
+                    if let Some(map) = cbor_as_map(&parsed) {
+                        // Extract user_data containing keys
+                        let (hpke_pk, receipt_pk) =
+                            if let Ok(ud_bytes) = get_bytes_field(map, "user_data") {
+                                if let Ok(ud) = serde_json::from_slice::<AttestationUserData>(
+                                    &ud_bytes,
+                                ) {
+                                    (ud.hpke_public_key, ud.receipt_signing_key)
+                                } else {
+                                    ([0u8; 32], [0u8; 32])
+                                }
+                            } else {
+                                ([0u8; 32], [0u8; 32])
+                            };
+
+                        // Extract PCRs
+                        let pcrs = self.extract_pcrs(map).unwrap_or_else(|_| doc.pcrs.clone());
+
+                        // Extract KMS public key
+                        let kms_pk = get_bytes_field(map, "public_key").ok();
+
+                        (hpke_pk, receipt_pk, pcrs, kms_pk)
+                    } else {
+                        ([0u8; 32], [0u8; 32], doc.pcrs.clone(), None)
+                    }
+                } else {
+                    ([0u8; 32], [0u8; 32], doc.pcrs.clone(), None)
+                };
+
             return Ok(EnclaveIdentity {
                 module_id: "mock-enclave".to_string(),
-                measurements: doc.pcrs.clone(),
-                hpke_public_key: [0u8; 32],
-                receipt_signing_key: [0u8; 32],
+                measurements,
+                hpke_public_key,
+                receipt_signing_key,
                 protocol_version: 1,
                 supported_features: vec![],
                 attestation_hash,
-                kms_public_key: None,
+                kms_public_key,
             });
         }
 
@@ -414,22 +448,13 @@ impl AttestationVerifier {
     }
 
     /// Calculate attestation hash for session binding
+    ///
+    /// Uses SHA-256 of the raw attestation bytes (`doc.signature`) which contains
+    /// either COSE_Sign1 (production) or CBOR map (mock). This ensures both server
+    /// and client compute the same hash from the same wire bytes.
     fn calculate_attestation_hash(&self, doc: &AttestationDocument) -> Result<[u8; 32]> {
         use sha2::{Digest, Sha256};
-
-        let mut hasher = Sha256::new();
-        hasher.update(doc.module_id.as_bytes());
-        hasher.update(&doc.digest);
-        hasher.update(doc.timestamp.to_be_bytes());
-        hasher.update(&doc.pcrs.pcr0);
-        hasher.update(&doc.pcrs.pcr1);
-        hasher.update(&doc.pcrs.pcr2);
-        hasher.update(&doc.certificate);
-
-        let hash = hasher.finalize();
-        let mut result = [0u8; 32];
-        result.copy_from_slice(&hash);
-        Ok(result)
+        Ok(Sha256::digest(&doc.signature).into())
     }
 }
 

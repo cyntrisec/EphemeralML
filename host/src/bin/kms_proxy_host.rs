@@ -24,10 +24,18 @@ async fn main() -> Result<()> {
         .with_env_filter(EnvFilter::from_default_env().add_directive(tracing::Level::INFO.into()))
         .init();
 
-    // Hardcoded args
+    // Configuration from environment variables with sensible defaults
+    let s3_bucket = std::env::var("EPHEMERALML_S3_BUCKET")
+        .unwrap_or_else(|_| "ephemeral-ml-models-demo".to_string());
+    let vsock_port: u32 = std::env::var("EPHEMERALML_VSOCK_PORT")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(8082);
+    let tcp_port: u16 = std::env::var("EPHEMERALML_VSOCK_PORT")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(8082);
     let cid = 3;
-    let vsock_port = 8082;
-    let tcp_port = 8082;
     #[cfg(not(feature = "production"))]
     let _ = (cid, vsock_port);
     #[cfg(feature = "production")]
@@ -37,13 +45,19 @@ async fn main() -> Result<()> {
     let proxy = AWSApiProxy::new(&config);
     let s3_client = aws_sdk_s3::Client::new(&config);
     #[cfg(feature = "production")]
-    let storage = S3WeightStorage::new(s3_client, "ephemeral-ml-models-demo".to_string());
+    let storage = S3WeightStorage::new(s3_client, s3_bucket.clone());
     #[cfg(not(feature = "production"))]
     let _ = s3_client;
     #[cfg(not(feature = "production"))]
     let storage = ephemeral_ml_host::storage::InMemoryWeightStorage::new();
 
-    info!(message = "kms-proxy-host starting", event = "startup");
+    info!(
+        message = "kms-proxy-host starting",
+        event = "startup",
+        s3_bucket = %s3_bucket,
+        vsock_port = vsock_port,
+        tcp_port = tcp_port
+    );
 
     #[cfg(feature = "production")]
     {

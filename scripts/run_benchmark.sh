@@ -27,7 +27,15 @@
 #   - Rust toolchain installed
 #
 # Usage:
-#   ./scripts/run_benchmark.sh [--skip-baseline] [--skip-build] [--output-dir DIR]
+#   ./scripts/run_benchmark.sh [--clean] [--skip-baseline] [--skip-build] [--output-dir DIR]
+#
+# Flags:
+#   --clean          Run `cargo clean` before building. Required on the first run after
+#                    a fresh checkout to ensure GIT_COMMIT is baked into all binaries
+#                    (option_env! is evaluated at compile time, not runtime).
+#   --skip-baseline  Skip the bare-metal baseline benchmark.
+#   --skip-build     Reuse existing binaries (skip all cargo build / docker build steps).
+#   --output-dir     Write results to this directory (default: $PROJECT_ROOT/benchmark_results).
 
 set -Eeuo pipefail
 
@@ -36,6 +44,7 @@ PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 OUTPUT_DIR="${OUTPUT_DIR:-$PROJECT_ROOT/benchmark_results}"
 SKIP_BASELINE=false
 SKIP_BUILD=false
+CLEAN_BUILD=false
 ENCLAVE_MEMORY_MB=4096
 ENCLAVE_CPUS=2
 # IMDSv2 requires a token; fall back to IMDSv1, then "unknown"
@@ -53,6 +62,7 @@ while [[ $# -gt 0 ]]; do
     case "$1" in
         --skip-baseline) SKIP_BASELINE=true; shift ;;
         --skip-build) SKIP_BUILD=true; shift ;;
+        --clean) CLEAN_BUILD=true; shift ;;
         --output-dir) OUTPUT_DIR="$2"; shift 2 ;;
         *) echo "Unknown argument: $1"; exit 1 ;;
     esac
@@ -75,6 +85,13 @@ cat >"$OUTPUT_DIR/run_metadata.json" <<EOF
   "enclave_cpus": ${ENCLAVE_CPUS}
 }
 EOF
+
+# ── Step 0: Clean build (optional but recommended for first run after checkout) ──
+# option_env!("GIT_COMMIT") is baked at compile time; stale binaries will have the wrong commit.
+if $CLEAN_BUILD; then
+    log "Step 0: cargo clean (ensures GIT_COMMIT is baked into fresh binaries)"
+    (cd "$PROJECT_ROOT" && cargo clean 2>&1 | tail -3)
+fi
 
 # ── Step 1: Run bare-metal baseline ──
 if ! $SKIP_BASELINE; then
@@ -309,6 +326,70 @@ if [[ -f "$OUTPUT_DIR/baseline_results.json" && -f "$OUTPUT_DIR/enclave_results.
         > "$OUTPUT_DIR/paper_tables_generated.tex" 2>"$OUTPUT_DIR/paper_tables_stderr.log" || true
 else
     log "  Cannot generate report: missing baseline or enclave results"
+fi
+
+# ── Step 8: Validate run consistency ──
+log "Step 8: Validating run consistency"
+VALIDATION_OK=true
+
+for json_file in "$OUTPUT_DIR"/*_results.json; do
+    [ -f "$json_file" ] || continue
+    fname="$(basename "$json_file")"
+
+    # Check commit field
+    file_commit=$(python3 -c "import json,sys; d=json.load(open('$json_file')); print(d.get('commit','MISSING'))" 2>/dev/null || echo "PARSE_ERROR")
+    if [ "$file_commit" = "unknown" ] || [ "$file_commit" = "MISSING" ] || [ "$file_commit" = "PARSE_ERROR" ]; then
+        log "  WARNING: $fname has commit='$file_commit' (expected '$GIT_COMMIT')"
+        VALIDATION_OK=false
+    elif [ "$file_commit" != "$GIT_COMMIT" ]; then
+        log "  WARNING: $fname has commit='$file_commit', expected '$GIT_COMMIT'"
+        VALIDATION_OK=false
+    fi
+
+    # Check hardware field
+    file_hw=$(python3 -c "import json,sys; d=json.load(open('$json_file')); print(d.get('hardware','MISSING'))" 2>/dev/null || echo "PARSE_ERROR")
+    if [ "$file_hw" = "unknown" ] || [ "$file_hw" = "MISSING" ] || [ "$file_hw" = "PARSE_ERROR" ]; then
+        log "  WARNING: $fname has hardware='$file_hw' (expected '$INSTANCE_TYPE')"
+        VALIDATION_OK=false
+    elif [ "$file_hw" != "$INSTANCE_TYPE" ]; then
+        log "  WARNING: $fname has hardware='$file_hw', expected '$INSTANCE_TYPE'"
+        VALIDATION_OK=false
+    fi
+done
+
+# Check VmHWM in baseline
+if [ -f "$OUTPUT_DIR/baseline_results.json" ]; then
+    rss_src=$(python3 -c "import json; d=json.load(open('$OUTPUT_DIR/baseline_results.json')); print(d.get('memory',{}).get('peak_rss_source','MISSING'))" 2>/dev/null || echo "PARSE_ERROR")
+    if [ "$rss_src" != "VmHWM" ]; then
+        log "  WARNING: baseline peak_rss_source='$rss_src' (expected 'VmHWM')"
+        VALIDATION_OK=false
+    fi
+fi
+
+# Check VmHWM in enclave
+if [ -f "$OUTPUT_DIR/enclave_results.json" ]; then
+    rss_src=$(python3 -c "import json; d=json.load(open('$OUTPUT_DIR/enclave_results.json')); print(d.get('memory',{}).get('peak_rss_source','MISSING'))" 2>/dev/null || echo "PARSE_ERROR")
+    if [ "$rss_src" != "VmHWM" ]; then
+        log "  WARNING: enclave peak_rss_source='$rss_src' (expected 'VmHWM')"
+        VALIDATION_OK=false
+    fi
+fi
+
+# Check quality section exists in baseline/enclave
+for key_file in baseline_results.json enclave_results.json; do
+    if [ -f "$OUTPUT_DIR/$key_file" ]; then
+        has_quality=$(python3 -c "import json; d=json.load(open('$OUTPUT_DIR/$key_file')); print('yes' if 'quality' in d and 'embedding_sha256' in d.get('quality',{}) else 'no')" 2>/dev/null || echo "no")
+        if [ "$has_quality" != "yes" ]; then
+            log "  WARNING: $key_file missing quality.embedding_sha256"
+            VALIDATION_OK=false
+        fi
+    fi
+done
+
+if $VALIDATION_OK; then
+    log "  All validations passed"
+else
+    log "  Some validations FAILED — review warnings above before publishing"
 fi
 
 log "Benchmark suite complete. Results in $OUTPUT_DIR/"

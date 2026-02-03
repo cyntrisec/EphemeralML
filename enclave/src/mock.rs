@@ -550,13 +550,9 @@ impl MockEnclaveServer {
                     );
                     session_manager.add_session(session)?;
 
-                    let attestation_doc_bytes =
-                        serde_json::to_vec(&attestation_doc).map_err(|e| {
-                            EnclaveError::Enclave(EphemeralError::SerializationError(e.to_string()))
-                        })?;
                     let server_hello = ServerHello::new(
                         vec!["gateway".to_string()],
-                        attestation_doc_bytes,
+                        attestation_doc.signature.clone(),
                         ephemeral_public_key.to_vec(),
                         receipt_pk.to_vec(),
                     )

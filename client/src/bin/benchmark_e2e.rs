@@ -74,21 +74,9 @@ async fn spawn_mock_server() -> (u16, tokio::task::JoinHandle<()>) {
             nonce: None,
         };
 
-        // Pre-compute attestation hash
+        // Attestation hash = SHA-256(attestation.signature) — unified for both session binding and receipts
         let mut hasher = Sha256::new();
-        hasher.update(attestation.module_id.as_bytes());
-        hasher.update(&attestation.digest);
-        hasher.update(attestation.timestamp.to_be_bytes());
-        hasher.update(&attestation.pcrs.pcr0);
-        hasher.update(&attestation.pcrs.pcr1);
-        hasher.update(&attestation.pcrs.pcr2);
-        hasher.update(&attestation.certificate);
-        let _attestation_hash: [u8; 32] = hasher.finalize().into();
-
-        // Pre-compute attestation doc hash for receipts
-        let attestation_doc_bytes = serde_json::to_vec(&attestation).unwrap();
-        let mut hasher = Sha256::new();
-        hasher.update(&attestation_doc_bytes);
+        hasher.update(&attestation.signature);
         let attestation_doc_hash: [u8; 32] = hasher.finalize().into();
 
         let _server_pub_bytes = *server_public.as_bytes();
@@ -124,7 +112,7 @@ async fn spawn_mock_server() -> (u16, tokio::task::JoinHandle<()>) {
                     let server_hello = ServerHello {
                         version: 1,
                         chosen_features: vec!["gateway".to_string()],
-                        attestation_document: serde_json::to_vec(&att).unwrap(),
+                        attestation_document: att.signature.clone(),
                         ephemeral_public_key: server_public.as_bytes().to_vec(),
                         receipt_signing_key: verifying_key.to_bytes().to_vec(),
                         timestamp: 0,
@@ -213,20 +201,11 @@ fn bench_e2e_crypto_pipeline() -> (serde_json::Value, serde_json::Value) {
         signature: vec![0u8; 64],
         nonce: None,
     };
-    let attestation_doc_bytes = serde_json::to_vec(&attestation).unwrap();
+    // Unified: attestation_hash = attestation_doc_hash = SHA-256(attestation.signature)
     let mut hasher = Sha256::new();
-    hasher.update(attestation.module_id.as_bytes());
-    hasher.update(&attestation.digest);
-    hasher.update(attestation.timestamp.to_be_bytes());
-    hasher.update(&attestation.pcrs.pcr0);
-    hasher.update(&attestation.pcrs.pcr1);
-    hasher.update(&attestation.pcrs.pcr2);
-    hasher.update(&attestation.certificate);
+    hasher.update(&attestation.signature);
     let attestation_hash: [u8; 32] = hasher.finalize().into();
-
-    let mut hasher = Sha256::new();
-    hasher.update(&attestation_doc_bytes);
-    let attestation_doc_hash: [u8; 32] = hasher.finalize().into();
+    let attestation_doc_hash = attestation_hash;
 
     let signing_key = SigningKey::from_bytes(&[7u8; 32]);
     let verifying_key = signing_key.verifying_key();
