@@ -333,11 +333,135 @@ def generate_crypto_report(crypto: dict) -> str:
     return "\n".join(lines)
 
 
+def generate_input_scaling_report(data: dict) -> str:
+    """Generate markdown section for input-shape scaling benchmark."""
+    lines = []
+    lines.append("")
+    lines.append("## Input Size Scaling")
+    lines.append("")
+    lines.append("Measures inference latency as a function of input token count.")
+    lines.append("")
+    lines.append("| Target Tokens | Actual Tokens | Mean | P50 | P95 | P99 |")
+    lines.append("|:---:|:---:|---:|---:|---:|---:|")
+
+    for size in data.get("sizes", []):
+        lat = size.get("latency_ms", {})
+        lines.append(
+            f"| {size.get('target_tokens', '?')} "
+            f"| {size.get('actual_tokens', '?')} "
+            f"| {fmt_ms(lat.get('mean', 0))} "
+            f"| {fmt_ms(lat.get('p50', 0))} "
+            f"| {fmt_ms(lat.get('p95', 0))} "
+            f"| {fmt_ms(lat.get('p99', 0))} |"
+        )
+
+    fit = data.get("scaling_fit", {})
+    if fit:
+        lines.append("")
+        lines.append(f"**Linear fit:** latency = {fit.get('base_overhead_ms', 0):.2f}ms + {fit.get('per_token_ms', 0):.4f}ms/token")
+
+    lines.append("")
+    return "\n".join(lines)
+
+
+def generate_true_e2e_report(data: dict) -> str:
+    """Generate markdown section for true E2E benchmark (with real inference)."""
+    lines = []
+    lines.append("")
+    lines.append("## True End-to-End Latency")
+    lines.append("")
+    lines.append("Full request path: HPKE encrypt + decrypt + BERT inference + receipt sign/verify.")
+    lines.append("")
+    lines.append("| Metric | Mean | P50 | P95 | P99 |")
+    lines.append("|--------|------|-----|-----|-----|")
+
+    for label, key in [
+        ("Session setup", "session_setup_ms"),
+        ("Per-request E2E", "per_request_e2e_ms"),
+        ("Inference only", "inference_only_ms"),
+    ]:
+        stats = data.get(key, {})
+        if stats:
+            lines.append(
+                f"| {label} | {fmt_ms(stats.get('mean', 0))} | {fmt_ms(stats.get('p50', 0))} "
+                f"| {fmt_ms(stats.get('p95', 0))} | {fmt_ms(stats.get('p99', 0))} |"
+            )
+
+    crypto_overhead = data.get("crypto_overhead_ms", 0)
+    if crypto_overhead:
+        lines.append(f"\n**Crypto overhead per request:** {crypto_overhead:.4f}ms")
+
+    lines.append("")
+    return "\n".join(lines)
+
+
+def generate_enclave_concurrency_report(data: dict) -> str:
+    """Generate markdown section for enclave concurrency benchmark."""
+    lines = []
+    lines.append("")
+    lines.append("## Enclave Concurrency Scaling")
+    lines.append("")
+    lines.append("Full E2E path per request (HPKE + inference + receipt).")
+    lines.append("")
+    lines.append("| Clients | Throughput | Mean Latency | P95 | Efficiency |")
+    lines.append("|:---:|---:|---:|---:|---:|")
+
+    scaling = {s["concurrency"]: s for s in data.get("scaling_efficiency", []) if isinstance(s.get("concurrency"), (int, float))}
+
+    for level in data.get("levels", []):
+        n = level.get("concurrency", "?")
+        tp = level.get("throughput_inferences_per_sec", 0)
+        lat = level.get("latency_ms", {})
+        eff = scaling.get(n, {}).get("efficiency_pct", 0)
+        lines.append(
+            f"| {n} | {tp:.2f} inf/s | {fmt_ms(lat.get('mean', 0))} "
+            f"| {fmt_ms(lat.get('p95', 0))} | {eff:.1f}% |"
+        )
+
+    lines.append("")
+    return "\n".join(lines)
+
+
+def generate_quality_determinism_report(data: dict) -> str:
+    """Generate markdown section for quality determinism analysis."""
+    lines = []
+    lines.append("")
+    lines.append("## Quality Determinism")
+    lines.append("")
+
+    for env_label, env_key in [("Baseline", "baseline"), ("Enclave", "enclave")]:
+        env_data = data.get(env_key, {})
+        if env_data:
+            det = "Yes" if env_data.get("deterministic", False) else "No"
+            n = env_data.get("num_runs", 0)
+            unique = env_data.get("unique_sha256_count", "?")
+            lines.append(f"**{env_label}:** {n} runs, deterministic={det}, unique SHA-256 count={unique}")
+
+    cross = data.get("cross_environment", {})
+    if cross:
+        verdict = cross.get("verdict", "unknown")
+        cos = cross.get("cosine_similarity", {})
+        mad = cross.get("max_abs_diff", {})
+        lines.append("")
+        lines.append(f"**Cross-environment:** {verdict}")
+        if cos:
+            lines.append(f"  - Cosine similarity: min={cos.get('min', 0):.12f}")
+        if mad:
+            lines.append(f"  - Max abs diff: max={mad.get('max', 0):.3e}")
+
+    lines.append("")
+    return "\n".join(lines)
+
+
 def main():
     parser = argparse.ArgumentParser(description="EphemeralML Benchmark Report Generator")
     parser.add_argument("--baseline", required=True, help="Path to baseline_results.json")
     parser.add_argument("--enclave", required=True, help="Path to enclave_results.json")
     parser.add_argument("--crypto", default=None, help="Path to crypto benchmark results JSON")
+    parser.add_argument("--input-scaling", default=None, help="Path to input scaling results JSON")
+    parser.add_argument("--true-e2e", default=None, help="Path to true E2E results JSON")
+    parser.add_argument("--enclave-concurrency", default=None, help="Path to enclave concurrency results JSON")
+    parser.add_argument("--quality-determinism", default=None, help="Path to quality determinism results JSON")
     parser.add_argument("--output", default=None, help="Output markdown file (default: stdout)")
     args = parser.parse_args()
 
@@ -348,6 +472,14 @@ def main():
     report = generate_report(baseline, enclave)
     if crypto:
         report += generate_crypto_report(crypto)
+    if args.input_scaling:
+        report += generate_input_scaling_report(load_results(args.input_scaling))
+    if args.true_e2e:
+        report += generate_true_e2e_report(load_results(args.true_e2e))
+    if args.enclave_concurrency:
+        report += generate_enclave_concurrency_report(load_results(args.enclave_concurrency))
+    if args.quality_determinism:
+        report += generate_quality_determinism_report(load_results(args.quality_determinism))
 
     if args.output:
         with open(args.output, "w") as f:

@@ -143,6 +143,39 @@ def emit_quality_line(baseline: Dict[str, Any], enclave: Dict[str, Any]) -> str:
     return f"% Quality (first {dims} dims only): cosine={cos:.12f}, max_abs_diff={mad:.3e}"
 
 
+def emit_input_scaling_table(data: Dict[str, Any]) -> str:
+    sizes = data.get("sizes", [])
+    fit = data.get("scaling_fit", {})
+
+    lines = []
+    lines.append("% === Input size scaling (generated) ===")
+    lines.append("\\begin{tabular}{rrrrrr}")
+    lines.append("\\hline")
+    lines.append("\\textbf{Tokens} & \\textbf{Mean} & \\textbf{P50} & \\textbf{P95} & \\textbf{P99} & \\textbf{Min} \\\\")
+    lines.append("\\hline")
+
+    for s in sizes:
+        lat = s.get("latency_ms", {})
+        lines.append(
+            f"{s.get('actual_tokens', '?')} & "
+            f"{fmt_ms(lat.get('mean', 0))} & "
+            f"{fmt_ms(lat.get('p50', 0))} & "
+            f"{fmt_ms(lat.get('p95', 0))} & "
+            f"{fmt_ms(lat.get('p99', 0))} & "
+            f"{fmt_ms(lat.get('min', 0))} \\\\"
+        )
+
+    lines.append("\\hline")
+    lines.append("\\end{tabular}")
+
+    if fit:
+        base = fit.get("base_overhead_ms", 0)
+        per_tok = fit.get("per_token_ms", 0)
+        lines.append(f"% Linear fit: latency = {base:.2f}ms + {per_tok:.4f}ms/token")
+
+    return "\n".join(lines)
+
+
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--baseline", required=True)
@@ -151,6 +184,7 @@ def main() -> None:
     ap.add_argument("--cose", default=None)
     ap.add_argument("--e2e", default=None)
     ap.add_argument("--concurrent", default=None)
+    ap.add_argument("--input-scaling", default=None)
     args = ap.parse_args()
 
     baseline = load_json(args.baseline)
@@ -161,6 +195,10 @@ def main() -> None:
     print(emit_cold_start_table(enclave))
     print()
     print(emit_quality_line(baseline, enclave))
+
+    if args.input_scaling:
+        print()
+        print(emit_input_scaling_table(load_json(args.input_scaling)))
 
     # Extra files are intentionally not emitted as full LaTeX tables yet (kept minimal).
     for label, path in [

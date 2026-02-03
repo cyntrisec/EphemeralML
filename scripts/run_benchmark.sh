@@ -2,12 +2,19 @@
 # run_benchmark.sh — Orchestrate full EphemeralML benchmark suite
 #
 # Runs on the EC2 host (parent instance with Nitro Enclaves enabled).
-# 1. Runs bare-metal baseline → baseline_results.json
-# 2. Builds enclave Docker image with MODE=benchmark
-# 3. Builds EIF
-# 4. Starts kms_proxy_host
-# 5. Runs enclave, captures console output → enclave_results.json
-# 6. Runs benchmark_report.py to compare
+# Produces ALL benchmark artifacts in one output directory:
+#
+#   baseline_results.json        - bare-metal inference baseline
+#   enclave_results.json         - enclave inference (captured from nitro-cli console)
+#   crypto_results.json          - crypto primitive benchmarks (HPKE, Ed25519, receipts)
+#   e2e_results.json             - E2E encrypted request (crypto-only, no inference)
+#   cose_results.json            - COSE attestation verification
+#   concurrent_results.json      - concurrency scaling (inference only)
+#   input_scaling_results.json   - latency vs token count
+#   true_e2e_results.json        - true E2E (crypto + real inference)
+#   enclave_concurrency_results.json - concurrent E2E sessions
+#   benchmark_report.md          - markdown comparison report
+#   *_stderr.log                 - stderr from each benchmark
 #
 # Prerequisites:
 #   - EC2 instance: m6i.xlarge+ with Nitro Enclaves enabled
@@ -29,7 +36,7 @@ PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 OUTPUT_DIR="${OUTPUT_DIR:-$PROJECT_ROOT/benchmark_results}"
 SKIP_BASELINE=false
 SKIP_BUILD=false
-ENCLAVE_MEMORY_MB=1024
+ENCLAVE_MEMORY_MB=4096
 ENCLAVE_CPUS=2
 INSTANCE_TYPE=$(curl -s http://169.254.169.254/latest/meta-data/instance-type 2>/dev/null || echo "unknown")
 GIT_COMMIT=$(cd "$PROJECT_ROOT" && git rev-parse --short HEAD 2>/dev/null || echo "unknown")
@@ -171,16 +178,115 @@ kill "$CONSOLE_PID" 2>/dev/null || true
 sudo nitro-cli terminate-enclave --enclave-id "$ENCLAVE_ID" 2>/dev/null || true
 kill "$KMS_PROXY_PID" 2>/dev/null || true
 
-# ── Step 6: Generate comparison report ──
-log "Step 6: Generating benchmark report"
+# ── Step 6a: Existing bare-metal benchmarks (crypto, e2e, cose, concurrent) ──
+log "Step 6a: Running bare-metal benchmark suite (crypto, e2e, cose, concurrent)"
+
+# Crypto primitives
+if ! $SKIP_BUILD; then
+    (cd "$PROJECT_ROOT" && cargo build --release --bin benchmark_crypto 2>&1 | tail -3)
+fi
+"$PROJECT_ROOT/target/release/benchmark_crypto" \
+    --instance-type "$INSTANCE_TYPE" \
+    > "$OUTPUT_DIR/crypto_results.json" 2>"$OUTPUT_DIR/crypto_stderr.log"
+log "  crypto_results.json saved"
+
+# E2E encrypted request (crypto-only, no inference)
+if ! $SKIP_BUILD; then
+    (cd "$PROJECT_ROOT" && cargo build --release --bin benchmark_e2e 2>&1 | tail -3)
+fi
+"$PROJECT_ROOT/target/release/benchmark_e2e" \
+    --instance-type "$INSTANCE_TYPE" \
+    > "$OUTPUT_DIR/e2e_results.json" 2>"$OUTPUT_DIR/e2e_stderr.log"
+log "  e2e_results.json saved"
+
+# COSE attestation verification
+if ! $SKIP_BUILD; then
+    (cd "$PROJECT_ROOT" && cargo build --release --bin benchmark_cose 2>&1 | tail -3)
+fi
+"$PROJECT_ROOT/target/release/benchmark_cose" \
+    --instance-type "$INSTANCE_TYPE" \
+    > "$OUTPUT_DIR/cose_results.json" 2>"$OUTPUT_DIR/cose_stderr.log"
+log "  cose_results.json saved"
+
+# Concurrency scaling (inference only, no crypto)
+if ! $SKIP_BUILD; then
+    (cd "$PROJECT_ROOT" && cargo build --release --bin benchmark_concurrent 2>&1 | tail -3)
+fi
+"$PROJECT_ROOT/target/release/benchmark_concurrent" \
+    --model-dir "$PROJECT_ROOT/test_artifacts" \
+    --instance-type "$INSTANCE_TYPE" \
+    > "$OUTPUT_DIR/concurrent_results.json" 2>"$OUTPUT_DIR/concurrent_stderr.log"
+log "  concurrent_results.json saved"
+
+# ── Step 6b: Input scaling benchmark (bare metal, no enclave needed) ──
+log "Step 6b: Running input scaling benchmark"
+if ! $SKIP_BUILD; then
+    (cd "$PROJECT_ROOT" && cargo build --release --bin benchmark_input_scaling 2>&1 | tail -5)
+fi
+"$PROJECT_ROOT/target/release/benchmark_input_scaling" \
+    --model-dir "$PROJECT_ROOT/test_artifacts" \
+    --instance-type "$INSTANCE_TYPE" \
+    > "$OUTPUT_DIR/input_scaling_results.json" 2>"$OUTPUT_DIR/input_scaling_stderr.log"
+log "  Input scaling results saved to $OUTPUT_DIR/input_scaling_results.json"
+
+# ── Step 6c: True E2E benchmark (mock mode, no enclave needed) ──
+log "Step 6c: Running true E2E benchmark"
+if ! $SKIP_BUILD; then
+    (cd "$PROJECT_ROOT" && cargo build --release -p ephemeral-ml-client --features benchmark --bin benchmark_true_e2e 2>&1 | tail -5)
+fi
+"$PROJECT_ROOT/target/release/benchmark_true_e2e" \
+    --model-dir "$PROJECT_ROOT/test_artifacts" \
+    --instance-type "$INSTANCE_TYPE" \
+    > "$OUTPUT_DIR/true_e2e_results.json" 2>"$OUTPUT_DIR/true_e2e_stderr.log"
+log "  True E2E results saved to $OUTPUT_DIR/true_e2e_results.json"
+
+# ── Step 6d: Enclave concurrency benchmark (mock mode, no enclave needed) ──
+log "Step 6d: Running enclave concurrency benchmark"
+if ! $SKIP_BUILD; then
+    (cd "$PROJECT_ROOT" && cargo build --release -p ephemeral-ml-client --features benchmark --bin benchmark_enclave_concurrency 2>&1 | tail -5)
+fi
+"$PROJECT_ROOT/target/release/benchmark_enclave_concurrency" \
+    --model-dir "$PROJECT_ROOT/test_artifacts" \
+    --instance-type "$INSTANCE_TYPE" \
+    > "$OUTPUT_DIR/enclave_concurrency_results.json" 2>"$OUTPUT_DIR/enclave_concurrency_stderr.log"
+log "  Enclave concurrency results saved to $OUTPUT_DIR/enclave_concurrency_results.json"
+
+# ── Step 7: Generate comparison report ──
+log "Step 7: Generating benchmark report"
 if [[ -f "$OUTPUT_DIR/baseline_results.json" && -f "$OUTPUT_DIR/enclave_results.json" ]]; then
-    python3 "$SCRIPT_DIR/benchmark_report.py" \
-        --baseline "$OUTPUT_DIR/baseline_results.json" \
-        --enclave "$OUTPUT_DIR/enclave_results.json" \
+    # Quality determinism (baseline vs enclave) using full embedding + SHA-256 when available.
+    # This lets the report state "bit-identical" only when proven.
+    if [[ -x "$SCRIPT_DIR/analyze_quality_determinism.py" ]]; then
+        python3 "$SCRIPT_DIR/analyze_quality_determinism.py" \
+            --baseline-files "$OUTPUT_DIR/baseline_results.json" \
+            --enclave-files "$OUTPUT_DIR/enclave_results.json" \
+            --output "$OUTPUT_DIR/quality_determinism.json" \
+            2>"$OUTPUT_DIR/quality_determinism_stderr.log" || true
+    fi
+
+    REPORT_ARGS=(
+        --baseline "$OUTPUT_DIR/baseline_results.json"
+        --enclave "$OUTPUT_DIR/enclave_results.json"
         --output "$OUTPUT_DIR/benchmark_report.md"
+    )
+    [[ -f "$OUTPUT_DIR/crypto_results.json" ]] && REPORT_ARGS+=(--crypto "$OUTPUT_DIR/crypto_results.json")
+    [[ -f "$OUTPUT_DIR/input_scaling_results.json" ]] && REPORT_ARGS+=(--input-scaling "$OUTPUT_DIR/input_scaling_results.json")
+    [[ -f "$OUTPUT_DIR/true_e2e_results.json" ]] && REPORT_ARGS+=(--true-e2e "$OUTPUT_DIR/true_e2e_results.json")
+    [[ -f "$OUTPUT_DIR/enclave_concurrency_results.json" ]] && REPORT_ARGS+=(--enclave-concurrency "$OUTPUT_DIR/enclave_concurrency_results.json")
+    [[ -f "$OUTPUT_DIR/quality_determinism.json" ]] && REPORT_ARGS+=(--quality-determinism "$OUTPUT_DIR/quality_determinism.json")
+    python3 "$SCRIPT_DIR/benchmark_report.py" "${REPORT_ARGS[@]}"
     log "  Report saved to $OUTPUT_DIR/benchmark_report.md"
     echo ""
     cat "$OUTPUT_DIR/benchmark_report.md"
+
+    # Generate LaTeX table snippets directly from JSON to avoid copy/paste drift.
+    PAPER_ARGS=(
+        --baseline "$OUTPUT_DIR/baseline_results.json"
+        --enclave "$OUTPUT_DIR/enclave_results.json"
+    )
+    [[ -f "$OUTPUT_DIR/input_scaling_results.json" ]] && PAPER_ARGS+=(--input-scaling "$OUTPUT_DIR/input_scaling_results.json")
+    python3 "$SCRIPT_DIR/generate_paper_tables.py" "${PAPER_ARGS[@]}" \
+        > "$OUTPUT_DIR/paper_tables_generated.tex" 2>"$OUTPUT_DIR/paper_tables_stderr.log" || true
 else
     log "  Cannot generate report: missing baseline or enclave results"
 fi
