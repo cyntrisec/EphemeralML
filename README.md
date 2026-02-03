@@ -145,7 +145,7 @@ Measured on AWS EC2 m6i.xlarge (4 vCPU, 16GB RAM) with MiniLM-L6-v2 (22.7M param
 ### Key Findings
 
 - **14.5% inference overhead** — on par with AMD SEV-SNP BERT numbers (~16%), competitive with SGX/TDX
-- **Embedding quality preserved** — cosine similarity 1.000000 between bare metal and enclave
+- **Embedding quality preserved** — near-identical embeddings (cosine similarity ≈ 1.0; tiny FP-level differences expected across CPU allocations)
 - **Per-inference crypto cost negligible** — 0.027ms vs 93ms inference (0.03%)
 - **E2E crypto overhead** — 0.162ms per request (0.17% of inference time)
 - **Throughput plateaus at ~14.2 inf/s** — CPU-bound on 2 vCPUs; latency scales linearly with concurrency

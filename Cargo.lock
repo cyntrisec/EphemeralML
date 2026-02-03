@@ -1643,8 +1643,11 @@ name = "ephemeral-ml-common"
 version = "0.1.0"
 dependencies = [
  "byteorder",
+ "candle-core",
+ "candle-transformers",
  "chacha20poly1305",
  "ed25519-dalek",
+ "hex",
  "hkdf",
  "hpke",
  "proptest",
@@ -1655,6 +1658,7 @@ dependencies = [
  "serde_json",
  "sha2",
  "thiserror 1.0.69",
+ "tokenizers",
  "uuid",
  "x25519-dalek",
  "zeroize",

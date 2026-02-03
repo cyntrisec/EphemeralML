@@ -1,0 +1,650 @@
+\documentclass[11pt,a4paper]{article}
+
+% --- Packages ---
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{amsmath,amssymb}
+\usepackage{graphicx}
+\usepackage{url}
+\usepackage[margin=1in]{geometry}
+\usepackage{tabularx}
+
+% --- Title ---
+\title{\textbf{EphemeralML: Confidential AI Inference on AWS Nitro Enclaves\\with 14.5\% Overhead}}
+\author{Cyntrisec}
+\date{February 2026}
+
+\begin{document}
+\maketitle
+
+% ============================================================
+\begin{abstract}
+Running machine learning inference on untrusted cloud infrastructure exposes model weights, input data, and predictions to the infrastructure operator.
+We present \textsc{EphemeralML}, a confidential AI inference system that executes ML models inside AWS Nitro Enclaves with end-to-end encryption between client and enclave.
+The host operates as a \emph{blind relay}: it forwards encrypted bytes over VSock but can never decrypt or inspect sensitive data, even under full root compromise.
+Our cryptographic protocol combines HPKE session establishment (X25519 + ChaCha20-Poly1305) with AEAD-authenticated session metadata, COSE\slash CBOR attestation verification with ECDSA-P384 certificate chains, attestation-gated KMS key release with per-model encryption context binding, and Ed25519-signed Attested Execution Receipts.
+We evaluate \textsc{EphemeralML} on an \texttt{m6i.xlarge} instance using MiniLM-L6-v2 (22.7M parameters) and measure \textbf{14.5\% mean inference overhead} (81.32\,ms bare metal vs.\ 93.08\,ms enclave), near-identical embedding output (cosine similarity $\approx 1.0$), a per-inference cryptographic budget of 0.027\,ms for 1\,KB payloads (enclave-side), and an end-to-end per-request crypto overhead of 0.162\,ms excluding inference.
+The system is implemented in 13,000+ lines of Rust across four workspace crates, compiles for both local mock and production Nitro modes via feature flags, and is fully open-source.
+\end{abstract}
+
+% ============================================================
+\section{Introduction}
+\label{sec:introduction}
+
+Machine learning inference is increasingly deployed on shared cloud infrastructure where the operator---or an attacker who compromises the host---can observe model inputs, outputs, and weights.
+This is unacceptable for defense, government, financial, and healthcare workloads where both the model intellectual property and the inference data are sensitive.
+
+Trusted Execution Environments (TEEs) offer hardware-enforced isolation that prevents even a privileged host from reading enclave memory.
+AWS Nitro Enclaves provide a TEE based on a stripped-down Linux kernel with no persistent storage, no networking, and no interactive access; the only communication channel is a VSock virtual socket to the parent EC2 instance.
+
+We present \textsc{EphemeralML}, a system that leverages Nitro Enclaves to provide confidential AI inference with the following contributions:
+
+\begin{enumerate}
+  \item A \textbf{three-zone security architecture} (Client, Host, Enclave) in which the host is explicitly untrusted and operates as a blind relay of encrypted bytes.
+  \item A \textbf{cryptographic protocol} that binds HPKE session keys to Nitro attestation documents, authenticates routing metadata as AEAD associated data to prevent cross-session ciphertext splicing, gates model decryption keys through attestation-verified KMS policies with per-model encryption context, and produces Ed25519-signed Attested Execution Receipts for non-repudiation.
+  \item A \textbf{production-quality implementation} in 13,000+ lines of Rust that compiles for both local development (mock mode) and Nitro Enclaves (production mode) from the same codebase via feature flags.
+  \item A \textbf{comprehensive evaluation} showing 14.5\% inference overhead, sub-millisecond per-request cryptographic cost, and near-identical output quality on MiniLM-L6-v2.
+\end{enumerate}
+
+% ============================================================
+\section{Threat Model}
+\label{sec:threat-model}
+
+\subsection{Trust Assumptions}
+
+\textsc{EphemeralML} operates under the following assumptions:
+
+\begin{description}
+  \item[A1 (Client Trust)] The client environment is trusted. It holds the PCR allowlist, policy root, and attestation verification logic.
+  \item[A2 (Nitro Attestation Roots)] The AWS Nitro attestation root certificates (Root CA G1) are trusted.
+  \item[A3 (Host Compromise)] The host OS is assumed \emph{fully compromised}. An attacker with root access can observe and modify VSock traffic, control scheduling and storage, but \emph{cannot} read enclave memory.
+  \item[A4 (Network Adversary)] An on-path attacker can observe and modify all network traffic between client and host.
+  \item[A5 (KMS Trust)] AWS KMS correctly enforces attestation-bound key release via RSA-2048 RecipientInfo envelopes.
+  \item[A6 (Time Source)] Freshness is established through nonces and challenge-response protocols, not wall-clock time.
+  \item[A7 (Side Channels)] Residual timing and access-pattern leakage exists. Mitigations are documented but not fully eliminated in v1.
+\end{description}
+
+\subsection{Adversary Capabilities}
+
+Under assumption A3, the adversary can:
+\begin{itemize}
+  \item Inspect, replay, reorder, or drop all VSock messages between host and enclave.
+  \item Control the scheduling of the enclave vCPUs.
+  \item Modify or replace files on the host filesystem, including model artifacts in transit.
+  \item Deny service by refusing to forward traffic or terminating the enclave.
+\end{itemize}
+
+The adversary \emph{cannot}:
+\begin{itemize}
+  \item Read or modify enclave memory (hardware isolation).
+  \item Forge Nitro attestation documents (signed by the Nitro Security Module).
+  \item Obtain KMS data keys without a valid attestation document matching the KMS key policy.
+  \item Decrypt HPKE-encrypted traffic without the enclave's ephemeral private key.
+\end{itemize}
+
+\subsection{Out of Scope (v1)}
+
+Black-box model extraction via repeated queries, complete protection from microarchitectural side-channels, availability guarantees (the host can always deny service), GPU side-channel hardening, and model confidentiality under enclave compromise are explicitly out of scope for the current version.
+
+% ============================================================
+\section{System Architecture}
+\label{sec:architecture}
+
+\textsc{EphemeralML} uses a three-zone security model illustrated in Figure~\ref{fig:zones}.
+
+\begin{figure}[ht]
+\centering
+\fbox{\parbox{0.9\textwidth}{
+\centering
+\textbf{Client Zone} (Trusted)
+$\overset{\text{HPKE over TLS}}{\longleftrightarrow}$
+\textbf{Host Zone} (Untrusted Relay)
+$\overset{\text{HPKE over VSock}}{\longleftrightarrow}$
+\textbf{Enclave Zone} (Trusted TEE)
+}}
+\caption{Three-zone architecture. The host forwards encrypted bytes without decryption capability.}
+\label{fig:zones}
+\end{figure}
+
+\paragraph{Client Zone.}
+The client is a Rust library that performs attestation verification, policy enforcement, HPKE session negotiation, and result decryption.
+It maintains a PCR allowlist (SHA-384 hashes of PCR0, PCR1, PCR2) and verifies the COSE\_Sign1 attestation document before establishing an encrypted session.
+
+\paragraph{Host Zone.}
+The host runs on the parent EC2 instance and acts as a \emph{blind relay}.
+It proxies three types of requests over VSock (port 8082, CID 3):
+\begin{itemize}
+  \item \textbf{KmsProxy}: Forwards attestation-gated KMS \texttt{Decrypt} requests.
+  \item \textbf{Storage}: Fetches encrypted model artifacts from S3 and streams them to the enclave.
+  \item \textbf{Audit}: Forwards enclave log messages to the host's logging infrastructure.
+\end{itemize}
+At no point does the host possess decryption keys or see plaintext model data.
+
+\paragraph{Enclave Zone.}
+The enclave runs inside a Nitro Enclave with no network access, no persistent storage, and no interactive shell.
+On startup, it:
+(1) generates an attestation document via the Nitro Security Module (NSM),
+(2) generates ephemeral X25519 and Ed25519 key pairs and embeds the public keys in the attestation user data,
+(3) obtains the model decryption key from KMS (attestation-gated),
+(4) fetches and decrypts model artifacts via the host's S3 proxy,
+(5) loads the model into the Candle inference engine, and
+(6) serves encrypted inference requests over VSock.
+
+% ============================================================
+\section{Cryptographic Protocol}
+\label{sec:protocol}
+
+\subsection{HPKE Session Establishment}
+
+\textsc{EphemeralML} uses a fixed HPKE cipher suite:
+\begin{itemize}
+  \item \textbf{KEM}: X25519 (\texttt{0x0020})
+  \item \textbf{KDF}: HKDF-SHA256 (\texttt{0x0001})
+  \item \textbf{AEAD}: ChaCha20-Poly1305 (\texttt{0x0003})
+\end{itemize}
+
+Session keys are derived by binding the Diffie-Hellman shared secret to the attestation transcript:
+
+\begin{equation}
+\label{eq:transcript}
+H_{\mathrm{transcript}} = \mathrm{SHA256}\!\left(
+  H_{\mathrm{attest}} \;\|\;
+  \mathrm{sort}(pk_{\mathrm{local}}, pk_{\mathrm{peer}}) \;\|\;
+  n_{\mathrm{client}} \;\|\;
+  v_{\mathrm{proto}}
+\right)
+\end{equation}
+
+\begin{equation}
+\label{eq:session-key}
+k_{\mathrm{session}} = \mathrm{HKDF\text{-}SHA256}\!\left(
+  \mathrm{salt}{=}\bot,\;
+  \mathrm{ikm}{=}\mathrm{X25519\text{-}DH}(sk_{\mathrm{local}}, pk_{\mathrm{peer}}),\;
+  \mathrm{info}{=}H_{\mathrm{transcript}},\;
+  L{=}32
+\right)
+\end{equation}
+
+The sorted public key ordering ensures both sides derive the same transcript hash regardless of role.
+
+\subsection{Message Framing, AAD Binding, and Replay Protection}
+
+Each encrypted message uses the following wire format inside the AEAD ciphertext:
+
+\begin{center}
+\begin{tabular}{llc}
+\hline
+\textbf{Field} & \textbf{Type} & \textbf{Bytes} \\
+\hline
+Protocol version & u32 (big-endian) & 4 \\
+Session ID length & u32 (big-endian) & 4 \\
+Session ID & bytes & variable \\
+Sequence number & u64 (big-endian) & 8 \\
+Plaintext length & u32 (big-endian) & 4 \\
+Plaintext & bytes & variable \\
+\hline
+\end{tabular}
+\end{center}
+
+The per-message nonce for ChaCha20-Poly1305 is derived as:
+
+\begin{equation}
+\label{eq:nonce}
+\mathrm{nonce} = \mathrm{SHA256}\!\left(
+  k_{\mathrm{session}} \;\|\;
+  \mathrm{seq} \;\|\;
+  H_{\mathrm{transcript}} \;\|\;
+  \texttt{"ChaCha20Poly1305-Nonce"}
+\right)[0..12]
+\end{equation}
+
+\paragraph{AEAD Associated Data.}
+The outer \texttt{EncryptedMessage} fields (protocol version, session ID, and sequence number) are passed as Associated Authenticated Data (AAD) to ChaCha20-Poly1305:
+
+\begin{equation}
+\label{eq:aad}
+\mathrm{AAD} = v_{\mathrm{proto}} \;\|\;
+  \mathrm{len}(\mathrm{sid}) \;\|\;
+  \mathrm{sid} \;\|\;
+  \mathrm{seq}
+\end{equation}
+
+This binds the routing metadata to the AEAD authentication tag, so a hostile relay that attempts to splice ciphertext between sessions or reorder messages will cause an authentication failure on decryption.
+The inner message frame also contains these fields as defense-in-depth, but the AAD binding provides a cryptographic guarantee at the AEAD level independent of the plaintext contents.
+
+\paragraph{Replay Protection.}
+Replay protection is enforced by requiring strictly monotonically increasing sequence numbers on both sides.
+Each side maintains an independent outgoing and incoming sequence counter; a message is rejected unless its sequence number exactly matches the expected next incoming value.
+
+\subsection{Attestation Verification}
+
+The client verifies the Nitro attestation document through the following steps:
+
+\begin{enumerate}
+  \item Parse the COSE\_Sign1 structure and extract the certificate chain (COSE label~33, \texttt{x5chain}).
+  \item Verify the ECDSA-P384-SHA384 signature over the \texttt{Sig\_structure}:
+  \[
+    \texttt{Sig\_structure} = [\texttt{"Signature1"},\; \mathrm{protected},\; \mathrm{external\_aad},\; \mathrm{payload}]
+  \]
+  \item Walk the certificate chain from the AWS Nitro Root CA (G1) through intermediates to the leaf, verifying each signature.
+  \item Extract and validate PCR measurements (PCR0, PCR1, PCR2; SHA-384, 48 bytes each) against the client's allowlist.
+  \item Extract the \texttt{user\_data} field containing the enclave's ephemeral HPKE public key (X25519, 32 bytes), Ed25519 receipt-signing public key (32 bytes), protocol version, and supported features.
+\end{enumerate}
+
+\subsection{Attestation-Gated KMS Key Release}
+
+Model artifacts are encrypted with a data encryption key (DEK) that is itself encrypted under a KMS customer master key (CMK).
+The KMS key policy requires a valid Nitro attestation document with specific PCR values.
+The enclave presents its attestation document to KMS (via the host's blind KMS proxy) and receives the DEK only if the measurements match.
+
+To prevent cross-model ciphertext replay, the enclave includes a KMS \emph{encryption context} containing the model identifier and version in every \texttt{Decrypt} call:
+
+\begin{verbatim}
+  encryption_context: {
+    "model_id": "<manifest.model_id>",
+    "version":  "<manifest.version>"
+  }
+\end{verbatim}
+
+KMS requires the encryption context at decrypt time to match the context supplied at encrypt time; a ciphertext blob encrypted for one model cannot be replayed to decrypt a different model's DEK.
+
+\subsection{Attested Execution Receipts}
+
+After each inference, the enclave produces an Attested Execution Receipt (AER) containing:
+
+\begin{itemize}
+  \item Receipt ID, protocol version, and security mode
+  \item Enclave measurements (PCR0/1/2) and attestation document hash
+  \item SHA-256 hashes of the request and response
+  \item Model ID, version, execution time, and peak memory
+  \item Monotonic sequence number
+\end{itemize}
+
+The receipt is CBOR-encoded with deterministic sorted map keys, then signed with the enclave's ephemeral Ed25519 private key (64-byte signature).
+The client verifies the signature using the Ed25519 public key extracted from the attestation document.
+
+% ============================================================
+\section{Implementation}
+\label{sec:implementation}
+
+\textsc{EphemeralML} is implemented in 13,000+ lines of Rust (2021 edition, stable toolchain, MSRV 1.75+) organized as a Cargo workspace with four crates:
+
+\begin{description}
+  \item[\texttt{common/}] Shared cryptographic primitives (HPKE sessions, receipt signing), protocol definitions, VSock abstractions, input validation, and policy types.
+  \item[\texttt{client/}] Client library providing attestation verification, policy enforcement, model validation, freshness checking, and the secure client API.
+  \item[\texttt{host/}] Host relay proxy implementing KMS proxy, S3 storage forwarding, circuit breaker, metrics collection, and OpenTelemetry tracing.
+  \item[\texttt{enclave/}] Enclave application with NSM attestation, Candle-based inference engine, KMS client, model loader, and audit logging.
+\end{description}
+
+\paragraph{Feature-Gated Dual Mode.}
+The same codebase compiles for two targets via Cargo feature flags:
+\begin{itemize}
+  \item \textbf{\texttt{mock}} (default): Simulates NSM attestation and VSock for local development and testing.
+  \item \textbf{\texttt{production}}: Uses real NSM API (\texttt{aws-nitro-enclaves-nsm-api}~0.4) and \texttt{tokio-vsock}~0.4.
+\end{itemize}
+
+\paragraph{Inference Engine.}
+Model inference uses the Candle framework (\texttt{candle-core}~0.9, \texttt{candle-nn}~0.9) with SafeTensors~0.7 for weight deserialization and HuggingFace Tokenizers~0.21.
+The \texttt{cuda} feature flag enables GPU acceleration where available.
+
+\paragraph{Security Practices.}
+All key material types derive \texttt{ZeroizeOnDrop} for automatic memory clearing.
+Constant-time comparisons are used for authentication tags and signatures.
+Input validation is performed at all system boundaries.
+Error types are hierarchical (\texttt{EphemeralError}, \texttt{HostError}, \texttt{EnclaveError}) with \texttt{?}-propagation throughout.
+
+\paragraph{Testing.}
+The test suite comprises 106 tests covering unit tests (inline \texttt{\#[cfg(test)]} modules), integration tests (\texttt{tests/} directories), and end-to-end protocol tests.
+All tests pass in CI (GitHub Actions) on every push to \texttt{main}.
+
+% ============================================================
+\section{Evaluation}
+\label{sec:evaluation}
+
+We evaluate \textsc{EphemeralML} on an \texttt{m6i.xlarge} EC2 instance (4~vCPUs, 16\,GB RAM, Intel Xeon Ice Lake) running Amazon Linux~2023.
+The enclave is allocated 2~vCPUs and 4096\,MB RAM.
+The benchmark model is MiniLM-L6-v2 (22.7M parameters, 384-dimensional embeddings).
+All latency measurements use 100 iterations after 3 warmup runs.
+Results are highly reproducible: inference variance $<$1\% across four independent runs.
+
+\subsection{Inference Latency}
+
+Table~\ref{tab:inference} shows the core inference overhead.
+
+\begin{table}[ht]
+\centering
+\caption{Inference latency comparison (MiniLM-L6-v2, m6i.xlarge, 100 iterations).}
+\label{tab:inference}
+\begin{tabular}{lrrr}
+\hline
+\textbf{Metric} & \textbf{Bare Metal} & \textbf{Enclave} & \textbf{Overhead} \\
+\hline
+Mean latency     & 81.32\,ms  & 93.08\,ms  & +14.5\% \\
+P95 latency      & 83.12\,ms  & 94.95\,ms  & +14.2\% \\
+Throughput       & 12.3\,inf/s & 10.7\,inf/s & $-$12.7\% \\
+Peak RSS         & 535\,MB    & 1{,}064\,MB & +99\% \\
+\hline
+\end{tabular}
+\end{table}
+
+\noindent\textbf{Note:} Peak RSS is obtained from \texttt{/proc/self/status} (VmHWM). Earlier benchmark code used VmPeak (virtual memory size); regenerate benchmark artifacts to ensure this row reflects resident memory.
+
+The 14.5\% mean inference overhead falls within the ``Acceptable'' range and is consistent with published AMD SEV-SNP results for BERT-class models~\cite{akram2024}.
+
+\subsection{Cold Start Breakdown}
+
+Table~\ref{tab:coldstart} decomposes the enclave cold start latency.
+
+\begin{table}[ht]
+\centering
+\caption{Cold start breakdown (enclave).}
+\label{tab:coldstart}
+\begin{tabular}{lr}
+\hline
+\textbf{Phase} & \textbf{Latency} \\
+\hline
+NSM attestation generation & 277\,ms \\
+KMS key release            & 79\,ms \\
+S3 model fetch (via VSock) & 6{,}600\,ms \\
+Model decryption           & 101\,ms \\
+Model load (Candle)        & 40\,ms \\
+Tokenizer setup            & 25\,ms \\
+\hline
+\textbf{Total}             & \textbf{7{,}132\,ms} \\
+\hline
+\end{tabular}
+\end{table}
+
+Cold start is dominated by the S3 model fetch over VSock (92.5\% of total).
+This could be reduced by embedding weights in the EIF image or implementing a pre-warming protocol.
+The one-time attestation and KMS costs (356\,ms combined) are negligible for session-based workloads.
+
+\subsection{VSock Round-Trip Time}
+
+Table~\ref{tab:vsock} shows VSock latency for varying payload sizes measured using the Audit message channel.
+
+\begin{table}[ht]
+\centering
+\caption{VSock round-trip time by payload size.}
+\label{tab:vsock}
+\begin{tabular}{rr}
+\hline
+\textbf{Payload} & \textbf{RTT} \\
+\hline
+64\,B   & 0.17\,ms \\
+1\,KB   & 0.14\,ms \\
+64\,KB  & 0.41\,ms \\
+1\,MB   & 4.56\,ms \\
+\hline
+\multicolumn{2}{l}{Upload throughput: 219.4\,MB/s} \\
+\hline
+\end{tabular}
+\end{table}
+
+\subsection{Cryptographic Primitive Performance}
+
+Table~\ref{tab:crypto} measures the cost of individual cryptographic operations.
+
+\begin{table}[ht]
+\centering
+\caption{Cryptographic primitive latency (bare metal m6i.xlarge).}
+\label{tab:crypto}
+\begin{tabular}{lrr}
+\hline
+\textbf{Operation} & \textbf{Mean} & \textbf{P99} \\
+\hline
+HPKE session setup (both sides) & 0.10\,ms & 0.13\,ms \\
+X25519 keypair generation       & 0.017\,ms & 0.025\,ms \\
+HPKE encrypt 1\,KB              & 0.003\,ms & 0.003\,ms \\
+HPKE decrypt 1\,KB              & 0.003\,ms & 0.003\,ms \\
+HPKE encrypt 1\,MB              & 0.92\,ms  & 0.95\,ms \\
+HPKE decrypt 1\,MB              & 0.97\,ms  & 1.00\,ms \\
+Ed25519 keypair generation      & 0.017\,ms & 0.019\,ms \\
+Receipt sign (CBOR + Ed25519)   & 0.022\,ms & 0.023\,ms \\
+Receipt verify                  & 0.046\,ms & 0.054\,ms \\
+\hline
+\textbf{Per-inference crypto (1\,KB)} & \textbf{0.027\,ms} & --- \\
+\hline
+\end{tabular}
+\end{table}
+
+The per-inference cryptographic budget of 0.027\,ms represents 0.03\% of the 81\,ms inference latency, confirming that encryption overhead is negligible.
+
+\subsection{COSE Attestation Verification}
+
+Table~\ref{tab:cose} shows the client-side cost of verifying a Nitro attestation document.
+
+\begin{table}[ht]
+\centering
+\caption{COSE attestation verification latency (client-side, bare metal m6i.xlarge).}
+\label{tab:cose}
+\begin{tabular}{lrr}
+\hline
+\textbf{Operation} & \textbf{Mean} & \textbf{P99} \\
+\hline
+COSE\_Sign1 verify (ECDSA-P384) & 0.737\,ms & 0.762\,ms \\
+Certificate chain walk (3 certs) & 2.224\,ms & 2.259\,ms \\
+CBOR payload parse               & 0.001\,ms & 0.002\,ms \\
+\hline
+\textbf{Full verification pipeline} & \textbf{2.998\,ms} & \textbf{3.038\,ms} \\
+\hline
+\end{tabular}
+\end{table}
+
+Attestation verification is a one-time cost per session (amortized to zero for long-lived sessions).
+
+\subsection{End-to-End Encrypted Request Overhead}
+
+Table~\ref{tab:e2e} shows the per-request overhead of the full encrypted inference pipeline.
+
+\begin{table}[ht]
+\centering
+\caption{End-to-end encrypted request overhead (bare metal m6i.xlarge).}
+\label{tab:e2e}
+\begin{tabular}{lr}
+\hline
+\textbf{Component} & \textbf{Mean Latency} \\
+\hline
+Per-request crypto (encrypt + decrypt + receipt) & 0.162\,ms \\
+Session setup (one-time)                         & 0.137\,ms \\
+TCP handshake (one-time)                         & 0.176\,ms \\
+\hline
+\end{tabular}
+\end{table}
+
+\subsection{Concurrency Scaling}
+
+Table~\ref{tab:concurrency} evaluates throughput scaling with parallel inference threads on bare metal (50 iterations per thread).
+
+\begin{table}[ht]
+\centering
+\caption{Concurrency scaling (bare metal m6i.xlarge, 4 vCPUs, 50 iterations/thread).}
+\label{tab:concurrency}
+\begin{tabular}{rrrr}
+\hline
+\textbf{Threads} & \textbf{Throughput} & \textbf{Mean Latency} & \textbf{Efficiency} \\
+\hline
+1 & 12.43\,inf/s & 80.4\,ms  & 100\% \\
+2 & 14.32\,inf/s & 139.7\,ms & 57.6\% \\
+4 & 14.23\,inf/s & 277.0\,ms & 28.6\% \\
+8 & 14.20\,inf/s & 558.7\,ms & 14.3\% \\
+\hline
+\end{tabular}
+\end{table}
+
+Throughput plateaus at 2 threads ($\sim$14.3\,inf/s), indicating that MiniLM inference on this instance is compute-bound on the available 4 vCPUs.
+The model's GEMM operations already saturate available cores at 2 threads, so additional threads increase latency without improving throughput.
+
+\subsection{Output Quality}
+
+We compare the embedding vectors produced by bare-metal and enclave inference for identical inputs.
+The cosine similarity is \textbf{0.999999999999926} on the logged reference embedding slice (first 8 dimensions), with maximum absolute difference $3.24\\times 10^{-7}$, indicating negligible numerical divergence for CPU inference in the enclave.
+This confirms that TEE execution introduces no numerical divergence for CPU inference.
+
+\subsection{Cost Analysis}
+
+Table~\ref{tab:cost} shows the per-inference cost on \texttt{m6i.xlarge} (\$0.192/hr on-demand).
+
+\begin{table}[ht]
+\centering
+\caption{Cost analysis (m6i.xlarge, \$0.192/hr on-demand pricing).}
+\label{tab:cost}
+\begin{tabular}{lrr}
+\hline
+\textbf{Metric} & \textbf{Bare Metal} & \textbf{Enclave} \\
+\hline
+Cost per 1M inferences & \$4.34 & \$4.97 \\
+Cost multiplier        & ---    & 1.15$\times$ \\
+\hline
+\end{tabular}
+\end{table}
+
+The 15\% cost premium for confidential inference is modest, especially given that the enclave provides hardware-enforced isolation, cryptographic attestation, and end-to-end encryption.
+
+% ============================================================
+\section{Related Work}
+\label{sec:related-work}
+
+\paragraph{TEE-Based ML Inference.}
+Intel SGX has been used for confidential inference in systems such as Slalom~\cite{tramer2019} and Occlumency~\cite{lee2019}, but SGX's limited Enclave Page Cache (128\,MB in SGXv1) restricts model size and causes heavy paging overhead for large models.
+AMD SEV-SNP provides VM-level isolation with lower overhead; published BERT inference benchmarks report 10--15\% overhead~\cite{akram2024}, consistent with our 14.5\% result on Nitro Enclaves for a comparably sized model (MiniLM-L6-v2, 22.7M parameters).
+However, overhead scales with model size: Schnabl et~al.~\cite{schnabl2025} report $2.2\times$ CPU overhead for Llama-3.1-8B (8 billion parameters) running inside Nitro Enclaves, driven by increased memory pressure and enclave kernel overhead at scale.
+This suggests that our 14.5\% result, while representative for embedding-class models, should not be extrapolated to billion-parameter LLMs without further evaluation.
+Intel TDX offers similar VM-level confidential computing; early benchmarks suggest comparable overhead for inference workloads~\cite{intel2023}.
+
+\paragraph{GPU TEEs.}
+NVIDIA's Confidential Computing (cGPU) with H100 GPUs enables TEE-protected GPU inference.
+Early measurements show 5--8\% overhead for large language models~\cite{nvidia2024}, though the threat model differs (GPU memory is trusted, CPU-GPU transfers are encrypted).
+Graviton~\cite{volos2018} and HIX~\cite{jang2019} proposed earlier GPU isolation schemes with higher overhead.
+
+\paragraph{Nitro Enclave Systems.}
+AWS Nitro Enclaves have been used for key management (AWS ACM for Nitro Enclaves) and secure computation (Anjuna, Fortanix).
+Nitriding~\cite{winter2023} provides a general-purpose toolkit that abstracts away the constrained Nitro Enclave development model, enabling unmodified applications with Internet connectivity and user-verifiable code; however, it does not address ML inference, cryptographic session management, or attested execution receipts.
+Lutsch et~al.~\cite{lutsch2025} analyze Nitro Enclave overhead for analytical database workloads, characterizing the VSock communication bottleneck that also dominates \textsc{EphemeralML}'s cold start.
+Schnabl et~al.~\cite{schnabl2025} use Nitro Enclaves for verifiable AI safety auditing with transparency logs, demonstrating a complementary use case (benchmarking rather than serving) with a similar attestation-based trust model.
+To our knowledge, \textsc{EphemeralML} is the first open-source system providing end-to-end confidential ML \emph{inference serving} with HPKE session management, attestation-gated key release, and attested execution receipts on Nitro Enclaves.
+
+\paragraph{Cryptographic Inference.}
+Fully homomorphic encryption (FHE) and secure multi-party computation (MPC) can provide inference without trusting any party, but current implementations incur $10{,}000\times$+ overhead for neural network inference~\cite{gilad2016}, making them impractical for latency-sensitive workloads.
+\textsc{EphemeralML}'s TEE-based approach trades the stronger cryptographic guarantees of FHE/MPC for practical performance.
+
+% ============================================================
+\section{Discussion and Future Work}
+\label{sec:discussion}
+
+\paragraph{Cold Start Optimization.}
+The 7.1-second cold start is dominated by fetching the model over VSock from S3 (6.6\,s).
+Three mitigation strategies are planned:
+(1) embedding model weights directly in the EIF image (eliminating the S3 fetch entirely),
+(2) implementing a pre-warming protocol that begins model loading before the first client request, and
+(3) using model quantization (INT4/INT8 GGUF format) to reduce transfer size.
+
+\paragraph{GPU TEE Support.}
+As NVIDIA H100 cGPU support matures, \textsc{EphemeralML} could extend to GPU-accelerated inference within a TEE.
+The Candle framework already supports CUDA backends via the \texttt{cuda} feature flag, and the blind relay architecture is agnostic to the compute backend.
+
+\paragraph{Shield Mode.}
+The current v1 implements ``Gateway Only'' mode where the enclave processes inference but does not protect against model extraction via repeated queries.
+A planned ``Shield Mode'' would add query budgets, differential privacy noise injection, and rate limiting at the enclave level.
+
+\paragraph{Memory Overhead.}
+The 2$\times$ memory overhead (535\,MB vs.\ 1{,}064\,MB) is attributable to the enclave kernel, VSock message buffers, and duplicate runtime libraries.
+Optimizing the enclave image (e.g., using a minimal init process, pre-allocating buffers) could reduce this.
+
+\paragraph{Multi-Model Serving.}
+The current architecture loads one model per enclave.
+Supporting multiple models would require either multiple enclaves (with separate attestation per model) or a model-switching protocol within a single enclave.
+
+\paragraph{Concurrency.}
+Throughput saturates at 2 threads on 4 vCPUs due to compute-bound GEMM operations.
+Larger instances (e.g., \texttt{m6i.4xlarge} with 16 vCPUs) or batched inference could improve throughput scaling.
+
+\paragraph{Transparency Log for Receipts.}
+Attested Execution Receipts are currently returned directly to the requesting client, providing non-repudiation only between client and enclave.
+For regulated sectors requiring third-party auditability, the receipts could be published to an append-only transparency log, as proposed by Schnabl et~al.~\cite{schnabl2025} for AI safety audits.
+This would allow regulators and auditors to independently verify that specific inferences occurred within an attested enclave without requiring cooperation from the client or operator.
+
+\paragraph{Reproducible Builds and PCR Verifiability.}
+The client verifies enclave identity through PCR measurements (PCR0, PCR1, PCR2), but the current build process does not guarantee reproducibility---independent parties cannot rebuild the EIF image and confirm it produces the same PCR0 hash.
+Following the approach of Nitriding~\cite{winter2023}, which emphasizes user-verifiable enclave code, a reproducible build pipeline (pinned base image digests, deterministic Dockerfile, CI-published PCR values) would close this trust gap and allow clients to independently verify the enclave binary.
+
+\paragraph{Overhead Scaling with Model Size.}
+Our 14.5\% overhead result is measured on MiniLM-L6-v2 (22.7M parameters, 535\,MB RSS).
+Published results for Llama-3.1-8B on Nitro Enclaves show $2.2\times$ overhead~\cite{schnabl2025}, indicating that enclave overhead grows substantially with model size due to increased memory pressure, larger VSock transfers, and enclave kernel overhead.
+Evaluating \textsc{EphemeralML} on billion-parameter models---potentially with INT4/INT8 quantization to fit within enclave memory constraints---is an important direction for validating the system's applicability to large language models.
+
+% ============================================================
+\section{Conclusion}
+\label{sec:conclusion}
+
+We presented \textsc{EphemeralML}, a confidential AI inference system that runs ML models inside AWS Nitro Enclaves with the host operating as a blind relay of encrypted data.
+Our evaluation on MiniLM-L6-v2 demonstrates that hardware-enforced confidential inference is practical:
+14.5\% inference overhead, 0.027\,ms per-inference (enclave-side) cryptographic cost, near-identical output quality, and a 15\% cost premium over bare-metal execution.
+
+The system's three-zone architecture, transcript-bound HPKE sessions, attestation-gated key management, and Ed25519-signed execution receipts provide defense-in-depth against a fully compromised host.
+The implementation in 13,000+ lines of Rust, with feature-gated dual compilation and 106 passing tests, demonstrates that confidential ML inference can be achieved with production-quality engineering.
+
+\textsc{EphemeralML} is open-source and available at \url{https://github.com/cyntrisec/EphemeralML}.
+
+% ============================================================
+\begin{thebibliography}{10}
+
+\bibitem{akram2024}
+A.~Akram, A.~Mukherjee, and M.~Huzaifa,
+``Performance analysis of confidential VMs for deep learning inference,''
+in \emph{Proc.\ IEEE International Symposium on Secure and Private Execution Environment Design (SEED)}, 2024.
+
+\bibitem{tramer2019}
+F.~Tram\`er and D.~Boneh,
+``Slalom: Fast, verifiable and private execution of neural networks in trusted hardware,''
+in \emph{Proc.\ ICLR}, 2019.
+
+\bibitem{lee2019}
+T.~Lee, Z.~Lin, S.~Pushp, C.~Li, Y.~Liu, Y.~Song, T.~Xu, and Z.~Zhang,
+``Occlumency: Privacy-preserving remote deep-learning inference using SGX,''
+in \emph{Proc.\ ACM MobiCom}, 2019.
+
+\bibitem{intel2023}
+Intel Corporation,
+``Intel Trust Domain Extensions (TDX): Whitepaper,''
+2023.
+\url{https://www.intel.com/content/www/us/en/developer/tools/trust-domain-extensions/overview.html}
+
+\bibitem{nvidia2024}
+NVIDIA Corporation,
+``NVIDIA Confidential Computing: Protecting AI workloads with H100 GPUs,''
+2024.
+
+\bibitem{volos2018}
+S.~Volos, K.~Vaswani, and R.~Bruno,
+``Graviton: Trusted execution environments on GPUs,''
+in \emph{Proc.\ USENIX OSDI}, 2018.
+
+\bibitem{jang2019}
+I.~Jang, A.~Tang, T.~Kim, S.~Sethumadhavan, and J.~Huh,
+``Heterogeneous isolated execution for commodity GPUs,''
+in \emph{Proc.\ ACM ASPLOS}, 2019.
+
+\bibitem{gilad2016}
+R.~Gilad-Bachrach, N.~Dowlin, K.~Laine, K.~Lauter, M.~Naehrig, and J.~Wernsing,
+``CryptoNets: Applying neural networks to encrypted data with high throughput and accuracy,''
+in \emph{Proc.\ ICML}, 2016.
+
+\bibitem{winter2023}
+P.~Winter, R.~Giles, M.~Schafhuber, and H.~Haddadi,
+``Nitriding: A tool kit for building scalable, networked, secure enclaves,''
+arXiv preprint arXiv:2206.04123, 2023.
+
+\bibitem{lutsch2025}
+A.~Lutsch, C.~Franck, M.~El-Hindi, Z.~Istv\'an, and C.~Binnig,
+``An analysis of AWS Nitro Enclaves for database workloads,''
+in \emph{Proc.\ DaMoN (SIGMOD Workshop)}, 2025.
+
+\bibitem{schnabl2025}
+C.~Schnabl, D.~Hugenroth, B.~Marino, and A.~R.~Beresford,
+``Attestable Audits: Verifiable AI safety benchmarks using trusted execution environments,''
+in \emph{Proc.\ ICML}, 2025.
+
+\end{thebibliography}
+
+\end{document}

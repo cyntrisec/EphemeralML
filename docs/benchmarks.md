@@ -43,9 +43,11 @@ Results are JSON files (`baseline_results.json`, `enclave_results.json`) analyze
 
 1. **Statistical robustness**: 100 iterations per metric, 3 warmup iterations discarded
 2. **Percentiles**: p50, p95, p99 computed from sorted latency arrays
-3. **Memory**: Peak RSS read from `/proc/self/status` (VmPeak)
+3. **Memory**: Peak RSS read from `/proc/self/status` (VmHWM; falls back to VmRSS)
 4. **Timing**: `std::time::Instant` (monotonic clock), sub-microsecond precision
 5. **VSock RTT**: Payload sizes 64B, 1KB, 64KB, 1MB measured via round-trip
+
+Note: newer benchmark outputs include `peak_rss_source` and `peak_vmsize_mb` to avoid ambiguity between RSS and VMS metrics.
 
 ### Six Must-Have Metrics
 
@@ -69,10 +71,10 @@ Unlike solutions that use Library OS (LibOS) wrappers like Anjuna or Fortanix, E
 | **Core Latency** | **14.5% measured** (MiniLM) | **20-40% estimated** (LibOS overhead) | **>1000%** (consensus) |
 | **Startup Time** | **7.1s measured** (incl. S3 fetch) | **Minutes** (Container boot) | **Minutes** (Consensus) |
 | **Attack Surface** | **Minimal** (Single 9MB binary) | **Large** (Full OS + Python) | **Complex** (Network nodes) |
-| **Crypto Overhead** | **0.027ms/req measured** | Unmeasured | On-chain Metadata |
+| **Crypto Overhead** | **0.027ms/inference measured** (enclave-side) | Unmeasured | On-chain Metadata |
 | **E2E Crypto** | **0.162ms/req measured** | Unmeasured | N/A |
 | **Cost/1M inf** | **$4.97 (enclave)** | Unknown | High (consensus) |
-| **Quality** | **Cosine sim 1.000** (verified) | Unverified | Unverified |
+| **Quality** | **Near-identical** (cosine sim ≈ 1.0) | Unverified | Unverified |
 
 ---
 
@@ -125,15 +127,17 @@ Measured using Audit message round-trips through the host proxy (with 3 warmup r
 | Peak RSS | 535.0 MB | 1,064.3 MB | +98.9% |
 | Model Size | 86.7 MB | 86.7 MB | — |
 
+Note: older benchmark runs reported VmPeak in the `peak_rss_mb` field. Newer benchmark outputs report RSS via VmHWM (and include `peak_rss_source` + `peak_vmsize_mb`).
+
 ### 5. Output Quality Verification
 
 | Metric | Value |
 |--------|-------|
 | Reference text | "What is the capital of France?" |
 | Embedding dimension | 384 |
-| Cosine similarity (first 8 dims) | **1.000000** |
+| Cosine similarity (first 8 dims) | **0.999999999999926** |
 
-Enclave produces **identical** embeddings to bare metal — no numerical divergence from TEE execution.
+Enclave produces **near-identical** embeddings to bare metal (tiny FP-level differences). For bit-identical verification, log full embeddings and compare SHA-256.
 
 ### 6. Security Primitives (Tier 4)
 
@@ -265,9 +269,9 @@ Both the enclave and baseline benchmarks output structured JSON for automated co
     "latency_ms": { "mean": 93.08, "p50": 92.85, "p95": 94.95, "p99": 95.29, "min": 91.07, "max": 95.3 },
     "throughput_inferences_per_sec": 10.74
   },
-  "memory": { "peak_rss_mb": 1064.31, "model_size_mb": 86.66 },
+  "memory": { "peak_rss_mb": 1064.31, "peak_rss_source": "VmHWM", "peak_vmsize_mb": 1100.00, "model_size_mb": 86.66 },
   "vsock": { "rtt_64b_ms": 0.17, "rtt_1kb_ms": 0.14, "rtt_64kb_ms": 0.41, "rtt_1mb_ms": 4.56, "upload_throughput_mbps": 219.4 },
-  "quality": { "reference_text": "What is the capital of France?", "embedding_dim": 384, "embedding_first_8": [0.658, "..."] }
+  "quality": { "reference_text": "What is the capital of France?", "embedding_dim": 384, "embedding_first_8": [0.658, "..."], "embedding_sha256": "..." }
 }
 ```
 

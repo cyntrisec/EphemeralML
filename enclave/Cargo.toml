@@ -11,7 +11,7 @@ candle-nn = { workspace = true }
 candle-transformers = { workspace = true }
 tokenizers = { workspace = true }
 safetensors = { workspace = true }
-ephemeral-ml-common = { path = "../common" }
+ephemeral-ml-common = { path = "../common", features = ["inference"] }
 serde = { workspace = true }
 serde_json = { workspace = true }
 tokio = { workspace = true }

@@ -77,7 +77,7 @@ These metrics directly determine user experience and competitive positioning.
 | Cold start time | ms | `nitro-cli run-enclave` to first inference ready | N/A (enclave-only metric) | Yes |
 | Cold start breakdown | ms | Per-stage: attestation, KMS, S3 fetch, decrypt, model load | Per-stage on bare metal | Yes |
 | Throughput (inferences/sec) | req/s | Sustained rate under N concurrent sessions | Bare metal throughput | **Yes** (12.4–14.3 inf/s) |
-| Memory peak RSS | MB | `/proc/self/status` VmPeak during load + inference | Bare metal RSS | Yes |
+| Memory peak RSS | MB | `/proc/self/status` VmHWM (RSS high-water) during load + inference | Bare metal RSS | Yes |
 | VSock round-trip latency | ms | Payload sizes: 64B, 1KB, 64KB, 1MB | localhost TCP baseline | Yes |
 
 ### Tier 2: Cost & Competitive Positioning
@@ -99,7 +99,7 @@ These metrics verify that the enclave + quantization pipeline does not degrade o
 
 | Metric | Unit | How to measure | Existing? |
 |--------|------|----------------|-----------|
-| Embedding cosine similarity | 0-1 | Compare enclave output vs bare-metal output on identical inputs | **Yes** (1.000000) |
+| Embedding cosine similarity | 0-1 | Compare enclave output vs bare-metal output on identical inputs | **Yes** (≈1.0; tiny FP-level differences possible) |
 | Classification accuracy | % | MMLU or task-specific benchmark: enclave vs bare-metal | **No** |
 | Output determinism | exact match % | Same input → bitwise identical output across enclave restarts | **No** |
 | Quantization quality loss | delta | Q4 vs Q8 vs BF16 on quality metric at enclave memory limits | **No** |
@@ -202,7 +202,7 @@ From the 11 papers analyzed, these are the published overhead numbers for ML inf
 - **Percentiles**: p50, p95, p99 from sorted latency arrays
 - **Outlier handling**: Report all values; flag Z-score > 3 (~0.64% of samples)
 - **Clock**: `std::time::Instant` (monotonic, sub-microsecond)
-- **Memory**: Peak RSS from `/proc/self/status` (VmPeak)
+- **Memory**: Peak RSS from `/proc/self/status` (VmHWM; falls back to VmRSS)
 - **Repetitions**: 3 full benchmark runs; report median of medians
 
 ### 5.2 Baseline Configurations
@@ -249,7 +249,7 @@ and single-session inference latency. The following gaps must be addressed:
 
 | Gap | Status | Notes |
 |-----|--------|-------|
-| Quality preservation | **Done** | Cosine similarity = 1.000000 (first 8 dims, enclave vs bare metal) |
+| Quality preservation | **Done** | Cosine similarity $\approx$ 1.0 (near-identical; first 8 dims logged in existing results) |
 | HPKE session setup timing | **Done** | 0.10ms mean via `benchmark_crypto` |
 | Receipt generation + signing | **Done** | 0.022ms mean (CBOR + Ed25519) via `benchmark_crypto` |
 | HPKE encrypt/decrypt latency | **Done** | 0.005ms (1KB), 1.89ms (1MB) via `benchmark_crypto` |
@@ -356,7 +356,7 @@ Complete mapping of which papers inform which EphemeralML metrics:
 - [x] Cold start breakdown (attestation, KMS, S3, decrypt, model load, tokenizer)
 - [x] VSock RTT at 64B/1KB/64KB/1MB + upload throughput
 - [x] Memory peak RSS comparison
-- [x] Output quality verification (cosine similarity = 1.000000)
+- [x] Output quality verification (cosine similarity $\approx$ 1.0; near-identical embeddings)
 - [x] HPKE session setup timing (0.10ms)
 - [x] HPKE encrypt/decrypt at 64B–1MB
 - [x] Ed25519 keygen, receipt sign/verify timing

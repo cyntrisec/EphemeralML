@@ -4,10 +4,12 @@
 //! but on the host without any TEE overhead. Outputs JSON results to stdout
 //! for direct comparison with enclave results.
 
-use candle_core::{DType, Device, Tensor};
+use candle_core::{DType, Device};
 use candle_nn::VarBuilder;
 use candle_transformers::models::bert::{BertModel, Config as BertConfig};
 use chacha20poly1305::{aead::Aead, ChaCha20Poly1305, Key, KeyInit, Nonce};
+use ephemeral_ml_common::inference::run_single_inference;
+use ephemeral_ml_common::metrics;
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
 const BENCHMARK_INPUT_TEXTS: &[&str] = &[
@@ -21,74 +23,8 @@ const BENCHMARK_INPUT_TEXTS: &[&str] = &[
 const NUM_WARMUP: usize = 3;
 const NUM_ITERATIONS: usize = 100;
 
-fn get_peak_rss_mb() -> f64 {
-    if let Ok(status) = std::fs::read_to_string("/proc/self/status") {
-        for line in status.lines() {
-            if line.starts_with("VmPeak:") {
-                let parts: Vec<&str> = line.split_whitespace().collect();
-                if parts.len() >= 2 {
-                    if let Ok(kb) = parts[1].parse::<f64>() {
-                        return kb / 1024.0;
-                    }
-                }
-            }
-        }
-    }
-    0.0
-}
-
-fn percentile(sorted: &[f64], p: f64) -> f64 {
-    if sorted.is_empty() {
-        return 0.0;
-    }
-    let idx = (p / 100.0 * (sorted.len() as f64 - 1.0)).round() as usize;
-    sorted[idx.min(sorted.len() - 1)]
-}
-
 fn round2(v: f64) -> f64 {
     (v * 100.0).round() / 100.0
-}
-
-fn run_single_inference(
-    model: &BertModel,
-    tokenizer: &tokenizers::Tokenizer,
-    text: &str,
-    device: &Device,
-) -> Vec<f32> {
-    let encoding = tokenizer.encode(text, true).expect("tokenization failed");
-    let input_ids = encoding.get_ids();
-    let token_type_ids = encoding.get_type_ids();
-    let attention_mask: Vec<u32> = encoding.get_attention_mask().to_vec();
-
-    let input_ids_t = Tensor::new(input_ids, device)
-        .unwrap()
-        .unsqueeze(0)
-        .unwrap();
-    let token_type_ids_t = Tensor::new(token_type_ids, device)
-        .unwrap()
-        .unsqueeze(0)
-        .unwrap();
-
-    let output = model
-        .forward(&input_ids_t, &token_type_ids_t, None)
-        .expect("inference failed");
-
-    // Mean pooling over sequence dimension
-    let (_batch, _seq_len, _hidden) = output.dims3().unwrap();
-    let mask = Tensor::new(&attention_mask[..], device)
-        .unwrap()
-        .unsqueeze(0)
-        .unwrap()
-        .unsqueeze(2)
-        .unwrap()
-        .to_dtype(DType::F32)
-        .unwrap();
-    let masked = output.broadcast_mul(&mask).unwrap();
-    let summed = masked.sum(1).unwrap();
-    let count = mask.sum(1).unwrap();
-    let mean_pooled = summed.broadcast_div(&count).unwrap();
-
-    mean_pooled.squeeze(0).unwrap().to_vec1::<f32>().unwrap()
 }
 
 #[tokio::main]
@@ -200,15 +136,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     latencies_ms.sort_by(|a, b| a.partial_cmp(b).unwrap());
     let mean = latencies_ms.iter().sum::<f64>() / latencies_ms.len() as f64;
-    let p50 = percentile(&latencies_ms, 50.0);
-    let p95 = percentile(&latencies_ms, 95.0);
-    let p99 = percentile(&latencies_ms, 99.0);
+    let p50 = metrics::percentile_nearest(&latencies_ms, 50.0);
+    let p95 = metrics::percentile_nearest(&latencies_ms, 95.0);
+    let p99 = metrics::percentile_nearest(&latencies_ms, 99.0);
     let min_val = latencies_ms.first().copied().unwrap_or(0.0);
     let max_val = latencies_ms.last().copied().unwrap_or(0.0);
     let throughput = if mean > 0.0 { 1000.0 / mean } else { 0.0 };
 
     // ── Stage 7: Memory measurement ──
-    let peak_rss_mb = get_peak_rss_mb();
+    let (peak_rss_mb, peak_rss_source) = metrics::peak_rss_mb_with_source();
+    let peak_vmsize_mb = metrics::peak_vmsize_mb();
     let model_size_mb = plaintext_size as f64 / (1024.0 * 1024.0);
 
     // ── Stage 8: Localhost TCP RTT for baseline comparison ──
@@ -250,6 +187,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         },
         "memory": {
             "peak_rss_mb": round2(peak_rss_mb),
+            "peak_rss_source": peak_rss_source,
+            "peak_vmsize_mb": round2(peak_vmsize_mb),
             "model_size_mb": round2(model_size_mb)
         },
         "vsock": {
@@ -262,7 +201,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         "quality": {
             "reference_text": BENCHMARK_INPUT_TEXTS[0],
             "embedding_dim": reference_embedding.len(),
-            "embedding_first_8": &reference_embedding[..8.min(reference_embedding.len())]
+            "embedding_first_8": &reference_embedding[..8.min(reference_embedding.len())],
+            "embedding_sha256": metrics::sha256_f32_le(&reference_embedding),
+            "embedding": reference_embedding
         }
     });
 

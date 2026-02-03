@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 import boto3
 import os
-from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+from cryptography.hazmat.primitives.ciphers.aead import ChaCha20Poly1305
 
 # Config
 # IMPORTANT: Do not hardcode account-specific KMS key ARNs in-repo.
@@ -32,11 +32,12 @@ def encrypt_model():
     with open(INPUT_FILE, 'rb') as f:
         data = f.read()
     
-    # 4. Encrypt the data locally using AES-GCM
-    print("⚡ Encrypting model weights with AES-GCM...")
-    aesgcm = AESGCM(plaintext_dek)
-    nonce = os.urandom(12)  # GCM standard nonce size
-    ciphertext = aesgcm.encrypt(nonce, data, None)
+    # 4. Encrypt the data locally using ChaCha20-Poly1305
+    # (matches enclave decryption in model_loader.rs and prepare_benchmark_model.sh)
+    print("⚡ Encrypting model weights with ChaCha20-Poly1305...")
+    cipher = ChaCha20Poly1305(plaintext_dek)
+    nonce = os.urandom(12)  # ChaCha20-Poly1305 standard nonce size
+    ciphertext = cipher.encrypt(nonce, data, None)
     
     # 5. Save the encrypted model (nonce + ciphertext)
     with open(OUTPUT_FILE, 'wb') as f:

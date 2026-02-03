@@ -6,7 +6,10 @@
 pub mod audit;
 pub mod error;
 pub mod hpke_session;
+#[cfg(feature = "inference")]
+pub mod inference;
 pub mod kms_proxy;
+pub mod metrics;
 pub mod model_manifest;
 pub mod protocol;
 pub mod receipt_signing;

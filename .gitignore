@@ -124,3 +124,7 @@ docs/papers/
 docs/papers_llm/
 docs/E2E_DEPLOY_GUIDE.md
 docs/investors/*.pdf
+
+# LaTeX build artifacts
+docs/ephemeralml_paper.pdf
+audit

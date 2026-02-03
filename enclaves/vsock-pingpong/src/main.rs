@@ -5,6 +5,8 @@ use std::os::fd::{FromRawFd, RawFd};
 use std::process;
 use std::time::Instant;
 
+use ephemeral_ml_common::metrics;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Mode {
     Basic,
@@ -403,28 +405,12 @@ const BENCHMARK_INPUT_TEXTS: &[&str] = &[
 const NUM_WARMUP: usize = 3;
 const NUM_ITERATIONS: usize = 100;
 
-fn get_peak_rss_mb() -> f64 {
-    if let Ok(status) = std::fs::read_to_string("/proc/self/status") {
-        for line in status.lines() {
-            if line.starts_with("VmPeak:") {
-                let parts: Vec<&str> = line.split_whitespace().collect();
-                if parts.len() >= 2 {
-                    if let Ok(kb) = parts[1].parse::<f64>() {
-                        return kb / 1024.0;
-                    }
-                }
-            }
-        }
-    }
-    0.0
+fn get_peak_rss_mb() -> (f64, &'static str) {
+    metrics::peak_rss_mb_with_source()
 }
 
 fn percentile(sorted: &[f64], p: f64) -> f64 {
-    if sorted.is_empty() {
-        return 0.0;
-    }
-    let idx = (p / 100.0 * (sorted.len() as f64 - 1.0)).round() as usize;
-    sorted[idx.min(sorted.len() - 1)]
+    metrics::percentile_nearest(sorted, p)
 }
 
 fn vsock_connect(port: u32) -> std::fs::File {
@@ -896,7 +882,8 @@ async fn run_benchmark() {
     };
 
     // ── Stage 10: Memory measurement ──
-    let peak_rss_mb = get_peak_rss_mb();
+    let (peak_rss_mb, peak_rss_source) = get_peak_rss_mb();
+    let peak_vmsize_mb = metrics::peak_vmsize_mb();
     let model_size_mb = plaintext_size as f64 / (1024.0 * 1024.0);
 
     // ── Get commit hash ──
@@ -934,6 +921,8 @@ async fn run_benchmark() {
         },
         "memory": {
             "peak_rss_mb": round2(peak_rss_mb),
+            "peak_rss_source": peak_rss_source,
+            "peak_vmsize_mb": round2(peak_vmsize_mb),
             "model_size_mb": round2(model_size_mb)
         },
         "vsock": {
@@ -946,7 +935,9 @@ async fn run_benchmark() {
         "quality": {
             "reference_text": BENCHMARK_INPUT_TEXTS[0],
             "embedding_dim": reference_embedding.len(),
-            "embedding_first_8": &reference_embedding[..8.min(reference_embedding.len())]
+            "embedding_first_8": &reference_embedding[..8.min(reference_embedding.len())],
+            "embedding_sha256": metrics::sha256_f32_le(&reference_embedding),
+            "embedding": reference_embedding
         }
     });
 
@@ -956,49 +947,7 @@ async fn run_benchmark() {
     eprintln!("BENCHMARK_RESULTS_JSON_END");
 }
 
-fn run_single_inference(
-    model: &candle_transformers::models::bert::BertModel,
-    tokenizer: &tokenizers::Tokenizer,
-    text: &str,
-    device: &candle_core::Device,
-) -> Vec<f32> {
-    use candle_core::{DType, Tensor};
-
-    let encoding = tokenizer.encode(text, true).expect("tokenization failed");
-    let input_ids = encoding.get_ids();
-    let token_type_ids = encoding.get_type_ids();
-    let attention_mask: Vec<u32> = encoding.get_attention_mask().to_vec();
-
-    let input_ids_t = Tensor::new(input_ids, device)
-        .unwrap()
-        .unsqueeze(0)
-        .unwrap();
-    let token_type_ids_t = Tensor::new(token_type_ids, device)
-        .unwrap()
-        .unsqueeze(0)
-        .unwrap();
-
-    let output = model
-        .forward(&input_ids_t, &token_type_ids_t, None)
-        .expect("inference failed");
-
-    // Mean pooling over sequence dimension
-    let (_batch, _seq_len, _hidden) = output.dims3().unwrap();
-    let mask = Tensor::new(&attention_mask[..], device)
-        .unwrap()
-        .unsqueeze(0)
-        .unwrap()
-        .unsqueeze(2)
-        .unwrap()
-        .to_dtype(DType::F32)
-        .unwrap();
-    let masked = output.broadcast_mul(&mask).unwrap();
-    let summed = masked.sum(1).unwrap();
-    let count = mask.sum(1).unwrap();
-    let mean_pooled = summed.broadcast_div(&count).unwrap();
-
-    mean_pooled.squeeze(0).unwrap().to_vec1::<f32>().unwrap()
-}
+use ephemeral_ml_common::inference::run_single_inference;
 
 fn round2(v: f64) -> f64 {
     (v * 100.0).round() / 100.0

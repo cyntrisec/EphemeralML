@@ -15,7 +15,7 @@ tokio = { version = "1.0", features = ["full"] }
 rand = "0.8"
 # RSA keypair for KMS RecipientInfo flow (RSAES_OAEP_SHA_256)
 rsa = { version = "0.9", features = ["std", "pem"] }
-ephemeral-ml-common = { path = "../../common" }
+ephemeral-ml-common = { path = "../../common", features = ["inference"] }
 
 # Benchmark mode dependencies (model loading + inference)
 candle-core = { workspace = true }

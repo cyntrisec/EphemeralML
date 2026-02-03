@@ -1017,10 +1017,10 @@
             <h4>Is this a full defense against side-channels?</h4>
             <p>No. V1 documents residual side-channel risk; mitigations are limited and explicit.</p>
           </div>
-          <div class="faq-item">
-            <h4>What's the performance overhead?</h4>
-            <p>Benchmarked at ~14.5% inference overhead and ~0.03ms per-request crypto budget on m6i.xlarge. Embedding quality is bit-identical to bare metal.</p>
-          </div>
+	          <div class="faq-item">
+	            <h4>What's the performance overhead?</h4>
+	            <p>Benchmarked at ~14.5% inference overhead, ~0.027ms enclave-side per-inference crypto, and ~0.162ms end-to-end per-request crypto overhead on m6i.xlarge. Embedding quality is near-identical to bare metal.</p>
+	          </div>
           <div class="faq-item">
             <h4>Do you support confidential GPU?</h4>
             <p>Not in v1. CPU inference via Candle is supported today. GPU TEE support is planned for v2.</p>

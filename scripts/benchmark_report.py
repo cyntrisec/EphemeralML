@@ -127,30 +127,63 @@ def generate_report(baseline: dict, enclave: dict) -> str:
     # Quality verification
     b_qual = baseline.get("quality", {})
     e_qual = enclave.get("quality", {})
-    b_emb = b_qual.get("embedding_first_8", [])
-    e_emb = e_qual.get("embedding_first_8", [])
-    if b_emb and e_emb and len(b_emb) == len(e_emb):
-        # Compute cosine similarity from first 8 dimensions
-        dot = sum(a * b for a, b in zip(b_emb, e_emb))
-        mag_b = sum(a * a for a in b_emb) ** 0.5
-        mag_e = sum(a * a for a in e_emb) ** 0.5
-        cos_sim = dot / (mag_b * mag_e) if mag_b > 0 and mag_e > 0 else 0.0
+
+    b_full = b_qual.get("embedding", None)
+    e_full = e_qual.get("embedding", None)
+    b_sha = b_qual.get("embedding_sha256", None)
+    e_sha = e_qual.get("embedding_sha256", None)
+
+    def cosine_similarity(a: list, b: list) -> float:
+        dot = sum(x * y for x, y in zip(a, b))
+        mag_a = sum(x * x for x in a) ** 0.5
+        mag_b = sum(y * y for y in b) ** 0.5
+        return dot / (mag_a * mag_b) if mag_a > 0 and mag_b > 0 else 0.0
+
+    def max_abs_diff(a: list, b: list) -> float:
+        return max((abs(x - y) for x, y in zip(a, b)), default=0.0)
+
+    def is_float_list(v) -> bool:
+        return isinstance(v, list) and all(isinstance(x, (int, float)) for x in v)
+
+    if is_float_list(b_full) and is_float_list(e_full) and len(b_full) == len(e_full) and len(b_full) > 0:
+        cos_sim = cosine_similarity(b_full, e_full)
+        mad = max_abs_diff(b_full, e_full)
+        bit_identical = (b_sha is not None and e_sha is not None and b_sha == e_sha) or (b_full == e_full)
 
         lines.append("## Output Quality Verification")
         lines.append("")
         lines.append(f"**Reference text:** \"{b_qual.get('reference_text', 'N/A')}\"")
         lines.append(f"**Embedding dimension:** {b_qual.get('embedding_dim', 'N/A')}")
-        lines.append(f"**Cosine similarity (first 8 dims):** {cos_sim:.6f}")
+        lines.append(f"**Cosine similarity (full embedding):** {cos_sim:.15f}")
+        lines.append(f"**Max abs diff (full embedding):** {mad:.3e}")
+        lines.append(f"**Bit-identical (SHA-256):** {'yes' if bit_identical else 'no'}")
         lines.append("")
-        if cos_sim > 0.9999:
-            lines.append("Enclave produces **identical** embeddings to bare metal (cosine sim > 0.9999).")
+
+        if bit_identical:
+            lines.append("Enclave produces **bit-identical** embeddings to bare metal.")
+        elif cos_sim > 0.999999 and mad < 1e-6:
+            lines.append("Enclave produces **near-identical** embeddings (tiny FP-level differences).")
         elif cos_sim > 0.999:
-            lines.append("Enclave produces **near-identical** embeddings (cosine sim > 0.999, expected FP rounding).")
-        elif cos_sim > 0.99:
-            lines.append("WARNING: Non-trivial embedding divergence detected (cosine sim < 0.999).")
+            lines.append("WARNING: Embeddings are similar but not identical (cosine sim < 0.999999).")
         else:
-            lines.append("ERROR: Significant embedding divergence detected. Investigate model loading.")
+            lines.append("ERROR: Significant embedding divergence detected. Investigate model loading / numeric determinism.")
         lines.append("")
+    else:
+        b_emb = b_qual.get("embedding_first_8", [])
+        e_emb = e_qual.get("embedding_first_8", [])
+        if is_float_list(b_emb) and is_float_list(e_emb) and len(b_emb) == len(e_emb) and len(b_emb) > 0:
+            cos_sim = cosine_similarity(b_emb, e_emb)
+            mad = max_abs_diff(b_emb, e_emb)
+
+            lines.append("## Output Quality Verification")
+            lines.append("")
+            lines.append(f"**Reference text:** \"{b_qual.get('reference_text', 'N/A')}\"")
+            lines.append(f"**Embedding dimension:** {b_qual.get('embedding_dim', 'N/A')}")
+            lines.append(f"**Cosine similarity (first 8 dims):** {cos_sim:.15f}")
+            lines.append(f"**Max abs diff (first 8 dims):** {mad:.3e}")
+            lines.append("")
+            lines.append("NOTE: Only the first 8 dimensions were recorded in these results; this is a sanity check, not a full-vector equivalence proof.")
+            lines.append("")
 
     # Cost analysis
     AWS_PRICING = {
