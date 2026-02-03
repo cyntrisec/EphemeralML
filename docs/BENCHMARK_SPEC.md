@@ -20,31 +20,32 @@ measure it, and what the results mean competitively.
 EphemeralML has **6 distinct overhead sources** in the request lifecycle. Each source
 maps to different paper metrics and requires different measurement approaches.
 
-### 2.1 Request Lifecycle
+### 2.1 Request Lifecycle (measured Feb 2026, m6i.xlarge)
 
 ```
 COLD START (once per enclave boot)
 ├─ 1. Enclave boot (nitro-cli run-enclave)
-├─ 2. NSM attestation generation                    ~45ms
-├─ 3. KMS key release (via host VSock proxy)         ~120ms P50, ~500ms P99
-├─ 4. S3 model fetch (via host VSock proxy)          ~3200ms (100MB model)
-├─ 5. ChaCha20-Poly1305 weight decryption            ~12ms
-└─ 6. Safetensors → Candle model load                ~850ms
+├─ 2. NSM attestation generation                    314ms (measured)
+├─ 3. KMS key release (via host VSock proxy)         96ms (measured)
+├─ 4. S3 model fetch (via host VSock proxy)          6909ms (measured, 90MB model)
+├─ 5. ChaCha20-Poly1305 weight decryption            100ms (measured)
+└─ 6. Safetensors → Candle model load                39ms (measured)
+    Total cold start:                                7490ms
 
 SESSION SETUP (once per client)
-├─ 7. ClientHello / ServerHello exchange              ~1ms network
-├─ 8. NSM attestation document generation             ~45ms
-├─ 9. X25519 HPKE key derivation                     ~3ms
-└─ 10. Client-side COSE cert chain verification      ~25ms
+├─ 7. ClientHello / ServerHello exchange              0.17ms (measured TCP handshake)
+├─ 8. NSM attestation document generation             included in cold start
+├─ 9. X25519 HPKE key derivation                     0.14ms (measured session setup)
+└─ 10. Client-side COSE cert chain verification      3.0ms (measured full pipeline)
 
 PER-INFERENCE (every request)
-├─ 11. VSock receive                                  ~0.15ms
-├─ 12. HPKE decrypt (ChaCha20-Poly1305)              ~5μs/KB
-├─ 13. Tokenization                                   ~1-5ms
-├─ 14. Candle forward pass                            ~10-5000ms (model-dependent)
-├─ 15. Receipt generation + Ed25519 sign              ~1ms
-├─ 16. HPKE encrypt                                   ~5μs/KB
-└─ 17. VSock send                                     ~0.15ms
+├─ 11. VSock receive                                  ~0.19ms (measured 1KB RTT)
+├─ 12. HPKE decrypt (ChaCha20-Poly1305)              0.003ms/KB (measured)
+├─ 13. Tokenization + inference                       80-235ms (measured, 32-256 tokens)
+├─ 14. Receipt generation + Ed25519 sign              0.022ms (measured)
+├─ 15. HPKE encrypt                                   0.003ms/KB (measured)
+└─ 16. VSock send                                     ~0.19ms
+    Per-request crypto overhead:                     0.307ms total (0.38% of E2E)
 ```
 
 ### 2.2 Overhead Source Mapping
@@ -72,13 +73,14 @@ These metrics directly determine user experience and competitive positioning.
 
 | Metric | Unit | Measurement point | Baseline comparison | Existing? |
 |--------|------|-------------------|---------------------|-----------|
-| Inference latency (p50/p95/p99) | ms | Candle forward pass timing | Same model on bare EC2 | Yes |
-| E2E encrypted request latency | ms | HPKE decrypt → inference → receipt → HPKE encrypt | Bare inference (no crypto) | **Yes** (0.162ms) |
-| Cold start time | ms | `nitro-cli run-enclave` to first inference ready | N/A (enclave-only metric) | Yes |
-| Cold start breakdown | ms | Per-stage: attestation, KMS, S3 fetch, decrypt, model load | Per-stage on bare metal | Yes |
-| Throughput (inferences/sec) | req/s | Sustained rate under N concurrent sessions | Bare metal throughput | **Yes** (12.4–14.3 inf/s) |
-| Memory peak RSS | MB | `/proc/self/status` VmHWM (RSS high-water) during load + inference | Bare metal RSS | Yes |
-| VSock round-trip latency | ms | Payload sizes: 64B, 1KB, 64KB, 1MB | localhost TCP baseline | Yes |
+| Inference latency (p50/p95/p99) | ms | Candle forward pass timing | Same model on bare EC2 | **Yes** (80.0ms bare, 89.5ms enclave) |
+| E2E encrypted request latency | ms | HPKE decrypt → inference → receipt → HPKE encrypt | Bare inference (no crypto) | **Yes** (0.164ms crypto-only, 80.5ms true E2E) |
+| Cold start time | ms | `nitro-cli run-enclave` to first inference ready | N/A (enclave-only metric) | **Yes** (7490ms) |
+| Cold start breakdown | ms | Per-stage: attestation, KMS, S3 fetch, decrypt, model load | Per-stage on bare metal | **Yes** (all stages measured) |
+| Throughput (inferences/sec) | req/s | Sustained rate under N concurrent sessions | Bare metal throughput | **Yes** (12.5→14.3 inf/s) |
+| Memory peak RSS | MB | `/proc/self/status` VmHWM (RSS high-water) during load + inference | Bare metal RSS | **Yes** (266→1018 MB) |
+| VSock round-trip latency | ms | Payload sizes: 64B, 1KB, 64KB, 1MB | localhost TCP baseline | **Yes** (0.19–4.69ms) |
+| Input scaling | ms/token | Latency vs token count (32/64/128/256) | N/A | **Yes** (0.97ms/token) |
 
 ### Tier 2: Cost & Competitive Positioning
 
@@ -88,8 +90,8 @@ These metrics support the business case and investor narrative.
 |--------|------|----------------|-----------|
 | Cost per 1K inferences | $ | (AWS instance $/hr) / (inferences/hr) | **Yes** ($0.0050 enclave) |
 | Cost per 1M tokens (generative models) | $ | (AWS instance $/hr) / (tokens/hr) | **No** |
-| TEE overhead % | % | (enclave_latency - baseline_latency) / baseline_latency | Partial |
-| Enclave cost multiplier | x | enclave $/inference / bare-metal $/inference | **Yes** (1.15x) |
+| TEE overhead % | % | (enclave_latency - baseline_latency) / baseline_latency | **Yes** (+11.8%) |
+| Enclave cost multiplier | x | enclave $/inference / bare-metal $/inference | **Yes** (1.12x) |
 | Instance type comparison | table | Run benchmarks on m6i.xlarge, c6i.xlarge, c6i.2xlarge | **No** |
 | vs GPU TEE crossover point | chart | At what batch size does H100 cGPU become cheaper per inference? | **No** |
 
@@ -99,9 +101,9 @@ These metrics verify that the enclave + quantization pipeline does not degrade o
 
 | Metric | Unit | How to measure | Existing? |
 |--------|------|----------------|-----------|
-| Embedding cosine similarity | 0-1 | Compare enclave output vs bare-metal output on identical inputs | **Yes** (≈1.0; tiny FP-level differences possible) |
+| Embedding cosine similarity | 0-1 | Compare enclave output vs bare-metal output on identical inputs | **Yes** (1.0000000000; full 384-dim comparison) |
 | Classification accuracy | % | MMLU or task-specific benchmark: enclave vs bare-metal | **No** |
-| Output determinism | exact match % | Same input → bitwise identical output across enclave restarts | **No** |
+| Output determinism | exact match % | Same input → bitwise identical output across enclave restarts | **Partial** (SHA-256 differs cross-env, identical within-env; max_abs_diff=5.8e-7) |
 | Quantization quality loss | delta | Q4 vs Q8 vs BF16 on quality metric at enclave memory limits | **No** |
 
 ### Tier 4: Security & Attestation Overhead
@@ -240,29 +242,34 @@ and single-session inference latency. The following gaps must be addressed:
 
 | Gap | Status | Notes |
 |-----|--------|-------|
-| E2E encrypted request latency | **Done** | 0.162ms mean per-request crypto via `benchmark_e2e` |
-| Concurrency scaling | **Done** | N=1,2,4,8 threads; plateaus at 14.2 inf/s via `benchmark_concurrent` |
-| Cost calculation | **Done** | $4.97/1M inferences (enclave), 1.15x multiplier via `benchmark_report.py` |
+| E2E encrypted request latency | **Done** | 0.164ms mean per-request crypto via `benchmark_e2e` |
+| True E2E (crypto + inference) | **Done** | 80.54ms mean, 0.307ms crypto overhead via `benchmark_true_e2e` |
+| Concurrency scaling | **Done** | N=1,2,4,8 threads; plateaus at 14.3 inf/s via `benchmark_concurrent` |
+| Enclave concurrency (E2E) | **Done** | N=1,2,4 E2E sessions; scaling efficiency via `benchmark_enclave_concurrency` |
+| Input size scaling | **Done** | 32→256 tokens; 0.97ms/token linear fit via `benchmark_input_scaling` |
+| Cost calculation | **Done** | $4.76/1M inferences (enclave), 1.12x multiplier via `benchmark_report.py` |
 | Instance comparison | **Open** | Only tested on m6i.xlarge so far |
 
 ### 6.2 Important Gaps (Tier 3-4)
 
 | Gap | Status | Notes |
 |-----|--------|-------|
-| Quality preservation | **Done** | Cosine similarity $\approx$ 1.0 (near-identical; first 8 dims logged in existing results) |
+| Quality preservation | **Done** | Cosine similarity = 1.0 (full 384-dim); max_abs_diff = 5.8e-7 |
+| Quality determinism | **Done** | Within-env: bit-identical (SHA-256 match); cross-env: near-identical |
 | HPKE session setup timing | **Done** | 0.10ms mean via `benchmark_crypto` |
 | Receipt generation + signing | **Done** | 0.022ms mean (CBOR + Ed25519) via `benchmark_crypto` |
-| HPKE encrypt/decrypt latency | **Done** | 0.005ms (1KB), 1.89ms (1MB) via `benchmark_crypto` |
+| HPKE encrypt/decrypt latency | **Done** | 0.006ms (1KB), 2.76ms (1MB) via `benchmark_crypto` |
 | Client-side COSE verification | **Done** | 2.998ms full pipeline (P-384 + 3-cert chain) via `benchmark_cose` |
-| Output determinism | **Partial** | <1% variance across 4 runs; exact match not yet tested across restarts |
+| Output determinism across restarts | **Open** | Need multiple enclave boot cycles to compare SHA-256 |
 
 ### 6.3 Desirable Gaps (Tier 5)
 
 | Gap | Status | Notes |
 |-----|--------|-------|
-| Stress test (concurrent sessions) | **Open** | Multi-threaded client sending parallel requests |
+| Stress test (max sessions) | **Open** | Ramp to 100 sessions until ResourceExhausted |
 | KMS degradation test | **Open** | Mock KMS with injected latency/errors |
 | Long-running memory test | **Open** | 1hr session churn monitoring RSS |
+| Reproducibility suite | **Open** | `run_benchmark_repro.sh` exists; needs N runs on Nitro |
 
 ---
 
@@ -352,36 +359,37 @@ Complete mapping of which papers inform which EphemeralML metrics:
 
 ### Completed (Feb 2026)
 
-- [x] Core inference latency (p50/p95/p99) — bare metal vs enclave
-- [x] Cold start breakdown (attestation, KMS, S3, decrypt, model load, tokenizer)
-- [x] VSock RTT at 64B/1KB/64KB/1MB + upload throughput
-- [x] Memory peak RSS comparison
-- [x] Output quality verification (cosine similarity $\approx$ 1.0; near-identical embeddings)
+- [x] Core inference latency (p50/p95/p99) — bare metal vs enclave (80.0ms vs 89.5ms, +11.8%)
+- [x] Cold start breakdown (attestation, KMS, S3, decrypt, model load, tokenizer) — 7490ms total
+- [x] VSock RTT at 64B/1KB/64KB/1MB + upload throughput (213 MB/s)
+- [x] Memory peak RSS comparison (VmHWM: 266→1018 MB)
+- [x] Output quality verification — full 384-dim cosine=1.0, max_abs_diff=5.8e-7
 - [x] HPKE session setup timing (0.10ms)
 - [x] HPKE encrypt/decrypt at 64B–1MB
 - [x] Ed25519 keygen, receipt sign/verify timing
-- [x] Per-inference crypto budget (0.027ms)
-- [x] Reproducibility validation (4 runs, <1% variance)
+- [x] Per-inference crypto budget (0.028ms)
+- [x] E2E encrypted request latency — `benchmark_e2e` (0.164ms/req crypto overhead)
+- [x] Concurrency scaling — `benchmark_concurrent` (plateaus at 14.3 inf/s, CPU-bound)
+- [x] Cost calculation — `benchmark_report.py` ($4.76/1M inferences enclave, 1.12x)
+- [x] Client-side COSE verification timing — `benchmark_cose` (2.998ms, P-384 + 3-cert chain)
+- [x] Input scaling — `benchmark_input_scaling` (32→256 tokens, 0.97ms/token linear fit)
+- [x] True E2E — `benchmark_true_e2e` (crypto + inference: 80.54ms, 0.307ms crypto overhead)
+- [x] Enclave concurrency — `benchmark_enclave_concurrency` (N=1/2/4 E2E sessions, scaling efficiency)
+- [x] Quality determinism — `analyze_quality_determinism.py` (within-env: bit-identical; cross-env: near-identical)
+- [x] Paper tables — `generate_paper_tables.py` (9 LaTeX tables from JSON)
+- [x] Full benchmark report — `benchmark_report.py` (11-section markdown report)
 
-### Phase 1: ~~Remaining Critical Gaps~~ (Completed)
+### Remaining Gaps
 
-- [x] E2E encrypted request latency — `benchmark_e2e` (0.162ms/req crypto overhead)
-- [x] Concurrency scaling — `benchmark_concurrent` (plateaus at 14.2 inf/s, CPU-bound)
-- [x] Cost calculation — `benchmark_report.py` ($4.97/1M inferences enclave)
-
-### Phase 2: Remaining Important Gaps
-
-4. ~~Client-side COSE verification timing~~ — **Done** (2.998ms, P-384 + 3-cert chain)
-5. Output determinism across enclave restarts
-6. Multi-instance-type comparison (c6i.xlarge, c6i.2xlarge)
-
-### Phase 3: Stress & Operational
-
-7. KMS degradation scenario testing
-8. Long-running memory monitoring
-9. Quantization quality ablation (Q4 vs Q8 vs BF16)
+- [ ] Output determinism across enclave restarts (need multiple enclave runs)
+- [ ] Multi-instance-type comparison (c6i.xlarge, c6i.2xlarge)
+- [ ] Reproducibility suite on Nitro (`run_benchmark_repro.sh` — N full runs with variance analysis)
+- [ ] KMS degradation scenario testing
+- [ ] Long-running memory monitoring
+- [ ] Quantization quality ablation (Q4 vs Q8 vs BF16)
+- [ ] Max concurrent sessions / throughput at saturation (Tier 5)
 
 ---
 
 *This specification is derived from analysis of 11 papers in `docs/papers_llm/` and
-the EphemeralML architecture. Last updated at commit `4cfe606`, February 2026.*
+the EphemeralML architecture. Last updated at commit `3e7b676`, February 2026.*
