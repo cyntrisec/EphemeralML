@@ -91,10 +91,10 @@ impl KmsProxyServer {
 
         // Hard deadline (end-to-end budget) for the whole operation.
         let deadline = Duration::from_millis(800);
-        let _started = Instant::now();
+        let started = Instant::now();
 
         let (response, kms_request_id) = self
-            .handle_request_with_deadline(env.request, _started, deadline)
+            .handle_request_with_deadline(env.request, started, deadline)
             .await;
 
         match &response {
@@ -121,14 +121,14 @@ impl KmsProxyServer {
     async fn handle_request_with_deadline(
         &mut self,
         request: KmsRequest,
-        _started: Instant,
-        _deadline: Duration,
+        started: Instant,
+        deadline: Duration,
     ) -> (KmsResponse, Option<String>) {
+        let _ = (&started, &deadline); // suppress unused warnings in mock mode
         match request {
-            KmsRequest::GenerateDataKey {
-                key_id,
-                key_spec: _key_spec,
-            } => {
+            KmsRequest::GenerateDataKey { key_id, key_spec } => {
+                let _ = &key_spec; // suppress unused warning in mock mode
+
                 // If we have a real KMS client, use it.
                 #[cfg(feature = "production")]
                 if let Some(client) = &self.kms_client {
@@ -261,11 +261,13 @@ impl KmsProxyServer {
             }
             KmsRequest::Decrypt {
                 ciphertext_blob,
-                key_id: _key_id,
+                key_id,
                 recipient,
-                encryption_context: _encryption_context,
+                encryption_context,
                 ..
             } => {
+                let _ = (&key_id, &encryption_context); // used only in production mode
+
                 // If we have a real KMS client and a recipient (attestation doc), use real KMS.
                 #[cfg(feature = "production")]
                 if let Some(client) = &self.kms_client {
