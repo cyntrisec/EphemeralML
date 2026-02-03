@@ -127,10 +127,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let config: BertConfig = serde_json::from_slice(&config_bytes)?;
     let vb = VarBuilder::from_buffered_safetensors(weights_plaintext, DType::F32, &device)?;
     let model = BertModel::load(vb, &config)?;
-    let tokenizer =
+    let mut tokenizer =
         tokenizers::Tokenizer::from_bytes(&tokenizer_bytes).map_err(|e| e.to_string())?;
 
-    eprintln!("[input_scaling] Model loaded, generating input texts...");
+    // Disable padding so we can measure actual token count scaling.
+    // The default tokenizer.json may have padding configured (e.g. to 128).
+    tokenizer.with_padding(None);
+    tokenizer.with_truncation(None).map_err(|e| e.to_string())?;
+
+    eprintln!("[input_scaling] Model loaded (padding disabled), generating input texts...");
 
     // Generate texts for each target token count
     let mut size_results = Vec::new();

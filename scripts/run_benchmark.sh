@@ -38,7 +38,14 @@ SKIP_BASELINE=false
 SKIP_BUILD=false
 ENCLAVE_MEMORY_MB=4096
 ENCLAVE_CPUS=2
-INSTANCE_TYPE=$(curl -s http://169.254.169.254/latest/meta-data/instance-type 2>/dev/null || echo "unknown")
+# IMDSv2 requires a token; fall back to IMDSv1, then "unknown"
+IMDS_TOKEN=$(curl -s -X PUT "http://169.254.169.254/latest/api/token" -H "X-aws-ec2-metadata-token-ttl-seconds: 60" 2>/dev/null || true)
+if [ -n "$IMDS_TOKEN" ]; then
+    INSTANCE_TYPE=$(curl -s -H "X-aws-ec2-metadata-token: $IMDS_TOKEN" http://169.254.169.254/latest/meta-data/instance-type 2>/dev/null || echo "unknown")
+else
+    INSTANCE_TYPE=$(curl -s http://169.254.169.254/latest/meta-data/instance-type 2>/dev/null || echo "unknown")
+fi
+[ -z "$INSTANCE_TYPE" ] && INSTANCE_TYPE="unknown"
 GIT_COMMIT=$(cd "$PROJECT_ROOT" && git rev-parse --short HEAD 2>/dev/null || echo "unknown")
 
 # Parse arguments
@@ -140,6 +147,7 @@ sudo nitro-cli run-enclave \
     --memory "$ENCLAVE_MEMORY_MB" \
     --cpu-count "$ENCLAVE_CPUS" \
     --enclave-cid 16 \
+    --debug-mode \
     2>&1 | tee "$OUTPUT_DIR/enclave_run.log"
 
 ENCLAVE_ID=$(sudo nitro-cli describe-enclaves | grep -oP '"EnclaveID"\s*:\s*"\K[^"]+' | head -1)
