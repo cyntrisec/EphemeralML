@@ -68,7 +68,7 @@ Unlike solutions that use Library OS (LibOS) wrappers like Anjuna or Fortanix, E
 
 | Metric | EphemeralML (Nitro + Rust) | LibOS-based (SGX/Nitro + Python) | Blockchain-TEEs (Secret/Oasis) |
 |--------|---------------------------|----------------------------------|--------------------------------|
-| **Core Latency** | **11.8% measured** (MiniLM) | **20-40% estimated** (LibOS overhead) | **>1000%** (consensus) |
+| **Core Latency** | **12.2% measured** (MiniLM) | **20-40% estimated** (LibOS overhead) | **>1000%** (consensus) |
 | **Startup Time** | **7.5s measured** (incl. S3 fetch) | **Minutes** (Container boot) | **Minutes** (Consensus) |
 | **Attack Surface** | **Minimal** (Single 9MB binary) | **Large** (Full OS + Python) | **Complex** (Network nodes) |
 | **Crypto Overhead** | **0.028ms/inference measured** (enclave-side) | Unmeasured | On-chain Metadata |
@@ -80,9 +80,10 @@ Unlike solutions that use Library OS (LibOS) wrappers like Anjuna or Fortanix, E
 
 ## Performance Results
 
-> **Measured** on AWS EC2 m6i.xlarge, February 2026. Commit `3e7b676`. 100 iterations, 3 warmup.
+> **Measured** on AWS EC2 m6i.xlarge (instance i-01959fa23e43d9506), February 4, 2026.
+> Commit `d686eae`. 3 independent runs, 100 iterations each, 3 warmup. Overhead range: 12.0–12.6%.
 > VmHWM memory measurement confirmed. Full-embedding SHA-256 comparison enabled.
-> Raw data in [`benchmark_results/run_20260203_v2/`](../benchmark_results/run_20260203_v2/).
+> Raw data in `benchmark_results/run_20260204_160201/`, `run_20260204_163207/`, `run_20260204_171208/`.
 
 ### 1. Communication Latency (VSock)
 
@@ -100,13 +101,17 @@ Measured using Audit message round-trips through the host proxy (with 3 warmup r
 
 | Percentile | Bare Metal | Enclave | Overhead |
 |-----------|-----------|---------|----------|
-| Mean | 80.02ms | 89.49ms | +11.8% |
-| P50 | 79.91ms | 89.31ms | +11.8% |
-| P95 | 81.45ms | 90.64ms | +11.3% |
-| P99 | 82.15ms | 91.44ms | +11.3% |
-| Min | 78.54ms | 88.41ms | +12.6% |
-| Max | 84.55ms | 91.54ms | +8.3% |
-| Throughput | 12.5 inf/s | 11.2 inf/s | -10.6% |
+| Mean | 77.97ms | 87.51ms | +12.2% |
+| P95 | 79.34ms | 88.72ms | +11.8% |
+| Throughput | 12.83 inf/s | 11.43 inf/s | -10.9% |
+
+**Reproducibility (3 runs at commit `d686eae`):**
+
+| Run | Baseline Mean | Enclave Mean | Overhead |
+|-----|---------------|-------------|----------|
+| run_20260204_160201 | 78.01ms | 87.40ms | +12.0% |
+| run_20260204_163207 | 77.95ms | 87.80ms | +12.6% |
+| run_20260204_171208 | 77.96ms | 87.32ms | +12.0% |
 
 ### 3. Stage Timing (Cold Start Breakdown)
 
@@ -257,13 +262,13 @@ Based on AWS on-demand pricing (us-east-1) and measured throughput.
 | Metric | Bare Metal | Enclave |
 |--------|-----------|---------|
 | Instance | m6i.xlarge @ $0.192/hr | m6i.xlarge @ $0.192/hr |
-| Inferences/hour | 45,000 | 40,320 |
-| Cost per 1K inferences | $0.0043 | $0.0048 |
-| Cost per 1M inferences | $4.27 | $4.76 |
+| Inferences/hour | 46,188 | 41,148 |
+| Cost per 1K inferences | $0.0042 | $0.0047 |
+| Cost per 1M inferences | $4.16 | $4.67 |
 | Enclave cost multiplier | — | 1.12x |
 
-At $4.76/1M inferences, enclave inference costs 12% more than bare metal — directly proportional
-to the 11.8% latency overhead. For context, GPU TEEs (H100 cGPU) cost ~$3.54/hr for Llama-8B
+At $4.67/1M inferences, enclave inference costs 12% more than bare metal — directly proportional
+to the 12.2% latency overhead. For context, GPU TEEs (H100 cGPU) cost ~$3.54/hr for Llama-8B
 serving, making CPU enclaves significantly cheaper for small embedding models.
 
 ---
@@ -500,4 +505,4 @@ python3 scripts/generate_paper_tables.py \
 
 Include the commit hash and instance type for reproducibility.
 
-*Last updated from benchmark suite at commit `3e7b676` on `m6i.xlarge`, February 2026.*
+*Last updated from benchmark suite at commit `d686eae` on `m6i.xlarge`, February 4, 2026. 3 independent runs.*
