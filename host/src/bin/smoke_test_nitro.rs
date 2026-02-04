@@ -333,12 +333,28 @@ async fn run_smoke_test(cid: u32, port: u32) -> std::result::Result<(), Box<dyn 
     println!("      HPKE session established.");
     println!("      Session ID: {}", hpke.session_id);
 
-    // Step 7: Encrypted round-trip test
-    // Send an encrypted Data message to the enclave over the same VSock connection.
-    // This proves the enclave can decrypt our ciphertext (shared key works both ways).
-    // The enclave will attempt inference (which may fail without a loaded model),
-    // but successful decryption is the critical proof point.
-    println!("[7/8] Sending encrypted round-trip Data message...");
+    // Step 7: Encrypted round-trip probe (best-effort)
+    //
+    // NOTE: This step cannot reliably prove bidirectional HPKE decryption due to a
+    // session-ID mismatch in the current protocol:
+    //   - The enclave generates a random session_id during Hello (server.rs:150)
+    //   - ServerHello does not transmit the session_id back to the client
+    //   - The client has no way to set the correct session_id in EncryptedMessage
+    //   - The enclave's InferenceHandler looks up sessions by EncryptedMessage.session_id
+    //   - Result: "session not found" error before decryption is even attempted
+    //
+    // A successful decrypted response here would be the strongest proof, but
+    // "connection closed" is ambiguous (could be session lookup failure OR
+    // decryption failure OR inference failure). Do not treat it as confirmation
+    // of successful decryption.
+    //
+    // The attestation verification in steps 1-6 is the reliable proof that the
+    // enclave is genuine. Bidirectional HPKE proof requires fixing the session-ID
+    // negotiation (adding session_id to ServerHello).
+    println!("[7/8] Encrypted round-trip probe (best-effort, see NOTE)...");
+    println!("      NOTE: Session-ID is not transmitted in ServerHello, so the enclave");
+    println!("      will likely reject this with 'session not found'. A decrypted");
+    println!("      response is the only reliable success signal for this step.");
     let test_request = serde_json::json!({
         "model_id": "smoke-test",
         "input_data": [0, 0, 0, 0],
@@ -357,9 +373,6 @@ async fn run_smoke_test(cid: u32, port: u32) -> std::result::Result<(), Box<dyn 
     stream.write_all(&data_msg.encode()).await?;
     println!("      Sent encrypted Data message ({} bytes ciphertext).", encrypted.ciphertext.len());
 
-    // Try to read a response. The enclave may respond with an encrypted error
-    // (if inference fails due to no model) or close the connection.
-    // Either outcome proves the session key works if we get past decryption.
     let mut resp_len_buf = [0u8; 4];
     let round_trip_result = tokio::time::timeout(
         std::time::Duration::from_secs(10),
@@ -367,11 +380,12 @@ async fn run_smoke_test(cid: u32, port: u32) -> std::result::Result<(), Box<dyn 
     )
     .await;
 
-    match round_trip_result {
+    let round_trip_verified = match round_trip_result {
         Ok(Ok(_)) => {
             let resp_len = u32::from_be_bytes(resp_len_buf) as usize;
             if resp_len > 64 * 1024 * 1024 {
-                println!("      WARNING: Response too large ({} bytes), skipping.", resp_len);
+                println!("      Response too large ({} bytes), skipping.", resp_len);
+                false
             } else {
                 let mut resp_body = vec![0u8; resp_len];
                 match stream.read_exact(&mut resp_body).await {
@@ -380,47 +394,53 @@ async fn run_smoke_test(cid: u32, port: u32) -> std::result::Result<(), Box<dyn 
                         resp_full.extend_from_slice(&resp_len_buf);
                         resp_full.extend_from_slice(&resp_body);
                         match VSockMessage::decode(&resp_full) {
-                            Ok(resp_msg) => {
-                                if resp_msg.msg_type == MessageType::Data {
-                                    // Try to decrypt the response
-                                    match serde_json::from_slice::<ephemeral_ml_common::EncryptedMessage>(&resp_msg.payload) {
-                                        Ok(enc_resp) => match hpke.decrypt(&enc_resp) {
-                                            Ok(resp_plaintext) => {
-                                                println!("      FULL ROUND-TRIP SUCCESS: enclave decrypted, processed, re-encrypted.");
-                                                println!("      Response plaintext: {} bytes", resp_plaintext.len());
-                                            }
-                                            Err(e) => {
-                                                println!("      Enclave responded but decryption failed: {}", e);
-                                                println!("      (This may indicate a session key mismatch.)");
-                                            }
-                                        },
-                                        Err(e) => {
-                                            println!("      Enclave responded but payload not an EncryptedMessage: {}", e);
+                            Ok(resp_msg) if resp_msg.msg_type == MessageType::Data => {
+                                match serde_json::from_slice::<ephemeral_ml_common::EncryptedMessage>(&resp_msg.payload) {
+                                    Ok(enc_resp) => match hpke.decrypt(&enc_resp) {
+                                        Ok(resp_plaintext) => {
+                                            println!("      ROUND-TRIP VERIFIED: enclave decrypted, processed, re-encrypted.");
+                                            println!("      Response plaintext: {} bytes", resp_plaintext.len());
+                                            true
                                         }
+                                        Err(e) => {
+                                            println!("      Enclave responded but client decryption failed: {}", e);
+                                            false
+                                        }
+                                    },
+                                    Err(e) => {
+                                        println!("      Enclave responded but payload not EncryptedMessage: {}", e);
+                                        false
                                     }
-                                } else {
-                                    println!("      Enclave responded with {:?} (expected Data).", resp_msg.msg_type);
                                 }
                             }
-                            Err(e) => println!("      Enclave responded but VSockMessage decode failed: {}", e),
+                            Ok(resp_msg) => {
+                                println!("      Enclave responded with {:?} (expected Data).", resp_msg.msg_type);
+                                false
+                            }
+                            Err(e) => {
+                                println!("      Enclave responded but VSockMessage decode failed: {}", e);
+                                false
+                            }
                         }
                     }
-                    Err(e) => println!("      Enclave started responding but read failed: {}", e),
+                    Err(e) => {
+                        println!("      Partial response, read failed: {}", e);
+                        false
+                    }
                 }
             }
         }
         Ok(Err(e)) => {
-            // Connection closed — enclave likely decrypted successfully but hit an
-            // inference error (no model loaded) and propagated it, closing the connection.
-            println!("      Connection closed after Data send ({})", e);
-            println!("      This is expected if no model is loaded — the enclave decrypted");
-            println!("      the message but failed during inference processing.");
+            println!("      Connection closed after Data send ({}).", e);
+            println!("      Likely cause: session-ID mismatch (enclave cannot look up session).");
+            println!("      This does NOT confirm or deny HPKE decryption capability.");
+            false
         }
         Err(_) => {
-            println!("      Timeout waiting for Data response (10s).");
-            println!("      The enclave may still be processing. Check enclave console.");
+            println!("      Timeout waiting for response (10s). Check enclave console.");
+            false
         }
-    }
+    };
 
     // Step 8: Local encryption sanity check
     println!("[8/8] Local encryption sanity check...");
@@ -429,7 +449,7 @@ async fn run_smoke_test(cid: u32, port: u32) -> std::result::Result<(), Box<dyn 
         .encrypt(sanity_plaintext)
         .map_err(|e| format!("Local encryption test failed: {}", e))?;
     println!(
-        "      Encrypted {} bytes -> {} bytes ciphertext. Session keys operational.",
+        "      Encrypted {} bytes -> {} bytes ciphertext. Client-side session keys operational.",
         sanity_plaintext.len(),
         sanity_encrypted.ciphertext.len()
     );
@@ -441,8 +461,12 @@ async fn run_smoke_test(cid: u32, port: u32) -> std::result::Result<(), Box<dyn 
     println!("  Certificate:     Chain validated to AWS Nitro root CA");
     println!("  Nonce:           Challenge-response verified");
     println!("  Key consistency: ServerHello keys match attested keys");
-    println!("  HPKE session:    Established (X25519 + ChaCha20-Poly1305)");
-    println!("  Round-trip:      Encrypted Data message sent to enclave");
+    println!("  HPKE session:    Established client-side (X25519 + ChaCha20-Poly1305)");
+    if round_trip_verified {
+        println!("  Round-trip:      VERIFIED (enclave decrypted + re-encrypted)");
+    } else {
+        println!("  Round-trip:      NOT verified (session-ID mismatch; see NOTE above)");
+    }
     println!("  PCR policy:      NOT enforced (smoke test mode — record values below)");
     println!(
         "  PCR0:            {}",
