@@ -88,7 +88,7 @@
 
 ## Performance
 
-Measured on AWS EC2 m6i.xlarge (4 vCPU, 16GB RAM) with MiniLM-L6-v2 (22.7M params), 100 iterations, 3 warmup. Full results in [`benchmark_results/`](benchmark_results/).
+Measured on AWS EC2 m6i.xlarge (4 vCPU, 16GB RAM) with MiniLM-L6-v2 (22.7M params), 3 independent runs of 100 iterations each. Commit `d686eae`. Raw JSON available in [GitHub Releases](https://github.com/cyntrisec/EphemeralML/releases).
 
 ### Inference Overhead
 

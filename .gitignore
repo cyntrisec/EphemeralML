@@ -52,6 +52,9 @@ crash.*.log
 # Local run artifacts
 **/logs/
 
+# Benchmark results (raw JSON uploaded to GitHub Releases)
+benchmark_results/
+
 # Test assets (generated)
 /test_assets/**/*.encrypted
 /test_assets/**/*.wrapped

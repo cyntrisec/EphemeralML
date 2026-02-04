@@ -83,7 +83,7 @@ Unlike solutions that use Library OS (LibOS) wrappers like Anjuna or Fortanix, E
 > **Measured** on AWS EC2 m6i.xlarge (instance i-01959fa23e43d9506), February 4, 2026.
 > Commit `d686eae`. 3 independent runs, 100 iterations each, 3 warmup. Overhead range: 12.0–12.6%.
 > VmHWM memory measurement confirmed. Full-embedding SHA-256 comparison enabled.
-> Raw data in `benchmark_results/run_20260204_160201/`, `run_20260204_163207/`, `run_20260204_171208/`.
+> Raw JSON data available in the [GitHub Release](https://github.com/cyntrisec/EphemeralML/releases) for this version.
 
 ### 1. Communication Latency (VSock)
 

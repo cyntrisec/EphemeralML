@@ -1,8 +1,0 @@
-{
-  "timestamp": "1770160072Z",
-  "git_commit": "5fa19c5",
-  "instance_type": "m6i.xlarge",
-  "enclave_memory_mb": 4096,
-  "enclave_cpus": 2
-}
-

@@ -1,0 +1,28 @@
+cff-version: 1.2.0
+title: "EphemeralML: Confidential AI Inference on AWS Nitro Enclaves"
+message: "If you use this software, please cite it as below."
+type: software
+authors:
+  - family-names: Tsyrulnikov
+    given-names: Borys
+    orcid: ""
+repository-code: "https://github.com/cyntrisec/EphemeralML"
+url: "https://ephemeralml.cyntrisec.com"
+license: MIT
+version: "1.0.0"
+date-released: "2026-02-04"
+keywords:
+  - confidential-computing
+  - trusted-execution-environment
+  - nitro-enclaves
+  - machine-learning
+  - inference
+  - hpke
+  - attestation
+abstract: >-
+  EphemeralML is a confidential AI inference system that runs ML models
+  inside AWS Nitro Enclaves with end-to-end HPKE encryption. The host
+  acts as a blind relay and cannot decrypt or inspect model weights,
+  inputs, or outputs. Measured inference overhead is ~12% for BERT
+  embedding models (MiniLM-L6-v2, 22.7M params) on m6i.xlarge,
+  with negligible cryptographic overhead (0.3ms per request).
