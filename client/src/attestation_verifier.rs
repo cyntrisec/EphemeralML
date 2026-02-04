@@ -226,7 +226,15 @@ impl AttestationVerifier {
         }
 
         // 5. Validate freshness timestamp
-        let timestamp = get_int_field(payload_map, "timestamp")? as u64;
+        // NSM timestamps are in milliseconds; convert to seconds for FreshnessEnforcer
+        // which uses current_timestamp() (seconds since epoch).
+        let timestamp_raw = get_int_field(payload_map, "timestamp")? as u64;
+        let timestamp = if timestamp_raw > 1_000_000_000_000 {
+            // Value is in milliseconds (> year 2001 in ms)
+            timestamp_raw / 1000
+        } else {
+            timestamp_raw
+        };
         self.freshness_enforcer
             .validate_attestation_response(expected_nonce, timestamp)?;
 
