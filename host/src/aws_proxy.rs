@@ -93,6 +93,7 @@ impl AWSApiProxy {
             }
         }
 
+        let has_recipient = recipient.is_some();
         if let Some(attestation_doc) = recipient {
             builder = builder.recipient(
                 aws_sdk_kms::types::RecipientInfo::builder()
@@ -111,13 +112,21 @@ impl AWSApiProxy {
             )))
         })?;
 
+        // Suppress plaintext when recipient was provided —
+        // even if KMS unexpectedly returns it.
+        let plaintext = if has_recipient {
+            None
+        } else {
+            resp.plaintext().map(|b| b.as_ref().to_vec())
+        };
+
         Ok(KmsResponse::GenerateDataKey {
             key_id: resp.key_id().unwrap_or_default().to_string(),
             ciphertext_blob: resp
                 .ciphertext_blob()
                 .map(|b| b.as_ref().to_vec())
                 .unwrap_or_default(),
-            plaintext: resp.plaintext().map(|b| b.as_ref().to_vec()),
+            plaintext,
             ciphertext_for_recipient: resp.ciphertext_for_recipient().map(|b| b.as_ref().to_vec()),
         })
     }

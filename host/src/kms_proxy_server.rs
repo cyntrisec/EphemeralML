@@ -227,6 +227,14 @@ impl KmsProxyServer {
                                     );
                                 }
 
+                                // Suppress plaintext when recipient was provided —
+                                // even if KMS unexpectedly returns it.
+                                let plaintext = if recipient.is_some() {
+                                    None
+                                } else {
+                                    output.plaintext().map(|b| b.as_ref().to_vec())
+                                };
+
                                 return (
                                     KmsResponse::GenerateDataKey {
                                         key_id: output.key_id().unwrap_or(&key_id).to_string(),
@@ -234,7 +242,7 @@ impl KmsProxyServer {
                                             .ciphertext_blob()
                                             .map(|b| b.as_ref().to_vec())
                                             .unwrap_or_default(),
-                                        plaintext: output.plaintext().map(|b| b.as_ref().to_vec()),
+                                        plaintext,
                                         ciphertext_for_recipient,
                                     },
                                     kms_request_id,

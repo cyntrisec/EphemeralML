@@ -81,7 +81,7 @@
 - **Attested Execution Receipts** (AER) for audit
 - **Policy update system** with signature verification and hot-reload
 - **Model format validation** (safetensors, dtype enforcement)
-- **91 unit tests** across 4 crates
+- **110 unit tests** across 4 crates
 - **Deterministic builds** for reproducibility
 
 ---
