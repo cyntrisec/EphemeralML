@@ -429,7 +429,7 @@ As of commit `b325fdd`, the benchmark runner (`run_benchmark.sh`) includes:
 
 ### Known Limitations & Future Work
 
-- **Production attestation verifier untested on Nitro** — `verify_cose_signature` parses COSE_Sign1 and validates cert chain, but this path has never run against real NSM output. Mock tests bypass it entirely.
+- **Production attestation verifier VERIFIED on Nitro** (commit `c1c7439`) — COSE_Sign1 signature (ECDSA-P384), cert chain to AWS Nitro root CA, nonce, timestamps, and key consistency all validated with real NSM attestation documents. Five production-only bugs were found and fixed during validation.
 - Enclave `hardware` field: should now work via Docker build arg `INSTANCE_TYPE` → `option_env!()`, but not yet verified on Nitro
 - Enclave `commit` field: should now work via Docker build arg `GIT_COMMIT` → `option_env!()`, but not yet verified on Nitro
 - **Missing Tier 2 metrics**: Instance type comparison (c6i.xlarge, c6i.2xlarge)

@@ -11,9 +11,9 @@
 | Component | Rating | Status |
 |-----------|--------|--------|
 | **Cryptography** | GREEN | All critical findings resolved, HKDF + ephemeral keys + AAD binding |
-| **Attestation & KMS** | YELLOW | Mock attestation path unified (P2-0 partial fix); production path untested on real Nitro; cert time validation and ReceiptVerifier incomplete |
+| **Attestation & KMS** | GREEN | P2-0 VERIFIED on Nitro (commit `c1c7439`, instance i-01959fa23e43d9506); cert time validation and ReceiptVerifier incomplete |
 | **Architecture** | GREEN | Solid three-zone model, fail-closed design, ZeroizeOnDrop throughout |
-| **OVERALL** | YELLOW | P2-0 mock path fixed (commit `b325fdd`), production path needs real Nitro validation; remaining Phase 2 items are hardening |
+| **OVERALL** | GREEN | P2-0 verified on Nitro (commit `c1c7439`); remaining Phase 2 items are hardening |
 
 ---
 
@@ -117,7 +117,7 @@ KMS `Decrypt` calls now include an encryption context with `model_id` and `versi
 
 ## Phase 2 — Open (High Priority Hardening)
 
-### P2-0. Attestation Format/Verification Mismatch — PARTIALLY FIXED
+### P2-0. Attestation Format/Verification Mismatch — VERIFIED
 
 **Files:** `enclave/src/attestation.rs`, `client/src/attestation_verifier.rs`, `enclave/src/mock.rs`, `client/src/secure_client.rs`
 **Fix commit:** `b325fdd`
@@ -137,7 +137,28 @@ KMS `Decrypt` calls now include an encryption context with `model_id` and `versi
 
 **Smoke test tooling available:** A dedicated smoke test binary (`host/src/bin/smoke_test_nitro.rs`) and orchestration script (`scripts/smoke_test_nitro.sh`) have been added to validate the production attestation path on real Nitro hardware. The smoke test performs the full Hello handshake over VSock, verifies the COSE_Sign1 signature (ECDSA-P384), walks the certificate chain to the AWS Nitro root CA, validates the challenge nonce, and establishes an HPKE session. Production build errors in `enclave/src/attestation.rs` and `enclave/src/server.rs` that blocked `--features production` compilation have been fixed. Run `./scripts/smoke_test_nitro.sh` on a Nitro-enabled instance to complete P2-0 validation.
 
-**Risk:** Medium (reduced from High). The structural alignment is correct and tested in mock mode. Production deployment still requires validation with real NSM documents on a Nitro-enabled instance.
+**Risk:** Low. The production attestation verification path has been validated on real Nitro hardware (see verification below).
+
+**Nitro Verification (Feb 4, 2026):**
+- **Commit:** `c1c7439` (smoke test binary `smoke_test_nitro`)
+- **Instance:** i-01959fa23e43d9506 (m6i.xlarge, us-east-1)
+- **EIF PCR0:** `8e973a3dcba3d476420016af698eb8ac421b6540e556aa4b6ada0807d7492a881b0354d91a4a2fd9f6af74d944108b37`
+- **EIF PCR1:** `0343b056cd8485ca7890ddd833476d78460aed2aa161548e4e26bedf321726696257d623e8805f3f605946b3d8b0c6aa`
+- **EIF PCR2:** `86d111ccb874f297e21ba902739ffd207a5bf9a47b16c2e57517a1e9d2187b2c14f1fb8a11fe83fec04df6332055b32f`
+- **Attestation doc:** 5103 bytes COSE_Sign1
+- **Signature:** ECDSA-P384 verified against leaf certificate
+- **Cert chain:** Validated to AWS Nitro root CA (embedded DER)
+- **Nonce:** Challenge-response verified
+- **Key consistency:** ServerHello keys match attested keys
+- **HPKE session:** X25519 + ChaCha20-Poly1305 established
+- **Note:** PCR values from NSM are all-zeros because `--debug-mode` was used. Non-debug PCRs match the EIF build output above.
+
+**Fixes applied during Nitro validation:**
+1. `d34464b` — Extract cert chain from CBOR payload (not COSE headers)
+2. `8be2b18` — Use coset `tbs_data` for Sig_structure encoding
+3. `e4481be` — Convert ECDSA raw (r||s) to DER for OpenSSL
+4. `8f7dbbd` — Reverse NSM cabundle order for cert chain walk
+5. `c1c7439` — Convert NSM millisecond timestamps to seconds
 
 **Recommendation:** Run `./scripts/smoke_test_nitro.sh` on a Nitro-enabled instance (m6i.xlarge+). On PASS, update this finding to VERIFIED and record the PCR0/1/2 values.
 
@@ -279,7 +300,7 @@ End-to-end audit logging exists: `enclave/src/audit.rs` generates structured aud
 
 ### Phase 2: High priority (hardening)
 
-- [x] **P2-0: Attestation format/verification alignment — PARTIALLY FIXED** (mock path unified in `b325fdd`; production path needs real Nitro validation)
+- [x] **P2-0: Attestation format/verification alignment — VERIFIED** (mock path unified in `b325fdd`; production path verified on Nitro in `c1c7439`)
 - [x] **P2-0b: Receipt key type mismatch and attestation binding — FIXED** (removed X25519 receipt_keypair; per-session Ed25519 key now embedded in attestation user_data)
 - [ ] P2-1: KMS public key binding validation
 - [ ] P2-2: Certificate temporal validity checks
@@ -300,19 +321,18 @@ End-to-end audit logging exists: `enclave/src/audit.rs` generates structured aud
 
 All critical vulnerabilities (C1-C5) have been resolved. Three additional security improvements (C6-C8) were added beyond the original audit scope: AEAD AAD binding prevents cross-session ciphertext splicing, KMS encryption context prevents cross-model DEK replay, and cipher alignment eliminates the AES/ChaCha mismatch.
 
-**P2-0 status (attestation alignment):** Partially fixed in commit `b325fdd`. The mock attestation path is now structurally aligned: unified hash (`SHA-256(doc.signature)`), unified wire format (raw bytes), removed broken COSE-as-map parsing, and mock verifier extracts real keys from CBOR. All 110 tests pass. **However, the production verifier path has NOT been tested with real NSM attestation documents on a Nitro instance.** The fix is architecturally correct but unverified in production.
+**P2-0 status (attestation alignment):** **VERIFIED** on real Nitro hardware (commit `c1c7439`, instance i-01959fa23e43d9506). The production attestation verification path — COSE_Sign1 parsing, ECDSA-P384 signature verification, P-384 certificate chain walk to AWS Nitro root CA, nonce challenge-response, timestamp freshness, and key consistency checks — has been validated with real NSM attestation documents. Five bugs were found and fixed during Nitro validation (see P2-0 section above).
 
 The remaining Phase 2 items (P2-1 through P2-4) are hardening measures that do not represent exploitable vulnerabilities under the current threat model. P3-3 (audit logging) has been partially addressed — the E2E pipeline exists but uses prototype-grade persistence.
 
 **Benchmark validation (Feb 4, 2026):** Full benchmark rerun on m6i.xlarge at commit `5fa19c5` — all 9 JSON files consistent (commit, hardware fields match), all validations passed. Results in `benchmark_results/run_20260203_230752/`. Inference overhead: +13.0% (enclave vs bare metal).
 
 **Recommendation:**
-- YELLOW until P2-0 is validated on real Nitro (run full attestation flow with real NSM documents)
-- GREEN for controlled deployment after real Nitro validation, with documented P2-1..P2-4 limitations
+- GREEN for controlled deployment, with documented P2-1..P2-4 limitations
 - Full GREEN after all Phase 2 completion
 
 ---
 
 *Initial audit: 2025-01-31*
-*P2-0 partial fix and benchmark rerun validation: 2026-02-04*
+*P2-0 verified on Nitro and benchmark rerun validation: 2026-02-04*
 *EphemeralML Security Review v3*
