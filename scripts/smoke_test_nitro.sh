@@ -17,7 +17,7 @@
 #   - Repo cloned and available at $REPO_DIR
 #
 # Usage:
-#   ./scripts/smoke_test_nitro.sh [--cid CID] [--port PORT] [--skip-build]
+#   ./scripts/smoke_test_nitro.sh [--cid CID] [--port PORT] [--skip-build] [--debug]
 #
 # Environment variables:
 #   REPO_DIR    — Path to repo root (default: script's parent directory)
@@ -31,6 +31,7 @@ REPO_DIR="${REPO_DIR:-$(dirname "$SCRIPT_DIR")}"
 ENCLAVE_CID="${ENCLAVE_CID:-16}"
 ENCLAVE_PORT="${ENCLAVE_PORT:-5000}"
 SKIP_BUILD=false
+DEBUG_MODE=false
 
 # Parse arguments
 while [[ $# -gt 0 ]]; do
@@ -47,13 +48,18 @@ while [[ $# -gt 0 ]]; do
             SKIP_BUILD=true
             shift
             ;;
+        --debug)
+            DEBUG_MODE=true
+            shift
+            ;;
         --help|-h)
-            echo "Usage: $0 [--cid CID] [--port PORT] [--skip-build]"
+            echo "Usage: $0 [--cid CID] [--port PORT] [--skip-build] [--debug]"
             echo ""
             echo "Options:"
             echo "  --cid CID      Enclave CID (default: 16)"
             echo "  --port PORT    VSock port (default: 5000)"
             echo "  --skip-build   Skip cargo and docker builds (use existing artifacts)"
+            echo "  --debug        Run enclave in debug mode (enables console, zeros PCR values)"
             exit 0
             ;;
         *)
@@ -67,6 +73,7 @@ echo "=== EphemeralML Production Attestation Smoke Test ==="
 echo "Repository: $REPO_DIR"
 echo "Enclave CID: $ENCLAVE_CID"
 echo "Enclave Port: $ENCLAVE_PORT"
+echo "Debug mode: $DEBUG_MODE"
 echo ""
 
 cd "$REPO_DIR"
@@ -112,12 +119,19 @@ echo ""
 
 # Step 6: Start enclave
 echo "[Step 6/7] Starting enclave..."
-ENCLAVE_OUTPUT=$(nitro-cli run-enclave \
-    --eif-path /tmp/ephemeral-ml-enclave.eif \
-    --memory 4096 \
-    --cpu-count 2 \
-    --enclave-cid "$ENCLAVE_CID" \
-    --debug-mode 2>&1) || {
+ENCLAVE_RUN_ARGS=(
+    --eif-path /tmp/ephemeral-ml-enclave.eif
+    --memory 4096
+    --cpu-count 2
+    --enclave-cid "$ENCLAVE_CID"
+)
+if [ "$DEBUG_MODE" = true ]; then
+    ENCLAVE_RUN_ARGS+=(--debug-mode)
+    echo "           NOTE: Debug mode enabled — PCR values will be all zeros."
+else
+    echo "           NOTE: Non-debug mode — real PCR values from NSM attestation."
+fi
+ENCLAVE_OUTPUT=$(nitro-cli run-enclave "${ENCLAVE_RUN_ARGS[@]}" 2>&1) || {
     echo "ERROR: Failed to start enclave"
     echo "$ENCLAVE_OUTPUT"
     exit 1
@@ -134,14 +148,16 @@ echo "           Enclave started (ID: ${ENCLAVE_ID:-unknown})"
 echo ""
 
 # Give the enclave a moment to boot and start listening
-echo "           Waiting 5 seconds for enclave to initialize..."
-sleep 5
+echo "           Waiting 10 seconds for enclave to initialize..."
+sleep 10
 
-# Optionally start capturing console output in background
-if [ -n "$ENCLAVE_ID" ]; then
+# Start capturing console output in background (only works in debug mode)
+if [ "$DEBUG_MODE" = true ] && [ -n "$ENCLAVE_ID" ]; then
     nitro-cli console --enclave-id "$ENCLAVE_ID" > /tmp/enclave_console.log 2>&1 &
     CONSOLE_PID=$!
     echo "           Console capture started (PID: $CONSOLE_PID)"
+else
+    echo "           Console not available (non-debug mode). Use --debug to enable."
 fi
 echo ""
 
@@ -165,13 +181,18 @@ if [ -n "${CONSOLE_PID:-}" ]; then
     kill "$CONSOLE_PID" 2>/dev/null || true
 fi
 
-# Show console output if test failed
+# Show console output if test failed (only available in debug mode)
 if [ $SMOKE_TEST_EXIT -ne 0 ]; then
     echo ""
-    echo "[Debug] Enclave console output (last 50 lines):"
-    echo "---"
-    tail -50 /tmp/enclave_console.log 2>/dev/null || echo "(no console output captured)"
-    echo "---"
+    if [ "$DEBUG_MODE" = true ]; then
+        echo "[Debug] Enclave console output (last 50 lines):"
+        echo "---"
+        tail -50 /tmp/enclave_console.log 2>/dev/null || echo "(no console output captured)"
+        echo "---"
+    else
+        echo "[Info] Console output not available in non-debug mode."
+        echo "       Rerun with --debug to see enclave console output on failure."
+    fi
 fi
 
 exit $SMOKE_TEST_EXIT

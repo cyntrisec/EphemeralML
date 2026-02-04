@@ -47,8 +47,34 @@ variable "ssh_public_key" {
   default     = ""
 }
 
+variable "enclave_pcr0" {
+  description = "PCR0 (ImageSha384) from nitro-cli build-enclave. Empty = no attestation condition (dev mode)."
+  type        = string
+  default     = ""
+}
+
+variable "enclave_pcr1" {
+  description = "PCR1 (kernel) from nitro-cli build-enclave. Empty = skip."
+  type        = string
+  default     = ""
+}
+
+variable "enclave_pcr2" {
+  description = "PCR2 (application) from nitro-cli build-enclave. Empty = skip."
+  type        = string
+  default     = ""
+}
+
 locals {
   use_ssh = length(trimspace(var.ssh_public_key)) > 0
+
+  # Build PCR conditions map only for non-empty PCR variables
+  pcr_conditions = merge(
+    var.enclave_pcr0 != "" ? { "kms:RecipientAttestation:ImageSha384" = var.enclave_pcr0 } : {},
+    var.enclave_pcr1 != "" ? { "kms:RecipientAttestation:PCR1" = var.enclave_pcr1 } : {},
+    var.enclave_pcr2 != "" ? { "kms:RecipientAttestation:PCR2" = var.enclave_pcr2 } : {},
+  )
+  has_pcr_conditions = length(local.pcr_conditions) > 0
 }
 
 data "aws_caller_identity" "current" {}
@@ -259,7 +285,44 @@ resource "aws_kms_key" "enclave_key" {
   deletion_window_in_days = 7
   enable_key_rotation     = false # Not needed for hello-world
 
-  policy = jsonencode({
+  policy = local.has_pcr_conditions ? jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid    = "Enable IAM User Permissions"
+        Effect = "Allow"
+        Principal = {
+          AWS = "arn:aws:iam::${data.aws_caller_identity.current.account_id}:root"
+        }
+        Action   = "kms:*"
+        Resource = "*"
+      },
+      {
+        Sid    = "Allow EphemeralML-Deployer"
+        Effect = "Allow"
+        Principal = {
+          AWS = data.aws_caller_identity.current.arn
+        }
+        Action   = "kms:*"
+        Resource = "*"
+      },
+      {
+        Sid    = "Allow Enclave Decrypt with Attestation"
+        Effect = "Allow"
+        Principal = {
+          AWS = aws_iam_role.host.arn
+        }
+        Action = [
+          "kms:Decrypt",
+          "kms:GenerateDataKey"
+        ]
+        Resource  = "*"
+        Condition = {
+          StringEqualsIgnoreCase = local.pcr_conditions
+        }
+      }
+    ]
+  }) : jsonencode({
     Version = "2012-10-17"
     Statement = [
       {
@@ -311,4 +374,8 @@ output "instance_public_ip" {
 
 output "ssm_start_session" {
   value = "aws ssm start-session --target ${aws_instance.host.id}"
+}
+
+output "kms_key_arn" {
+  value = aws_kms_key.enclave_key.arn
 }

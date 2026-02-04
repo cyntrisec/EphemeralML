@@ -594,6 +594,51 @@ impl MockEnclaveServer {
                         .await
                         .map_err(io_error_to_enclave_error)?;
                 }
+                MessageType::Ping => {
+                    let encrypted_req: ephemeral_ml_common::EncryptedMessage =
+                        serde_json::from_slice(&msg.payload).map_err(|e| {
+                            EnclaveError::Enclave(EphemeralError::SerializationError(e.to_string()))
+                        })?;
+
+                    let session_id = &encrypted_req.session_id;
+                    let ping_result = session_manager.with_session(session_id, |session| {
+                        let plaintext = session.decrypt(&encrypted_req)?;
+                        let encrypted_resp = session.encrypt(&plaintext)?;
+                        Ok(encrypted_resp)
+                    });
+
+                    match ping_result {
+                        Ok(encrypted_resp) => {
+                            let response_payload =
+                                serde_json::to_vec(&encrypted_resp).map_err(|e| {
+                                    EnclaveError::Enclave(EphemeralError::SerializationError(
+                                        e.to_string(),
+                                    ))
+                                })?;
+                            let response_msg = VSockMessage::new(
+                                MessageType::Ping,
+                                msg.sequence,
+                                response_payload,
+                            )
+                            .map_err(EnclaveError::Enclave)?;
+                            stream
+                                .write_all(&response_msg.encode())
+                                .await
+                                .map_err(io_error_to_enclave_error)?;
+                        }
+                        Err(e) => {
+                            eprintln!("[mock] Ping error: {}", e);
+                            let err_payload = format!("Ping error: {}", e).into_bytes();
+                            let err_msg =
+                                VSockMessage::new(MessageType::Error, msg.sequence, err_payload)
+                                    .map_err(EnclaveError::Enclave)?;
+                            stream
+                                .write_all(&err_msg.encode())
+                                .await
+                                .map_err(io_error_to_enclave_error)?;
+                        }
+                    }
+                }
                 _ => {
                     return Err(EnclaveError::Enclave(EphemeralError::ProtocolError(
                         format!("Unsupported message type: {:?}", msg.msg_type),

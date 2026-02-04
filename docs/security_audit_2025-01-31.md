@@ -152,6 +152,8 @@ KMS `Decrypt` calls now include an encryption context with `model_id` and `versi
 - **Key consistency:** ServerHello keys match attested keys
 - **HPKE session:** X25519 + ChaCha20-Poly1305 established
 - **Note:** PCR values from NSM are all-zeros because `--debug-mode` was used. Non-debug PCRs match the EIF build output above.
+- **Ping round-trip:** Added `MessageType::Ping` (0x09) for encrypted echo without model dependency. Smoke test now uses Ping instead of Data, proving bidirectional HPKE without needing a loaded model.
+- **Non-debug mode:** Smoke test script now defaults to non-debug mode (`--debug` opt-in), yielding real PCR values from NSM attestation.
 
 **Fixes applied during Nitro validation:**
 1. `d34464b` — Extract cert chain from CBOR payload (not COSE headers)
@@ -184,6 +186,36 @@ KMS `Decrypt` calls now include an encryption context with `model_id` and `versi
 **Risk:** High (was). Receipt verification is a core security guarantee. This bug would have caused all receipt verification to fail in both mock server and production paths.
 
 **Verified:** 110 tests pass. Benchmark binaries compile.
+
+---
+
+### P2-5. KMS Attestation Policy Enforcement — IMPLEMENTED
+
+**Files:** `infra/hello-enclave/main.tf`, `scripts/test_kms_attestation.sh`
+
+**Problem:** The KMS key policy allowed the host IAM role to call `kms:Decrypt` and `kms:GenerateDataKey` unconditionally, without requiring a valid Nitro attestation document. This meant a compromised host could decrypt model DEKs directly without the enclave.
+
+**Fix:**
+1. Added `enclave_pcr0`, `enclave_pcr1`, `enclave_pcr2` Terraform variables
+2. KMS policy now conditionally includes `StringEqualsIgnoreCase` conditions on `kms:RecipientAttestation:ImageSha384` (PCR0), `kms:RecipientAttestation:PCR1`, and `kms:RecipientAttestation:PCR2` when the corresponding variables are set
+3. When no PCR variables are set (dev mode), the policy remains unconditional for development convenience
+4. Added `test_kms_attestation.sh` script for negative testing (host cannot decrypt without attestation) and positive testing (enclave can decrypt with attestation)
+
+**Deployment:**
+```bash
+terraform apply -var="enclave_pcr0=<PCR0_FROM_BUILD>"
+```
+
+**Verification procedure:**
+1. Build EIF, record PCR0/1/2 from `nitro-cli build-enclave` output
+2. Apply Terraform with PCR values: `terraform apply -var="enclave_pcr0=<PCR0>"`
+3. On instance: `./scripts/test_kms_attestation.sh` — `GenerateDataKey` should return `AccessDeniedException`
+4. Optionally pass `--ciphertext /path/to/wrapped_dek.bin` to also test `Decrypt` denial
+5. Positive test (KMS decrypt WITH attestation) is not yet automated — requires the enclave to call `KmsClient::decrypt()` during model loading. The current boot path (`main.rs`) only does an S3 connectivity check. Full positive test requires Phase 2 model loading integration.
+
+**Risk:** High (was). Without attestation conditions, host compromise = model key compromise.
+
+**Status:** Terraform conditions and negative test script implemented. Negative test verifiable on-instance. Positive test requires model loading path integration (Phase 2).
 
 ---
 
@@ -302,6 +334,7 @@ End-to-end audit logging exists: `enclave/src/audit.rs` generates structured aud
 
 - [x] **P2-0: Attestation format/verification alignment — VERIFIED** (mock path unified in `b325fdd`; production path verified on Nitro in `c1c7439`)
 - [x] **P2-0b: Receipt key type mismatch and attestation binding — FIXED** (removed X25519 receipt_keypair; per-session Ed25519 key now embedded in attestation user_data)
+- [ ] **P2-5: KMS attestation policy enforcement — IMPLEMENTED** (Terraform + test script added; awaiting on-instance verification)
 - [ ] P2-1: KMS public key binding validation
 - [ ] P2-2: Certificate temporal validity checks
 - [ ] P2-3: Constant-time comparisons (`subtle` crate)

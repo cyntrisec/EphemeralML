@@ -333,34 +333,24 @@ async fn run_smoke_test(cid: u32, port: u32) -> std::result::Result<(), Box<dyn 
     println!("      HPKE session established.");
     println!("      Session ID: {}", hpke.session_id);
 
-    // Step 7: Encrypted round-trip test
+    // Step 7: Encrypted ping round-trip test
     //
-    // Session-ID is transmitted in ServerHello, so the enclave can look up the
-    // correct HPKE session. If the enclave successfully decrypts, processes, and
-    // re-encrypts a response, this proves bidirectional HPKE key agreement.
-    //
-    // If the enclave has no model loaded, it will decrypt successfully but fail
-    // at inference, closing the connection. This still proves decryption worked
-    // (the enclave found the session and got past AEAD decryption to the inference
-    // step). A full "ROUND-TRIP VERIFIED" requires a loaded model.
-    println!("[7/8] Encrypted round-trip test...");
-    let test_request = serde_json::json!({
-        "model_id": "smoke-test",
-        "input_data": [0, 0, 0, 0],
-        "input_shape": null
-    });
-    let test_plaintext = serde_json::to_vec(&test_request)
-        .map_err(|e| format!("JSON serialize failed: {}", e))?;
+    // Uses MessageType::Ping to echo plaintext through the enclave's HPKE session.
+    // The enclave decrypts the message, then re-encrypts the same plaintext and
+    // returns it. This proves bidirectional HPKE key agreement without needing a
+    // loaded model.
+    println!("[7/8] Encrypted ping round-trip test...");
+    let ping_plaintext = b"smoke-test-ping";
     let encrypted = hpke
-        .encrypt(&test_plaintext)
+        .encrypt(ping_plaintext)
         .map_err(|e| format!("Encryption failed: {}", e))?;
 
-    let data_payload = serde_json::to_vec(&encrypted)
+    let ping_payload = serde_json::to_vec(&encrypted)
         .map_err(|e| format!("EncryptedMessage serialize failed: {}", e))?;
-    let data_msg = VSockMessage::new(MessageType::Data, 1, data_payload)
+    let ping_msg = VSockMessage::new(MessageType::Ping, 1, ping_payload)
         .map_err(|e| format!("VSockMessage encode error: {}", e))?;
-    stream.write_all(&data_msg.encode()).await?;
-    println!("      Sent encrypted Data message ({} bytes ciphertext).", encrypted.ciphertext.len());
+    stream.write_all(&ping_msg.encode()).await?;
+    println!("      Sent encrypted Ping ({} bytes ciphertext).", encrypted.ciphertext.len());
 
     let mut resp_len_buf = [0u8; 4];
     let round_trip_result = tokio::time::timeout(
@@ -383,13 +373,19 @@ async fn run_smoke_test(cid: u32, port: u32) -> std::result::Result<(), Box<dyn 
                         resp_full.extend_from_slice(&resp_len_buf);
                         resp_full.extend_from_slice(&resp_body);
                         match VSockMessage::decode(&resp_full) {
-                            Ok(resp_msg) if resp_msg.msg_type == MessageType::Data => {
+                            Ok(resp_msg) if resp_msg.msg_type == MessageType::Ping => {
                                 match serde_json::from_slice::<ephemeral_ml_common::EncryptedMessage>(&resp_msg.payload) {
                                     Ok(enc_resp) => match hpke.decrypt(&enc_resp) {
                                         Ok(resp_plaintext) => {
-                                            println!("      ROUND-TRIP VERIFIED: enclave decrypted, processed, re-encrypted.");
-                                            println!("      Response plaintext: {} bytes", resp_plaintext.len());
-                                            true
+                                            if resp_plaintext == ping_plaintext {
+                                                println!("      ROUND-TRIP VERIFIED: enclave echoed {} bytes, plaintext matches.", resp_plaintext.len());
+                                                true
+                                            } else {
+                                                println!("      Round-trip response decrypted but plaintext mismatch.");
+                                                println!("      Expected: {:?}", String::from_utf8_lossy(ping_plaintext));
+                                                println!("      Got:      {:?}", String::from_utf8_lossy(&resp_plaintext));
+                                                false
+                                            }
                                         }
                                         Err(e) => {
                                             println!("      Enclave responded but client decryption failed: {}", e);
@@ -402,8 +398,13 @@ async fn run_smoke_test(cid: u32, port: u32) -> std::result::Result<(), Box<dyn 
                                     }
                                 }
                             }
+                            Ok(resp_msg) if resp_msg.msg_type == MessageType::Error => {
+                                let err_text = String::from_utf8_lossy(&resp_msg.payload);
+                                println!("      Enclave returned error: {}", err_text);
+                                false
+                            }
                             Ok(resp_msg) => {
-                                println!("      Enclave responded with {:?} (expected Data).", resp_msg.msg_type);
+                                println!("      Enclave responded with {:?} (expected Ping).", resp_msg.msg_type);
                                 false
                             }
                             Err(e) => {
@@ -420,14 +421,11 @@ async fn run_smoke_test(cid: u32, port: u32) -> std::result::Result<(), Box<dyn 
             }
         }
         Ok(Err(e)) => {
-            println!("      Connection closed after Data send ({}).", e);
-            println!("      Possible causes: (a) decryption succeeded but inference failed");
-            println!("      (no model loaded), or (b) HPKE key mismatch caused decryption");
-            println!("      error. Check enclave console for the specific error message.");
+            println!("      Connection closed after Ping send ({}).", e);
             false
         }
         Err(_) => {
-            println!("      Timeout waiting for response (10s). Check enclave console.");
+            println!("      Timeout waiting for Ping response (10s). Check enclave console.");
             false
         }
     };
@@ -453,7 +451,7 @@ async fn run_smoke_test(cid: u32, port: u32) -> std::result::Result<(), Box<dyn 
     println!("  Key consistency: ServerHello keys match attested keys");
     println!("  HPKE session:    Established client-side (X25519 + ChaCha20-Poly1305)");
     if round_trip_verified {
-        println!("  Round-trip:      VERIFIED (enclave decrypted + re-encrypted)");
+        println!("  Round-trip:      VERIFIED (encrypted ping echoed correctly)");
     } else {
         println!("  Round-trip:      NOT verified (check enclave console for cause)");
     }

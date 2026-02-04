@@ -210,6 +210,41 @@ impl<
                         EnclaveError::Enclave(EphemeralError::NetworkError(e.to_string()))
                     })?;
                 }
+                MessageType::Ping => {
+                    let encrypted_req: ephemeral_ml_common::EncryptedMessage =
+                        serde_json::from_slice(&msg.payload).map_err(|e| {
+                            EnclaveError::Enclave(EphemeralError::SerializationError(e.to_string()))
+                        })?;
+
+                    let session_id = &encrypted_req.session_id;
+                    let ping_result = session_manager.with_session(session_id, |session| {
+                        let plaintext = session.decrypt(&encrypted_req)?;
+                        let encrypted_resp = session.encrypt(&plaintext)?;
+                        Ok(encrypted_resp)
+                    });
+
+                    match ping_result {
+                        Ok(encrypted_resp) => {
+                            let resp_payload = serde_json::to_vec(&encrypted_resp).map_err(|e| {
+                                EnclaveError::Enclave(EphemeralError::SerializationError(e.to_string()))
+                            })?;
+                            let resp_msg =
+                                VSockMessage::new(MessageType::Ping, msg.sequence, resp_payload)?;
+                            stream.write_all(&resp_msg.encode()).await.map_err(|e| {
+                                EnclaveError::Enclave(EphemeralError::NetworkError(e.to_string()))
+                            })?;
+                        }
+                        Err(e) => {
+                            eprintln!("[server] Ping error: {}", e);
+                            let err_payload = format!("Ping error: {}", e).into_bytes();
+                            let err_msg =
+                                VSockMessage::new(MessageType::Error, msg.sequence, err_payload)?;
+                            stream.write_all(&err_msg.encode()).await.map_err(|e| {
+                                EnclaveError::Enclave(EphemeralError::NetworkError(e.to_string()))
+                            })?;
+                        }
+                    }
+                }
                 MessageType::KmsProxy => {
                     // Enclave initiates KMS Proxy requests, usually doesn't receive them as a server.
                 }
