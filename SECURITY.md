@@ -47,5 +47,5 @@ The following are in scope for security reports:
 For details on the threat model and security architecture, see:
 
 - [`docs/design.md`](docs/design.md) -- Architecture and threat model
-- [`docs/security_audit_2025-01-31.md`](docs/security_audit_2025-01-31.md) -- Security audit results
+- Internal security audit results are kept private; contact `security@cyntrisec.com` for reviewer access
 - [`SECURITY_DEMO.md`](SECURITY_DEMO.md) -- Security verification walkthrough
