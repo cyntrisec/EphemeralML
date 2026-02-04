@@ -400,8 +400,7 @@ mod tests {
                 serde_cbor::Value::Text("pcrs".to_string()),
                 serde_cbor::Value::Map(pcrs_map),
             );
-            let signature_bytes =
-                serde_cbor::to_vec(&serde_cbor::Value::Map(cbor_map)).unwrap();
+            let signature_bytes = serde_cbor::to_vec(&serde_cbor::Value::Map(cbor_map)).unwrap();
 
             // attestation_hash = SHA-256(signature_bytes), matching verifier
             let mut hasher = Sha256::new();

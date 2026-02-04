@@ -26,7 +26,9 @@ use ephemeral_ml_client::policy::PolicyManager;
 #[cfg(feature = "production")]
 use ephemeral_ml_common::protocol::{ClientHello, ServerHello};
 #[cfg(feature = "production")]
-use ephemeral_ml_common::{AttestationDocument, HPKESession, MessageType, PcrMeasurements, VSockMessage};
+use ephemeral_ml_common::{
+    AttestationDocument, HPKESession, MessageType, PcrMeasurements, VSockMessage,
+};
 #[cfg(feature = "production")]
 use sha2::{Digest, Sha256};
 #[cfg(feature = "production")]
@@ -90,12 +92,18 @@ fn main() {
 }
 
 #[cfg(feature = "production")]
-async fn run_smoke_test(cid: u32, port: u32) -> std::result::Result<(), Box<dyn std::error::Error>> {
+async fn run_smoke_test(
+    cid: u32,
+    port: u32,
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     use rand::rngs::OsRng;
     use x25519_dalek::{PublicKey, StaticSecret};
 
     // Step 1: Connect to enclave via VSock
-    println!("[1/7] Connecting to enclave via VSock (CID={}, port={})...", cid, port);
+    println!(
+        "[1/7] Connecting to enclave via VSock (CID={}, port={})...",
+        cid, port
+    );
     let mut stream = VsockStream::connect(cid, port).await.map_err(|e| {
         format!(
             "Failed to connect to enclave VSock CID={} port={}: {}. \
@@ -168,15 +176,11 @@ async fn run_smoke_test(cid: u32, port: u32) -> std::result::Result<(), Box<dyn 
     full_buf.extend_from_slice(&len_buf);
     full_buf.extend_from_slice(&body);
 
-    let response_msg = VSockMessage::decode(&full_buf)
-        .map_err(|e| format!("VSockMessage decode error: {}", e))?;
+    let response_msg =
+        VSockMessage::decode(&full_buf).map_err(|e| format!("VSockMessage decode error: {}", e))?;
 
     if response_msg.msg_type != MessageType::Hello {
-        return Err(format!(
-            "Expected Hello response, got {:?}",
-            response_msg.msg_type
-        )
-        .into());
+        return Err(format!("Expected Hello response, got {:?}", response_msg.msg_type).into());
     }
 
     let server_hello: ServerHello = serde_json::from_slice(&response_msg.payload)?;
@@ -216,17 +220,15 @@ async fn run_smoke_test(cid: u32, port: u32) -> std::result::Result<(), Box<dyn 
         nonce: Some(client_hello.client_nonce.to_vec()),
     };
 
-    let identity = verifier.verify_attestation_no_pcr_policy(&attestation_doc, &client_hello.client_nonce)?;
+    let identity =
+        verifier.verify_attestation_no_pcr_policy(&attestation_doc, &client_hello.client_nonce)?;
 
     println!("      ATTESTATION VERIFIED SUCCESSFULLY");
     println!();
     println!("      --- Enclave Identity ---");
     println!("      Module ID:        {}", identity.module_id);
     println!("      Protocol version: {}", identity.protocol_version);
-    println!(
-        "      Features:         {:?}",
-        identity.supported_features
-    );
+    println!("      Features:         {:?}", identity.supported_features);
     println!(
         "      HPKE public key:  {}",
         hex::encode(identity.hpke_public_key)
@@ -240,7 +242,10 @@ async fn run_smoke_test(cid: u32, port: u32) -> std::result::Result<(), Box<dyn 
         hex::encode(identity.attestation_hash)
     );
     if let Some(ref kms_pk) = identity.kms_public_key {
-        println!("      KMS public key:   {} bytes (RSA SPKI DER)", kms_pk.len());
+        println!(
+            "      KMS public key:   {} bytes (RSA SPKI DER)",
+            kms_pk.len()
+        );
     }
     println!();
     println!("      --- PCR Measurements ---");
@@ -350,7 +355,10 @@ async fn run_smoke_test(cid: u32, port: u32) -> std::result::Result<(), Box<dyn 
     let ping_msg = VSockMessage::new(MessageType::Ping, 1, ping_payload)
         .map_err(|e| format!("VSockMessage encode error: {}", e))?;
     stream.write_all(&ping_msg.encode()).await?;
-    println!("      Sent encrypted Ping ({} bytes ciphertext).", encrypted.ciphertext.len());
+    println!(
+        "      Sent encrypted Ping ({} bytes ciphertext).",
+        encrypted.ciphertext.len()
+    );
 
     let mut resp_len_buf = [0u8; 4];
     let round_trip_result = tokio::time::timeout(
@@ -374,7 +382,9 @@ async fn run_smoke_test(cid: u32, port: u32) -> std::result::Result<(), Box<dyn 
                         resp_full.extend_from_slice(&resp_body);
                         match VSockMessage::decode(&resp_full) {
                             Ok(resp_msg) if resp_msg.msg_type == MessageType::Ping => {
-                                match serde_json::from_slice::<ephemeral_ml_common::EncryptedMessage>(&resp_msg.payload) {
+                                match serde_json::from_slice::<ephemeral_ml_common::EncryptedMessage>(
+                                    &resp_msg.payload,
+                                ) {
                                     Ok(enc_resp) => match hpke.decrypt(&enc_resp) {
                                         Ok(resp_plaintext) => {
                                             if resp_plaintext == ping_plaintext {
@@ -382,8 +392,14 @@ async fn run_smoke_test(cid: u32, port: u32) -> std::result::Result<(), Box<dyn 
                                                 true
                                             } else {
                                                 println!("      Round-trip response decrypted but plaintext mismatch.");
-                                                println!("      Expected: {:?}", String::from_utf8_lossy(ping_plaintext));
-                                                println!("      Got:      {:?}", String::from_utf8_lossy(&resp_plaintext));
+                                                println!(
+                                                    "      Expected: {:?}",
+                                                    String::from_utf8_lossy(ping_plaintext)
+                                                );
+                                                println!(
+                                                    "      Got:      {:?}",
+                                                    String::from_utf8_lossy(&resp_plaintext)
+                                                );
                                                 false
                                             }
                                         }
@@ -404,11 +420,17 @@ async fn run_smoke_test(cid: u32, port: u32) -> std::result::Result<(), Box<dyn 
                                 false
                             }
                             Ok(resp_msg) => {
-                                println!("      Enclave responded with {:?} (expected Ping).", resp_msg.msg_type);
+                                println!(
+                                    "      Enclave responded with {:?} (expected Ping).",
+                                    resp_msg.msg_type
+                                );
                                 false
                             }
                             Err(e) => {
-                                println!("      Enclave responded but VSockMessage decode failed: {}", e);
+                                println!(
+                                    "      Enclave responded but VSockMessage decode failed: {}",
+                                    e
+                                );
                                 false
                             }
                         }
@@ -473,8 +495,13 @@ async fn run_smoke_test(cid: u32, port: u32) -> std::result::Result<(), Box<dyn 
 }
 
 #[cfg(not(feature = "production"))]
-async fn run_smoke_test(_cid: u32, _port: u32) -> std::result::Result<(), Box<dyn std::error::Error>> {
-    Err("This binary requires the 'production' feature. Build with: \
+async fn run_smoke_test(
+    _cid: u32,
+    _port: u32,
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    Err(
+        "This binary requires the 'production' feature. Build with: \
          cargo build --release --bin smoke_test_nitro --features production -p ephemeral-ml-host"
-        .into())
+            .into(),
+    )
 }

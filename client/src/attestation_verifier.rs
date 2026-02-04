@@ -110,18 +110,18 @@ impl AttestationVerifier {
                 if let Ok(parsed) = serde_cbor::from_slice::<serde_cbor::Value>(&doc.signature) {
                     if let Some(map) = cbor_as_map(&parsed) {
                         // Extract user_data containing keys
-                        let (hpke_pk, receipt_pk) =
-                            if let Ok(ud_bytes) = get_bytes_field(map, "user_data") {
-                                if let Ok(ud) = serde_json::from_slice::<AttestationUserData>(
-                                    &ud_bytes,
-                                ) {
-                                    (ud.hpke_public_key, ud.receipt_signing_key)
-                                } else {
-                                    ([0u8; 32], [0u8; 32])
-                                }
+                        let (hpke_pk, receipt_pk) = if let Ok(ud_bytes) =
+                            get_bytes_field(map, "user_data")
+                        {
+                            if let Ok(ud) = serde_json::from_slice::<AttestationUserData>(&ud_bytes)
+                            {
+                                (ud.hpke_public_key, ud.receipt_signing_key)
                             } else {
                                 ([0u8; 32], [0u8; 32])
-                            };
+                            }
+                        } else {
+                            ([0u8; 32], [0u8; 32])
+                        };
 
                         // Extract PCRs
                         let pcrs = self.extract_pcrs(map).unwrap_or_else(|_| doc.pcrs.clone());
@@ -323,9 +323,7 @@ impl AttestationVerifier {
             }
             _ => {
                 return Err(ClientError::Client(
-                    crate::EphemeralError::AttestationError(
-                        "cabundle is not an array".to_string(),
-                    ),
+                    crate::EphemeralError::AttestationError("cabundle is not an array".to_string()),
                 ));
             }
         };
@@ -573,7 +571,7 @@ fn get_int_field(map: &BTreeMap<serde_cbor::Value, serde_cbor::Value>, key: &str
 /// (each component is half the total length). OpenSSL expects DER-encoded
 /// ASN.1 SEQUENCE { INTEGER r, INTEGER s }.
 fn ecdsa_raw_to_der(raw: &[u8]) -> std::result::Result<Vec<u8>, String> {
-    if raw.len() % 2 != 0 || raw.is_empty() {
+    if !raw.len().is_multiple_of(2) || raw.is_empty() {
         return Err(format!(
             "Invalid ECDSA signature length: {} (expected even)",
             raw.len()

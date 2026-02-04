@@ -133,14 +133,11 @@ impl<
 
                     // Generate per-session receipt signing key BEFORE attestation,
                     // so its public key can be embedded in the attestation user_data
-                    let receipt_key =
-                        ephemeral_ml_common::ReceiptSigningKey::generate()?;
+                    let receipt_key = ephemeral_ml_common::ReceiptSigningKey::generate()?;
                     let receipt_pk = receipt_key.public_key_bytes();
 
-                    let attestation = provider.generate_attestation(
-                        &client_hello.client_nonce,
-                        receipt_pk,
-                    )?;
+                    let attestation =
+                        provider.generate_attestation(&client_hello.client_nonce, receipt_pk)?;
 
                     // Establish HPKE session
                     let mut hasher = sha2::Sha256::new();
@@ -225,9 +222,12 @@ impl<
 
                     match ping_result {
                         Ok(encrypted_resp) => {
-                            let resp_payload = serde_json::to_vec(&encrypted_resp).map_err(|e| {
-                                EnclaveError::Enclave(EphemeralError::SerializationError(e.to_string()))
-                            })?;
+                            let resp_payload =
+                                serde_json::to_vec(&encrypted_resp).map_err(|e| {
+                                    EnclaveError::Enclave(EphemeralError::SerializationError(
+                                        e.to_string(),
+                                    ))
+                                })?;
                             let resp_msg =
                                 VSockMessage::new(MessageType::Ping, msg.sequence, resp_payload)?;
                             stream.write_all(&resp_msg.encode()).await.map_err(|e| {

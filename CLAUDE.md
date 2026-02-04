@@ -17,7 +17,7 @@
 
 EphemeralML is a confidential AI inference system that runs ML models inside AWS Nitro Enclaves with end-to-end encryption. The host acts as a blind relay — it cannot decrypt or inspect sensitive data.
 
-**Current status**: v1.0 crypto core and enclave runtime complete (110 tests, 13k+ LOC Rust, benchmarked at 14.5% overhead). Not yet user-deployable — see **Product Roadmap** below for the path from prototype to product.
+**Current status**: v1.0 crypto core and enclave runtime complete (110 tests, 13k+ LOC Rust, benchmarked at ~12% overhead). Not yet user-deployable — see **Product Roadmap** below for the path from prototype to product.
 
 Target sectors: Defense, GovCloud, Finance, Healthcare.
 
@@ -305,18 +305,25 @@ aws ssm send-command --instance-ids i-XXXX \
 
 ### Benchmark Results (Feb 2026, m6i.xlarge)
 
-Raw results in `benchmark_results/run_20260203_v2/`. Definitive run with VmHWM memory, full-embedding SHA-256, and all new benchmarks. Commit `3e7b676`.
+Raw results in `benchmark_results/run_20260204_*/` (3 runs). Commit `d686eae`.
 
 | Metric | Bare Metal | Enclave | Overhead |
 |--------|-----------|---------|----------|
-| Inference Mean | 80.02ms | 89.49ms | +11.8% |
-| Inference P95 | 81.45ms | 90.64ms | +11.3% |
-| Throughput | 12.5 inf/s | 11.2 inf/s | -10.6% |
+| Inference Mean | 77.97ms | 87.51ms | +12.2% |
+| Inference P95 | 79.34ms | 88.72ms | +11.8% |
+| Throughput | 12.83 inf/s | 11.43 inf/s | -10.9% |
 | Cold Start | 214ms | 7,490ms | Dominated by S3→VSock fetch |
 | Peak RSS (VmHWM) | 266 MB | 1,018 MB | +283% |
 | Attestation | N/A | 314ms | One-time per session |
 | KMS Key Release | N/A | 96ms | One-time per session |
 | Tokenizer Setup | 17ms | 25ms | +44% |
+
+**Reproducibility (3 runs at commit `d686eae`):**
+| Run | Baseline Mean | Enclave Mean | Overhead |
+|-----|---------------|-------------|----------|
+| run_20260204_160201 | 78.01ms | 87.40ms | +12.0% |
+| run_20260204_163207 | 77.95ms | 87.80ms | +12.6% |
+| run_20260204_171208 | 77.96ms | 87.32ms | +12.0% |
 
 **VSock RTT (enclave, using Audit messages):**
 | Payload | RTT |
@@ -371,7 +378,7 @@ Raw results in `benchmark_results/run_20260203_v2/`. Definitive run with VmHWM m
 **Cost Analysis (m6i.xlarge @ $0.192/hr):**
 | Metric | Bare Metal | Enclave |
 |--------|-----------|---------|
-| Cost/1M inferences | $4.27 | $4.76 |
+| Cost/1M inferences | $4.16 | $4.67 |
 | Cost multiplier | — | 1.12x |
 
 **Crypto Primitives (Tier 4, bare metal m6i.xlarge):**
@@ -397,7 +404,7 @@ Raw results in `benchmark_results/run_20260203_v2/`. Definitive run with VmHWM m
 | **Full verification pipeline** | **2.998ms** | **3.046ms** |
 
 Key takeaways:
-- **~11.8% inference overhead** — within "Acceptable" range per BENCHMARK_SPEC.md (10-15% matches AMD SEV-SNP BERT numbers)
+- **~12.2% inference overhead** (mean of 3 runs) — within "Acceptable" range per BENCHMARK_SPEC.md (10-15% matches AMD SEV-SNP BERT numbers)
 - **Cold start dominated by model fetch** (6.9s over VSock from S3) — could be optimized with EIF-embedded weights or pre-warming
 - **Attestation + KMS total: ~410ms** one-time cost, acceptable for session-based workloads
 - **Memory ~3.8x RSS** (VmHWM: 266→1018 MB) due to enclave kernel overhead and VSock message buffers
@@ -413,9 +420,9 @@ Benchmark inference logic (`run_single_inference`: tokenize → BERT forward →
 
 ### Benchmark Re-Run Status
 
-The last benchmark run was completed on Feb 3, 2026 (commit `3e7b676`). Results in `benchmark_results/run_20260203_v2/`. This run has known issues: mixed commit/hardware fields across JSONs, `commit` shows "unknown" in enclave output, not a clean single-commit snapshot. **A fresh rerun is needed for publication-quality results.**
+**Latest run:** Feb 4, 2026, commit `d686eae`, 3 runs on m6i.xlarge (instance i-01959fa23e43d9506). Results in `benchmark_results/run_20260204_160201/`, `run_20260204_163207/`, `run_20260204_171208/`. Consistent results: 12.0–12.6% inference overhead across all 3 runs. Publication-quality.
 
-As of commit `b325fdd`, the benchmark runner (`run_benchmark.sh`) includes:
+The benchmark runner (`run_benchmark.sh`) includes:
 - `--clean` flag to force `cargo clean` before building (ensures `GIT_COMMIT` is baked in via `option_env!()`)
 - Step 8 post-run validation: checks all JSONs agree on `commit` + `hardware`, validates `VmHWM` and `quality.embedding_sha256`
 - `run_metadata.json` written per run with timestamp, git commit, instance type, enclave config
