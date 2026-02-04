@@ -20,7 +20,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         // Test new DefaultAttestationProvider (uses mock in development)
         let default_provider = DefaultAttestationProvider::new()?;
         let nonce = b"test_nonce_for_demo_12345678901234567890";
-        let attestation = default_provider.generate_attestation(nonce)?;
+        let attestation = default_provider.generate_attestation(nonce, [0u8; 32])?;
         println!(
             "Generated attestation for module: {}",
             attestation.module_id
@@ -29,10 +29,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             "HPKE public key: {:?}",
             hex::encode(default_provider.get_hpke_public_key())
         );
-        println!(
-            "Receipt signing key: {:?}",
-            hex::encode(default_provider.get_receipt_public_key())
-        );
+        // Receipt signing key is now per-session (generated in server.rs during handshake)
 
         // Test model assembly
         let mut assembler = MockEphemeralAssembler::new();

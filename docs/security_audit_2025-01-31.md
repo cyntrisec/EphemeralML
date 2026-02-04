@@ -1,7 +1,7 @@
 # EphemeralML Security Audit
 
 **Initial audit:** 2025-01-31
-**Last verified:** 2026-02-03
+**Last verified:** 2026-02-04
 **Auditors:** 3 specialized sub-agents (cryptographer, attestation expert, security architect)
 
 ---
@@ -11,9 +11,9 @@
 | Component | Rating | Status |
 |-----------|--------|--------|
 | **Cryptography** | GREEN | All critical findings resolved, HKDF + ephemeral keys + AAD binding |
-| **Attestation & KMS** | YELLOW | Attestation format/verification mismatch blocks production; cert time validation and ReceiptVerifier incomplete |
+| **Attestation & KMS** | YELLOW | Mock attestation path unified (P2-0 partial fix); production path untested on real Nitro; cert time validation and ReceiptVerifier incomplete |
 | **Architecture** | GREEN | Solid three-zone model, fail-closed design, ZeroizeOnDrop throughout |
-| **OVERALL** | YELLOW | P2-0 attestation mismatch blocks production; remaining Phase 2 items are hardening |
+| **OVERALL** | YELLOW | P2-0 mock path fixed (commit `b325fdd`), production path needs real Nitro validation; remaining Phase 2 items are hardening |
 
 ---
 
@@ -117,15 +117,50 @@ KMS `Decrypt` calls now include an encryption context with `model_id` and `versi
 
 ## Phase 2 — Open (High Priority Hardening)
 
-### P2-0. Attestation Format/Verification Mismatch — PRODUCTION BLOCKER
+### P2-0. Attestation Format/Verification Mismatch — PARTIALLY FIXED
 
-**Files:** `enclave/src/attestation.rs`, `client/src/attestation_verifier.rs`
+**Files:** `enclave/src/attestation.rs`, `client/src/attestation_verifier.rs`, `enclave/src/mock.rs`, `client/src/secure_client.rs`
+**Fix commit:** `b325fdd`
 
-The enclave generates attestation documents in one format, but the client verifier expects a different structure. The mock path papers over this because it skips real COSE/CBOR parsing entirely. In a production deployment with real NSM attestation documents, the verification pipeline would fail or silently accept malformed documents.
+**What was fixed (commit `b325fdd`):**
+1. Unified attestation hash: `SHA-256(doc.signature)` everywhere (server, client, benchmarks), replacing field-by-field hashing
+2. Mock server wire format: `attestation_doc.signature.clone()` instead of `serde_json::to_vec(&attestation_doc)`, matching production wire format
+3. Client deserialization: removed `#[cfg]` split — both modes construct `AttestationDocument { signature: raw_bytes }`
+4. Production attestation generation: removed broken COSE-as-map parsing (COSE_Sign1 is CBOR array, not map); stores raw NSM bytes directly
+5. Mock verifier: parses CBOR payload in `doc.signature` to extract real keys and PCRs instead of returning zeroed placeholders
+6. All benchmark binaries unified to use consistent attestation hash
 
-**Risk:** High. This is the highest-priority production gap. The system cannot be considered production-ready until the attestation generation and verification paths are aligned on the same COSE_Sign1 + CBOR structure with real NSM document parsing.
+**What remains unverified:**
+- The production verifier path (`verify_cose_sign1` + P-384 cert chain) has NOT been tested with real NSM attestation documents on a Nitro instance
+- The `generate_attestation` fix (item 4) stores raw NSM bytes but hasn't been exercised against real NSM output
+- Only the mock path is covered by the 110-test suite
 
-**Recommendation:** Align attestation document format between enclave generation and client verification. Test with real NSM attestation documents on a Nitro instance to confirm the full pipeline works end-to-end.
+**Risk:** Medium (reduced from High). The structural alignment is correct and tested in mock mode. Production deployment still requires validation with real NSM documents on a Nitro-enabled instance.
+
+**Recommendation:** Deploy to a Nitro instance and run the full client→enclave→client attestation flow with real NSM. Capture the raw NSM document and verify it parses correctly through the client verifier.
+
+---
+
+### P2-0b. Receipt Key Type Mismatch and Attestation Binding — FIXED
+
+**Files:** `enclave/src/attestation.rs`, `enclave/src/mock.rs`, `enclave/src/server.rs`, `enclave/src/kms_client.rs`, `enclave/src/main.rs`
+
+**Problem (two layers):**
+
+1. **Wrong key type:** Both `NSMAttestationProvider.receipt_keypair` and `MockAttestationProvider.receipt_keypair` were `EphemeralKeyPair`/`MockKeyPair` (X25519 ECDH keys). But `ReceiptSigningKey` uses Ed25519 signing keys. The attestation `user_data` embedded X25519 bytes labeled as "receipt_signing_key", which would fail when the client tried to use them as Ed25519 verifying keys.
+
+2. **Key mismatch between attestation and session:** The server generated a fresh per-session `ReceiptSigningKey::generate()` (Ed25519), but the attestation `user_data` contained the provider-level X25519 key (different key, different curve). The client extracts `identity.receipt_signing_key` from attestation `user_data`, so it would always get the wrong key for receipt verification.
+
+**Fix:**
+- Removed `receipt_keypair` from both `NSMAttestationProvider` and `MockAttestationProvider`
+- Changed `generate_attestation()` trait signature to accept `receipt_public_key: [u8; 32]` parameter
+- Server now generates per-session `ReceiptSigningKey` (Ed25519) **before** calling `generate_attestation()`, passes the Ed25519 public key bytes into the attestation
+- The attestation `user_data` now contains the same Ed25519 public key that the session uses to sign receipts
+- Client extracts this key from attestation → matches the session signing key → receipt verification works
+
+**Risk:** High (was). Receipt verification is a core security guarantee. This bug would have caused all receipt verification to fail in both mock server and production paths.
+
+**Verified:** 110 tests pass. Benchmark binaries compile.
 
 ---
 
@@ -242,7 +277,8 @@ End-to-end audit logging exists: `enclave/src/audit.rs` generates structured aud
 
 ### Phase 2: High priority (hardening)
 
-- [ ] **P2-0: Attestation format/verification alignment — PRODUCTION BLOCKER**
+- [x] **P2-0: Attestation format/verification alignment — PARTIALLY FIXED** (mock path unified in `b325fdd`; production path needs real Nitro validation)
+- [x] **P2-0b: Receipt key type mismatch and attestation binding — FIXED** (removed X25519 receipt_keypair; per-session Ed25519 key now embedded in attestation user_data)
 - [ ] P2-1: KMS public key binding validation
 - [ ] P2-2: Certificate temporal validity checks
 - [ ] P2-3: Constant-time comparisons (`subtle` crate)
@@ -258,21 +294,23 @@ End-to-end audit logging exists: `enclave/src/audit.rs` generates structured aud
 
 ## Conclusion
 
-**Current status:** YELLOW — NOT PRODUCTION READY (one blocker remains)
+**Current status:** YELLOW — APPROACHING PRODUCTION READY
 
 All critical vulnerabilities (C1-C5) have been resolved. Three additional security improvements (C6-C8) were added beyond the original audit scope: AEAD AAD binding prevents cross-session ciphertext splicing, KMS encryption context prevents cross-model DEK replay, and cipher alignment eliminates the AES/ChaCha mismatch.
 
-**Production blocker:** The attestation format/verification mismatch (P2-0) must be resolved before production deployment. The enclave attestation generation and client verification paths are not aligned on the same COSE_Sign1 + CBOR structure when using real NSM documents. The mock path masks this gap.
+**P2-0 status (attestation alignment):** Partially fixed in commit `b325fdd`. The mock attestation path is now structurally aligned: unified hash (`SHA-256(doc.signature)`), unified wire format (raw bytes), removed broken COSE-as-map parsing, and mock verifier extracts real keys from CBOR. All 110 tests pass. **However, the production verifier path has NOT been tested with real NSM attestation documents on a Nitro instance.** The fix is architecturally correct but unverified in production.
 
 The remaining Phase 2 items (P2-1 through P2-4) are hardening measures that do not represent exploitable vulnerabilities under the current threat model. P3-3 (audit logging) has been partially addressed — the E2E pipeline exists but uses prototype-grade persistence.
 
+**Benchmark validation (Feb 4, 2026):** Full benchmark rerun on m6i.xlarge at commit `5fa19c5` — all 9 JSON files consistent (commit, hardware fields match), all validations passed. Results in `benchmark_results/run_20260203_230752/`. Inference overhead: +13.0% (enclave vs bare metal).
+
 **Recommendation:**
-- YELLOW until P2-0 (attestation alignment) is resolved
-- GREEN for controlled deployment after P2-0 fix, with documented P2-1..P2-4 limitations
+- YELLOW until P2-0 is validated on real Nitro (run full attestation flow with real NSM documents)
+- GREEN for controlled deployment after real Nitro validation, with documented P2-1..P2-4 limitations
 - Full GREEN after all Phase 2 completion
 
 ---
 
 *Initial audit: 2025-01-31*
-*Verification and update: 2026-02-03*
-*EphemeralML Security Review v2*
+*P2-0 partial fix and benchmark rerun validation: 2026-02-04*
+*EphemeralML Security Review v3*

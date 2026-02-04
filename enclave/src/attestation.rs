@@ -52,8 +52,15 @@ impl EphemeralKeyPair {
 
 /// Trait for attestation functionality
 pub trait AttestationProvider: Send + Sync {
-    /// Generate an attestation document with the given nonce and embedded ephemeral keys
-    fn generate_attestation(&self, nonce: &[u8]) -> Result<AttestationDocument>;
+    /// Generate an attestation document with the given nonce.
+    /// `receipt_public_key` is the Ed25519 public key bytes for the per-session
+    /// receipt signing key, embedded in the attestation user_data so the client
+    /// can extract it for receipt verification.
+    fn generate_attestation(
+        &self,
+        nonce: &[u8],
+        receipt_public_key: [u8; 32],
+    ) -> Result<AttestationDocument>;
 
     /// Get current PCR measurements
     fn get_pcr_measurements(&self) -> Result<PcrMeasurements>;
@@ -63,9 +70,6 @@ pub trait AttestationProvider: Send + Sync {
 
     /// Get the HPKE private key (Sensitive!)
     fn get_hpke_private_key(&self) -> [u8; 32];
-
-    /// Get the receipt signing public key
-    fn get_receipt_public_key(&self) -> [u8; 32];
 
     /// Generate a fresh ephemeral keypair for a single session.
     ///
@@ -88,7 +92,6 @@ pub trait AttestationProvider: Send + Sync {
 #[derive(Clone)]
 pub struct NSMAttestationProvider {
     hpke_keypair: EphemeralKeyPair,
-    receipt_keypair: EphemeralKeyPair,
     kms_keypair: RsaPrivateKey,
 }
 
@@ -106,7 +109,6 @@ impl NSMAttestationProvider {
 
         Ok(Self {
             hpke_keypair: EphemeralKeyPair::generate(),
-            receipt_keypair: EphemeralKeyPair::generate(),
             kms_keypair,
         })
     }
@@ -187,11 +189,15 @@ impl NSMAttestationProvider {
 
 #[cfg(feature = "production")]
 impl AttestationProvider for NSMAttestationProvider {
-    fn generate_attestation(&self, nonce: &[u8]) -> Result<AttestationDocument> {
+    fn generate_attestation(
+        &self,
+        nonce: &[u8],
+        receipt_public_key: [u8; 32],
+    ) -> Result<AttestationDocument> {
         // Create user data with embedded keys
         let user_data = AttestationUserData {
             hpke_public_key: self.hpke_keypair.public_key,
-            receipt_signing_key: self.receipt_keypair.public_key,
+            receipt_signing_key: receipt_public_key,
             protocol_version: 1,
             supported_features: vec!["gateway".to_string()], // v1 only supports Gateway mode
         };
@@ -232,10 +238,6 @@ impl AttestationProvider for NSMAttestationProvider {
 
     fn get_hpke_private_key(&self) -> [u8; 32] {
         self.hpke_keypair.private_key
-    }
-
-    fn get_receipt_public_key(&self) -> [u8; 32] {
-        self.receipt_keypair.public_key
     }
 
     fn decrypt_hpke(&self, ciphertext: &[u8]) -> Result<Vec<u8>> {
@@ -320,15 +322,21 @@ impl DefaultAttestationProvider {
 }
 
 impl AttestationProvider for DefaultAttestationProvider {
-    fn generate_attestation(&self, nonce: &[u8]) -> Result<AttestationDocument> {
+    fn generate_attestation(
+        &self,
+        nonce: &[u8],
+        receipt_public_key: [u8; 32],
+    ) -> Result<AttestationDocument> {
         #[cfg(feature = "production")]
         {
-            self.nsm_provider.generate_attestation(nonce)
+            self.nsm_provider
+                .generate_attestation(nonce, receipt_public_key)
         }
 
         #[cfg(not(feature = "production"))]
         {
-            self.mock_provider.generate_attestation(nonce)
+            self.mock_provider
+                .generate_attestation(nonce, receipt_public_key)
         }
     }
 
@@ -365,18 +373,6 @@ impl AttestationProvider for DefaultAttestationProvider {
         #[cfg(not(feature = "production"))]
         {
             self.mock_provider.get_hpke_private_key()
-        }
-    }
-
-    fn get_receipt_public_key(&self) -> [u8; 32] {
-        #[cfg(feature = "production")]
-        {
-            self.nsm_provider.get_receipt_public_key()
-        }
-
-        #[cfg(not(feature = "production"))]
-        {
-            self.mock_provider.get_receipt_public_key()
         }
     }
 
@@ -452,9 +448,10 @@ mod tests {
     fn test_default_attestation_provider_mock_mode() {
         let provider = DefaultAttestationProvider::new().unwrap();
         let nonce = b"test_nonce_12345678901234567890";
+        let receipt_pk = [42u8; 32];
 
         // Should work in mock mode
-        let attestation = provider.generate_attestation(nonce).unwrap();
+        let attestation = provider.generate_attestation(nonce, receipt_pk).unwrap();
         assert_eq!(attestation.module_id, "mock-enclave");
         assert_eq!(attestation.nonce, Some(nonce.to_vec()));
 
@@ -462,30 +459,27 @@ mod tests {
         let pcrs = provider.get_pcr_measurements().unwrap();
         assert!(pcrs.is_valid());
 
-        // Should get keys
+        // Should get HPKE key
         let hpke_key = provider.get_hpke_public_key();
-        let receipt_key = provider.get_receipt_public_key();
         assert_eq!(hpke_key.len(), 32);
-        assert_eq!(receipt_key.len(), 32);
     }
 
     #[test]
     fn test_mock_attestation_provider_with_keys() {
         let provider = MockAttestationProvider::new();
         let nonce = b"test_nonce_12345678901234567890";
+        let receipt_pk = [42u8; 32];
 
-        let attestation = provider.generate_attestation(nonce).unwrap();
+        let attestation = provider.generate_attestation(nonce, receipt_pk).unwrap();
 
         // Verify attestation contains expected fields
         assert_eq!(attestation.module_id, "mock-enclave");
         assert_eq!(attestation.nonce, Some(nonce.to_vec()));
         assert!(attestation.pcrs.is_valid());
 
-        // Verify keys are accessible
+        // Verify HPKE key is accessible and non-zero
         let hpke_key = provider.get_hpke_public_key();
-        let receipt_key = provider.get_receipt_public_key();
-        assert_ne!(hpke_key, [0u8; 32]); // Should not be all zeros
-        assert_ne!(receipt_key, [0u8; 32]); // Should not be all zeros
+        assert_ne!(hpke_key, [0u8; 32]);
     }
 
     #[test]
@@ -494,7 +488,7 @@ mod tests {
         let nonce = b"test_nonce_12345678901234567890";
 
         // Should fail when configured to fail
-        let result = provider.generate_attestation(nonce);
+        let result = provider.generate_attestation(nonce, [0u8; 32]);
         assert!(result.is_err());
     }
 }

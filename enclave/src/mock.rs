@@ -59,7 +59,6 @@ fn io_error_to_enclave_error(err: std::io::Error) -> EnclaveError {
 pub struct MockAttestationProvider {
     pub valid_attestation: bool,
     pub hpke_keypair: MockKeyPair,
-    pub receipt_keypair: MockKeyPair,
     pub kms_keypair: RsaPrivateKey,
 }
 
@@ -71,7 +70,6 @@ impl MockAttestationProvider {
         Self {
             valid_attestation: true,
             hpke_keypair: MockKeyPair::generate(),
-            receipt_keypair: MockKeyPair::generate(),
             kms_keypair,
         }
     }
@@ -83,7 +81,6 @@ impl MockAttestationProvider {
         Self {
             valid_attestation: false,
             hpke_keypair: MockKeyPair::generate(),
-            receipt_keypair: MockKeyPair::generate(),
             kms_keypair,
         }
     }
@@ -92,13 +89,16 @@ impl MockAttestationProvider {
         Self {
             valid_attestation: self.valid_attestation,
             hpke_keypair: self.hpke_keypair.clone(),
-            receipt_keypair: self.receipt_keypair.clone(),
             kms_keypair: self.kms_keypair.clone(),
         }
     }
 
     /// Generate mock attestation document with embedded keys
-    pub fn generate_attestation_with_keys(&self, nonce: &[u8]) -> Result<AttestationDocument> {
+    pub fn generate_attestation_with_keys(
+        &self,
+        nonce: &[u8],
+        receipt_public_key: [u8; 32],
+    ) -> Result<AttestationDocument> {
         if !self.valid_attestation {
             return Err(EnclaveError::Enclave(EphemeralError::AttestationError(
                 "Mock attestation configured to fail".to_string(),
@@ -108,7 +108,7 @@ impl MockAttestationProvider {
         // Create user data with embedded keys
         let user_data = MockAttestationUserData {
             hpke_public_key: self.hpke_keypair.public_key,
-            receipt_signing_key: self.receipt_keypair.public_key,
+            receipt_signing_key: receipt_public_key,
             protocol_version: 1,
             supported_features: vec!["gateway".to_string()], // v1 only supports Gateway mode
         };
@@ -200,8 +200,12 @@ impl Default for MockAttestationProvider {
 }
 
 impl AttestationProvider for MockAttestationProvider {
-    fn generate_attestation(&self, nonce: &[u8]) -> Result<AttestationDocument> {
-        self.generate_attestation_with_keys(nonce)
+    fn generate_attestation(
+        &self,
+        nonce: &[u8],
+        receipt_public_key: [u8; 32],
+    ) -> Result<AttestationDocument> {
+        self.generate_attestation_with_keys(nonce, receipt_public_key)
     }
 
     fn get_pcr_measurements(&self) -> Result<PcrMeasurements> {
@@ -222,10 +226,6 @@ impl AttestationProvider for MockAttestationProvider {
 
     fn get_hpke_private_key(&self) -> [u8; 32] {
         self.hpke_keypair.private_key
-    }
-
-    fn get_receipt_public_key(&self) -> [u8; 32] {
-        self.receipt_keypair.public_key
     }
 
     fn decrypt_hpke(&self, ciphertext: &[u8]) -> Result<Vec<u8>> {
@@ -515,8 +515,14 @@ impl MockEnclaveServer {
                     let session_keypair = attestation_provider.generate_ephemeral_keypair();
                     let ephemeral_public_key = session_keypair.public_key;
 
-                    let attestation_doc =
-                        attestation_provider.generate_attestation(&client_hello.client_nonce)?;
+                    // Generate per-session receipt signing key BEFORE attestation,
+                    // so its public key can be embedded in the attestation user_data
+                    let receipt_key =
+                        ReceiptSigningKey::generate().map_err(EnclaveError::Enclave)?;
+                    let receipt_pk = receipt_key.public_key_bytes();
+
+                    let attestation_doc = attestation_provider
+                        .generate_attestation(&client_hello.client_nonce, receipt_pk)?;
 
                     let mut hasher = Sha256::new();
                     hasher.update(&attestation_doc.signature);
@@ -536,10 +542,6 @@ impl MockEnclaveServer {
                     hpke.establish(&session_keypair.private_key)
                         .map_err(EnclaveError::Enclave)?;
                     drop(session_keypair);
-
-                    let receipt_key =
-                        ReceiptSigningKey::generate().map_err(EnclaveError::Enclave)?;
-                    let receipt_pk = receipt_key.public_key_bytes();
 
                     let session = EnclaveSession::new(
                         session_id.clone(),

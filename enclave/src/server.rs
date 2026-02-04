@@ -129,7 +129,16 @@ impl<
                     let session_keypair = provider.generate_ephemeral_keypair();
                     let ephemeral_public_key = session_keypair.public_key;
 
-                    let attestation = provider.generate_attestation(&client_hello.client_nonce)?;
+                    // Generate per-session receipt signing key BEFORE attestation,
+                    // so its public key can be embedded in the attestation user_data
+                    let receipt_key =
+                        ephemeral_ml_common::ReceiptSigningKey::generate()?;
+                    let receipt_pk = receipt_key.public_key_bytes();
+
+                    let attestation = provider.generate_attestation(
+                        &client_hello.client_nonce,
+                        receipt_pk,
+                    )?;
 
                     // Establish HPKE session
                     let mut hasher = sha2::Sha256::new();
@@ -155,7 +164,7 @@ impl<
                     let session = EnclaveSession::new(
                         hpke.session_id.clone(),
                         hpke,
-                        ephemeral_ml_common::ReceiptSigningKey::generate()?,
+                        receipt_key,
                         attestation_hash,
                         client_hello.client_id.clone(),
                     );
@@ -167,7 +176,7 @@ impl<
                         vec!["gateway".to_string()],
                         attestation.signature, // Real attestation bytes
                         ephemeral_public_key.to_vec(),
-                        provider.get_receipt_public_key().to_vec(),
+                        receipt_pk.to_vec(),
                     )?;
 
                     let resp_payload = serde_json::to_vec(&server_hello).map_err(|e| {
