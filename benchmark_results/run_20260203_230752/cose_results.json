@@ -1,0 +1,54 @@
+{
+  "benchmark": "cose_attestation_verification",
+  "cbor_payload_parse_ms": {
+    "max": 0.0011,
+    "mean": 0.0009,
+    "min": 0.0009,
+    "p50": 0.0009,
+    "p95": 0.001,
+    "p99": 0.0011
+  },
+  "cert_chain_depth": 3,
+  "cert_chain_verify_ms": {
+    "max": 2.2959,
+    "mean": 2.2346,
+    "min": 2.218,
+    "p50": 2.2331,
+    "p95": 2.2585,
+    "p99": 2.2793
+  },
+  "commit": "5fa19c5",
+  "cose_sign1_size_bytes": 4774,
+  "cose_signature_verify_ms": {
+    "max": 0.761,
+    "mean": 0.7335,
+    "min": 0.7215,
+    "p50": 0.733,
+    "p95": 0.748,
+    "p99": 0.7604
+  },
+  "curve": "P-384 (secp384r1)",
+  "environment": "bare_metal",
+  "full_verification_ms": {
+    "max": 3.0683,
+    "mean": 3.0049,
+    "min": 2.9807,
+    "p50": 3.0017,
+    "p95": 3.039,
+    "p99": 3.0592
+  },
+  "hardware": "m6i.xlarge",
+  "hash": "SHA-384",
+  "iterations": 100,
+  "notes": {
+    "cbor_payload_parse": "Deserialize CBOR attestation payload (~700 bytes)",
+    "cert_chain_verify": "Walk 3-cert chain (root→intermediate→leaf), verify each signature with issuer pubkey",
+    "cose_signature_verify": "Parse COSE_Sign1 + extract leaf cert + reconstruct Sig_structure + ECDSA-P384-SHA384 verify",
+    "curve_note": "AWS Nitro root CA uses P-384 (secp384r1). Test chain uses identical curve and key sizes.",
+    "full_verification": "All three steps combined (COSE verify + chain walk + payload parse)"
+  },
+  "payload_size_bytes": 2382,
+  "timestamp": "1770161423Z",
+  "warmup": 3
+}
+

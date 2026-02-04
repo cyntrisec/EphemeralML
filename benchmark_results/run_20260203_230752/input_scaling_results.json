@@ -1,0 +1,73 @@
+{
+  "benchmark": "input_scaling",
+  "commit": "5fa19c5",
+  "environment": "bare_metal",
+  "hardware": "m6i.xlarge",
+  "iterations_per_size": 100,
+  "memory": {
+    "peak_rss_mb": 265.49,
+    "peak_rss_source": "VmHWM"
+  },
+  "model": "MiniLM-L6-v2",
+  "scaling_fit": {
+    "base_overhead_ms": -18.85,
+    "per_token_ms": 0.9282
+  },
+  "sizes": [
+    {
+      "actual_tokens": 32,
+      "latency_ms": {
+        "max": 21.87,
+        "mean": 21.07,
+        "min": 20.44,
+        "p50": 21.08,
+        "p95": 21.69,
+        "p99": 21.82
+      },
+      "target_tokens": 32,
+      "text_length_chars": 140
+    },
+    {
+      "actual_tokens": 63,
+      "latency_ms": {
+        "max": 41.3,
+        "mean": 37.87,
+        "min": 37.2,
+        "p50": 37.81,
+        "p95": 38.3,
+        "p99": 39.76
+      },
+      "target_tokens": 64,
+      "text_length_chars": 286
+    },
+    {
+      "actual_tokens": 128,
+      "latency_ms": {
+        "max": 98.78,
+        "mean": 84.73,
+        "min": 83.96,
+        "p50": 84.5,
+        "p95": 85.35,
+        "p99": 87.82
+      },
+      "target_tokens": 128,
+      "text_length_chars": 585
+    },
+    {
+      "actual_tokens": 256,
+      "latency_ms": {
+        "max": 229.88,
+        "mean": 225.55,
+        "min": 222.43,
+        "p50": 225.42,
+        "p95": 228.66,
+        "p99": 229.7
+      },
+      "target_tokens": 256,
+      "text_length_chars": 1180
+    }
+  ],
+  "timestamp": "1770161534Z",
+  "warmup": 3
+}
+
