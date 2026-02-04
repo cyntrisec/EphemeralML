@@ -27,6 +27,7 @@
 set -euo pipefail
 
 KMS_KEY_ALIAS="${EPHEMERALML_KMS_ALIAS:-alias/ephemeral-ml-test}"
+AWS_REGION="${AWS_DEFAULT_REGION:-us-east-1}"
 CIPHERTEXT_PATH=""
 
 while [[ $# -gt 0 ]]; do
@@ -69,6 +70,7 @@ GDK_EXIT=0
 GDK_OUTPUT=$(aws kms generate-data-key \
     --key-id "$KMS_KEY_ALIAS" \
     --key-spec AES_256 \
+    --region "$AWS_REGION" \
     --output json 2>&1) || GDK_EXIT=$?
 
 if [ $GDK_EXIT -ne 0 ]; then
@@ -108,6 +110,7 @@ if [ -n "$CIPHERTEXT_PATH" ]; then
         DECRYPT_OUTPUT=$(aws kms decrypt \
             --ciphertext-blob "fileb://$CIPHERTEXT_PATH" \
             --key-id "$KMS_KEY_ALIAS" \
+            --region "$AWS_REGION" \
             --output json 2>&1) || DECRYPT_EXIT=$?
 
         if [ $DECRYPT_EXIT -ne 0 ]; then
