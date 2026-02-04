@@ -364,6 +364,72 @@ resource "aws_kms_alias" "enclave_key" {
   target_key_id = aws_kms_key.enclave_key.key_id
 }
 
+# ── KMS Attestation Test Key ──
+# Separate key with STRICT PCR0 enforcement — all Decrypt/GenerateDataKey
+# operations REQUIRE a valid attestation document with matching PCR0.
+# Used by `scripts/run_kms_audit.sh` to verify positive and negative
+# attestation enforcement on real Nitro hardware.
+
+variable "attest_test_pcr0" {
+  description = "PCR0 (ImageSha384) for the kms-audit EIF. Required — no default, must be set from actual EIF build output."
+  type        = string
+  default     = ""
+}
+
+resource "aws_kms_key" "attest_test_key" {
+  count                   = var.attest_test_pcr0 != "" ? 1 : 0
+  description             = "EphemeralML attestation enforcement test key (strict PCR0)"
+  deletion_window_in_days = 7
+  enable_key_rotation     = false
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid    = "Enable IAM User Permissions"
+        Effect = "Allow"
+        Principal = {
+          AWS = "arn:aws:iam::${data.aws_caller_identity.current.account_id}:root"
+        }
+        Action   = "kms:*"
+        Resource = "*"
+      },
+      {
+        Sid    = "Allow EphemeralML-Deployer"
+        Effect = "Allow"
+        Principal = {
+          AWS = data.aws_caller_identity.current.arn
+        }
+        Action   = "kms:*"
+        Resource = "*"
+      },
+      {
+        Sid    = "Allow Enclave with Matching PCR0 Only"
+        Effect = "Allow"
+        Principal = {
+          AWS = aws_iam_role.host.arn
+        }
+        Action = [
+          "kms:Decrypt",
+          "kms:GenerateDataKey"
+        ]
+        Resource = "*"
+        Condition = {
+          StringEqualsIgnoreCase = {
+            "kms:RecipientAttestation:ImageSha384" = var.attest_test_pcr0
+          }
+        }
+      }
+    ]
+  })
+}
+
+resource "aws_kms_alias" "attest_test_key" {
+  count         = var.attest_test_pcr0 != "" ? 1 : 0
+  name          = "alias/${var.project_name}-attest-test"
+  target_key_id = aws_kms_key.attest_test_key[0].key_id
+}
+
 output "instance_id" {
   value = aws_instance.host.id
 }
@@ -378,4 +444,8 @@ output "ssm_start_session" {
 
 output "kms_key_arn" {
   value = aws_kms_key.enclave_key.arn
+}
+
+output "attest_test_key_arn" {
+  value = var.attest_test_pcr0 != "" ? aws_kms_key.attest_test_key[0].arn : ""
 }

@@ -211,7 +211,7 @@ async fn handle_connection<S: AsyncStream + 'static>(
                     "processing KMS request"
                 );
 
-                let kms_response = match req_env.request {
+                let kms_result = match req_env.request {
                     ephemeral_ml_common::KmsRequest::Decrypt {
                         ciphertext_blob,
                         key_id,
@@ -247,11 +247,11 @@ async fn handle_connection<S: AsyncStream + 'static>(
                     }
                 };
 
-                let response_env = match kms_response {
-                    Ok(resp) => KmsProxyResponseEnvelope {
+                let response_env = match kms_result {
+                    Ok((resp, aws_req_id)) => KmsProxyResponseEnvelope {
                         request_id: req_env.request_id,
                         trace_id: req_env.trace_id,
-                        kms_request_id: Some("aws-req-id".to_string()),
+                        kms_request_id: aws_req_id,
                         response: resp,
                     },
                     Err(e) => {

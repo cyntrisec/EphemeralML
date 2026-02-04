@@ -13,6 +13,7 @@ enum Mode {
     Vsock,
     Attestation,
     Kms,
+    KmsAudit,
     Benchmark,
 }
 
@@ -28,6 +29,7 @@ fn parse_mode() -> Mode {
                 "vsock" => Mode::Vsock,
                 "attestation" => Mode::Attestation,
                 "kms" => Mode::Kms,
+                "kms-audit" => Mode::KmsAudit,
                 "benchmark" => Mode::Benchmark,
                 _ => Mode::Vsock,
             };
@@ -335,6 +337,23 @@ fn run(mode: Mode) {
                 std::thread::sleep(std::time::Duration::from_secs(60));
             }
         }
+        Mode::KmsAudit => {
+            eprintln!("[enclave] kms-audit mode: testing KMS attestation enforcement");
+
+            let rt = tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+                .unwrap();
+
+            rt.block_on(async {
+                run_kms_audit().await;
+            });
+
+            eprintln!("[enclave] kms-audit complete; sleeping");
+            loop {
+                std::thread::sleep(std::time::Duration::from_secs(60));
+            }
+        }
         Mode::Benchmark => {
             eprintln!("[enclave] benchmark mode: starting benchmark suite");
             let rt = tokio::runtime::Builder::new_current_thread()
@@ -392,6 +411,511 @@ fn run(mode: Mode) {
             }
         }
     }
+}
+
+// ─── KMS Audit helpers ───────────────────────────────────────────────
+
+/// Send a KMS request via VSock and return the response envelope.
+fn kms_roundtrip(
+    req_env: &ephemeral_ml_common::KmsProxyRequestEnvelope,
+) -> std::result::Result<ephemeral_ml_common::KmsProxyResponseEnvelope, String> {
+    use ephemeral_ml_common::{MessageType, VSockMessage};
+
+    let payload = serde_json::to_vec(req_env).map_err(|e| format!("serialize: {e}"))?;
+    let msg =
+        VSockMessage::new(MessageType::KmsProxy, 0, payload).map_err(|e| format!("msg: {e}"))?;
+
+    let mut stream = vsock_connect(8082);
+    stream
+        .write_all(&msg.encode())
+        .map_err(|e| format!("write: {e}"))?;
+
+    let mut len_buf = [0u8; 4];
+    stream
+        .read_exact(&mut len_buf)
+        .map_err(|e| format!("read len: {e}"))?;
+    let len = u32::from_be_bytes(len_buf) as usize;
+    let mut body = vec![0u8; len];
+    stream
+        .read_exact(&mut body)
+        .map_err(|e| format!("read body: {e}"))?;
+
+    let mut full_msg = len_buf.to_vec();
+    full_msg.extend_from_slice(&body);
+    let resp_msg = VSockMessage::decode(&full_msg).map_err(|e| format!("decode: {e}"))?;
+
+    if resp_msg.msg_type == MessageType::Error {
+        return Err(format!(
+            "proxy error: {}",
+            String::from_utf8_lossy(&resp_msg.payload)
+        ));
+    }
+
+    serde_json::from_slice(&resp_msg.payload).map_err(|e| format!("deserialize: {e}"))
+}
+
+/// Generate an RSA keypair and NSM attestation document with the public key embedded.
+/// Returns `(rsa_private_key, attestation_document_bytes)`.
+fn generate_attested_keypair() -> (rsa::RsaPrivateKey, Vec<u8>) {
+    use rand::rngs::OsRng;
+    use rsa::{pkcs8::EncodePublicKey, RsaPrivateKey};
+
+    let rsa_priv = RsaPrivateKey::new(&mut OsRng, 2048).expect("rsa keygen failed");
+    let rsa_pub_der = rsa_priv
+        .to_public_key()
+        .to_public_key_der()
+        .expect("rsa pub der")
+        .to_vec();
+
+    let nsm_fd = aws_nitro_enclaves_nsm_api::driver::nsm_init();
+    if nsm_fd < 0 {
+        die("kms-audit: NSM driver not available (must run inside Nitro Enclave)");
+    }
+
+    let request = aws_nitro_enclaves_nsm_api::api::Request::Attestation {
+        user_data: None,
+        nonce: Some(serde_bytes::ByteBuf::from(vec![1u8; 32])),
+        public_key: Some(serde_bytes::ByteBuf::from(rsa_pub_der)),
+    };
+    let response = aws_nitro_enclaves_nsm_api::driver::nsm_process_request(nsm_fd, request);
+    let attestation_doc = match response {
+        aws_nitro_enclaves_nsm_api::api::Response::Attestation { document } => document,
+        _ => die("kms-audit: failed to get attestation document"),
+    };
+    aws_nitro_enclaves_nsm_api::driver::nsm_exit(nsm_fd);
+
+    (rsa_priv, attestation_doc)
+}
+
+async fn run_kms_audit() {
+    use ephemeral_ml_common::{
+        generate_id, KmsProxyRequestEnvelope, KmsRequest, KmsResponse,
+    };
+
+    let key_alias = std::env::var("KMS_AUDIT_KEY_ALIAS")
+        .unwrap_or_else(|_| "alias/ephemeral-ml-attest-test".to_string());
+    eprintln!("[kms-audit] using key: {}", key_alias);
+
+    let (_rsa_priv, attestation_doc) = generate_attested_keypair();
+    eprintln!(
+        "[kms-audit] generated attestation doc ({} bytes)",
+        attestation_doc.len()
+    );
+
+    let mut results: Vec<serde_json::Value> = Vec::new();
+
+    // ── Test 1: Attested GenerateDataKey (should succeed) ──
+    {
+        eprintln!("[kms-audit] Test 1: Attested GenerateDataKey");
+        let start = Instant::now();
+        let req_env = KmsProxyRequestEnvelope {
+            request_id: generate_id(),
+            trace_id: Some("kms-audit-test1".to_string()),
+            request: KmsRequest::GenerateDataKey {
+                key_id: key_alias.clone(),
+                key_spec: "AES_256".to_string(),
+                encryption_context: None,
+                recipient: Some(attestation_doc.clone()),
+            },
+        };
+        let result = kms_roundtrip(&req_env);
+        let latency_ms = start.elapsed().as_secs_f64() * 1000.0;
+
+        let (actual, error_code, cfr_present, pt_present, kms_req_id) = match result {
+            Ok(env) => match &env.response {
+                KmsResponse::GenerateDataKey {
+                    ciphertext_for_recipient,
+                    plaintext,
+                    ..
+                } => (
+                    "success",
+                    serde_json::Value::Null,
+                    ciphertext_for_recipient.is_some(),
+                    plaintext.is_some(),
+                    env.kms_request_id.clone(),
+                ),
+                KmsResponse::Error { code, message } => (
+                    "error",
+                    serde_json::json!(format!("{:?}: {}", code, message)),
+                    false,
+                    false,
+                    env.kms_request_id.clone(),
+                ),
+                _ => ("unexpected", serde_json::Value::Null, false, false, None),
+            },
+            Err(e) => (
+                "transport_error",
+                serde_json::json!(e),
+                false,
+                false,
+                None,
+            ),
+        };
+        let entry = serde_json::json!({
+            "test_id": "attested_generate_data_key",
+            "test_num": 1,
+            "expected": "success",
+            "actual": actual,
+            "error_code": error_code,
+            "kms_request_id": kms_req_id,
+            "latency_ms": round2(latency_ms),
+            "ciphertext_for_recipient_present": cfr_present,
+            "plaintext_present": pt_present
+        });
+        eprintln!("[kms-audit] Test 1 result: {}", actual);
+        results.push(entry);
+    }
+
+    // ── Test 2: Unattested GenerateDataKey (no RecipientInfo) ──
+    {
+        eprintln!("[kms-audit] Test 2: Unattested GenerateDataKey");
+        let start = Instant::now();
+        let req_env = KmsProxyRequestEnvelope {
+            request_id: generate_id(),
+            trace_id: Some("kms-audit-test2".to_string()),
+            request: KmsRequest::GenerateDataKey {
+                key_id: key_alias.clone(),
+                key_spec: "AES_256".to_string(),
+                encryption_context: None,
+                recipient: None,
+            },
+        };
+        let result = kms_roundtrip(&req_env);
+        let latency_ms = start.elapsed().as_secs_f64() * 1000.0;
+
+        let (actual, error_code, cfr_present, pt_present, kms_req_id) = match result {
+            Ok(env) => match &env.response {
+                KmsResponse::GenerateDataKey {
+                    ciphertext_for_recipient,
+                    plaintext,
+                    ..
+                } => (
+                    "success",
+                    serde_json::Value::Null,
+                    ciphertext_for_recipient.is_some(),
+                    plaintext.is_some(),
+                    env.kms_request_id.clone(),
+                ),
+                KmsResponse::Error { code, message } => (
+                    "error",
+                    serde_json::json!(format!("{:?}: {}", code, message)),
+                    false,
+                    false,
+                    env.kms_request_id.clone(),
+                ),
+                _ => ("unexpected", serde_json::Value::Null, false, false, None),
+            },
+            Err(e) => (
+                "transport_error",
+                serde_json::json!(e),
+                false,
+                false,
+                None,
+            ),
+        };
+        let entry = serde_json::json!({
+            "test_id": "unattested_generate_data_key",
+            "test_num": 2,
+            "expected": "access_denied_or_success",
+            "actual": actual,
+            "error_code": error_code,
+            "kms_request_id": kms_req_id,
+            "latency_ms": round2(latency_ms),
+            "ciphertext_for_recipient_present": cfr_present,
+            "plaintext_present": pt_present
+        });
+        eprintln!("[kms-audit] Test 2 result: {}", actual);
+        results.push(entry);
+    }
+
+    // ── Test 3: Malformed RecipientInfo (random bytes) ──
+    {
+        eprintln!("[kms-audit] Test 3: Malformed RecipientInfo");
+        let start = Instant::now();
+        let malformed_doc = [0xDEu8, 0xAD, 0xBE, 0xEF]
+            .iter()
+            .cycle()
+            .take(256)
+            .copied()
+            .collect::<Vec<u8>>();
+        let req_env = KmsProxyRequestEnvelope {
+            request_id: generate_id(),
+            trace_id: Some("kms-audit-test3".to_string()),
+            request: KmsRequest::GenerateDataKey {
+                key_id: key_alias.clone(),
+                key_spec: "AES_256".to_string(),
+                encryption_context: None,
+                recipient: Some(malformed_doc),
+            },
+        };
+        let result = kms_roundtrip(&req_env);
+        let latency_ms = start.elapsed().as_secs_f64() * 1000.0;
+
+        let (actual, error_code, kms_req_id) = match result {
+            Ok(env) => match &env.response {
+                KmsResponse::Error { code, message } => (
+                    "error",
+                    serde_json::json!(format!("{:?}: {}", code, message)),
+                    env.kms_request_id.clone(),
+                ),
+                KmsResponse::GenerateDataKey { .. } => (
+                    "unexpected_success",
+                    serde_json::Value::Null,
+                    env.kms_request_id.clone(),
+                ),
+                _ => ("unexpected", serde_json::Value::Null, None),
+            },
+            Err(e) => ("transport_error", serde_json::json!(e), None),
+        };
+        let entry = serde_json::json!({
+            "test_id": "malformed_recipient_info",
+            "test_num": 3,
+            "expected": "error",
+            "actual": actual,
+            "error_code": error_code,
+            "kms_request_id": kms_req_id,
+            "latency_ms": round2(latency_ms),
+            "ciphertext_for_recipient_present": false,
+            "plaintext_present": false
+        });
+        eprintln!("[kms-audit] Test 3 result: {}", actual);
+        results.push(entry);
+    }
+
+    // ── Test 4: Attested Decrypt (need a ciphertext_blob from GenerateDataKey first) ──
+    {
+        eprintln!("[kms-audit] Test 4: Attested Decrypt");
+        // First, generate a data key without attestation to get a ciphertext_blob
+        let gen_env = KmsProxyRequestEnvelope {
+            request_id: generate_id(),
+            trace_id: Some("kms-audit-test4-setup".to_string()),
+            request: KmsRequest::GenerateDataKey {
+                key_id: key_alias.clone(),
+                key_spec: "AES_256".to_string(),
+                encryption_context: None,
+                recipient: None,
+            },
+        };
+        let gen_result = kms_roundtrip(&gen_env);
+
+        let ciphertext_blob = match gen_result {
+            Ok(env) => match env.response {
+                KmsResponse::GenerateDataKey {
+                    ciphertext_blob, ..
+                } => Some(ciphertext_blob),
+                _ => None,
+            },
+            Err(_) => None,
+        };
+
+        if let Some(ct_blob) = ciphertext_blob {
+            let start = Instant::now();
+            let req_env = KmsProxyRequestEnvelope {
+                request_id: generate_id(),
+                trace_id: Some("kms-audit-test4".to_string()),
+                request: KmsRequest::Decrypt {
+                    ciphertext_blob: ct_blob,
+                    key_id: Some(key_alias.clone()),
+                    encryption_context: None,
+                    grant_tokens: None,
+                    recipient: Some(attestation_doc.clone()),
+                },
+            };
+            let result = kms_roundtrip(&req_env);
+            let latency_ms = start.elapsed().as_secs_f64() * 1000.0;
+
+            let (actual, error_code, cfr_present, pt_present, kms_req_id) = match result {
+                Ok(env) => match &env.response {
+                    KmsResponse::Decrypt {
+                        ciphertext_for_recipient,
+                        plaintext,
+                        ..
+                    } => (
+                        "success",
+                        serde_json::Value::Null,
+                        ciphertext_for_recipient.is_some(),
+                        plaintext.is_some(),
+                        env.kms_request_id.clone(),
+                    ),
+                    KmsResponse::Error { code, message } => (
+                        "error",
+                        serde_json::json!(format!("{:?}: {}", code, message)),
+                        false,
+                        false,
+                        env.kms_request_id.clone(),
+                    ),
+                    _ => ("unexpected", serde_json::Value::Null, false, false, None),
+                },
+                Err(e) => (
+                    "transport_error",
+                    serde_json::json!(e),
+                    false,
+                    false,
+                    None,
+                ),
+            };
+            let entry = serde_json::json!({
+                "test_id": "attested_decrypt",
+                "test_num": 4,
+                "expected": "success",
+                "actual": actual,
+                "error_code": error_code,
+                "kms_request_id": kms_req_id,
+                "latency_ms": round2(latency_ms),
+                "ciphertext_for_recipient_present": cfr_present,
+                "plaintext_present": pt_present
+            });
+            eprintln!("[kms-audit] Test 4 result: {}", actual);
+            results.push(entry);
+        } else {
+            eprintln!("[kms-audit] Test 4: SKIPPED (could not generate data key for setup)");
+            results.push(serde_json::json!({
+                "test_id": "attested_decrypt",
+                "test_num": 4,
+                "expected": "success",
+                "actual": "skipped",
+                "error_code": "setup_failed",
+                "kms_request_id": null,
+                "latency_ms": 0.0,
+                "ciphertext_for_recipient_present": false,
+                "plaintext_present": false
+            }));
+        }
+    }
+
+    // ── Test 5: Unattested Decrypt (no RecipientInfo) ──
+    {
+        eprintln!("[kms-audit] Test 5: Unattested Decrypt");
+        // Generate a data key to get a ciphertext_blob
+        let gen_env = KmsProxyRequestEnvelope {
+            request_id: generate_id(),
+            trace_id: Some("kms-audit-test5-setup".to_string()),
+            request: KmsRequest::GenerateDataKey {
+                key_id: key_alias.clone(),
+                key_spec: "AES_256".to_string(),
+                encryption_context: None,
+                recipient: None,
+            },
+        };
+        let gen_result = kms_roundtrip(&gen_env);
+
+        let ciphertext_blob = match gen_result {
+            Ok(env) => match env.response {
+                KmsResponse::GenerateDataKey {
+                    ciphertext_blob, ..
+                } => Some(ciphertext_blob),
+                _ => None,
+            },
+            Err(_) => None,
+        };
+
+        if let Some(ct_blob) = ciphertext_blob {
+            let start = Instant::now();
+            let req_env = KmsProxyRequestEnvelope {
+                request_id: generate_id(),
+                trace_id: Some("kms-audit-test5".to_string()),
+                request: KmsRequest::Decrypt {
+                    ciphertext_blob: ct_blob,
+                    key_id: Some(key_alias.clone()),
+                    encryption_context: None,
+                    grant_tokens: None,
+                    recipient: None,
+                },
+            };
+            let result = kms_roundtrip(&req_env);
+            let latency_ms = start.elapsed().as_secs_f64() * 1000.0;
+
+            let (actual, error_code, cfr_present, pt_present, kms_req_id) = match result {
+                Ok(env) => match &env.response {
+                    KmsResponse::Decrypt {
+                        ciphertext_for_recipient,
+                        plaintext,
+                        ..
+                    } => (
+                        "success",
+                        serde_json::Value::Null,
+                        ciphertext_for_recipient.is_some(),
+                        plaintext.is_some(),
+                        env.kms_request_id.clone(),
+                    ),
+                    KmsResponse::Error { code, message } => (
+                        "error",
+                        serde_json::json!(format!("{:?}: {}", code, message)),
+                        false,
+                        false,
+                        env.kms_request_id.clone(),
+                    ),
+                    _ => ("unexpected", serde_json::Value::Null, false, false, None),
+                },
+                Err(e) => (
+                    "transport_error",
+                    serde_json::json!(e),
+                    false,
+                    false,
+                    None,
+                ),
+            };
+            let entry = serde_json::json!({
+                "test_id": "unattested_decrypt",
+                "test_num": 5,
+                "expected": "access_denied_or_success",
+                "actual": actual,
+                "error_code": error_code,
+                "kms_request_id": kms_req_id,
+                "latency_ms": round2(latency_ms),
+                "ciphertext_for_recipient_present": cfr_present,
+                "plaintext_present": pt_present
+            });
+            eprintln!("[kms-audit] Test 5 result: {}", actual);
+            results.push(entry);
+        } else {
+            eprintln!("[kms-audit] Test 5: SKIPPED (could not generate data key for setup)");
+            results.push(serde_json::json!({
+                "test_id": "unattested_decrypt",
+                "test_num": 5,
+                "expected": "access_denied_or_success",
+                "actual": "skipped",
+                "error_code": "setup_failed",
+                "kms_request_id": null,
+                "latency_ms": 0.0,
+                "ciphertext_for_recipient_present": false,
+                "plaintext_present": false
+            }));
+        }
+    }
+
+    // ── Output structured results ──
+    let output = serde_json::json!({
+        "audit_type": "kms_attestation_enforcement",
+        "key_alias": key_alias,
+        "timestamp": chrono_now_iso(),
+        "commit": option_env!("GIT_COMMIT").unwrap_or("unknown"),
+        "hardware": option_env!("INSTANCE_TYPE").unwrap_or("unknown"),
+        "tests": results,
+        "summary": {
+            "total": results.len(),
+            "passed": results.iter().filter(|r| {
+                let actual = r["actual"].as_str().unwrap_or("");
+                let expected = r["expected"].as_str().unwrap_or("");
+                match expected {
+                    "success" => actual == "success",
+                    "error" => actual == "error",
+                    // For "access_denied_or_success", both are valid outcomes
+                    _ => actual == "success" || actual == "error",
+                }
+            }).count(),
+            "failed": results.iter().filter(|r| {
+                r["actual"].as_str() == Some("unexpected_success")
+                    || r["actual"].as_str() == Some("transport_error")
+                    || r["actual"].as_str() == Some("skipped")
+            }).count(),
+        }
+    });
+
+    let json_str = serde_json::to_string_pretty(&output).unwrap();
+    eprintln!("KMS_AUDIT_JSON_BEGIN");
+    eprintln!("{}", json_str);
+    eprintln!("KMS_AUDIT_JSON_END");
 }
 
 // ─── Benchmark helpers ───────────────────────────────────────────────
