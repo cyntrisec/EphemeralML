@@ -70,20 +70,20 @@ Unlike solutions that use Library OS (LibOS) wrappers like Anjuna or Fortanix, E
 
 | Metric | EphemeralML (Nitro + Rust) | LibOS-based (SGX/Nitro + Python) | Blockchain-TEEs (Secret/Oasis) |
 |--------|---------------------------|----------------------------------|--------------------------------|
-| **Core Latency** | **12.2% measured** (MiniLM) | **20-40% estimated** (LibOS overhead) | **>1000%** (consensus) |
+| **Core Latency** | **12.6% measured** (MiniLM) | **20-40% estimated** (LibOS overhead) | **>1000%** (consensus) |
 | **Startup Time** | **7.5s measured** (incl. S3 fetch) | **Minutes** (Container boot) | **Minutes** (Consensus) |
 | **Attack Surface** | **Minimal** (Single 9MB binary) | **Large** (Full OS + Python) | **Complex** (Network nodes) |
 | **Crypto Overhead** | **0.028ms/inference measured** (enclave-side) | Unmeasured | On-chain Metadata |
-| **E2E Crypto** | **0.307ms/req measured** (crypto + inference) | Unmeasured | N/A |
-| **Cost/1M inf** | **$4.76 (enclave)** | Unknown | High (consensus) |
+| **E2E Crypto** | **0.298ms/req measured** (crypto + inference) | Unmeasured | N/A |
+| **Cost/1M inf** | **$4.72 (enclave)** | Unknown | High (consensus) |
 | **Quality** | **Near-identical** (cosine=1.0, 384-dim) | Unverified | Unverified |
 
 ---
 
 ## Performance Results
 
-> **Measured** on AWS EC2 m6i.xlarge (instance i-01959fa23e43d9506), February 4, 2026.
-> Commit `d686eae`. 3 independent runs, 100 iterations each, 3 warmup. Overhead range: 12.0–12.6%.
+> **Measured** on AWS EC2 m6i.xlarge (instance i-09a94f42e43f7ab68), February 4, 2026.
+> Commit `b00bab1`. 3 independent runs, 100 iterations each, 3 warmup. Overhead range: 12.4–12.8% (runs 2–3; run 1 cold-cache outlier at 17.6%).
 > VmHWM memory measurement confirmed. Full-embedding SHA-256 comparison enabled.
 > Raw JSON data available in the [GitHub Release](https://github.com/cyntrisec/EphemeralML/releases) for this version.
 
@@ -93,45 +93,47 @@ Measured using Audit message round-trips through the host proxy (with 3 warmup r
 
 | Payload Size | VSock RTT |
 |-------------|-----------|
-| 64 bytes | 0.19ms |
-| 1 KB | 0.19ms |
-| 64 KB | 0.44ms |
-| 1 MB | 4.69ms |
-| **Upload Throughput** | **213.4 MB/s** |
+| 64 bytes | 0.14ms |
+| 1 KB | 0.16ms |
+| 64 KB | 0.41ms |
+| 1 MB | 4.25ms |
+| **Upload Throughput** | **235.4 MB/s** |
 
 ### 2. Inference Latency (MiniLM-L6-v2, N=100)
 
 | Percentile | Bare Metal | Enclave | Overhead |
 |-----------|-----------|---------|----------|
-| Mean | 77.97ms | 87.51ms | +12.2% |
-| P95 | 79.34ms | 88.72ms | +11.8% |
-| Throughput | 12.83 inf/s | 11.43 inf/s | -10.9% |
+| Mean | 78.55ms | 88.45ms | +12.6% |
+| P95 | 79.09ms | 89.58ms | +13.3% |
+| Throughput | 12.73 inf/s | 11.31 inf/s | -11.2% |
 
-**Reproducibility (3 runs at commit `d686eae`):**
+**Reproducibility (3 runs at commit `b00bab1`):**
 
 | Run | Baseline Mean | Enclave Mean | Overhead |
 |-----|---------------|-------------|----------|
-| run_20260204_160201 | 78.01ms | 87.40ms | +12.0% |
-| run_20260204_163207 | 77.95ms | 87.80ms | +12.6% |
-| run_20260204_171208 | 77.96ms | 87.32ms | +12.0% |
+| run_20260204_215346 | 78.69ms | 92.58ms | +17.6%* |
+| run_20260204_222448 | 78.00ms | 88.01ms | +12.8% |
+| run_20260204_222802 | 79.09ms | 88.89ms | +12.4% |
+
+*Run 1 higher overhead due to cold-cache effects after `--clean` build. Headline numbers use runs 2–3 average.
 
 ### 3. Stage Timing (Cold Start Breakdown)
 
 | Stage | Bare Metal | Enclave | Overhead |
 |-------|-----------|---------|----------|
-| Attestation | N/A | 314.13ms | Enclave-only |
-| KMS Key Release | N/A | 96.11ms | Enclave-only |
-| Model Fetch | 41.29ms | 6,909.03ms | +16,633% (S3→VSock) |
-| Model Decrypt | 111.31ms | 99.53ms | -10.6% |
-| Model Load | 43.74ms | 39.12ms | -10.6% |
-| Tokenizer Setup | 17.07ms | 24.52ms | +43.6% |
-| **Cold Start Total** | **213.54ms** | **7,489.77ms** | Dominated by S3 fetch |
+| Attestation | N/A | 88.27ms | Enclave-only |
+| KMS Key Release | N/A | 75.95ms | Enclave-only |
+| Model Fetch | 36.11ms | 6,716.43ms | +18,494% (S3→VSock) |
+| Model Decrypt | 110.58ms | 100.46ms | -9.2% |
+| Model Load | 42.48ms | 39.05ms | -8.1% |
+| Tokenizer Setup | 16.84ms | 24.48ms | +45.4% |
+| **Cold Start Total** | **206.10ms** | **7,051.80ms** | Dominated by S3 fetch |
 
 ### 4. Memory Usage
 
 | Metric | Bare Metal | Enclave | Overhead |
 |--------|-----------|---------|----------|
-| Peak RSS (VmHWM) | 266.0 MB | 1,018.1 MB | +282.7% |
+| Peak RSS (VmHWM) | 266.1 MB | 1,018.3 MB | +282.8% |
 | Model Size | 86.7 MB | 86.7 MB | — |
 
 ### 5. Output Quality Verification
@@ -155,16 +157,16 @@ Measured on bare metal m6i.xlarge using `benchmark_crypto` (100 iterations, 3 wa
 | Operation | Mean | P99 |
 |-----------|------|-----|
 | HPKE session setup (both sides) | 0.10ms | 0.13ms |
-| X25519 keypair generation | 0.017ms | 0.020ms |
+| X25519 keypair generation | 0.017ms | 0.017ms |
 | HPKE encrypt 1KB | 0.003ms | 0.003ms |
 | HPKE decrypt 1KB | 0.003ms | 0.003ms |
-| HPKE encrypt 1MB | 1.41ms | 1.82ms |
-| HPKE decrypt 1MB | 1.36ms | 1.68ms |
-| Ed25519 keypair generation | 0.017ms | 0.018ms |
-| Receipt sign (CBOR + Ed25519) | 0.022ms | 0.030ms |
-| Receipt verify | 0.042ms | 0.050ms |
+| HPKE encrypt 1MB | 1.37ms | 1.71ms |
+| HPKE decrypt 1MB | 1.30ms | 1.53ms |
+| Ed25519 keypair generation | 0.018ms | 0.025ms |
+| Receipt sign (CBOR + Ed25519) | 0.022ms | 0.029ms |
+| Receipt verify | 0.042ms | 0.049ms |
 
-**Per-inference crypto budget (1KB payload): 0.028ms** — negligible compared to 80ms inference.
+**Per-inference crypto budget (1KB payload): 0.028ms** — negligible compared to 78ms inference.
 
 ### 6b. COSE Attestation Verification (Client-Side, Tier 4)
 
@@ -174,10 +176,10 @@ Uses P-384 (secp384r1) with SHA-384 — same curve and hash as the AWS Nitro roo
 
 | Operation | Mean | P99 |
 |-----------|------|-----|
-| COSE_Sign1 signature verify (ECDSA-P384) | 0.739ms | 0.760ms |
-| Certificate chain walk (3 certs) | 2.226ms | 2.273ms |
+| COSE_Sign1 signature verify (ECDSA-P384) | 0.751ms | 0.778ms |
+| Certificate chain walk (3 certs) | 2.220ms | 2.249ms |
 | CBOR payload parse | 0.001ms | 0.001ms |
-| **Full verification pipeline** | **2.998ms** | **3.046ms** |
+| **Full verification pipeline** | **3.012ms** | **3.054ms** |
 
 **Client-side attestation verification costs ~3ms** — a one-time cost per session, not per inference.
 Dominated by the 3-cert chain walk (2.2ms), which requires 3 ECDSA-P384 signature verifications.
@@ -190,9 +192,9 @@ encrypt response → decrypt → verify.
 
 | Component | Mean | P50 | P95 | P99 |
 |-----------|------|-----|-----|-----|
-| Per-request crypto | 0.164ms | 0.163ms | 0.172ms | 0.189ms |
-| Session setup (keygen + HPKE) | 0.138ms | 0.137ms | 0.146ms | 0.162ms |
-| TCP handshake (ClientHello→ServerHello→HPKE) | 0.174ms | 0.173ms | 0.182ms | 0.192ms |
+| Per-request crypto | 0.164ms | 0.161ms | 0.178ms | 0.186ms |
+| Session setup (keygen + HPKE) | 0.138ms | 0.136ms | 0.145ms | 0.156ms |
+| TCP handshake (ClientHello→ServerHello→HPKE) | 0.153ms | 0.151ms | 0.162ms | 0.173ms |
 
 **Per-request crypto overhead is 0.20% of inference time** — effectively invisible to clients.
 
@@ -203,10 +205,10 @@ Full path: HPKE encrypt → decrypt → real BERT inference → receipt sign →
 
 | Component | Mean | P50 | P95 | P99 |
 |-----------|------|-----|-----|-----|
-| Session setup | 0.143ms | 0.143ms | 0.150ms | 0.177ms |
-| Per-request E2E | 80.54ms | 80.29ms | 82.43ms | 83.26ms |
-| Inference only | 80.23ms | 79.99ms | 82.12ms | 82.95ms |
-| **Crypto overhead** | **0.307ms** | | | |
+| Session setup | 0.144ms | 0.143ms | 0.153ms | 0.174ms |
+| Per-request E2E | 78.80ms | 78.61ms | 79.90ms | 80.22ms |
+| Inference only | 78.50ms | 78.32ms | 79.58ms | 79.90ms |
+| **Crypto overhead** | **0.298ms** | | | |
 
 **Crypto adds 0.38% overhead** to inference — the security layer is effectively free.
 
@@ -217,10 +219,10 @@ Tests N=1,2,4,8 concurrent inference threads sharing a single loaded model via `
 
 | Concurrency | Throughput | Mean Latency | P95 Latency | Scaling Efficiency |
 |-------------|-----------|-------------|-------------|-------------------|
-| 1 | 12.45 inf/s | 80.3ms | 81.9ms | 100% |
-| 2 | 14.36 inf/s | 139.3ms | 148.6ms | 57.7% |
-| 4 | 14.31 inf/s | 277.9ms | 331.9ms | 28.7% |
-| 8 | 14.22 inf/s | 557.5ms | 654.2ms | 14.3% |
+| 1 | 12.75 inf/s | 78.4ms | 79.2ms | 100% |
+| 2 | 14.73 inf/s | 135.8ms | 140.5ms | 57.8% |
+| 4 | 14.66 inf/s | 270.4ms | 321.4ms | 28.8% |
+| 8 | 14.57 inf/s | 546.1ms | 627.7ms | 14.3% |
 
 **Key finding**: Throughput plateaus at ~14.3 inf/s (1.15x single-thread) regardless of thread count.
 The m6i.xlarge has 4 vCPUs total; with 2 allocated to the enclave, the host has 2 remaining. Candle
@@ -233,9 +235,9 @@ Each client has an independent HPKE session and runs the full E2E path (encrypt�
 
 | Clients | Throughput | Mean Latency | P95 Latency | Scaling Efficiency |
 |---------|-----------|-------------|-------------|-------------------|
-| 1 | 12.36 inf/s | 80.9ms | 83.4ms | 100% |
-| 2 | 14.27 inf/s | 139.9ms | 148.0ms | 57.7% |
-| 4 | 14.23 inf/s | 277.2ms | 324.8ms | 28.8% |
+| 1 | 12.67 inf/s | 78.9ms | 80.5ms | 100% |
+| 2 | 14.65 inf/s | 136.5ms | 142.8ms | 57.8% |
+| 4 | 14.37 inf/s | 276.0ms | 332.3ms | 28.4% |
 
 Scaling matches the inference-only concurrent benchmark, confirming that crypto overhead is negligible even under concurrent load.
 
@@ -246,12 +248,12 @@ Tokenizer padding disabled to measure actual latency vs token count.
 
 | Tokens | Mean | P50 | P95 | P99 |
 |--------|------|-----|-----|-----|
-| 32 | 22.14ms | 22.04ms | 22.86ms | 23.33ms |
-| 63 | 39.13ms | 38.79ms | 40.70ms | 42.88ms |
-| 128 | 86.94ms | 86.93ms | 87.79ms | 88.63ms |
-| 256 | 235.45ms | 235.11ms | 238.06ms | 242.57ms |
+| 32 | 21.59ms | 21.57ms | 22.13ms | 22.27ms |
+| 63 | 38.03ms | 38.01ms | 38.42ms | 38.49ms |
+| 128 | 84.80ms | 84.71ms | 85.73ms | 85.99ms |
+| 256 | 230.38ms | 230.36ms | 235.70ms | 236.65ms |
 
-**Linear fit: latency = -20.11ms + 0.969ms/token**
+**Linear fit: latency = -19.91ms + 0.949ms/token**
 
 Scaling is near-linear in token count, consistent with BERT's O(n²) self-attention being dominated by
 the quadratic term at these sequence lengths. The negative intercept reflects model overhead being
@@ -264,13 +266,13 @@ Based on AWS on-demand pricing (us-east-1) and measured throughput.
 | Metric | Bare Metal | Enclave |
 |--------|-----------|---------|
 | Instance | m6i.xlarge @ $0.192/hr | m6i.xlarge @ $0.192/hr |
-| Inferences/hour | 46,188 | 41,148 |
+| Inferences/hour | 45,828 | 40,716 |
 | Cost per 1K inferences | $0.0042 | $0.0047 |
-| Cost per 1M inferences | $4.16 | $4.67 |
-| Enclave cost multiplier | — | 1.12x |
+| Cost per 1M inferences | $4.19 | $4.72 |
+| Enclave cost multiplier | — | 1.13x |
 
-At $4.67/1M inferences, enclave inference costs 12% more than bare metal — directly proportional
-to the 12.2% latency overhead. For context, GPU TEEs (H100 cGPU) cost ~$3.54/hr for Llama-8B
+At $4.72/1M inferences, enclave inference costs 13% more than bare metal — directly proportional
+to the 12.6% latency overhead. For context, GPU TEEs (H100 cGPU) cost ~$3.54/hr for Llama-8B
 serving, making CPU enclaves significantly cheaper for small embedding models.
 
 ---
@@ -507,4 +509,4 @@ python3 scripts/generate_paper_tables.py \
 
 Include the commit hash and instance type for reproducibility.
 
-*Last updated from benchmark suite at commit `d686eae` on `m6i.xlarge`, February 4, 2026. 3 independent runs.*
+*Last updated from benchmark suite at commit `b00bab1` on `m6i.xlarge`, February 4, 2026. 3 independent runs.*
