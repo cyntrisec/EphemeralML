@@ -1,5 +1,5 @@
 use crate::{ClientError, FreshnessEnforcer, PolicyManager, Result};
-use coset::{CborSerializable, CoseSign1, Label};
+use coset::{CborSerializable, CoseSign1};
 use ephemeral_ml_common::{AttestationDocument, PcrMeasurements};
 use openssl::hash::MessageDigest;
 use openssl::sign::Verifier;
@@ -275,37 +275,58 @@ impl AttestationVerifier {
             )))
         })?;
 
-        // Extract certificate chain from unprotected header
-        // In COSE, label 33 is "x5chain" (certificate chain)
-        let mut cert_chain = Vec::new();
-        for (label, value) in &cose_sign1.unprotected.rest {
-            if *label == Label::Int(33) {
-                match value {
-                    ciborium::Value::Bytes(b) => {
-                        cert_chain.push(b.clone());
+        let payload_bytes = cose_sign1.payload.as_deref().ok_or_else(|| {
+            ClientError::Client(crate::EphemeralError::AttestationError(
+                "COSE payload missing".to_string(),
+            ))
+        })?;
+
+        // AWS Nitro NSM attestation documents store the certificate chain inside
+        // the CBOR payload (fields "certificate" and "cabundle"), NOT in the COSE
+        // headers (x5chain / label 33). Parse the payload first to extract them.
+        let payload_value: serde_cbor::Value =
+            serde_cbor::from_slice(payload_bytes).map_err(|e| {
+                ClientError::Client(crate::EphemeralError::AttestationError(format!(
+                    "Failed to parse CBOR payload for cert extraction: {}",
+                    e
+                )))
+            })?;
+
+        let payload_map = cbor_as_map(&payload_value).ok_or_else(|| {
+            ClientError::Client(crate::EphemeralError::AttestationError(
+                "CBOR payload is not a map".to_string(),
+            ))
+        })?;
+
+        // Extract leaf certificate from "certificate" field
+        let leaf_cert_der = get_bytes_field(payload_map, "certificate")?;
+
+        // Extract CA bundle from "cabundle" field (array of DER-encoded certs)
+        let cabundle_val = get_field(payload_map, "cabundle")?;
+        let cabundle_certs = match cabundle_val {
+            serde_cbor::Value::Array(arr) => {
+                let mut certs = Vec::new();
+                for v in arr {
+                    if let serde_cbor::Value::Bytes(b) = v {
+                        certs.push(b.clone());
                     }
-                    ciborium::Value::Array(a) => {
-                        for v in a {
-                            if let ciborium::Value::Bytes(b) = v {
-                                cert_chain.push(b.clone());
-                            }
-                        }
-                    }
-                    _ => {}
                 }
+                certs
             }
-        }
+            _ => {
+                return Err(ClientError::Client(
+                    crate::EphemeralError::AttestationError(
+                        "cabundle is not an array".to_string(),
+                    ),
+                ));
+            }
+        };
 
-        if cert_chain.is_empty() {
-            return Err(ClientError::Client(
-                crate::EphemeralError::AttestationError(
-                    "No certificate chain found in COSE header".to_string(),
-                ),
-            ));
-        }
+        // Build cert chain: leaf cert first, then CA bundle (intermediates)
+        let mut cert_chain = vec![leaf_cert_der.clone()];
+        cert_chain.extend(cabundle_certs);
 
-        let leaf_cert_der = &cert_chain[0];
-        let leaf_cert = X509::from_der(leaf_cert_der).map_err(|e| {
+        let leaf_cert = X509::from_der(&leaf_cert_der).map_err(|e| {
             ClientError::Client(crate::EphemeralError::AttestationError(format!(
                 "Invalid leaf cert: {}",
                 e
@@ -326,7 +347,6 @@ impl AttestationVerifier {
             .original_data
             .clone()
             .unwrap_or_default();
-        let payload_bytes = cose_sign1.payload.as_deref().unwrap_or(&[]);
 
         // Build Sig_structure manually
         let sig_structure = serde_cbor::Value::Array(vec![
