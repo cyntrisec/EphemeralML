@@ -26,7 +26,7 @@
 
 set -euo pipefail
 
-KMS_KEY_ALIAS="alias/ephemeral-ml-test"
+KMS_KEY_ALIAS="${EPHEMERALML_KMS_ALIAS:-alias/ephemeral-ml-test}"
 CIPHERTEXT_PATH=""
 
 while [[ $# -gt 0 ]]; do
