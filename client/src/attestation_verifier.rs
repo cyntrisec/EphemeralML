@@ -340,48 +340,33 @@ impl AttestationVerifier {
             )))
         })?;
 
-        // Verify COSE_Sign1 signature
-        // The signature is over the Sig_structure: ["Signature1", protected, external_aad, payload]
-        let protected_bytes = cose_sign1
-            .protected
-            .original_data
-            .clone()
-            .unwrap_or_default();
-
-        // Build Sig_structure manually
-        let sig_structure = serde_cbor::Value::Array(vec![
-            serde_cbor::Value::Text("Signature1".to_string()),
-            serde_cbor::Value::Bytes(protected_bytes),
-            serde_cbor::Value::Bytes(vec![]), // external_aad
-            serde_cbor::Value::Bytes(payload_bytes.to_vec()),
-        ]);
-        let sig_data = serde_cbor::to_vec(&sig_structure).map_err(|e| {
-            ClientError::Client(crate::EphemeralError::AttestationError(format!(
-                "Failed to encode Sig_structure: {}",
-                e
-            )))
-        })?;
-
-        let mut verifier = Verifier::new(MessageDigest::sha384(), &pubkey).map_err(|e| {
-            ClientError::Client(crate::EphemeralError::AttestationError(format!(
-                "Verifier init failed: {}",
-                e
-            )))
-        })?;
-        verifier.update(&sig_data).map_err(|e| {
-            ClientError::Client(crate::EphemeralError::AttestationError(format!(
-                "Verifier update failed: {}",
-                e
-            )))
-        })?;
-
-        if !verifier.verify(&cose_sign1.signature).unwrap_or(false) {
-            return Err(ClientError::Client(
-                crate::EphemeralError::AttestationError(
-                    "COSE signature verification failed".to_string(),
-                ),
-            ));
-        }
+        // Verify COSE_Sign1 signature using coset's built-in tbs_data computation.
+        // This ensures the Sig_structure CBOR encoding matches exactly what NSM signed.
+        cose_sign1
+            .verify_signature(&[], |sig, tbs_data| {
+                let mut verifier =
+                    Verifier::new(MessageDigest::sha384(), &pubkey).map_err(|e| {
+                        ClientError::Client(crate::EphemeralError::AttestationError(format!(
+                            "Verifier init failed: {}",
+                            e
+                        )))
+                    })?;
+                verifier.update(tbs_data).map_err(|e| {
+                    ClientError::Client(crate::EphemeralError::AttestationError(format!(
+                        "Verifier update failed: {}",
+                        e
+                    )))
+                })?;
+                if !verifier.verify(sig).unwrap_or(false) {
+                    return Err(ClientError::Client(
+                        crate::EphemeralError::AttestationError(
+                            "COSE signature verification failed".to_string(),
+                        ),
+                    ));
+                }
+                Ok(())
+            })
+            .map_err(|e: ClientError| e)?;
 
         let payload = cose_sign1.payload.ok_or_else(|| {
             ClientError::Client(crate::EphemeralError::AttestationError(
