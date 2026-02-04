@@ -229,9 +229,20 @@ async fn handle_connection<S: AsyncStream + 'static>(
                             )
                             .await
                     }
-                    ephemeral_ml_common::KmsRequest::GenerateDataKey { key_id, key_spec } => {
+                    ephemeral_ml_common::KmsRequest::GenerateDataKey {
+                        key_id,
+                        key_spec,
+                        encryption_context,
+                        recipient,
+                    } => {
                         proxy
-                            .generate_data_key(key_id, key_spec, None, None, None)
+                            .generate_data_key(
+                                key_id,
+                                key_spec,
+                                encryption_context,
+                                None,
+                                recipient,
+                            )
                             .await
                     }
                 };

@@ -237,6 +237,8 @@ fn run(mode: Mode) {
                 let kms_req = KmsRequest::GenerateDataKey {
                     key_id: "alias/ephemeral-ml-test".to_string(),
                     key_spec: "AES_256".to_string(),
+                    encryption_context: None,
+                    recipient: None,
                 };
                 let req_env = KmsProxyRequestEnvelope {
                     request_id: generate_id(),
@@ -653,16 +655,15 @@ async fn run_benchmark() {
                 attestation_doc.len()
             );
 
-            // 2. KMS GenerateDataKey + Decrypt with RecipientInfo
-            eprintln!(
-                "[bench] Stage 2: KMS key release (GenerateDataKey + Decrypt w/ attestation)"
-            );
+            // 2. KMS GenerateDataKey with RecipientInfo (single attested call)
+            eprintln!("[bench] Stage 2: KMS key release (attested GenerateDataKey)");
             let kms_start = Instant::now();
 
-            // 2a. GenerateDataKey
             let gen_req = KmsRequest::GenerateDataKey {
                 key_id: "alias/ephemeral-ml-test".to_string(),
                 key_spec: "AES_256".to_string(),
+                encryption_context: None,
+                recipient: Some(attestation_doc),
             };
             let gen_env = KmsProxyRequestEnvelope {
                 request_id: generate_id(),
@@ -688,59 +689,19 @@ async fn run_benchmark() {
             match resp_env.response {
                 KmsResponse::GenerateDataKey {
                     key_id,
-                    ciphertext_blob,
+                    ciphertext_for_recipient,
                     ..
                 } => {
-                    eprintln!("[bench] GenerateDataKey OK for {}", key_id);
-
-                    // 2b. Decrypt with RecipientInfo (attestation-bound)
-                    let decrypt_req = KmsRequest::Decrypt {
-                        ciphertext_blob,
-                        key_id: Some(key_id),
-                        encryption_context: None,
-                        grant_tokens: None,
-                        recipient: Some(attestation_doc),
-                    };
-                    let decrypt_env = KmsProxyRequestEnvelope {
-                        request_id: generate_id(),
-                        trace_id: Some("bench-decrypt".to_string()),
-                        request: decrypt_req,
-                    };
-                    let payload = serde_json::to_vec(&decrypt_env).unwrap();
-                    let msg = VSockMessage::new(MessageType::KmsProxy, 1, payload).unwrap();
-                    let mut stream2 = vsock_connect(8082);
-                    stream2.write_all(&msg.encode()).unwrap();
-
-                    let mut len_buf = [0u8; 4];
-                    stream2.read_exact(&mut len_buf).unwrap();
-                    let len = u32::from_be_bytes(len_buf) as usize;
-                    let mut body = vec![0u8; len];
-                    stream2.read_exact(&mut body).unwrap();
-                    let mut full_msg = len_buf.to_vec();
-                    full_msg.extend_from_slice(&body);
-                    let resp_msg = VSockMessage::decode(&full_msg).unwrap();
-                    let resp_env: KmsProxyResponseEnvelope =
-                        serde_json::from_slice(&resp_msg.payload).unwrap();
-
-                    match resp_env.response {
-                        KmsResponse::Decrypt {
-                            ciphertext_for_recipient,
-                            ..
-                        } => {
-                            if ciphertext_for_recipient.is_some() {
-                                eprintln!("[bench] KMS Decrypt with RecipientInfo: SUCCESS");
-                            } else {
-                                eprintln!(
-                                    "[bench] KMS Decrypt: no wrapped key returned (policy issue?)"
-                                );
-                            }
-                        }
-                        KmsResponse::Error { code, message } => {
-                            eprintln!("[bench] KMS Decrypt Error ({:?}): {}", code, message);
-                        }
-                        _ => {
-                            eprintln!("[bench] KMS Decrypt: unexpected response");
-                        }
+                    if ciphertext_for_recipient.is_some() {
+                        eprintln!(
+                            "[bench] Attested GenerateDataKey OK for {}: SUCCESS",
+                            key_id
+                        );
+                    } else {
+                        eprintln!(
+                            "[bench] GenerateDataKey for {}: no wrapped key returned (policy issue?)",
+                            key_id
+                        );
                     }
                 }
                 KmsResponse::Error { code, message } => {

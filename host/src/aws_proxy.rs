@@ -75,9 +75,9 @@ impl AWSApiProxy {
         &self,
         key_id: String,
         key_spec: String,
-        _encryption_context: Option<std::collections::HashMap<String, String>>,
+        encryption_context: Option<std::collections::HashMap<String, String>>,
         _grant_tokens: Option<Vec<String>>,
-        _recipient: Option<Vec<u8>>,
+        recipient: Option<Vec<u8>>,
     ) -> Result<KmsResponse> {
         let ks = match key_spec.as_str() {
             "AES_256" => aws_sdk_kms::types::DataKeySpec::Aes256,
@@ -85,19 +85,31 @@ impl AWSApiProxy {
             _ => aws_sdk_kms::types::DataKeySpec::Aes256,
         };
 
-        let resp = self
-            .client
-            .generate_data_key()
-            .key_id(key_id)
-            .key_spec(ks)
-            .send()
-            .await
-            .map_err(|e| {
-                HostError::Host(EphemeralError::Internal(format!(
-                    "KMS GenerateDataKey failed: {}",
-                    e
-                )))
-            })?;
+        let mut builder = self.client.generate_data_key().key_id(key_id).key_spec(ks);
+
+        if let Some(ctx) = encryption_context {
+            for (k, v) in ctx {
+                builder = builder.encryption_context(k, v);
+            }
+        }
+
+        if let Some(attestation_doc) = recipient {
+            builder = builder.recipient(
+                aws_sdk_kms::types::RecipientInfo::builder()
+                    .key_encryption_algorithm(
+                        aws_sdk_kms::types::KeyEncryptionMechanism::RsaesOaepSha256,
+                    )
+                    .attestation_document(aws_sdk_kms::primitives::Blob::new(attestation_doc))
+                    .build(),
+            );
+        }
+
+        let resp = builder.send().await.map_err(|e| {
+            HostError::Host(EphemeralError::Internal(format!(
+                "KMS GenerateDataKey failed: {}",
+                e
+            )))
+        })?;
 
         Ok(KmsResponse::GenerateDataKey {
             key_id: resp.key_id().unwrap_or_default().to_string(),
@@ -105,10 +117,8 @@ impl AWSApiProxy {
                 .ciphertext_blob()
                 .map(|b| b.as_ref().to_vec())
                 .unwrap_or_default(),
-            plaintext: resp
-                .plaintext()
-                .map(|b| b.as_ref().to_vec())
-                .unwrap_or_default(),
+            plaintext: resp.plaintext().map(|b| b.as_ref().to_vec()),
+            ciphertext_for_recipient: resp.ciphertext_for_recipient().map(|b| b.as_ref().to_vec()),
         })
     }
 }

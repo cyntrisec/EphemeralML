@@ -422,6 +422,8 @@ mod tests {
             .send_request(KmsRequest::GenerateDataKey {
                 key_id: "k".to_string(),
                 key_spec: "AES_256".to_string(),
+                encryption_context: None,
+                recipient: None,
             })
             .await
             .unwrap_err();

@@ -50,6 +50,10 @@ pub enum KmsRequest {
     GenerateDataKey {
         key_id: String,
         key_spec: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        encryption_context: Option<HashMap<String, String>>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        recipient: Option<Vec<u8>>,
     },
 }
 
@@ -64,8 +68,11 @@ pub enum KmsResponse {
     },
     GenerateDataKey {
         ciphertext_blob: Vec<u8>,
-        plaintext: Vec<u8>,
+        #[serde(default)]
+        plaintext: Option<Vec<u8>>,
         key_id: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        ciphertext_for_recipient: Option<Vec<u8>>,
     },
     Error {
         code: KmsProxyErrorCode,

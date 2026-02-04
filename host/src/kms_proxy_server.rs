@@ -126,8 +126,13 @@ impl KmsProxyServer {
     ) -> (KmsResponse, Option<String>) {
         let _ = (&started, &deadline); // suppress unused warnings in mock mode
         match request {
-            KmsRequest::GenerateDataKey { key_id, key_spec } => {
-                let _ = &key_spec; // suppress unused warning in mock mode
+            KmsRequest::GenerateDataKey {
+                key_id,
+                key_spec,
+                encryption_context,
+                recipient,
+            } => {
+                let _ = (&key_spec, &encryption_context); // suppress unused warnings in mock mode
 
                 // If we have a real KMS client, use it.
                 #[cfg(feature = "production")]
@@ -179,10 +184,49 @@ impl KmsProxyServer {
                             _ => builder.number_of_bytes(32),
                         };
 
+                        // Add encryption context if provided
+                        if let Some(ctx) = encryption_context.clone() {
+                            for (k, v) in ctx {
+                                builder = builder.encryption_context(k, v);
+                            }
+                        }
+
+                        // Add recipient (attestation document) if provided
+                        if let Some(attestation_doc) = recipient.clone() {
+                            builder = builder.recipient(
+                                aws_sdk_kms::types::RecipientInfo::builder()
+                                    .key_encryption_algorithm(
+                                        aws_sdk_kms::types::KeyEncryptionMechanism::RsaesOaepSha256,
+                                    )
+                                    .attestation_document(aws_sdk_kms::primitives::Blob::new(
+                                        attestation_doc,
+                                    ))
+                                    .build(),
+                            );
+                        }
+
                         match timeout(per_attempt, builder.send()).await {
                             Ok(Ok(output)) => {
                                 self.circuit.record_result(true).await;
                                 let kms_request_id = aws_request_id(&output);
+
+                                let ciphertext_for_recipient = output
+                                    .ciphertext_for_recipient()
+                                    .map(|b| b.as_ref().to_vec());
+
+                                // Fail-closed: when using RecipientInfo, never forward plaintext.
+                                if recipient.is_some() && ciphertext_for_recipient.is_none() {
+                                    return (
+                                        KmsResponse::Error {
+                                            code: KmsProxyErrorCode::Internal,
+                                            message:
+                                                "Recipient-bound GenerateDataKey returned no ciphertext"
+                                                    .to_string(),
+                                        },
+                                        kms_request_id,
+                                    );
+                                }
+
                                 return (
                                     KmsResponse::GenerateDataKey {
                                         key_id: output.key_id().unwrap_or(&key_id).to_string(),
@@ -190,10 +234,8 @@ impl KmsProxyServer {
                                             .ciphertext_blob()
                                             .map(|b| b.as_ref().to_vec())
                                             .unwrap_or_default(),
-                                        plaintext: output
-                                            .plaintext()
-                                            .map(|b| b.as_ref().to_vec())
-                                            .unwrap_or_default(),
+                                        plaintext: output.plaintext().map(|b| b.as_ref().to_vec()),
+                                        ciphertext_for_recipient,
                                     },
                                     kms_request_id,
                                 );
@@ -250,14 +292,36 @@ impl KmsProxyServer {
                 let mut key = [0u8; 32];
                 rand::thread_rng().fill_bytes(&mut key);
 
-                (
-                    KmsResponse::GenerateDataKey {
-                        key_id,
-                        ciphertext_blob: key.to_vec(),
-                        plaintext: key.to_vec(),
-                    },
-                    None,
-                )
+                if let Some(attestation_bytes) = recipient {
+                    match self.process_attestation(&attestation_bytes, &key) {
+                        Ok(wrapped_key) => (
+                            KmsResponse::GenerateDataKey {
+                                key_id,
+                                ciphertext_blob: key.to_vec(),
+                                plaintext: None,
+                                ciphertext_for_recipient: Some(wrapped_key),
+                            },
+                            None,
+                        ),
+                        Err(_e) => (
+                            KmsResponse::Error {
+                                code: KmsProxyErrorCode::InvalidRequest,
+                                message: "Invalid attestation document".to_string(),
+                            },
+                            None,
+                        ),
+                    }
+                } else {
+                    (
+                        KmsResponse::GenerateDataKey {
+                            key_id,
+                            ciphertext_blob: key.to_vec(),
+                            plaintext: Some(key.to_vec()),
+                            ciphertext_for_recipient: None,
+                        },
+                        None,
+                    )
+                }
             }
             KmsRequest::Decrypt {
                 ciphertext_blob,
