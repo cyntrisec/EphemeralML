@@ -131,3 +131,6 @@ docs/investors/*.pdf
 # LaTeX build artifacts
 docs/ephemeralml_paper.pdf
 audit
+
+# Benchmark run log (local troubleshooting notes)
+benchmark_run_log.md
