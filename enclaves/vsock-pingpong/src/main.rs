@@ -930,7 +930,7 @@ async fn run_benchmark() {
             "rtt_1kb_ms": round2(rtt_1kb),
             "rtt_64kb_ms": round2(rtt_64kb),
             "rtt_1mb_ms": round2(rtt_1mb),
-            "upload_throughput_mbps": round2(vsock_upload_throughput_mbps)
+            "upload_throughput_mb_per_sec": round2(vsock_upload_throughput_mbps)
         },
         "quality": {
             "reference_text": BENCHMARK_INPUT_TEXTS[0],

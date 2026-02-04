@@ -196,7 +196,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             "rtt_1kb_ms": 0.0,
             "rtt_64kb_ms": 0.0,
             "rtt_1mb_ms": 0.0,
-            "upload_throughput_mbps": 0.0
+            "upload_throughput_mb_per_sec": 0.0
         },
         "quality": {
             "reference_text": BENCHMARK_INPUT_TEXTS[0],

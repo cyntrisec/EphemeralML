@@ -7,8 +7,13 @@
 //! (same crypto operations as the real AWS Nitro root CA: ECDSA P-384 + SHA-384).
 //! The computational cost of signature verification and certificate chain walking
 //! is identical regardless of which root CA is used.
+//!
+//! The benchmark matches the production verification path in `attestation_verifier.rs`:
+//! - Leaf cert extracted from CBOR payload `certificate` field (not COSE x5chain header)
+//! - Sig_structure computed via coset `verify_signature()` callback
+//! - ECDSA signature stored as raw (r||s) and converted to DER for OpenSSL verification
 
-use coset::{AsCborValue, CborSerializable, CoseSign1, HeaderBuilder, Label};
+use coset::{CborSerializable, CoseSign1, CoseSign1Builder, HeaderBuilder};
 use openssl::asn1::Asn1Time;
 use openssl::bn::BigNum;
 use openssl::ec::{EcGroup, EcKey};
@@ -45,6 +50,106 @@ fn latency_stats(sorted: &[f64]) -> serde_json::Value {
         "min": round4(sorted.first().copied().unwrap_or(0.0)),
         "max": round4(sorted.last().copied().unwrap_or(0.0))
     })
+}
+
+/// Convert raw ECDSA signature (r || s) to DER-encoded SEQUENCE { INTEGER r, INTEGER s }.
+/// Mirrors `ecdsa_raw_to_der` in `attestation_verifier.rs`.
+fn ecdsa_raw_to_der(raw: &[u8]) -> Result<Vec<u8>, String> {
+    if !raw.len().is_multiple_of(2) || raw.is_empty() {
+        return Err(format!(
+            "Invalid ECDSA signature length: {} (expected even)",
+            raw.len()
+        ));
+    }
+
+    let half = raw.len() / 2;
+    let r = &raw[..half];
+    let s = &raw[half..];
+
+    fn encode_integer(bytes: &[u8]) -> Vec<u8> {
+        let stripped = match bytes.iter().position(|&b| b != 0) {
+            Some(pos) => &bytes[pos..],
+            None => &[0u8],
+        };
+        if stripped[0] & 0x80 != 0 {
+            let mut result = vec![0x02, (stripped.len() + 1) as u8, 0x00];
+            result.extend_from_slice(stripped);
+            result
+        } else {
+            let mut result = vec![0x02, stripped.len() as u8];
+            result.extend_from_slice(stripped);
+            result
+        }
+    }
+
+    let r_der = encode_integer(r);
+    let s_der = encode_integer(s);
+
+    let total_len = r_der.len() + s_der.len();
+    let mut der = vec![0x30]; // SEQUENCE tag
+    if total_len < 128 {
+        der.push(total_len as u8);
+    } else {
+        der.push(0x81);
+        der.push(total_len as u8);
+    }
+    der.extend_from_slice(&r_der);
+    der.extend_from_slice(&s_der);
+
+    Ok(der)
+}
+
+/// Convert DER-encoded ECDSA signature to raw (r || s) format, each component
+/// zero-padded to `component_len` bytes. For P-384, component_len = 48.
+fn ecdsa_der_to_raw(der: &[u8], component_len: usize) -> Result<Vec<u8>, String> {
+    if der.len() < 6 || der[0] != 0x30 {
+        return Err("Not a DER SEQUENCE".into());
+    }
+
+    // Skip SEQUENCE tag + length
+    let mut pos = 1;
+    if der[pos] & 0x80 != 0 {
+        let len_bytes = (der[pos] & 0x7f) as usize;
+        pos += 1 + len_bytes;
+    } else {
+        pos += 1;
+    }
+
+    // Parse first INTEGER (r)
+    if der[pos] != 0x02 {
+        return Err("Expected INTEGER tag for r".into());
+    }
+    pos += 1;
+    let r_len = der[pos] as usize;
+    pos += 1;
+    let r_bytes = &der[pos..pos + r_len];
+    pos += r_len;
+
+    // Parse second INTEGER (s)
+    if der[pos] != 0x02 {
+        return Err("Expected INTEGER tag for s".into());
+    }
+    pos += 1;
+    let s_len = der[pos] as usize;
+    pos += 1;
+    let s_bytes = &der[pos..pos + s_len];
+
+    // Strip leading zero padding and right-align into component_len bytes
+    fn pad_component(bytes: &[u8], len: usize) -> Vec<u8> {
+        // Strip leading zeros added for ASN.1 sign bit
+        let stripped = match bytes.iter().position(|&b| b != 0) {
+            Some(p) => &bytes[p..],
+            None => &[0u8],
+        };
+        let mut out = vec![0u8; len];
+        let offset = len.saturating_sub(stripped.len());
+        out[offset..].copy_from_slice(stripped);
+        out
+    }
+
+    let mut raw = pad_component(r_bytes, component_len);
+    raw.extend_from_slice(&pad_component(s_bytes, component_len));
+    Ok(raw)
 }
 
 /// Generate a test certificate chain: Root CA → Intermediate → Leaf
@@ -159,65 +264,53 @@ fn generate_test_cert_chain() -> (Vec<Vec<u8>>, PKey<openssl::pkey::Private>) {
 }
 
 /// Build a COSE_Sign1 message with the given payload and signing key.
-/// Mirrors the structure produced by AWS NSM.
-fn build_cose_sign1(
-    payload: &[u8],
-    signing_key: &PKey<openssl::pkey::Private>,
-    cert_chain: &[Vec<u8>],
-) -> Vec<u8> {
-    // Build protected header (algorithm = ES384)
+/// Mirrors the structure produced by AWS NSM: leaf cert in CBOR payload
+/// `certificate` field, signature in raw (r||s) format.
+/// Uses coset's CoseSign1Builder to ensure tbs_data matches verify_signature().
+fn build_cose_sign1(payload: &[u8], signing_key: &PKey<openssl::pkey::Private>) -> Vec<u8> {
     let protected = HeaderBuilder::new()
         .algorithm(coset::iana::Algorithm::ES384)
         .build();
 
-    // Build unprotected header with x5chain (label 33)
-    let cert_array: Vec<ciborium::Value> = cert_chain
-        .iter()
-        .map(|c| ciborium::Value::Bytes(c.clone()))
-        .collect();
+    // Use coset's builder + create_signature so tbs_data is computed identically
+    // during both signing and verification (avoids serde_cbor vs ciborium divergence).
+    let cose = CoseSign1Builder::new()
+        .protected(protected)
+        .payload(payload.to_vec())
+        .create_signature(&[], |tbs_data| {
+            // Sign with ECDSA P-384 + SHA-384 (OpenSSL produces DER)
+            let mut signer = Signer::new(MessageDigest::sha384(), signing_key).unwrap();
+            signer.update(tbs_data).unwrap();
+            let der_signature = signer.sign_to_vec().unwrap();
 
-    let mut unprotected = coset::Header::default();
-    unprotected
-        .rest
-        .push((Label::Int(33), ciborium::Value::Array(cert_array)));
-
-    // Serialize protected header to CBOR
-    let protected_bytes = {
-        let mut buf = Vec::new();
-        coset::cbor::ser::into_writer(&protected.clone().to_cbor_value().unwrap(), &mut buf)
-            .unwrap();
-        buf
-    };
-
-    // Build Sig_structure: ["Signature1", protected, external_aad, payload]
-    let sig_structure = serde_cbor::Value::Array(vec![
-        serde_cbor::Value::Text("Signature1".to_string()),
-        serde_cbor::Value::Bytes(protected_bytes.clone()),
-        serde_cbor::Value::Bytes(vec![]), // external_aad
-        serde_cbor::Value::Bytes(payload.to_vec()),
-    ]);
-    let sig_data = serde_cbor::to_vec(&sig_structure).unwrap();
-
-    // Sign with ECDSA P-384 + SHA-384
-    let mut signer = Signer::new(MessageDigest::sha384(), signing_key).unwrap();
-    signer.update(&sig_data).unwrap();
-    let signature = signer.sign_to_vec().unwrap();
-
-    // Build CoseSign1
-    let cose = CoseSign1 {
-        protected: coset::ProtectedHeader {
-            original_data: Some(protected_bytes),
-            header: protected,
-        },
-        unprotected,
-        payload: Some(payload.to_vec()),
-        signature,
-    };
+            // Convert DER → raw (r||s) to match NSM output. P-384 = 48 bytes per component.
+            ecdsa_der_to_raw(&der_signature, 48).unwrap()
+        })
+        .build();
 
     cose.to_vec().unwrap()
 }
 
-/// Benchmark COSE_Sign1 signature verification (parse + verify)
+/// Extract leaf certificate DER from CBOR payload's `certificate` field.
+fn extract_leaf_cert_from_payload(payload_bytes: &[u8]) -> Vec<u8> {
+    let val: serde_cbor::Value = serde_cbor::from_slice(payload_bytes).unwrap();
+    if let serde_cbor::Value::Map(map) = val {
+        for (k, v) in &map {
+            if let serde_cbor::Value::Text(key) = k {
+                if key == "certificate" {
+                    if let serde_cbor::Value::Bytes(b) = v {
+                        return b.clone();
+                    }
+                }
+            }
+        }
+    }
+    panic!("certificate field not found in CBOR payload");
+}
+
+/// Benchmark COSE_Sign1 signature verification (parse + verify).
+/// Matches production path: extract leaf cert from payload, use coset's
+/// verify_signature() with ecdsa_raw_to_der() conversion.
 fn bench_cose_signature_verify(cose_bytes: &[u8]) -> Vec<f64> {
     let mut latencies = Vec::with_capacity(NUM_ITERATIONS);
 
@@ -227,39 +320,25 @@ fn bench_cose_signature_verify(cose_bytes: &[u8]) -> Vec<f64> {
         // Parse COSE_Sign1
         let cose_sign1 = CoseSign1::from_slice(cose_bytes).unwrap();
 
-        // Extract leaf cert from x5chain
-        let mut leaf_der = None;
-        for (label, value) in &cose_sign1.unprotected.rest {
-            if *label == Label::Int(33) {
-                if let ciborium::Value::Array(a) = value {
-                    if let Some(ciborium::Value::Bytes(b)) = a.first() {
-                        leaf_der = Some(b.clone());
-                    }
-                }
-            }
-        }
-        let leaf_cert = X509::from_der(&leaf_der.unwrap()).unwrap();
+        // Extract leaf cert from CBOR payload's "certificate" field
+        let payload_bytes = cose_sign1.payload.as_deref().unwrap();
+        let leaf_der = extract_leaf_cert_from_payload(payload_bytes);
+        let leaf_cert = X509::from_der(&leaf_der).unwrap();
         let pubkey = leaf_cert.public_key().unwrap();
 
-        // Reconstruct Sig_structure
-        let protected_bytes = cose_sign1
-            .protected
-            .original_data
-            .clone()
-            .unwrap_or_default();
-        let payload_bytes = cose_sign1.payload.as_deref().unwrap_or(&[]);
-        let sig_structure = serde_cbor::Value::Array(vec![
-            serde_cbor::Value::Text("Signature1".to_string()),
-            serde_cbor::Value::Bytes(protected_bytes),
-            serde_cbor::Value::Bytes(vec![]),
-            serde_cbor::Value::Bytes(payload_bytes.to_vec()),
-        ]);
-        let sig_data = serde_cbor::to_vec(&sig_structure).unwrap();
-
-        // Verify ECDSA signature
-        let mut verifier = Verifier::new(MessageDigest::sha384(), &pubkey).unwrap();
-        verifier.update(&sig_data).unwrap();
-        assert!(verifier.verify(&cose_sign1.signature).unwrap());
+        // Verify signature using coset's tbs_data computation + raw-to-DER conversion
+        cose_sign1
+            .verify_signature(&[], |sig, tbs_data| {
+                let der_sig = ecdsa_raw_to_der(sig).map_err(|e| e.to_string())?;
+                let mut verifier =
+                    Verifier::new(MessageDigest::sha384(), &pubkey).map_err(|e| e.to_string())?;
+                verifier.update(tbs_data).map_err(|e| e.to_string())?;
+                if !verifier.verify(&der_sig).unwrap_or(false) {
+                    return Err("COSE signature verification failed".to_string());
+                }
+                Ok(())
+            })
+            .unwrap();
 
         let ms = start.elapsed().as_secs_f64() * 1000.0;
         if i >= NUM_WARMUP {
@@ -321,7 +400,8 @@ fn bench_payload_parse(cose_bytes: &[u8]) -> Vec<f64> {
     latencies
 }
 
-/// Benchmark full verification pipeline (COSE verify + chain walk + payload parse)
+/// Benchmark full verification pipeline (COSE verify + chain walk + payload parse).
+/// Matches production path: cert from payload, coset verify_signature(), raw-to-DER.
 fn bench_full_verification(
     cose_bytes: &[u8],
     cert_chain: &[Vec<u8>],
@@ -335,39 +415,24 @@ fn bench_full_verification(
         // 1. Parse COSE_Sign1
         let cose_sign1 = CoseSign1::from_slice(cose_bytes).unwrap();
 
-        // 2. Extract leaf cert and verify signature
-        let mut extracted_chain = Vec::new();
-        for (label, value) in &cose_sign1.unprotected.rest {
-            if *label == Label::Int(33) {
-                if let ciborium::Value::Array(a) = value {
-                    for v in a {
-                        if let ciborium::Value::Bytes(b) = v {
-                            extracted_chain.push(b.clone());
-                        }
-                    }
-                }
-            }
-        }
-        let leaf_cert = X509::from_der(&extracted_chain[0]).unwrap();
+        // 2. Extract leaf cert from payload and verify signature
+        let payload_bytes = cose_sign1.payload.as_deref().unwrap();
+        let leaf_der = extract_leaf_cert_from_payload(payload_bytes);
+        let leaf_cert = X509::from_der(&leaf_der).unwrap();
         let pubkey = leaf_cert.public_key().unwrap();
 
-        let protected_bytes = cose_sign1
-            .protected
-            .original_data
-            .clone()
-            .unwrap_or_default();
-        let payload_bytes = cose_sign1.payload.as_deref().unwrap_or(&[]);
-        let sig_structure = serde_cbor::Value::Array(vec![
-            serde_cbor::Value::Text("Signature1".to_string()),
-            serde_cbor::Value::Bytes(protected_bytes),
-            serde_cbor::Value::Bytes(vec![]),
-            serde_cbor::Value::Bytes(payload_bytes.to_vec()),
-        ]);
-        let sig_data = serde_cbor::to_vec(&sig_structure).unwrap();
-
-        let mut verifier = Verifier::new(MessageDigest::sha384(), &pubkey).unwrap();
-        verifier.update(&sig_data).unwrap();
-        assert!(verifier.verify(&cose_sign1.signature).unwrap());
+        cose_sign1
+            .verify_signature(&[], |sig, tbs_data| {
+                let der_sig = ecdsa_raw_to_der(sig).map_err(|e| e.to_string())?;
+                let mut verifier =
+                    Verifier::new(MessageDigest::sha384(), &pubkey).map_err(|e| e.to_string())?;
+                verifier.update(tbs_data).map_err(|e| e.to_string())?;
+                if !verifier.verify(&der_sig).unwrap_or(false) {
+                    return Err("COSE signature verification failed".to_string());
+                }
+                Ok(())
+            })
+            .unwrap();
 
         // 3. Validate certificate chain
         let root_ca = X509::from_der(root_ca_der).unwrap();
@@ -419,7 +484,8 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
         cert_chain[0].len()
     );
 
-    // Build attestation payload (CBOR, mimics NSM output)
+    // Build attestation payload (CBOR, mimics NSM output).
+    // Includes `certificate` field with leaf cert DER (matching real NSM documents).
     let user_data = serde_json::json!({
         "hpke_public_key": vec![1u8; 32],
         "receipt_signing_key": vec![2u8; 32],
@@ -476,6 +542,10 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
                 ),
             ),
             (
+                serde_cbor::Value::Text("certificate".into()),
+                serde_cbor::Value::Bytes(cert_chain[0].clone()),
+            ),
+            (
                 serde_cbor::Value::Text("cabundle".into()),
                 serde_cbor::Value::Array(
                     cert_chain
@@ -493,8 +563,8 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
 
     eprintln!("[cose] Payload size: {} bytes", payload_bytes.len());
 
-    // Build COSE_Sign1
-    let cose_bytes = build_cose_sign1(&payload_bytes, &leaf_key, &cert_chain);
+    // Build COSE_Sign1 with raw (r||s) signature format (matching NSM)
+    let cose_bytes = build_cose_sign1(&payload_bytes, &leaf_key);
     eprintln!("[cose] COSE_Sign1 size: {} bytes", cose_bytes.len());
 
     // Run benchmarks
@@ -557,11 +627,12 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
         "cbor_payload_parse_ms": parse_stats,
         "full_verification_ms": full_stats,
         "notes": {
-            "cose_signature_verify": "Parse COSE_Sign1 + extract leaf cert + reconstruct Sig_structure + ECDSA-P384-SHA384 verify",
+            "cose_signature_verify": "Parse COSE_Sign1 + extract leaf cert from payload + coset verify_signature() + ecdsa_raw_to_der + ECDSA-P384-SHA384 verify",
             "cert_chain_verify": "Walk 3-cert chain (root→intermediate→leaf), verify each signature with issuer pubkey",
-            "cbor_payload_parse": "Deserialize CBOR attestation payload (~700 bytes)",
+            "cbor_payload_parse": "Deserialize CBOR attestation payload (~1KB with certificate field)",
             "full_verification": "All three steps combined (COSE verify + chain walk + payload parse)",
-            "curve_note": "AWS Nitro root CA uses P-384 (secp384r1). Test chain uses identical curve and key sizes."
+            "curve_note": "AWS Nitro root CA uses P-384 (secp384r1). Test chain uses identical curve and key sizes.",
+            "signature_format": "Raw (r||s) matching NSM output, converted to DER for OpenSSL verification"
         }
     });
 

@@ -109,8 +109,11 @@ if ! $SKIP_BASELINE; then
         (cd "$PROJECT_ROOT" && cargo build --release --bin benchmark_baseline 2>&1 | tail -5)
     fi
 
-    log "  Running baseline..."
-    "$PROJECT_ROOT/target/release/benchmark_baseline" \
+    # Pin to 2 threads to match enclave vCPU allocation for fair comparison.
+    # Without this, Candle/rayon may use all host vCPUs (e.g. 4 on m6i.xlarge),
+    # giving the baseline an unfair advantage over the 2-vCPU enclave.
+    log "  Running baseline (RAYON_NUM_THREADS=2)..."
+    RAYON_NUM_THREADS=2 "$PROJECT_ROOT/target/release/benchmark_baseline" \
         --model-dir "$PROJECT_ROOT/test_artifacts" \
         --instance-type "$INSTANCE_TYPE" \
         > "$OUTPUT_DIR/baseline_results.json" 2>"$OUTPUT_DIR/baseline_stderr.log"

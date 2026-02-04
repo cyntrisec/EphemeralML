@@ -49,6 +49,8 @@ Results are 9+ JSON files analyzed by `scripts/benchmark_report.py` (markdown) a
 
 Note: newer benchmark outputs include `peak_rss_source` and `peak_vmsize_mb` to avoid ambiguity between RSS and VMS metrics.
 
+6. **Thread pinning**: Baseline runs with `RAYON_NUM_THREADS=2` to match the enclave's 2-vCPU allocation. Without this, Candle/rayon would use all host vCPUs (e.g. 4 on m6i.xlarge), giving the baseline an unfair advantage.
+
 ### Six Must-Have Metrics
 
 | # | Metric | How Measured | Baseline |
@@ -321,7 +323,7 @@ Both the enclave and baseline benchmarks output structured JSON for automated co
     "throughput_inferences_per_sec": 10.74
   },
   "memory": { "peak_rss_mb": 1064.31, "peak_rss_source": "VmHWM", "peak_vmsize_mb": 1100.00, "model_size_mb": 86.66 },
-  "vsock": { "rtt_64b_ms": 0.17, "rtt_1kb_ms": 0.14, "rtt_64kb_ms": 0.41, "rtt_1mb_ms": 4.56, "upload_throughput_mbps": 219.4 },
+  "vsock": { "rtt_64b_ms": 0.17, "rtt_1kb_ms": 0.14, "rtt_64kb_ms": 0.41, "rtt_1mb_ms": 4.56, "upload_throughput_mb_per_sec": 219.4 },
   "quality": { "reference_text": "What is the capital of France?", "embedding_dim": 384, "embedding_first_8": [0.658, "..."], "embedding_sha256": "..." }
 }
 ```
