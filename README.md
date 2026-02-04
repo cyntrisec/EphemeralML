@@ -1,5 +1,5 @@
 [![Status](https://img.shields.io/badge/Status-v1.0%20Complete-brightgreen?style=for-the-badge)]()
-[![Tests](https://img.shields.io/badge/Tests-91%20Passing-success?style=for-the-badge)]()
+[![Tests](https://img.shields.io/badge/Tests-110%20Passing-success?style=for-the-badge)]()
 [![Platform](https://img.shields.io/badge/Platform-AWS%20Nitro%20Enclaves-orange?style=for-the-badge&logo=amazon-aws)]()
 [![Language](https://img.shields.io/badge/Rust-13k%20LOC-b7410e?style=for-the-badge&logo=rust&logoColor=white)]()
 [![License](https://img.shields.io/badge/Apache%202.0-blue?style=for-the-badge)]()

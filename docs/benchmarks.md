@@ -58,7 +58,7 @@ Note: newer benchmark outputs include `peak_rss_source` and `peak_vmsize_mb` to 
 | 1 | Inference latency | Per-inference timing (p50/p95/p99) | Same model, bare EC2 |
 | 2 | Model load time | S3 fetch + decrypt + deserialize, per stage | Direct file load on host |
 | 3 | Cold start | `nitro-cli run-enclave` to first inference | N/A (enclave-only) |
-| 4 | Attestation + KMS | NSM doc generation + KMS Decrypt w/ RecipientInfo | N/A (enclave-only) |
+| 4 | Attestation + KMS | NSM doc generation + attested GenerateDataKey w/ RecipientInfo | N/A (enclave-only) |
 | 5 | VSock overhead | RTT and throughput at various payload sizes | localhost TCP |
 | 6 | Memory usage | Peak RSS during model load + inference | Bare metal RSS |
 
@@ -82,7 +82,7 @@ Unlike solutions that use Library OS (LibOS) wrappers like Anjuna or Fortanix, E
 
 ## Performance Results
 
-> **Measured** on AWS EC2 m6i.xlarge (instance i-09a94f42e43f7ab68), February 4, 2026.
+> **Measured** on AWS EC2 m6i.xlarge (us-east-1), February 4, 2026.
 > Commit `b00bab1`. 3 independent runs, 100 iterations each, 3 warmup. Overhead range: 12.4–12.8% (runs 2–3; run 1 cold-cache outlier at 17.6%).
 > VmHWM memory measurement confirmed. Full-embedding SHA-256 comparison enabled.
 > Raw JSON data available in the [GitHub Release](https://github.com/cyntrisec/EphemeralML/releases) for this version.
