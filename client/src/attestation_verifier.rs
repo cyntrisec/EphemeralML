@@ -344,6 +344,15 @@ impl AttestationVerifier {
         // This ensures the Sig_structure CBOR encoding matches exactly what NSM signed.
         cose_sign1
             .verify_signature(&[], |sig, tbs_data| {
+                // COSE uses raw (r || s) format for ECDSA signatures, but OpenSSL
+                // expects DER-encoded signatures. Convert before verification.
+                let der_sig = ecdsa_raw_to_der(sig).map_err(|e| {
+                    ClientError::Client(crate::EphemeralError::AttestationError(format!(
+                        "ECDSA signature format conversion failed: {}",
+                        e
+                    )))
+                })?;
+
                 let mut verifier =
                     Verifier::new(MessageDigest::sha384(), &pubkey).map_err(|e| {
                         ClientError::Client(crate::EphemeralError::AttestationError(format!(
@@ -357,7 +366,7 @@ impl AttestationVerifier {
                         e
                     )))
                 })?;
-                if !verifier.verify(sig).unwrap_or(false) {
+                if !verifier.verify(&der_sig).unwrap_or(false) {
                     return Err(ClientError::Client(
                         crate::EphemeralError::AttestationError(
                             "COSE signature verification failed".to_string(),
@@ -544,4 +553,57 @@ fn get_int_field(map: &BTreeMap<serde_cbor::Value, serde_cbor::Value>, key: &str
             crate::EphemeralError::AttestationError(format!("Field {} is not integer", key)),
         )),
     }
+}
+
+/// Convert an ECDSA signature from COSE raw (r || s) format to DER encoding.
+///
+/// COSE encodes ECDSA signatures as fixed-length concatenation of r and s
+/// (each component is half the total length). OpenSSL expects DER-encoded
+/// ASN.1 SEQUENCE { INTEGER r, INTEGER s }.
+fn ecdsa_raw_to_der(raw: &[u8]) -> std::result::Result<Vec<u8>, String> {
+    if raw.len() % 2 != 0 || raw.is_empty() {
+        return Err(format!(
+            "Invalid ECDSA signature length: {} (expected even)",
+            raw.len()
+        ));
+    }
+
+    let half = raw.len() / 2;
+    let r = &raw[..half];
+    let s = &raw[half..];
+
+    // Encode each integer component as ASN.1 INTEGER
+    fn encode_integer(bytes: &[u8]) -> Vec<u8> {
+        // Strip leading zeros (but keep at least one byte)
+        let stripped = match bytes.iter().position(|&b| b != 0) {
+            Some(pos) => &bytes[pos..],
+            None => &[0u8],
+        };
+        // If high bit is set, prepend a 0x00 to keep it positive
+        if stripped[0] & 0x80 != 0 {
+            let mut result = vec![0x02, (stripped.len() + 1) as u8, 0x00];
+            result.extend_from_slice(stripped);
+            result
+        } else {
+            let mut result = vec![0x02, stripped.len() as u8];
+            result.extend_from_slice(stripped);
+            result
+        }
+    }
+
+    let r_der = encode_integer(r);
+    let s_der = encode_integer(s);
+
+    let total_len = r_der.len() + s_der.len();
+    let mut der = vec![0x30]; // SEQUENCE tag
+    if total_len < 128 {
+        der.push(total_len as u8);
+    } else {
+        der.push(0x81);
+        der.push(total_len as u8);
+    }
+    der.extend_from_slice(&r_der);
+    der.extend_from_slice(&s_der);
+
+    Ok(der)
 }
