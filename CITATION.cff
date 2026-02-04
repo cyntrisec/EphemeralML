@@ -5,10 +5,9 @@ type: software
 authors:
   - family-names: Tsyrulnikov
     given-names: Borys
-    orcid: ""
 repository-code: "https://github.com/cyntrisec/EphemeralML"
 url: "https://ephemeralml.cyntrisec.com"
-license: MIT
+license: Apache-2.0
 version: "1.0.0"
 date-released: "2026-02-04"
 keywords:
