@@ -322,9 +322,13 @@ impl AttestationVerifier {
             }
         };
 
-        // Build cert chain: leaf cert first, then CA bundle (intermediates)
+        // Build cert chain: leaf cert first, then intermediates ordered
+        // closest-to-leaf first, closest-to-root last.
+        // NSM cabundle is ordered root-to-leaf, so reverse it.
+        let mut intermediates = cabundle_certs;
+        intermediates.reverse();
         let mut cert_chain = vec![leaf_cert_der.clone()];
-        cert_chain.extend(cabundle_certs);
+        cert_chain.extend(intermediates);
 
         let leaf_cert = X509::from_der(&leaf_cert_der).map_err(|e| {
             ClientError::Client(crate::EphemeralError::AttestationError(format!(
