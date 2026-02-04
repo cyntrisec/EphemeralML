@@ -12,7 +12,13 @@ use aws_nitro_enclaves_nsm_api as nsm;
 #[cfg(feature = "production")]
 use hpke::{aead::ChaCha20Poly1305, kem::X25519HkdfSha256, Deserializable, OpModeR};
 #[cfg(feature = "production")]
+use rsa::pkcs8::EncodePublicKey;
+#[cfg(feature = "production")]
+use rsa::{Oaep, RsaPrivateKey};
+#[cfg(feature = "production")]
 use serde_bytes::ByteBuf;
+#[cfg(feature = "production")]
+use sha2::Sha256;
 
 /// Attestation document user data structure for key binding
 #[derive(Serialize, Deserialize, Clone, Debug)]

@@ -1715,7 +1715,9 @@ dependencies = [
  "aws-sdk-s3",
  "aws-types",
  "base64 0.22.1",
+ "ephemeral-ml-client",
  "ephemeral-ml-common",
+ "hex",
  "hpke",
  "libc",
  "opentelemetry",
@@ -1726,6 +1728,7 @@ dependencies = [
  "serde",
  "serde_cbor",
  "serde_json",
+ "sha2",
  "thiserror 1.0.69",
  "tokio",
  "tokio-vsock",
@@ -1733,6 +1736,8 @@ dependencies = [
  "tracing-opentelemetry",
  "tracing-subscriber",
  "uuid",
+ "x25519-dalek",
+ "zeroize",
 ]
 
 [[package]]

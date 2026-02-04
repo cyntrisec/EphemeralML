@@ -14,6 +14,8 @@ use ephemeral_ml_common::{HPKESession, MessageType, VSockMessage};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
 #[cfg(feature = "production")]
+use sha2::Digest;
+#[cfg(feature = "production")]
 use tokio_vsock::{VsockListener, VsockStream};
 
 #[allow(dead_code)]
@@ -195,7 +197,7 @@ impl<
                             EnclaveError::Enclave(EphemeralError::SerializationError(e.to_string()))
                         })?;
 
-                    let encrypted_resp = handler.handle_request(&encrypted_req)?;
+                    let encrypted_resp = handler.handle_request(&encrypted_req).await?;
 
                     let resp_payload = serde_json::to_vec(&encrypted_resp).map_err(|e| {
                         EnclaveError::Enclave(EphemeralError::SerializationError(e.to_string()))

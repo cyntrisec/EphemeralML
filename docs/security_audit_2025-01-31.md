@@ -135,9 +135,11 @@ KMS `Decrypt` calls now include an encryption context with `model_id` and `versi
 - The `generate_attestation` fix (item 4) stores raw NSM bytes but hasn't been exercised against real NSM output
 - Only the mock path is covered by the 110-test suite
 
+**Smoke test tooling available:** A dedicated smoke test binary (`host/src/bin/smoke_test_nitro.rs`) and orchestration script (`scripts/smoke_test_nitro.sh`) have been added to validate the production attestation path on real Nitro hardware. The smoke test performs the full Hello handshake over VSock, verifies the COSE_Sign1 signature (ECDSA-P384), walks the certificate chain to the AWS Nitro root CA, validates the challenge nonce, and establishes an HPKE session. Production build errors in `enclave/src/attestation.rs` and `enclave/src/server.rs` that blocked `--features production` compilation have been fixed. Run `./scripts/smoke_test_nitro.sh` on a Nitro-enabled instance to complete P2-0 validation.
+
 **Risk:** Medium (reduced from High). The structural alignment is correct and tested in mock mode. Production deployment still requires validation with real NSM documents on a Nitro-enabled instance.
 
-**Recommendation:** Deploy to a Nitro instance and run the full client→enclave→client attestation flow with real NSM. Capture the raw NSM document and verify it parses correctly through the client verifier.
+**Recommendation:** Run `./scripts/smoke_test_nitro.sh` on a Nitro-enabled instance (m6i.xlarge+). On PASS, update this finding to VERIFIED and record the PCR0/1/2 values.
 
 ---
 

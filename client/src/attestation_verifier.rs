@@ -158,11 +158,45 @@ impl AttestationVerifier {
         self.parse_and_validate_payload(payload, expected_nonce, doc)
     }
 
+    /// Verify attestation document without enforcing PCR policy.
+    ///
+    /// Performs full COSE_Sign1 signature verification and certificate chain
+    /// validation, but does NOT check PCR values against the policy allowlist.
+    /// This is intended for smoke tests and initial deployments where PCR values
+    /// are being discovered for the first time.
+    ///
+    /// The returned `EnclaveIdentity` contains the real PCR measurements from
+    /// the attestation document — callers should log/record them.
+    pub fn verify_attestation_no_pcr_policy(
+        &mut self,
+        doc: &AttestationDocument,
+        expected_nonce: &[u8],
+    ) -> Result<EnclaveIdentity> {
+        // 1. Parse and verify the COSE structure and signature
+        let (payload, cert_chain) = self.verify_cose_signature(&doc.signature)?;
+
+        // 2. Validate certificate chain against AWS Nitro root
+        self.validate_certificate_chain(&cert_chain)?;
+
+        // 3. Parse payload but skip PCR policy validation
+        self.parse_and_validate_payload_inner(payload, expected_nonce, doc, false)
+    }
+
     fn parse_and_validate_payload(
         &mut self,
         payload: Vec<u8>,
         expected_nonce: &[u8],
         doc: &AttestationDocument,
+    ) -> Result<EnclaveIdentity> {
+        self.parse_and_validate_payload_inner(payload, expected_nonce, doc, true)
+    }
+
+    fn parse_and_validate_payload_inner(
+        &mut self,
+        payload: Vec<u8>,
+        expected_nonce: &[u8],
+        doc: &AttestationDocument,
+        enforce_pcr_policy: bool,
     ) -> Result<EnclaveIdentity> {
         // 3. Parse attestation payload (CBOR)
         let attestation_payload: serde_cbor::Value =
@@ -198,7 +232,9 @@ impl AttestationVerifier {
 
         // 6. Extract and validate PCRs
         let pcrs = self.extract_pcrs(payload_map)?;
-        self.validate_pcr_measurements(&pcrs)?;
+        if enforce_pcr_policy {
+            self.validate_pcr_measurements(&pcrs)?;
+        }
 
         // 7. Extract module_id
         let module_id = get_str_field(payload_map, "module_id")?;
