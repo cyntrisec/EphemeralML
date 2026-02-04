@@ -113,6 +113,10 @@ impl ClientHello {
 pub struct ServerHello {
     /// Protocol version - fixed to 1 for v1
     pub version: u32,
+    /// Session identifier — the client MUST use this as the session_id in
+    /// subsequent EncryptedMessage requests so the enclave can look up the
+    /// correct HPKE session for decryption.
+    pub session_id: String,
     /// Chosen features from client's supported list
     pub chosen_features: Vec<String>,
     /// Attestation document (CBOR-encoded)
@@ -128,11 +132,18 @@ pub struct ServerHello {
 impl ServerHello {
     /// Create new ServerHello with v1 protocol
     pub fn new(
+        session_id: String,
         chosen_features: Vec<String>,
         attestation_document: Vec<u8>,
         ephemeral_public_key: Vec<u8>,
         receipt_signing_key: Vec<u8>,
     ) -> Result<Self> {
+        if session_id.is_empty() {
+            return Err(EphemeralError::InvalidInput(
+                "Session ID must not be empty".to_string(),
+            ));
+        }
+
         if chosen_features.len() > MAX_FEATURES {
             return Err(EphemeralError::InvalidInput(format!(
                 "Too many chosen features: {}",
@@ -156,6 +167,7 @@ impl ServerHello {
 
         Ok(Self {
             version: PROTOCOL_VERSION_V1,
+            session_id,
             chosen_features,
             attestation_document,
             ephemeral_public_key,

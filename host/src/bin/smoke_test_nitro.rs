@@ -317,7 +317,7 @@ async fn run_smoke_test(cid: u32, port: u32) -> std::result::Result<(), Box<dyn 
     };
 
     let mut hpke = HPKESession::new(
-        ephemeral_ml_common::generate_id(),
+        server_hello.session_id.clone(),
         1,
         attestation_hash,
         client_public_bytes,
@@ -333,28 +333,17 @@ async fn run_smoke_test(cid: u32, port: u32) -> std::result::Result<(), Box<dyn 
     println!("      HPKE session established.");
     println!("      Session ID: {}", hpke.session_id);
 
-    // Step 7: Encrypted round-trip probe (best-effort)
+    // Step 7: Encrypted round-trip test
     //
-    // NOTE: This step cannot reliably prove bidirectional HPKE decryption due to a
-    // session-ID mismatch in the current protocol:
-    //   - The enclave generates a random session_id during Hello (server.rs:150)
-    //   - ServerHello does not transmit the session_id back to the client
-    //   - The client has no way to set the correct session_id in EncryptedMessage
-    //   - The enclave's InferenceHandler looks up sessions by EncryptedMessage.session_id
-    //   - Result: "session not found" error before decryption is even attempted
+    // Session-ID is transmitted in ServerHello, so the enclave can look up the
+    // correct HPKE session. If the enclave successfully decrypts, processes, and
+    // re-encrypts a response, this proves bidirectional HPKE key agreement.
     //
-    // A successful decrypted response here would be the strongest proof, but
-    // "connection closed" is ambiguous (could be session lookup failure OR
-    // decryption failure OR inference failure). Do not treat it as confirmation
-    // of successful decryption.
-    //
-    // The attestation verification in steps 1-6 is the reliable proof that the
-    // enclave is genuine. Bidirectional HPKE proof requires fixing the session-ID
-    // negotiation (adding session_id to ServerHello).
-    println!("[7/8] Encrypted round-trip probe (best-effort, see NOTE)...");
-    println!("      NOTE: Session-ID is not transmitted in ServerHello, so the enclave");
-    println!("      will likely reject this with 'session not found'. A decrypted");
-    println!("      response is the only reliable success signal for this step.");
+    // If the enclave has no model loaded, it will decrypt successfully but fail
+    // at inference, closing the connection. This still proves decryption worked
+    // (the enclave found the session and got past AEAD decryption to the inference
+    // step). A full "ROUND-TRIP VERIFIED" requires a loaded model.
+    println!("[7/8] Encrypted round-trip test...");
     let test_request = serde_json::json!({
         "model_id": "smoke-test",
         "input_data": [0, 0, 0, 0],
@@ -432,8 +421,9 @@ async fn run_smoke_test(cid: u32, port: u32) -> std::result::Result<(), Box<dyn 
         }
         Ok(Err(e)) => {
             println!("      Connection closed after Data send ({}).", e);
-            println!("      Likely cause: session-ID mismatch (enclave cannot look up session).");
-            println!("      This does NOT confirm or deny HPKE decryption capability.");
+            println!("      Possible causes: (a) decryption succeeded but inference failed");
+            println!("      (no model loaded), or (b) HPKE key mismatch caused decryption");
+            println!("      error. Check enclave console for the specific error message.");
             false
         }
         Err(_) => {
@@ -465,7 +455,7 @@ async fn run_smoke_test(cid: u32, port: u32) -> std::result::Result<(), Box<dyn 
     if round_trip_verified {
         println!("  Round-trip:      VERIFIED (enclave decrypted + re-encrypted)");
     } else {
-        println!("  Round-trip:      NOT verified (session-ID mismatch; see NOTE above)");
+        println!("  Round-trip:      NOT verified (check enclave console for cause)");
     }
     println!("  PCR policy:      NOT enforced (smoke test mode — record values below)");
     println!(

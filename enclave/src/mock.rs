@@ -553,6 +553,7 @@ impl MockEnclaveServer {
                     session_manager.add_session(session)?;
 
                     let server_hello = ServerHello::new(
+                        session_id,
                         vec!["gateway".to_string()],
                         attestation_doc.signature.clone(),
                         ephemeral_public_key.to_vec(),

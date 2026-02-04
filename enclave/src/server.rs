@@ -175,6 +175,7 @@ impl<
                     session_manager.add_session(session)?;
 
                     let server_hello = ServerHello::new(
+                        session_id,
                         vec!["gateway".to_string()],
                         attestation.signature, // Real attestation bytes
                         ephemeral_public_key.to_vec(),

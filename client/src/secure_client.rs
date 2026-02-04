@@ -175,7 +175,7 @@ impl SecureClient for SecureEnclaveClient {
         };
 
         let mut hpke = HPKESession::new(
-            "session-id".to_string(),
+            server_hello.session_id.clone(),
             1,
             identity.attestation_hash,
             client_public_bytes, // Local PK
@@ -410,6 +410,7 @@ mod tests {
 
             let server_hello = ServerHello {
                 version: 1,
+                session_id: "session-id".to_string(),
                 chosen_features: vec!["gateway".to_string()],
                 attestation_document: signature_bytes.clone(),
                 ephemeral_public_key: server_pub_key,

@@ -111,6 +111,7 @@ async fn spawn_mock_server() -> (u16, tokio::task::JoinHandle<()>) {
 
                     let server_hello = ServerHello {
                         version: 1,
+                        session_id: "bench-session".to_string(),
                         chosen_features: vec!["gateway".to_string()],
                         attestation_document: att.signature.clone(),
                         ephemeral_public_key: server_public.as_bytes().to_vec(),
