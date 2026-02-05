@@ -732,11 +732,11 @@
             <div class="stat-label">Lines of Rust</div>
           </div>
           <div class="stat-item">
-            <div class="stat-value">106</div>
+            <div class="stat-value">110</div>
             <div class="stat-label">Tests Passing</div>
           </div>
           <div class="stat-item">
-            <div class="stat-value">14.5%</div>
+            <div class="stat-value">12.9%</div>
             <div class="stat-label">Enclave Overhead</div>
           </div>
           <div class="stat-item">
@@ -744,8 +744,8 @@
             <div class="stat-label">RC Dependencies</div>
           </div>
           <div class="stat-item">
-            <div class="stat-value">4/4</div>
-            <div class="stat-label">CI Jobs Passing</div>
+            <div class="stat-value">4</div>
+            <div class="stat-label">CI Gates</div>
           </div>
         </div>
       </div>
@@ -927,6 +927,7 @@
           <div class="tech-pill">COSE / CBOR</div>
           <div class="tech-pill">Candle ML</div>
           <div class="tech-pill">KMS Attestation</div>
+          <div class="tech-pill">KMS Release Gate</div>
           <div class="tech-pill">cargo-audit CI</div>
         </div>
       </div>
@@ -1019,8 +1020,12 @@
           </div>
 	          <div class="faq-item">
 	            <h4>What's the performance overhead?</h4>
-	            <p>Benchmarked at ~14.5% inference overhead, ~0.027ms enclave-side per-inference crypto, and ~0.162ms end-to-end per-request crypto overhead on m6i.xlarge. Embedding quality is near-identical to bare metal.</p>
+	            <p>Recent multi-model runs show 11.9-14.0% overhead (weighted mean 12.9%), ~0.028ms enclave-side per-inference crypto, and ~0.164ms end-to-end per-request crypto overhead on m6i.xlarge. Embedding quality remains near-identical to bare metal.</p>
 	          </div>
+          <div class="faq-item">
+            <h4>How do you verify benchmark artifacts before release?</h4>
+            <p>Run <code>./scripts/final_release_gate.sh</code>. It enforces <code>--require-kms</code>, audits every run with <code>check_kms_integrity.sh</code>, and outputs a final summary and manifest.</p>
+          </div>
           <div class="faq-item">
             <h4>Do you support confidential GPU?</h4>
             <p>Not in v1. CPU inference via Candle is supported today. GPU TEE support is planned for v2.</p>

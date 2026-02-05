@@ -1,6 +1,4 @@
-use ephemeral_ml_enclave::assembly::CandleModel;
 use ephemeral_ml_enclave::candle_engine::CandleInferenceEngine;
-use ephemeral_ml_enclave::InferenceEngine;
 
 #[test]
 fn test_register_gguf_api_plumbing() {

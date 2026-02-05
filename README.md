@@ -145,6 +145,7 @@ Measured on AWS EC2 m6i.xlarge (4 vCPU, 16GB RAM) with MiniLM-L6-v2 (22.7M param
 ### Key Findings
 
 - **~12.6% inference overhead** — on par with AMD SEV-SNP BERT numbers (~16%), competitive with SGX/TDX
+- **Latest 3-model campaign (2026-02-05)** — weighted mean overhead **+12.9%** (MiniLM-L6 +14.0%, MiniLM-L12 +12.9%, BERT-base +11.9%)
 - **Embedding quality preserved** — near-identical embeddings (cosine similarity ≈ 1.0; tiny FP-level differences expected across CPU allocations)
 - **Per-inference crypto cost negligible** — 0.028ms vs 88ms inference (0.03%)
 - **E2E crypto overhead** — 0.164ms per request (0.19% of inference time)
@@ -173,6 +174,25 @@ Verified on real Nitro hardware (m6i.xlarge, Feb 2026) using a KMS key with `kms
 CloudTrail confirms non-zero `attestationDocumentEnclaveImageDigest` for successful calls and no recipient data for denied calls.
 
 **Replay semantics:** KMS accepts replayed attestation documents — resubmitting a previously successful attestation doc produces another successful key release. KMS validates the COSE_Sign1 signature and PCR values but does not enforce freshness (no nonce binding or timestamp check on the attestation document itself).
+
+### Final Benchmark Release Gate (KMS-Enforced)
+
+Use the single-command gate on your Nitro EC2 instance:
+
+```bash
+./scripts/final_release_gate.sh --runs 3 --model-id minilm-l6
+```
+
+This chains:
+1. `scripts/run_final_kms_validation.sh` with `--require-kms`
+2. `scripts/check_kms_integrity.sh` against produced `run_*` directories
+3. Final manifest + summary output
+
+For ad-hoc auditing of existing result directories:
+
+```bash
+./scripts/check_kms_integrity.sh benchmark_results_final/kms_validation_*/run_*
+```
 
 ---
 
@@ -227,6 +247,9 @@ See [`QUICKSTART.md`](QUICKSTART.md) for detailed instructions.
 - [`docs/tasks.md`](docs/tasks.md) — Implementation progress
 - [`QUICKSTART.md`](QUICKSTART.md) — Deployment guide
 - [`SECURITY_DEMO.md`](SECURITY_DEMO.md) — Security walkthrough
+- [`scripts/run_final_kms_validation.sh`](scripts/run_final_kms_validation.sh) — Multi-run KMS-enforced benchmark validation
+- [`scripts/check_kms_integrity.sh`](scripts/check_kms_integrity.sh) — Post-run KMS/commit/hardware integrity audit
+- [`scripts/final_release_gate.sh`](scripts/final_release_gate.sh) — Single-command release gate for benchmark artifacts
 
 ---
 
