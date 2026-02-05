@@ -664,7 +664,7 @@ Intel TDX offers similar VM-level confidential computing; Intel reports $\sim$4\
 
 \paragraph{GPU TEEs.}
 NVIDIA's Confidential Computing (cGPU) with H100 GPUs enables TEE-protected GPU inference.
-Zhu et~al.~\cite{zhu2024} benchmark H100 confidential computing and report $\sim$5--7\% TPS throughput overhead for Llama-3.1-8B (6.9\%) and Phi-3-14B (4.6\%), with negligible overhead for Llama-3.1-70B, though the threat model differs (GPU memory is trusted, CPU-GPU transfers are encrypted).
+Zhu et~al.~\cite{zhu2024} benchmark H100 confidential computing and report $\sim$5--7\% TPS throughput overhead for Llama-3.1-8B (6.9\%) and $\sim$4.6\% for Phi-3-14B, with negligible overhead for Llama-3.1-70B, though the threat model differs (GPU memory is trusted, CPU-GPU transfers are encrypted).
 Graviton~\cite{volos2018} and HIX~\cite{jang2019} proposed earlier GPU isolation schemes with higher overhead.
 
 \paragraph{Nitro Enclave Systems.}
@@ -764,7 +764,7 @@ Intel Corporation,
 \url{https://www.intel.com/content/www/us/en/developer/articles/technical/trust-domain-extensions-on-4th-gen-xeon-processors.html}
 
 \bibitem{zhu2024}
-J.~Zhu, H.~Yin, and S.~Zhou,
+J.~Zhu, H.~Yin, P.~Deng, A.~Almeida, and S.~Zhou,
 ``Confidential computing on NVIDIA Hopper GPUs: A performance benchmark study,''
 arXiv preprint arXiv:2409.03992, 2024.
 
