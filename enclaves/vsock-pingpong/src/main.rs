@@ -892,7 +892,7 @@ async fn run_kms_audit() {
                     "success",
                     serde_json::Value::Null,
                     ciphertext_for_recipient.is_some(),
-                    plaintext.as_ref().map_or(false, |p| !p.is_empty()),
+                    plaintext.as_ref().is_some_and(|p| !p.is_empty()),
                     env.kms_request_id.clone(),
                 ),
                 KmsResponse::Error { code, message } => (
@@ -948,7 +948,7 @@ async fn run_kms_audit() {
                     "success",
                     serde_json::Value::Null,
                     ciphertext_for_recipient.is_some(),
-                    plaintext.as_ref().map_or(false, |p| !p.is_empty()),
+                    plaintext.as_ref().is_some_and(|p| !p.is_empty()),
                     env.kms_request_id.clone(),
                 ),
                 KmsResponse::Error { code, message } => (

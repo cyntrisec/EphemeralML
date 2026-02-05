@@ -14,7 +14,9 @@ use candle_transformers::models::bert::{BertModel, Config as BertConfig};
 use chacha20poly1305::{aead::Aead, ChaCha20Poly1305, Key, KeyInit, Nonce};
 use ephemeral_ml_common::inference::run_single_inference;
 use ephemeral_ml_common::metrics;
-use ephemeral_ml_common::model_registry::{get_model_info_or_default, list_models};
+use ephemeral_ml_common::model_registry::{
+    get_model_info_or_default, list_models, resolve_local_artifact_paths,
+};
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
 const BENCHMARK_INPUT_TEXTS: &[&str] = &[
@@ -85,29 +87,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let device = Device::Cpu;
 
     // ── Stage 1: Load model artifacts from local filesystem ──
-    // Try model-specific subdirectory first, fall back to flat directory
-    let (config_path, tokenizer_path, weights_path) = {
-        let subdir = format!("{}/{}", model_dir, model_id);
-        if std::path::Path::new(&subdir).exists() {
-            (
-                format!("{}/config.json", subdir),
-                format!("{}/tokenizer.json", subdir),
-                format!("{}/{}", subdir, model_info.weights_filename(model_id)),
-            )
-        } else {
-            // Backwards compatibility: flat directory with legacy naming
-            let weights_file = if model_id == "minilm-l6" || model_id == "mini-lm-v2" {
-                "mini-lm-v2-weights.enc".to_string()
-            } else {
-                model_info.weights_filename(model_id)
-            };
-            (
-                format!("{}/config.json", model_dir),
-                format!("{}/tokenizer.json", model_dir),
-                format!("{}/{}", model_dir, weights_file),
-            )
-        }
-    };
+    let (config_path, tokenizer_path, weights_path) =
+        resolve_local_artifact_paths(model_dir, model_id);
 
     eprintln!("[baseline] Stage 1: Loading model artifacts from disk");
     let fetch_start = Instant::now();

@@ -4,6 +4,7 @@
 //! embedding dimensions, file naming conventions, and HuggingFace repo paths.
 
 use std::collections::HashMap;
+use std::path::Path;
 
 /// Metadata for a benchmark-supported model.
 #[derive(Debug, Clone)]
@@ -61,6 +62,42 @@ pub fn list_models() -> Vec<&'static str> {
 /// Get model info, falling back to MiniLM-L6 defaults if not found.
 pub fn get_model_info_or_default(model_id: &str) -> &'static ModelInfo {
     get_model_info(model_id).unwrap_or(&MINILM_L6)
+}
+
+/// Resolve local artifact paths for a given `model_id`.
+///
+/// Supports the multi-model layout produced by `scripts/prepare_benchmark_model.sh`:
+/// `test_artifacts/<model_id>/{config.json,tokenizer.json,<model_id>-weights.enc}`.
+///
+/// Falls back to the legacy flat layout used by older benchmarks:
+/// `test_artifacts/{config.json,tokenizer.json,mini-lm-v2-weights.enc}`.
+pub fn resolve_local_artifact_paths(
+    model_dir: &str,
+    model_id: &str,
+) -> (String, String, String) {
+    let model_info = get_model_info_or_default(model_id);
+
+    let subdir = format!("{}/{}", model_dir, model_id);
+    if Path::new(&subdir).exists() {
+        return (
+            format!("{}/config.json", subdir),
+            format!("{}/tokenizer.json", subdir),
+            format!("{}/{}", subdir, model_info.weights_filename(model_id)),
+        );
+    }
+
+    // Backwards compatibility: flat directory with legacy naming.
+    let weights_file = if model_id == "minilm-l6" || model_id == "mini-lm-v2" {
+        "mini-lm-v2-weights.enc".to_string()
+    } else {
+        model_info.weights_filename(model_id)
+    };
+
+    (
+        format!("{}/config.json", model_dir),
+        format!("{}/tokenizer.json", model_dir),
+        format!("{}/{}", model_dir, weights_file),
+    )
 }
 
 // Model definitions
