@@ -161,15 +161,28 @@ else
 fi
 
 # ── Step 3: Build EIF ──
+EIF_PATH="$OUTPUT_DIR/benchmark.eif"
 if ! $SKIP_BUILD; then
     log "Step 3: Building EIF (Enclave Image Format)"
     sudo nitro-cli build-enclave \
         --docker-uri vsock-pingpong-benchmark:latest \
-        --output-file "$OUTPUT_DIR/benchmark.eif" \
+        --output-file "$EIF_PATH" \
         2>&1 | tee "$OUTPUT_DIR/eif_build.log" | tail -5
     log "  EIF built"
 else
     log "Step 3: Skipping EIF build (--skip-build)"
+    # Reuse EIF from a previous run in the same parent directory
+    if [[ ! -f "$EIF_PATH" ]]; then
+        PARENT_DIR="$(dirname "$OUTPUT_DIR")"
+        FOUND_EIF=$(find "$PARENT_DIR" -name "benchmark.eif" -type f 2>/dev/null | head -1)
+        if [[ -n "$FOUND_EIF" ]]; then
+            EIF_PATH="$FOUND_EIF"
+            log "  Reusing EIF from: $EIF_PATH"
+        else
+            log "ERROR: No benchmark.eif found in $PARENT_DIR — cannot skip build"
+            exit 1
+        fi
+    fi
 fi
 
 # ── Step 4: Start kms_proxy_host ──
@@ -197,7 +210,7 @@ sudo nitro-cli describe-enclaves | grep -q EnclaveID && \
     sudo nitro-cli terminate-enclave --all 2>/dev/null || true
 
 sudo nitro-cli run-enclave \
-    --eif-path "$OUTPUT_DIR/benchmark.eif" \
+    --eif-path "$EIF_PATH" \
     --memory "$ENCLAVE_MEMORY_MB" \
     --cpu-count "$ENCLAVE_CPUS" \
     --enclave-cid 16 \
