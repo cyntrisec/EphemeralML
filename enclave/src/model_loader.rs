@@ -280,7 +280,7 @@ mod tests {
                             payload: encrypted_artifact_clone.clone(),
                             is_last: true,
                         };
-                        let resp_payload = serde_json::to_vec(&response).unwrap();
+                        let resp_payload = serde_cbor::to_vec(&response).unwrap();
                         let resp_msg =
                             VSockMessage::new(MessageType::Storage, msg.sequence, resp_payload)
                                 .unwrap();

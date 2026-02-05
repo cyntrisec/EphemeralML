@@ -236,7 +236,9 @@ impl KmsProxyClient {
             part_index: 0,
         };
 
-        let payload = serde_json::to_vec(&req).map_err(|e| {
+        // Storage channel uses a binary encoding (CBOR) so large model artifacts
+        // can be transferred efficiently over VSock without JSON expansion.
+        let payload = serde_cbor::to_vec(&req).map_err(|e| {
             EnclaveError::Enclave(EphemeralError::SerializationError(e.to_string()))
         })?;
 
@@ -318,7 +320,7 @@ impl KmsProxyClient {
         }
 
         let response: StorageResponse =
-            serde_json::from_slice(&response_msg.payload).map_err(|e| {
+            serde_cbor::from_slice(&response_msg.payload).map_err(|e| {
                 EnclaveError::Enclave(EphemeralError::SerializationError(e.to_string()))
             })?;
 
