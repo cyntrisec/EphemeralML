@@ -1213,9 +1213,17 @@ async fn run_benchmark() {
     use candle_nn::VarBuilder;
     use candle_transformers::models::bert::{BertModel, Config as BertConfig};
     use chacha20poly1305::{aead::Aead, ChaCha20Poly1305, Key, KeyInit, Nonce};
+    use ephemeral_ml_common::model_registry::get_model_info_or_default;
 
     let total_start = Instant::now();
     let device = Device::Cpu;
+
+    let model_id = option_env!("MODEL_ID").unwrap_or("minilm-l6");
+    let model_info = get_model_info_or_default(model_id);
+    eprintln!(
+        "[bench] Model: {} ({}, {} params)",
+        model_info.display_name, model_id, model_info.params
+    );
 
     // ── Stage 1: Attestation + KMS key release timing ──
     // We measure both together: RSA keygen + NSM attestation doc + KMS GenerateDataKey +
@@ -1357,9 +1365,12 @@ async fn run_benchmark() {
     // ── Stage 3: Model fetch via VSock ──
     eprintln!("[bench] Stage 3: Fetching model artifacts via VSock");
     let fetch_start = Instant::now();
-    let config_bytes = fetch_artifact("mini-lm-v2-config");
-    let tokenizer_bytes = fetch_artifact("mini-lm-v2-tokenizer");
-    let encrypted_weights = fetch_artifact("mini-lm-v2-weights");
+    let config_key = model_info.config_key(model_id);
+    let tokenizer_key = model_info.tokenizer_key(model_id);
+    let weights_key = model_info.weights_key(model_id);
+    let config_bytes = fetch_artifact(config_key.as_str());
+    let tokenizer_bytes = fetch_artifact(tokenizer_key.as_str());
+    let encrypted_weights = fetch_artifact(weights_key.as_str());
     let model_fetch_ms = fetch_start.elapsed().as_secs_f64() * 1000.0;
     eprintln!(
         "[bench] model_fetch_ms = {:.2} (config={}B, tokenizer={}B, weights={}B)",
@@ -1476,8 +1487,10 @@ async fn run_benchmark() {
     // ── Output structured JSON results to stderr (captured by nitro-cli console) ──
     let results = serde_json::json!({
         "environment": "enclave",
-        "model": "MiniLM-L6-v2",
-        "model_params": 22_700_000,
+        "model": model_info.display_name,
+        "model_id": model_id,
+        "model_params": model_info.params,
+        "embedding_dim": model_info.embedding_dim,
         "hardware": option_env!("INSTANCE_TYPE").unwrap_or("unknown"),
         "timestamp": chrono_now_iso(),
         "commit": commit,

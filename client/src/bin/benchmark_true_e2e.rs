@@ -14,6 +14,9 @@ use chacha20poly1305::{aead::Aead, ChaCha20Poly1305, Key, KeyInit, Nonce};
 use ephemeral_ml_client::secure_client::{InferenceHandlerInput, InferenceHandlerOutput};
 use ephemeral_ml_common::inference::run_single_inference;
 use ephemeral_ml_common::metrics;
+use ephemeral_ml_common::model_registry::{
+    get_model_info_or_default, list_models, resolve_local_artifact_paths,
+};
 use ephemeral_ml_common::{
     AttestationDocument, AttestationReceipt, EnclaveMeasurements, HPKESession, PcrMeasurements,
     ReceiptSigningKey, SecurityMode,
@@ -49,6 +52,13 @@ fn latency_stats(sorted: &[f64]) -> serde_json::Value {
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args: Vec<String> = std::env::args().collect();
 
+    let model_id = args
+        .iter()
+        .position(|a| a == "--model-id")
+        .and_then(|i| args.get(i + 1))
+        .map(|s| s.as_str())
+        .unwrap_or("minilm-l6");
+
     let model_dir = args
         .iter()
         .position(|a| a == "--model-dir")
@@ -63,15 +73,35 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .map(|s| s.as_str())
         .unwrap_or("unknown");
 
+    if args.iter().any(|a| a == "--help" || a == "-h") {
+        eprintln!("Usage: benchmark_true_e2e [OPTIONS]");
+        eprintln!();
+        eprintln!("Options:");
+        eprintln!("  --model-id MODEL      Model to benchmark (default: minilm-l6)");
+        eprintln!("  --model-dir DIR       Directory containing model artifacts");
+        eprintln!("  --instance-type TYPE  Hardware identifier for JSON output");
+        eprintln!();
+        eprintln!("Available models: {}", list_models().join(", "));
+        return Ok(());
+    }
+
+    let model_info = get_model_info_or_default(model_id);
+
     eprintln!("[true_e2e] Starting true end-to-end benchmark (with real inference)");
+    eprintln!(
+        "[true_e2e] Model: {} ({}, {} params)",
+        model_info.display_name, model_id, model_info.params
+    );
     eprintln!("[true_e2e] Model directory: {}", model_dir);
 
     let device = Device::Cpu;
 
     // Load and decrypt model
-    let config_bytes = std::fs::read(format!("{}/config.json", model_dir))?;
-    let tokenizer_bytes = std::fs::read(format!("{}/tokenizer.json", model_dir))?;
-    let encrypted_weights = std::fs::read(format!("{}/mini-lm-v2-weights.enc", model_dir))?;
+    let (config_path, tokenizer_path, weights_path) =
+        resolve_local_artifact_paths(model_dir, model_id);
+    let config_bytes = std::fs::read(config_path)?;
+    let tokenizer_bytes = std::fs::read(tokenizer_path)?;
+    let encrypted_weights = std::fs::read(weights_path)?;
 
     let fixed_dek =
         hex::decode("0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef")?;
@@ -115,7 +145,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Prepare request payload (simulating what the client sends)
     let request_payload = serde_json::to_vec(&InferenceHandlerInput {
-        model_id: "MiniLM-L6-v2".to_string(),
+        model_id: model_id.to_string(),
         input_data: BENCHMARK_TEXT.as_bytes().to_vec(),
         input_shape: None,
     })?;
@@ -183,7 +213,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             [0u8; 32],
             "v1".to_string(),
             i as u64,
-            "MiniLM-L6-v2".to_string(),
+            model_info.display_name.to_string(),
             "1.0.0".to_string(),
             93,
             1064,
@@ -241,7 +271,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         "benchmark": "true_e2e",
         "environment": "mock",
         "hardware": instance_type,
-        "model": "MiniLM-L6-v2",
+        "model": model_info.display_name,
+        "model_id": model_id,
+        "model_params": model_info.params,
         "timestamp": format!("{}Z", timestamp),
         "commit": commit,
         "iterations": NUM_ITERATIONS,

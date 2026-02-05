@@ -9,6 +9,9 @@ use candle_transformers::models::bert::{BertModel, Config as BertConfig};
 use chacha20poly1305::{aead::Aead, ChaCha20Poly1305, Key, KeyInit, Nonce};
 use ephemeral_ml_common::inference::run_single_inference;
 use ephemeral_ml_common::metrics;
+use ephemeral_ml_common::model_registry::{
+    get_model_info_or_default, list_models, resolve_local_artifact_paths,
+};
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
 const TARGET_TOKEN_COUNTS: &[usize] = &[32, 64, 128, 256];
@@ -91,6 +94,13 @@ fn linear_fit(points: &[(f64, f64)]) -> (f64, f64) {
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args: Vec<String> = std::env::args().collect();
 
+    let model_id = args
+        .iter()
+        .position(|a| a == "--model-id")
+        .and_then(|i| args.get(i + 1))
+        .map(|s| s.as_str())
+        .unwrap_or("minilm-l6");
+
     let model_dir = args
         .iter()
         .position(|a| a == "--model-dir")
@@ -105,16 +115,36 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .map(|s| s.as_str())
         .unwrap_or("unknown");
 
+    if args.iter().any(|a| a == "--help" || a == "-h") {
+        eprintln!("Usage: benchmark_input_scaling [OPTIONS]");
+        eprintln!();
+        eprintln!("Options:");
+        eprintln!("  --model-id MODEL      Model to benchmark (default: minilm-l6)");
+        eprintln!("  --model-dir DIR       Directory containing model artifacts");
+        eprintln!("  --instance-type TYPE  Hardware identifier for JSON output");
+        eprintln!();
+        eprintln!("Available models: {}", list_models().join(", "));
+        return Ok(());
+    }
+
+    let model_info = get_model_info_or_default(model_id);
+
     eprintln!("[input_scaling] Starting input-shape scaling benchmark");
+    eprintln!(
+        "[input_scaling] Model: {} ({}, {} params)",
+        model_info.display_name, model_id, model_info.params
+    );
     eprintln!("[input_scaling] Model directory: {}", model_dir);
     eprintln!("[input_scaling] Token counts: {:?}", TARGET_TOKEN_COUNTS);
 
     let device = Device::Cpu;
 
     // Load and decrypt model (same as benchmark_baseline)
-    let config_bytes = std::fs::read(format!("{}/config.json", model_dir))?;
-    let tokenizer_bytes = std::fs::read(format!("{}/tokenizer.json", model_dir))?;
-    let encrypted_weights = std::fs::read(format!("{}/mini-lm-v2-weights.enc", model_dir))?;
+    let (config_path, tokenizer_path, weights_path) =
+        resolve_local_artifact_paths(model_dir, model_id);
+    let config_bytes = std::fs::read(config_path)?;
+    let tokenizer_bytes = std::fs::read(tokenizer_path)?;
+    let encrypted_weights = std::fs::read(weights_path)?;
 
     let fixed_dek =
         hex::decode("0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef")?;
@@ -211,7 +241,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let results = serde_json::json!({
         "benchmark": "input_scaling",
         "environment": "bare_metal",
-        "model": "MiniLM-L6-v2",
+        "model": model_info.display_name,
+        "model_id": model_id,
+        "model_params": model_info.params,
+        "embedding_dim": model_info.embedding_dim,
         "hardware": instance_type,
         "timestamp": format!("{}Z", timestamp),
         "commit": commit,

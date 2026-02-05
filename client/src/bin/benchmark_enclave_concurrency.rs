@@ -14,6 +14,9 @@ use chacha20poly1305::{aead::Aead, ChaCha20Poly1305, Key, KeyInit, Nonce};
 use ephemeral_ml_client::secure_client::{InferenceHandlerInput, InferenceHandlerOutput};
 use ephemeral_ml_common::inference::run_single_inference;
 use ephemeral_ml_common::metrics;
+use ephemeral_ml_common::model_registry::{
+    get_model_info_or_default, list_models, resolve_local_artifact_paths,
+};
 use ephemeral_ml_common::{
     AttestationDocument, AttestationReceipt, EnclaveMeasurements, HPKESession, PcrMeasurements,
     ReceiptSigningKey, SecurityMode,
@@ -54,12 +57,14 @@ fn run_e2e_inference(
     verifying_key: &ed25519_dalek::VerifyingKey,
     attestation_doc_hash: [u8; 32],
     iteration: usize,
+    model_id: &str,
+    model_display_name: &str,
 ) -> f64 {
     let start = Instant::now();
 
     // Client: encrypt request
     let request_payload = serde_json::to_vec(&InferenceHandlerInput {
-        model_id: "MiniLM-L6-v2".to_string(),
+        model_id: model_id.to_string(),
         input_data: text.as_bytes().to_vec(),
         input_shape: None,
     })
@@ -83,7 +88,7 @@ fn run_e2e_inference(
         [0u8; 32],
         "v1".to_string(),
         iteration as u64,
-        "MiniLM-L6-v2".to_string(),
+        model_display_name.to_string(),
         "1.0.0".to_string(),
         93,
         1064,
@@ -113,6 +118,8 @@ fn bench_at_concurrency(
     device: &Device,
     attestation_hash: [u8; 32],
     attestation_doc_hash: [u8; 32],
+    model_id: &str,
+    model_display_name: &str,
 ) -> serde_json::Value {
     eprintln!(
         "[enclave_concurrency] Testing N={} concurrent clients, {} iterations each...",
@@ -170,6 +177,8 @@ fn bench_at_concurrency(
                 &verifying_key,
                 attestation_doc_hash,
                 i,
+                model_id,
+                model_display_name,
             );
         }
     }
@@ -181,6 +190,8 @@ fn bench_at_concurrency(
             let model = Arc::clone(model);
             let tokenizer = Arc::clone(tokenizer);
             let device = device.clone();
+            let model_id = model_id.to_string();
+            let model_display_name = model_display_name.to_string();
 
             std::thread::spawn(move || {
                 use ed25519_dalek::SigningKey;
@@ -235,6 +246,8 @@ fn bench_at_concurrency(
                         &verifying_key,
                         attestation_doc_hash,
                         i,
+                        &model_id,
+                        &model_display_name,
                     );
                     latencies.push(ms);
                 }
@@ -284,6 +297,13 @@ fn bench_at_concurrency(
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args: Vec<String> = std::env::args().collect();
 
+    let model_id = args
+        .iter()
+        .position(|a| a == "--model-id")
+        .and_then(|i| args.get(i + 1))
+        .map(|s| s.as_str())
+        .unwrap_or("minilm-l6");
+
     let model_dir = args
         .iter()
         .position(|a| a == "--model-dir")
@@ -298,7 +318,25 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .map(|s| s.as_str())
         .unwrap_or("unknown");
 
+    if args.iter().any(|a| a == "--help" || a == "-h") {
+        eprintln!("Usage: benchmark_enclave_concurrency [OPTIONS]");
+        eprintln!();
+        eprintln!("Options:");
+        eprintln!("  --model-id MODEL      Model to benchmark (default: minilm-l6)");
+        eprintln!("  --model-dir DIR       Directory containing model artifacts");
+        eprintln!("  --instance-type TYPE  Hardware identifier for JSON output");
+        eprintln!();
+        eprintln!("Available models: {}", list_models().join(", "));
+        return Ok(());
+    }
+
+    let model_info = get_model_info_or_default(model_id);
+
     eprintln!("[enclave_concurrency] Starting enclave concurrency benchmark");
+    eprintln!(
+        "[enclave_concurrency] Model: {} ({}, {} params)",
+        model_info.display_name, model_id, model_info.params
+    );
     eprintln!("[enclave_concurrency] Model directory: {}", model_dir);
     eprintln!(
         "[enclave_concurrency] Concurrency levels: {:?}",
@@ -308,9 +346,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let device = Device::Cpu;
 
     // Load and decrypt model
-    let config_bytes = std::fs::read(format!("{}/config.json", model_dir))?;
-    let tokenizer_bytes = std::fs::read(format!("{}/tokenizer.json", model_dir))?;
-    let encrypted_weights = std::fs::read(format!("{}/mini-lm-v2-weights.enc", model_dir))?;
+    let (config_path, tokenizer_path, weights_path) =
+        resolve_local_artifact_paths(model_dir, model_id);
+    let config_bytes = std::fs::read(config_path)?;
+    let tokenizer_bytes = std::fs::read(tokenizer_path)?;
+    let encrypted_weights = std::fs::read(weights_path)?;
 
     let fixed_dek =
         hex::decode("0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef")?;
@@ -360,6 +400,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             &device,
             attestation_hash,
             attestation_doc_hash,
+            model_id,
+            model_info.display_name,
         );
         results_per_level.push(result);
     }
@@ -392,7 +434,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         "benchmark": "enclave_concurrency",
         "environment": "mock",
         "hardware": instance_type,
-        "model": "MiniLM-L6-v2",
+        "model": model_info.display_name,
+        "model_id": model_id,
+        "model_params": model_info.params,
         "timestamp": format!("{}Z", timestamp),
         "commit": commit,
         "iterations_per_client": ITERATIONS_PER_CLIENT,

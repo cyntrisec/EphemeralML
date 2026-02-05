@@ -71,10 +71,7 @@ pub fn get_model_info_or_default(model_id: &str) -> &'static ModelInfo {
 ///
 /// Falls back to the legacy flat layout used by older benchmarks:
 /// `test_artifacts/{config.json,tokenizer.json,mini-lm-v2-weights.enc}`.
-pub fn resolve_local_artifact_paths(
-    model_dir: &str,
-    model_id: &str,
-) -> (String, String, String) {
+pub fn resolve_local_artifact_paths(model_dir: &str, model_id: &str) -> (String, String, String) {
     let model_info = get_model_info_or_default(model_id);
 
     let subdir = format!("{}/{}", model_dir, model_id);

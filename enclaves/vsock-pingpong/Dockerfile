@@ -10,8 +10,10 @@ WORKDIR /app
 # NOTE: Nitro enclaves cannot access EC2 IMDS, so the host passes INSTANCE_TYPE as a build-arg.
 ARG GIT_COMMIT=unknown
 ARG INSTANCE_TYPE=unknown
+ARG MODEL_ID=minilm-l6
 ENV GIT_COMMIT=${GIT_COMMIT}
 ENV INSTANCE_TYPE=${INSTANCE_TYPE}
+ENV MODEL_ID=${MODEL_ID}
 
 # Build context is the repo root. Copy manifests first for better caching.
 # Workspace root Cargo.toml is required for workspace dependency inheritance.

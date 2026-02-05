@@ -8,6 +8,9 @@ use candle_core::{DType, Device, Tensor};
 use candle_nn::VarBuilder;
 use candle_transformers::models::bert::{BertModel, Config as BertConfig};
 use chacha20poly1305::{aead::Aead, ChaCha20Poly1305, Key, KeyInit, Nonce};
+use ephemeral_ml_common::model_registry::{
+    get_model_info_or_default, list_models, resolve_local_artifact_paths,
+};
 use std::sync::Arc;
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
@@ -159,6 +162,14 @@ fn bench_concurrent(
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args: Vec<String> = std::env::args().collect();
+
+    let model_id = args
+        .iter()
+        .position(|a| a == "--model-id")
+        .and_then(|i| args.get(i + 1))
+        .map(|s| s.as_str())
+        .unwrap_or("minilm-l6");
+
     let model_dir = args
         .iter()
         .position(|a| a == "--model-dir")
@@ -173,16 +184,36 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .map(|s| s.as_str())
         .unwrap_or("unknown");
 
+    if args.iter().any(|a| a == "--help" || a == "-h") {
+        eprintln!("Usage: benchmark_concurrent [OPTIONS]");
+        eprintln!();
+        eprintln!("Options:");
+        eprintln!("  --model-id MODEL      Model to benchmark (default: minilm-l6)");
+        eprintln!("  --model-dir DIR       Directory containing model artifacts");
+        eprintln!("  --instance-type TYPE  Hardware identifier for JSON output");
+        eprintln!();
+        eprintln!("Available models: {}", list_models().join(", "));
+        return Ok(());
+    }
+
+    let model_info = get_model_info_or_default(model_id);
+
     eprintln!("[concurrent] Starting concurrency scaling benchmark");
+    eprintln!(
+        "[concurrent] Model: {} ({}, {} params)",
+        model_info.display_name, model_id, model_info.params
+    );
     eprintln!("[concurrent] Model directory: {}", model_dir);
     eprintln!("[concurrent] Concurrency levels: {:?}", CONCURRENCY_LEVELS);
 
     let device = Device::Cpu;
 
     // Load model (same as benchmark_baseline)
-    let config_bytes = std::fs::read(format!("{}/config.json", model_dir))?;
-    let tokenizer_bytes = std::fs::read(format!("{}/tokenizer.json", model_dir))?;
-    let encrypted_weights = std::fs::read(format!("{}/mini-lm-v2-weights.enc", model_dir))?;
+    let (config_path, tokenizer_path, weights_path) =
+        resolve_local_artifact_paths(model_dir, model_id);
+    let config_bytes = std::fs::read(config_path)?;
+    let tokenizer_bytes = std::fs::read(tokenizer_path)?;
+    let encrypted_weights = std::fs::read(weights_path)?;
 
     let fixed_dek =
         hex::decode("0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef")?;
@@ -241,7 +272,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         "benchmark": "concurrency_scaling",
         "environment": "bare_metal",
         "hardware": instance_type,
-        "model": "MiniLM-L6-v2",
+        "model": model_info.display_name,
+        "model_id": model_id,
+        "model_params": model_info.params,
         "timestamp": format!("{}Z", timestamp),
         "commit": commit,
         "iterations_per_thread": ITERATIONS_PER_THREAD,

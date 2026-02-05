@@ -27,9 +27,10 @@
 #   - Rust toolchain installed
 #
 # Usage:
-#   ./scripts/run_benchmark.sh [--clean] [--skip-baseline] [--skip-build] [--output-dir DIR]
+#   ./scripts/run_benchmark.sh [--model-id MODEL] [--clean] [--skip-baseline] [--skip-build] [--output-dir DIR]
 #
 # Flags:
+#   --model-id       Model to benchmark (default: minilm-l6). Must be uploaded to S3.
 #   --clean          Run `cargo clean` before building. Required on the first run after
 #                    a fresh checkout to ensure GIT_COMMIT is baked into all binaries
 #                    (option_env! is evaluated at compile time, not runtime).
@@ -47,6 +48,7 @@ SKIP_BUILD=false
 CLEAN_BUILD=false
 ENCLAVE_MEMORY_MB=4096
 ENCLAVE_CPUS=2
+MODEL_ID="minilm-l6"
 # IMDSv2 requires a token; fall back to IMDSv1, then "unknown"
 IMDS_TOKEN=$(curl -sf -X PUT "http://169.254.169.254/latest/api/token" -H "X-aws-ec2-metadata-token-ttl-seconds: 60" 2>/dev/null || true)
 if [ -n "$IMDS_TOKEN" ]; then
@@ -63,6 +65,7 @@ while [[ $# -gt 0 ]]; do
         --skip-baseline) SKIP_BASELINE=true; shift ;;
         --skip-build) SKIP_BUILD=true; shift ;;
         --clean) CLEAN_BUILD=true; shift ;;
+        --model-id) MODEL_ID="$2"; shift 2 ;;
         --output-dir) OUTPUT_DIR="$2"; shift 2 ;;
         *) echo "Unknown argument: $1"; exit 1 ;;
     esac
@@ -81,6 +84,7 @@ cat >"$OUTPUT_DIR/run_metadata.json" <<EOF
   "timestamp": "${RUN_TS}Z",
   "git_commit": "${GIT_COMMIT}",
   "instance_type": "${INSTANCE_TYPE}",
+  "model_id": "${MODEL_ID}",
   "enclave_memory_mb": ${ENCLAVE_MEMORY_MB},
   "enclave_cpus": ${ENCLAVE_CPUS}
 }
@@ -98,9 +102,9 @@ if ! $SKIP_BASELINE; then
     log "Step 1: Running bare-metal baseline benchmark"
 
     # Ensure model artifacts exist
-    if [[ ! -f "$PROJECT_ROOT/test_artifacts/config.json" ]]; then
+    if [[ ! -f "$PROJECT_ROOT/test_artifacts/$MODEL_ID/config.json" && ! -f "$PROJECT_ROOT/test_artifacts/config.json" ]]; then
         log "  Model artifacts not found, running prepare_benchmark_model.sh..."
-        "$SCRIPT_DIR/prepare_benchmark_model.sh"
+        "$SCRIPT_DIR/prepare_benchmark_model.sh" --model-id "$MODEL_ID"
     fi
 
     # Build baseline binary
@@ -114,6 +118,7 @@ if ! $SKIP_BASELINE; then
     # giving the baseline an unfair advantage over the 2-vCPU enclave.
     log "  Running baseline (RAYON_NUM_THREADS=2)..."
     RAYON_NUM_THREADS=2 "$PROJECT_ROOT/target/release/benchmark_baseline" \
+        --model-id "$MODEL_ID" \
         --model-dir "$PROJECT_ROOT/test_artifacts" \
         --instance-type "$INSTANCE_TYPE" \
         > "$OUTPUT_DIR/baseline_results.json" 2>"$OUTPUT_DIR/baseline_stderr.log"
@@ -131,6 +136,7 @@ if ! $SKIP_BUILD; then
         --build-arg MODE=benchmark \
         --build-arg GIT_COMMIT="$GIT_COMMIT" \
         --build-arg INSTANCE_TYPE="$INSTANCE_TYPE" \
+        --build-arg MODEL_ID="$MODEL_ID" \
         -t vsock-pingpong-benchmark:latest \
         "$PROJECT_ROOT" 2>&1 | tail -10
     log "  Docker image built"
@@ -253,6 +259,7 @@ if ! $SKIP_BUILD; then
     (cd "$PROJECT_ROOT" && cargo build --release --bin benchmark_concurrent 2>&1 | tail -3)
 fi
 "$PROJECT_ROOT/target/release/benchmark_concurrent" \
+    --model-id "$MODEL_ID" \
     --model-dir "$PROJECT_ROOT/test_artifacts" \
     --instance-type "$INSTANCE_TYPE" \
     > "$OUTPUT_DIR/concurrent_results.json" 2>"$OUTPUT_DIR/concurrent_stderr.log"
@@ -264,6 +271,7 @@ if ! $SKIP_BUILD; then
     (cd "$PROJECT_ROOT" && cargo build --release --bin benchmark_input_scaling 2>&1 | tail -5)
 fi
 "$PROJECT_ROOT/target/release/benchmark_input_scaling" \
+    --model-id "$MODEL_ID" \
     --model-dir "$PROJECT_ROOT/test_artifacts" \
     --instance-type "$INSTANCE_TYPE" \
     > "$OUTPUT_DIR/input_scaling_results.json" 2>"$OUTPUT_DIR/input_scaling_stderr.log"
@@ -275,6 +283,7 @@ if ! $SKIP_BUILD; then
     (cd "$PROJECT_ROOT" && cargo build --release -p ephemeral-ml-client --features benchmark --bin benchmark_true_e2e 2>&1 | tail -5)
 fi
 "$PROJECT_ROOT/target/release/benchmark_true_e2e" \
+    --model-id "$MODEL_ID" \
     --model-dir "$PROJECT_ROOT/test_artifacts" \
     --instance-type "$INSTANCE_TYPE" \
     > "$OUTPUT_DIR/true_e2e_results.json" 2>"$OUTPUT_DIR/true_e2e_stderr.log"
@@ -286,6 +295,7 @@ if ! $SKIP_BUILD; then
     (cd "$PROJECT_ROOT" && cargo build --release -p ephemeral-ml-client --features benchmark --bin benchmark_enclave_concurrency 2>&1 | tail -5)
 fi
 "$PROJECT_ROOT/target/release/benchmark_enclave_concurrency" \
+    --model-id "$MODEL_ID" \
     --model-dir "$PROJECT_ROOT/test_artifacts" \
     --instance-type "$INSTANCE_TYPE" \
     > "$OUTPUT_DIR/enclave_concurrency_results.json" 2>"$OUTPUT_DIR/enclave_concurrency_stderr.log"
