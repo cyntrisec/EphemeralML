@@ -9,15 +9,13 @@
 //!   - bert-base  (BERT-base-uncased, 110M params)
 
 use candle_core::{DType, Device};
-use candle_nn::VarBuilder;
 use candle_transformers::models::bert::{BertModel, Config as BertConfig};
 use chacha20poly1305::{aead::Aead, ChaCha20Poly1305, Key, KeyInit, Nonce};
-use ephemeral_ml_common::inference::run_single_inference;
+use ephemeral_ml_common::inference::{bert_var_builder_from_safetensors, run_single_inference};
 use ephemeral_ml_common::metrics;
 use ephemeral_ml_common::model_registry::{
     get_model_info_or_default, list_models, resolve_local_artifact_paths,
 };
-use std::collections::HashMap;
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
 const BENCHMARK_INPUT_TEXTS: &[&str] = &[
@@ -33,30 +31,6 @@ const NUM_ITERATIONS: usize = 100;
 
 fn round2(v: f64) -> f64 {
     (v * 100.0).round() / 100.0
-}
-
-/// Detects if safetensors weights use the HuggingFace BERT naming convention
-/// (bert.embeddings.* with beta/gamma) vs sentence-transformers convention
-/// (embeddings.* with bias/weight).
-fn detect_bert_naming(weights: &[u8]) -> (bool, bool) {
-    // Parse safetensors header to get tensor names
-    if weights.len() < 8 {
-        return (false, false);
-    }
-    let header_size = u64::from_le_bytes(weights[..8].try_into().unwrap_or([0; 8])) as usize;
-    if weights.len() < 8 + header_size {
-        return (false, false);
-    }
-    let header_json = &weights[8..8 + header_size];
-    let header: HashMap<String, serde_json::Value> =
-        serde_json::from_slice(header_json).unwrap_or_default();
-
-    let has_bert_prefix = header.keys().any(|k| k.starts_with("bert."));
-    let has_beta_gamma = header
-        .keys()
-        .any(|k| k.contains(".beta") || k.contains(".gamma"));
-
-    (has_bert_prefix, has_beta_gamma)
 }
 
 #[tokio::main]
@@ -153,25 +127,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let load_start = Instant::now();
     let config: BertConfig = serde_json::from_slice(&config_bytes)?;
 
-    // Detect naming convention: HuggingFace BERT vs sentence-transformers
-    let (has_bert_prefix, has_beta_gamma) = detect_bert_naming(&weights_plaintext);
+    let (vb, naming) = bert_var_builder_from_safetensors(weights_plaintext, DType::F32, &device)?;
     eprintln!(
-        "[baseline]   tensor naming: bert_prefix={}, beta_gamma={}",
-        has_bert_prefix, has_beta_gamma
+        "[baseline]   tensor naming: bert_prefix={}, layernorm_beta_gamma={}",
+        naming.has_bert_prefix, naming.uses_layernorm_beta_gamma
     );
-
-    // Build VarBuilder with appropriate naming transformation
-    let vb = if has_beta_gamma {
-        // HuggingFace BERT uses beta/gamma instead of bias/weight for LayerNorm
-        // We need to rename these tensors for Candle compatibility
-        VarBuilder::from_buffered_safetensors(weights_plaintext, DType::F32, &device)?
-            .rename_f(|name| name.replace(".gamma", ".weight").replace(".beta", ".bias"))
-    } else {
-        VarBuilder::from_buffered_safetensors(weights_plaintext, DType::F32, &device)?
-    };
-
-    // Apply bert. prefix if present in the model
-    let vb = if has_bert_prefix { vb.pp("bert") } else { vb };
 
     let model = BertModel::load(vb, &config)?;
     let model_load_ms = load_start.elapsed().as_secs_f64() * 1000.0;

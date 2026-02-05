@@ -34,6 +34,7 @@ byteorder = "1.5.0"
 
 # Optional ML dependencies (only for benchmark binaries via "inference" feature)
 candle-core = { version = "0.9", optional = true }
+candle-nn = { version = "0.9", optional = true }
 candle-transformers = { version = "0.9", optional = true }
 tokenizers = { version = "0.21", optional = true }
 
@@ -42,4 +43,4 @@ proptest = "1.0"
 
 [features]
 default = []
-inference = ["candle-core", "candle-transformers", "tokenizers"]
+inference = ["candle-core", "candle-nn", "candle-transformers", "tokenizers"]

@@ -2,7 +2,6 @@ use crate::assembly::CandleModel;
 use crate::inference::InferenceEngine;
 use crate::{EnclaveError, EphemeralError, Result};
 use candle_core::{Device, Tensor};
-use candle_nn::VarBuilder;
 use candle_transformers::models::bert::{BertModel, Config, DTYPE};
 use candle_transformers::models::quantized_llama::ModelWeights as QuantizedLlama;
 use std::collections::HashMap;
@@ -60,7 +59,7 @@ impl CandleInferenceEngine {
             EnclaveError::Enclave(EphemeralError::SerializationError(e.to_string()))
         })?;
 
-        let vb = VarBuilder::from_buffered_safetensors(
+        let (vb, _naming) = ephemeral_ml_common::inference::bert_var_builder_from_safetensors(
             weights_safetensors.to_vec(),
             DTYPE,
             &self.device,

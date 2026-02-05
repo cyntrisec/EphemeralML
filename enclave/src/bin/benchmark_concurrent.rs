@@ -5,9 +5,9 @@
 //! Tests N = 1, 2, 4, 8 threads.
 
 use candle_core::{DType, Device, Tensor};
-use candle_nn::VarBuilder;
 use candle_transformers::models::bert::{BertModel, Config as BertConfig};
 use chacha20poly1305::{aead::Aead, ChaCha20Poly1305, Key, KeyInit, Nonce};
+use ephemeral_ml_common::inference::bert_var_builder_from_safetensors;
 use ephemeral_ml_common::model_registry::{
     get_model_info_or_default, list_models, resolve_local_artifact_paths,
 };
@@ -224,7 +224,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .map_err(|e| format!("decryption failed: {}", e))?;
 
     let config: BertConfig = serde_json::from_slice(&config_bytes)?;
-    let vb = VarBuilder::from_buffered_safetensors(weights_plaintext, DType::F32, &device)?;
+    let (vb, _naming) = bert_var_builder_from_safetensors(weights_plaintext, DType::F32, &device)?;
     let model = Arc::new(BertModel::load(vb, &config)?);
     let tokenizer =
         Arc::new(tokenizers::Tokenizer::from_bytes(&tokenizer_bytes).map_err(|e| e.to_string())?);
