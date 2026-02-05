@@ -1019,6 +1019,32 @@ async fn run_kms_audit() {
 
 // ─── Benchmark helpers ───────────────────────────────────────────────
 
+/// Detects if safetensors weights use the HuggingFace BERT naming convention
+/// (bert.embeddings.* with beta/gamma) vs sentence-transformers convention
+/// (embeddings.* with bias/weight).
+fn detect_bert_naming(weights: &[u8]) -> (bool, bool) {
+    use std::collections::HashMap;
+
+    // Parse safetensors header to get tensor names
+    if weights.len() < 8 {
+        return (false, false);
+    }
+    let header_size = u64::from_le_bytes(weights[..8].try_into().unwrap_or([0; 8])) as usize;
+    if weights.len() < 8 + header_size {
+        return (false, false);
+    }
+    let header_json = &weights[8..8 + header_size];
+    let header: HashMap<String, serde_json::Value> =
+        serde_json::from_slice(header_json).unwrap_or_default();
+
+    let has_bert_prefix = header.keys().any(|k| k.starts_with("bert."));
+    let has_beta_gamma = header
+        .keys()
+        .any(|k| k.contains(".beta") || k.contains(".gamma"));
+
+    (has_bert_prefix, has_beta_gamma)
+}
+
 const BENCHMARK_INPUT_TEXTS: &[&str] = &[
     "What is the capital of France?",
     "Machine learning enables computers to learn from data.",
@@ -1402,9 +1428,28 @@ async fn run_benchmark() {
     let load_start = Instant::now();
     let config: BertConfig =
         serde_json::from_slice(&config_bytes).expect("failed to parse config.json");
-    let vb =
+
+    // Detect naming convention: HuggingFace BERT vs sentence-transformers
+    let (has_bert_prefix, has_beta_gamma) = detect_bert_naming(&weights_plaintext);
+    eprintln!(
+        "[bench]   tensor naming: bert_prefix={}, beta_gamma={}",
+        has_bert_prefix, has_beta_gamma
+    );
+
+    // Build VarBuilder with appropriate naming transformation
+    let vb = if has_beta_gamma {
+        // HuggingFace BERT uses beta/gamma instead of bias/weight for LayerNorm
         VarBuilder::from_buffered_safetensors(weights_plaintext, candle_core::DType::F32, &device)
-            .expect("failed to build VarBuilder from safetensors");
+            .expect("failed to build VarBuilder from safetensors")
+            .rename_f(|name| name.replace(".gamma", ".weight").replace(".beta", ".bias"))
+    } else {
+        VarBuilder::from_buffered_safetensors(weights_plaintext, candle_core::DType::F32, &device)
+            .expect("failed to build VarBuilder from safetensors")
+    };
+
+    // Apply bert. prefix if present in the model
+    let vb = if has_bert_prefix { vb.pp("bert") } else { vb };
+
     let model = BertModel::load(vb, &config).expect("failed to load BertModel");
     let model_load_ms = load_start.elapsed().as_secs_f64() * 1000.0;
     eprintln!("[bench] model_load_ms = {:.2}", model_load_ms);
