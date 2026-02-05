@@ -488,9 +488,7 @@ fn generate_attested_keypair() -> (rsa::RsaPrivateKey, Vec<u8>) {
 }
 
 async fn run_kms_audit() {
-    use ephemeral_ml_common::{
-        generate_id, KmsProxyRequestEnvelope, KmsRequest, KmsResponse,
-    };
+    use ephemeral_ml_common::{generate_id, KmsProxyRequestEnvelope, KmsRequest, KmsResponse};
 
     let key_alias = std::env::var("KMS_AUDIT_KEY_ALIAS")
         .unwrap_or_else(|_| "alias/ephemeral-ml-attest-test".to_string());
@@ -543,13 +541,7 @@ async fn run_kms_audit() {
                 ),
                 _ => ("unexpected", serde_json::Value::Null, false, false, None),
             },
-            Err(e) => (
-                "transport_error",
-                serde_json::json!(e),
-                false,
-                false,
-                None,
-            ),
+            Err(e) => ("transport_error", serde_json::json!(e), false, false, None),
         };
         let entry = serde_json::json!({
             "test_id": "attested_generate_data_key",
@@ -605,13 +597,7 @@ async fn run_kms_audit() {
                 ),
                 _ => ("unexpected", serde_json::Value::Null, false, false, None),
             },
-            Err(e) => (
-                "transport_error",
-                serde_json::json!(e),
-                false,
-                false,
-                None,
-            ),
+            Err(e) => ("transport_error", serde_json::json!(e), false, false, None),
         };
         let entry = serde_json::json!({
             "test_id": "unattested_generate_data_key",
@@ -747,13 +733,7 @@ async fn run_kms_audit() {
                     ),
                     _ => ("unexpected", serde_json::Value::Null, false, false, None),
                 },
-                Err(e) => (
-                    "transport_error",
-                    serde_json::json!(e),
-                    false,
-                    false,
-                    None,
-                ),
+                Err(e) => ("transport_error", serde_json::json!(e), false, false, None),
             };
             let entry = serde_json::json!({
                 "test_id": "attested_decrypt",
@@ -849,13 +829,7 @@ async fn run_kms_audit() {
                     ),
                     _ => ("unexpected", serde_json::Value::Null, false, false, None),
                 },
-                Err(e) => (
-                    "transport_error",
-                    serde_json::json!(e),
-                    false,
-                    false,
-                    None,
-                ),
+                Err(e) => ("transport_error", serde_json::json!(e), false, false, None),
             };
             let entry = serde_json::json!({
                 "test_id": "unattested_decrypt",
@@ -930,13 +904,7 @@ async fn run_kms_audit() {
                 ),
                 _ => ("unexpected", serde_json::Value::Null, false, false, None),
             },
-            Err(e) => (
-                "transport_error",
-                serde_json::json!(e),
-                false,
-                false,
-                None,
-            ),
+            Err(e) => ("transport_error", serde_json::json!(e), false, false, None),
         };
         eprintln!("[kms-audit] Test 6 result: {}", actual);
         results.push(serde_json::json!({
@@ -992,13 +960,7 @@ async fn run_kms_audit() {
                 ),
                 _ => ("unexpected", serde_json::Value::Null, false, false, None),
             },
-            Err(e) => (
-                "transport_error",
-                serde_json::json!(e),
-                false,
-                false,
-                None,
-            ),
+            Err(e) => ("transport_error", serde_json::json!(e), false, false, None),
         };
         eprintln!("[kms-audit] Test 7 result: {}", actual);
         results.push(serde_json::json!({
