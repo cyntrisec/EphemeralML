@@ -616,7 +616,7 @@ async fn run_kms_audit() {
         let entry = serde_json::json!({
             "test_id": "unattested_generate_data_key",
             "test_num": 2,
-            "expected": "access_denied_or_success",
+            "expected": "access_denied",
             "actual": actual,
             "error_code": error_code,
             "kms_request_id": kms_req_id,
@@ -685,7 +685,8 @@ async fn run_kms_audit() {
     // ── Test 4: Attested Decrypt (need a ciphertext_blob from GenerateDataKey first) ──
     {
         eprintln!("[kms-audit] Test 4: Attested Decrypt");
-        // First, generate a data key without attestation to get a ciphertext_blob
+        // Generate a data key WITH attestation to get a ciphertext_blob
+        // (unattested GenerateDataKey is denied by the strict key policy)
         let gen_env = KmsProxyRequestEnvelope {
             request_id: generate_id(),
             trace_id: Some("kms-audit-test4-setup".to_string()),
@@ -693,7 +694,7 @@ async fn run_kms_audit() {
                 key_id: key_alias.clone(),
                 key_spec: "AES_256".to_string(),
                 encryption_context: None,
-                recipient: None,
+                recipient: Some(attestation_doc.clone()),
             },
         };
         let gen_result = kms_roundtrip(&gen_env);
@@ -786,7 +787,8 @@ async fn run_kms_audit() {
     // ── Test 5: Unattested Decrypt (no RecipientInfo) ──
     {
         eprintln!("[kms-audit] Test 5: Unattested Decrypt");
-        // Generate a data key to get a ciphertext_blob
+        // Generate a data key WITH attestation to get a ciphertext_blob
+        // (unattested GenerateDataKey is denied by the strict key policy)
         let gen_env = KmsProxyRequestEnvelope {
             request_id: generate_id(),
             trace_id: Some("kms-audit-test5-setup".to_string()),
@@ -794,7 +796,7 @@ async fn run_kms_audit() {
                 key_id: key_alias.clone(),
                 key_spec: "AES_256".to_string(),
                 encryption_context: None,
-                recipient: None,
+                recipient: Some(attestation_doc.clone()),
             },
         };
         let gen_result = kms_roundtrip(&gen_env);
@@ -858,7 +860,7 @@ async fn run_kms_audit() {
             let entry = serde_json::json!({
                 "test_id": "unattested_decrypt",
                 "test_num": 5,
-                "expected": "access_denied_or_success",
+                "expected": "access_denied",
                 "actual": actual,
                 "error_code": error_code,
                 "kms_request_id": kms_req_id,
@@ -873,7 +875,7 @@ async fn run_kms_audit() {
             results.push(serde_json::json!({
                 "test_id": "unattested_decrypt",
                 "test_num": 5,
-                "expected": "access_denied_or_success",
+                "expected": "access_denied",
                 "actual": "skipped",
                 "error_code": "setup_failed",
                 "kms_request_id": null,
@@ -900,14 +902,20 @@ async fn run_kms_audit() {
                 match expected {
                     "success" => actual == "success",
                     "error" => actual == "error",
-                    // For "access_denied_or_success", both are valid outcomes
-                    _ => actual == "success" || actual == "error",
+                    "access_denied" => actual == "error",
+                    _ => false,
                 }
             }).count(),
             "failed": results.iter().filter(|r| {
-                r["actual"].as_str() == Some("unexpected_success")
-                    || r["actual"].as_str() == Some("transport_error")
-                    || r["actual"].as_str() == Some("skipped")
+                let actual = r["actual"].as_str().unwrap_or("");
+                let expected = r["expected"].as_str().unwrap_or("");
+                let passed = match expected {
+                    "success" => actual == "success",
+                    "error" => actual == "error",
+                    "access_denied" => actual == "error",
+                    _ => false,
+                };
+                !passed
             }).count(),
         }
     });

@@ -434,6 +434,23 @@ resource "aws_kms_key" "attest_test_key" {
         Resource = "*"
       },
       {
+        Sid    = "Deny Host Role Without Attestation"
+        Effect = "Deny"
+        Principal = {
+          AWS = aws_iam_role.host.arn
+        }
+        Action = [
+          "kms:Decrypt",
+          "kms:GenerateDataKey"
+        ]
+        Resource = "*"
+        Condition = {
+          Null = {
+            "kms:RecipientAttestation:ImageSha384" = "true"
+          }
+        }
+      },
+      {
         Sid    = "Allow Enclave with Matching PCR0 Only"
         Effect = "Allow"
         Principal = {
