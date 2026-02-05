@@ -154,6 +154,26 @@ Measured on AWS EC2 m6i.xlarge (4 vCPU, 16GB RAM) with MiniLM-L6-v2 (22.7M param
 
 See [`docs/benchmarks.md`](docs/benchmarks.md) for methodology, competitive analysis, and literature comparison.
 
+### KMS Attestation Audit Results
+
+Verified on real Nitro hardware (m6i.xlarge, Feb 2026) using a KMS key with `kms:RecipientAttestation:ImageSha384` condition and key-policy-only evaluation (no root account statement, no IAM bypass path).
+
+**Debug vs non-debug mode:** Enclaves launched with `--debug-mode` have all PCR values zeroed in their attestation documents. PCR-conditioned KMS policies cannot match in debug mode — the condition compares the policy's PCR0 hash against all-zeros, which never matches. Production (non-debug) enclaves carry real PCR values derived from the EIF contents.
+
+**PCR0 enforcement evidence (non-debug mode):**
+
+| Scenario | Result |
+|----------|--------|
+| Correct PCR0, valid attestation | Success (key released) |
+| Wrong PCR0, valid attestation | `AccessDeniedException` |
+| No attestation (recipient absent) | `AccessDeniedException` |
+| Malformed attestation (random bytes) | `ValidationException` |
+| Bit-flipped attestation (1 byte changed) | `ValidationException` |
+
+CloudTrail confirms non-zero `attestationDocumentEnclaveImageDigest` for successful calls and no recipient data for denied calls.
+
+**Replay semantics:** KMS accepts replayed attestation documents — resubmitting a previously successful attestation doc produces another successful key release. KMS validates the COSE_Sign1 signature and PCR values but does not enforce freshness (no nonce binding or timestamp check on the attestation document itself).
+
 ---
 
 ## Quick Start
