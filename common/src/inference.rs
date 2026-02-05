@@ -67,7 +67,7 @@ pub fn bert_var_builder_from_safetensors(
     weights_safetensors: Vec<u8>,
     dtype: DType,
     device: &Device,
-) -> candle_core::Result<(VarBuilder, BertSafetensorsNaming)> {
+) -> candle_core::Result<(VarBuilder<'_>, BertSafetensorsNaming)> {
     let naming = detect_bert_safetensors_naming(&weights_safetensors);
 
     let mut vb = VarBuilder::from_buffered_safetensors(weights_safetensors, dtype, device)?;
