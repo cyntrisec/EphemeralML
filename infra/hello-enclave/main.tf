@@ -376,28 +376,9 @@ variable "attest_test_pcr0" {
   default     = ""
 }
 
-# IAM policy granting the host role permission to use the attest test key.
-# Required because the key policy includes the root account statement,
-# enabling combined (key policy + IAM) evaluation.
-resource "aws_iam_role_policy" "kms_attest_test_access" {
-  count = var.attest_test_pcr0 != "" ? 1 : 0
-  name  = "${var.project_name}-kms-attest-test-access"
-  role  = aws_iam_role.host.id
-
-  policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [
-      {
-        Effect = "Allow"
-        Action = [
-          "kms:Decrypt",
-          "kms:GenerateDataKey"
-        ]
-        Resource = [aws_kms_key.attest_test_key[0].arn]
-      }
-    ]
-  })
-}
+# No IAM policy needed — key-policy-only evaluation (no root account statement).
+# This means KMS does NOT consult IAM policies for this key.
+# The host role's access is controlled entirely by the key policy below.
 
 resource "aws_kms_key" "attest_test_key" {
   count                   = var.attest_test_pcr0 != "" ? 1 : 0
@@ -405,43 +386,20 @@ resource "aws_kms_key" "attest_test_key" {
   deletion_window_in_days = 7
   enable_key_rotation     = false
 
+  # Key-policy-only evaluation: no root account statement.
+  # Only the deployer user has admin access. The host role can only use
+  # Decrypt/GenerateDataKey with a matching PCR0 attestation.
   policy = jsonencode({
     Version = "2012-10-17"
     Statement = [
       {
-        Sid    = "Enable IAM User Permissions"
-        Effect = "Allow"
-        Principal = {
-          AWS = "arn:aws:iam::${data.aws_caller_identity.current.account_id}:root"
-        }
-        Action   = "kms:*"
-        Resource = "*"
-      },
-      {
-        Sid    = "Allow EphemeralML-Deployer"
+        Sid    = "Allow EphemeralML-Deployer Full Access"
         Effect = "Allow"
         Principal = {
           AWS = data.aws_caller_identity.current.arn
         }
         Action   = "kms:*"
         Resource = "*"
-      },
-      {
-        Sid    = "Deny Host Role Without Attestation"
-        Effect = "Deny"
-        Principal = {
-          AWS = aws_iam_role.host.arn
-        }
-        Action = [
-          "kms:Decrypt",
-          "kms:GenerateDataKey"
-        ]
-        Resource = "*"
-        Condition = {
-          Null = {
-            "kms:RecipientAttestation:ImageSha384" = "true"
-          }
-        }
       },
       {
         Sid    = "Allow Enclave with Matching PCR0 Only"
