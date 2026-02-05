@@ -10,7 +10,39 @@
 \usepackage{tabularx}
 
 % --- Title ---
-\title{\textbf{EphemeralML: Confidential AI Inference on AWS Nitro Enclaves\\with 14.5\% Overhead}}
+% --- Paper benchmark macros (update after AWS reruns) ---
+\newcommand{\BenchInstance}{m6i.xlarge}
+\newcommand{\BenchCommit}{b00bab1}
+\newcommand{\BenchModelName}{MiniLM-L6-v2}
+\newcommand{\BenchModelParams}{22.7M}
+
+\newcommand{\BenchBareMeanMs}{78.55}
+\newcommand{\BenchEnclaveMeanMs}{88.45}
+\newcommand{\BenchOverheadPct}{12.6\%}
+\newcommand{\BenchBareP95Ms}{79.09}
+\newcommand{\BenchEnclaveP95Ms}{89.58}
+\newcommand{\BenchBareThroughput}{12.73}
+\newcommand{\BenchEnclaveThroughput}{11.31}
+\newcommand{\BenchBarePeakRssMb}{266}
+\newcommand{\BenchEnclavePeakRssMb}{1018}
+
+\newcommand{\BenchAttestationMs}{88}
+\newcommand{\BenchKmsMs}{76}
+\newcommand{\BenchS3FetchMs}{6716}
+\newcommand{\BenchDecryptMs}{100}
+\newcommand{\BenchLoadMs}{39}
+\newcommand{\BenchTokenizerMs}{24}
+\newcommand{\BenchColdStartTotalMs}{7052}
+
+% Multi-model scaling table (fill after multi-model AWS run completes)
+\newcommand{\ModelL12BareMeanMs}{TBD}
+\newcommand{\ModelL12EnclaveMeanMs}{TBD}
+\newcommand{\ModelL12OverheadPct}{TBD}
+\newcommand{\ModelBertBaseBareMeanMs}{TBD}
+\newcommand{\ModelBertBaseEnclaveMeanMs}{TBD}
+\newcommand{\ModelBertBaseOverheadPct}{TBD}
+
+\title{\textbf{EphemeralML: Confidential AI Inference on AWS Nitro Enclaves\\with \BenchOverheadPct{} Overhead}}
 \author{Cyntrisec}
 \date{February 2026}
 
@@ -21,10 +53,10 @@
 \begin{abstract}
 Running machine learning inference on untrusted cloud infrastructure exposes model weights, input data, and predictions to the infrastructure operator.
 We present \textsc{EphemeralML}, a confidential AI inference system that executes ML models inside AWS Nitro Enclaves with end-to-end encryption between client and enclave.
-The host operates as a \emph{blind relay}: it forwards encrypted bytes over VSock but can never decrypt or inspect sensitive data, even under full root compromise.
+The host operates as a \emph{blind relay}: it forwards encrypted bytes over VSock but can never decrypt or inspect sensitive data, even under full root compromise (content-blind, not metadata-blind).
 Our cryptographic protocol combines HPKE session establishment (X25519 + ChaCha20-Poly1305) with AEAD-authenticated session metadata, COSE\slash CBOR attestation verification with ECDSA-P384 certificate chains, attestation-gated KMS key release with per-model encryption context binding, and Ed25519-signed Attested Execution Receipts.
-We evaluate \textsc{EphemeralML} on an \texttt{m6i.xlarge} instance using MiniLM-L6-v2 (22.7M parameters) and measure \textbf{14.5\% mean inference overhead} (81.32\,ms bare metal vs.\ 93.08\,ms enclave), near-identical embedding output (cosine similarity $\approx 1.0$), a per-inference cryptographic budget of 0.027\,ms for 1\,KB payloads (enclave-side), and an end-to-end per-request crypto overhead of 0.162\,ms excluding inference.
-The system is implemented in 13,000+ lines of Rust across four workspace crates, compiles for both local mock and production Nitro modes via feature flags, and is fully open-source.
+We evaluate \textsc{EphemeralML} on an \texttt{\BenchInstance{}} instance using \BenchModelName{} (\BenchModelParams{} parameters) and measure \textbf{\BenchOverheadPct{} mean inference overhead} (\BenchBareMeanMs{}\,ms bare metal vs.\ \BenchEnclaveMeanMs{}\,ms enclave), near-identical embedding output (cosine similarity $\approx 1.0$), a per-inference cryptographic budget of 0.028\,ms for 1\,KB payloads (enclave-side), and an end-to-end per-request crypto overhead of 0.164\,ms excluding inference.
+The system is implemented in 13,000+ lines of Rust across four workspace crates, compiles for both local mock and production Nitro modes via feature flags, and is fully open-source with 110+ tests.
 \end{abstract}
 
 % ============================================================
@@ -43,7 +75,7 @@ We present \textsc{EphemeralML}, a system that leverages Nitro Enclaves to provi
   \item A \textbf{three-zone security architecture} (Client, Host, Enclave) in which the host is explicitly untrusted and operates as a blind relay of encrypted bytes.
   \item A \textbf{cryptographic protocol} that binds HPKE session keys to Nitro attestation documents, authenticates routing metadata as AEAD associated data to prevent cross-session ciphertext splicing, gates model decryption keys through attestation-verified KMS policies with per-model encryption context, and produces Ed25519-signed Attested Execution Receipts for non-repudiation.
   \item A \textbf{production-quality implementation} in 13,000+ lines of Rust that compiles for both local development (mock mode) and Nitro Enclaves (production mode) from the same codebase via feature flags.
-  \item A \textbf{comprehensive evaluation} showing 14.5\% inference overhead, sub-millisecond per-request cryptographic cost, and near-identical output quality on MiniLM-L6-v2.
+  \item A \textbf{comprehensive evaluation} showing \BenchOverheadPct{} inference overhead, sub-millisecond per-request cryptographic cost, and near-identical output quality on \BenchModelName{}.
 \end{enumerate}
 
 % ============================================================
@@ -221,7 +253,7 @@ Each side maintains an independent outgoing and incoming sequence counter; a mes
 The client verifies the Nitro attestation document through the following steps:
 
 \begin{enumerate}
-  \item Parse the COSE\_Sign1 structure and extract the certificate chain (COSE label~33, \texttt{x5chain}).
+  \item Parse the COSE\_Sign1 structure and extract the certificate chain from the CBOR payload fields (\texttt{certificate} and \texttt{cabundle}).
   \item Verify the ECDSA-P384-SHA384 signature over the \texttt{Sig\_structure}:
   \[
     \texttt{Sig\_structure} = [\texttt{"Signature1"},\; \mathrm{protected},\; \mathrm{external\_aad},\; \mathrm{payload}]
@@ -289,23 +321,23 @@ The \texttt{cuda} feature flag enables GPU acceleration where available.
 
 \paragraph{Security Practices.}
 All key material types derive \texttt{ZeroizeOnDrop} for automatic memory clearing.
-Constant-time comparisons are used for authentication tags and signatures.
+We rely on constant-time implementations in the underlying cryptographic libraries for AEAD tag checks and signature verification.
 Input validation is performed at all system boundaries.
 Error types are hierarchical (\texttt{EphemeralError}, \texttt{HostError}, \texttt{EnclaveError}) with \texttt{?}-propagation throughout.
 
 \paragraph{Testing.}
-The test suite comprises 106 tests covering unit tests (inline \texttt{\#[cfg(test)]} modules), integration tests (\texttt{tests/} directories), and end-to-end protocol tests.
+The test suite comprises 110+ tests covering unit tests (inline \texttt{\#[cfg(test)]} modules), integration tests (\texttt{tests/} directories), and end-to-end protocol tests.
 All tests pass in CI (GitHub Actions) on every push to \texttt{main}.
 
 % ============================================================
 \section{Evaluation}
 \label{sec:evaluation}
 
-We evaluate \textsc{EphemeralML} on an \texttt{m6i.xlarge} EC2 instance (4~vCPUs, 16\,GB RAM, Intel Xeon Ice Lake) running Amazon Linux~2023.
+We evaluate \textsc{EphemeralML} on an \texttt{\BenchInstance{}} EC2 instance (4~vCPUs, 16\,GB RAM, Intel Xeon Ice Lake) running Amazon Linux~2023.
 The enclave is allocated 2~vCPUs and 4096\,MB RAM.
-The benchmark model is MiniLM-L6-v2 (22.7M parameters, 384-dimensional embeddings).
+The benchmark model is \BenchModelName{} (\BenchModelParams{} parameters, 384-dimensional embeddings).
 All latency measurements use 100 iterations after 3 warmup runs.
-Results are highly reproducible: inference variance $<$1\% across four independent runs.
+Results are highly reproducible: in two steady-state runs (runs 2--3 at commit \texttt{\BenchCommit{}}), inference overhead ranged from 12.4--12.8\%; the first run after a clean build was a cold-cache outlier at 17.6\%.
 
 \subsection{Inference Latency}
 
@@ -313,23 +345,43 @@ Table~\ref{tab:inference} shows the core inference overhead.
 
 \begin{table}[ht]
 \centering
-\caption{Inference latency comparison (MiniLM-L6-v2, m6i.xlarge, 100 iterations).}
+\caption{Inference latency comparison (\BenchModelName{}, \BenchInstance{}, 100 iterations).}
 \label{tab:inference}
 \begin{tabular}{lrrr}
 \hline
 \textbf{Metric} & \textbf{Bare Metal} & \textbf{Enclave} & \textbf{Overhead} \\
 \hline
-Mean latency     & 81.32\,ms  & 93.08\,ms  & +14.5\% \\
-P95 latency      & 83.12\,ms  & 94.95\,ms  & +14.2\% \\
-Throughput       & 12.3\,inf/s & 10.7\,inf/s & $-$12.7\% \\
-Peak RSS         & 535\,MB    & 1{,}064\,MB & +99\% \\
+Mean latency     & \BenchBareMeanMs{}\,ms  & \BenchEnclaveMeanMs{}\,ms  & +\BenchOverheadPct{} \\
+P95 latency      & \BenchBareP95Ms{}\,ms  & \BenchEnclaveP95Ms{}\,ms  & --- \\
+Throughput       & \BenchBareThroughput{}\,inf/s & \BenchEnclaveThroughput{}\,inf/s & --- \\
+Peak RSS (VmHWM) & \BenchBarePeakRssMb{}\,MB    & \BenchEnclavePeakRssMb{}\,MB & --- \\
 \hline
 \end{tabular}
 \end{table}
 
 \noindent\textbf{Note:} Peak RSS is obtained from \texttt{/proc/self/status} (VmHWM). Earlier benchmark code used VmPeak (virtual memory size); regenerate benchmark artifacts to ensure this row reflects resident memory.
 
-The 14.5\% mean inference overhead falls within the ``Acceptable'' range and is consistent with published AMD SEV-SNP results for BERT-class models~\cite{akram2024}.
+The \BenchOverheadPct{} mean inference overhead falls within the ``Acceptable'' range and is consistent with published AMD SEV-SNP results for BERT-class models~\cite{akram2024}.
+
+\subsection{Overhead vs.\ Model Size (Encoder Models)}
+
+Table~\ref{tab:model-scaling} summarizes overhead across multiple encoder-style models.
+Fill in the MiniLM-L12 and BERT-base rows after the multi-model AWS rerun completes.
+
+\begin{table}[ht]
+\centering
+\caption{Overhead scaling across encoder models (\BenchInstance{}, 100 iterations).}
+\label{tab:model-scaling}
+\begin{tabular}{lrrrr}
+\hline
+\textbf{Model} & \textbf{Params} & \textbf{Bare Metal (mean)} & \textbf{Enclave (mean)} & \textbf{Overhead} \\
+\hline
+\BenchModelName{} & \BenchModelParams{} & \BenchBareMeanMs{}\,ms & \BenchEnclaveMeanMs{}\,ms & \BenchOverheadPct{} \\
+MiniLM-L12-v2 & 33.4M & \ModelL12BareMeanMs{} & \ModelL12EnclaveMeanMs{} & \ModelL12OverheadPct{} \\
+BERT-base-uncased & 110M & \ModelBertBaseBareMeanMs{} & \ModelBertBaseEnclaveMeanMs{} & \ModelBertBaseOverheadPct{} \\
+\hline
+\end{tabular}
+\end{table}
 
 \subsection{Cold Start Breakdown}
 
@@ -343,21 +395,21 @@ Table~\ref{tab:coldstart} decomposes the enclave cold start latency.
 \hline
 \textbf{Phase} & \textbf{Latency} \\
 \hline
-NSM attestation generation & 277\,ms \\
-KMS key release            & 79\,ms \\
-S3 model fetch (via VSock) & 6{,}600\,ms \\
-Model decryption           & 101\,ms \\
-Model load (Candle)        & 40\,ms \\
-Tokenizer setup            & 25\,ms \\
+NSM attestation generation & \BenchAttestationMs{}\,ms \\
+KMS key release            & \BenchKmsMs{}\,ms \\
+S3 model fetch (via VSock) & \BenchS3FetchMs{}\,ms \\
+Model decryption           & \BenchDecryptMs{}\,ms \\
+Model load (Candle)        & \BenchLoadMs{}\,ms \\
+Tokenizer setup            & \BenchTokenizerMs{}\,ms \\
 \hline
-\textbf{Total}             & \textbf{7{,}132\,ms} \\
+\textbf{Total}             & \textbf{\BenchColdStartTotalMs{}\,ms} \\
 \hline
 \end{tabular}
 \end{table}
 
 Cold start is dominated by the S3 model fetch over VSock (92.5\% of total).
 This could be reduced by embedding weights in the EIF image or implementing a pre-warming protocol.
-The one-time attestation and KMS costs (356\,ms combined) are negligible for session-based workloads.
+The one-time attestation and KMS costs (\BenchAttestationMs{} + \BenchKmsMs{} $\approx$ 164\,ms combined) are negligible for session-based workloads.
 
 \subsection{VSock Round-Trip Time}
 
@@ -371,12 +423,12 @@ Table~\ref{tab:vsock} shows VSock latency for varying payload sizes measured usi
 \hline
 \textbf{Payload} & \textbf{RTT} \\
 \hline
-64\,B   & 0.17\,ms \\
-1\,KB   & 0.14\,ms \\
+64\,B   & 0.14\,ms \\
+1\,KB   & 0.16\,ms \\
 64\,KB  & 0.41\,ms \\
-1\,MB   & 4.56\,ms \\
+1\,MB   & 4.25\,ms \\
 \hline
-\multicolumn{2}{l}{Upload throughput: 219.4\,MB/s} \\
+\multicolumn{2}{l}{Upload throughput: 235.4\,MB/s} \\
 \hline
 \end{tabular}
 \end{table}
@@ -403,12 +455,12 @@ Ed25519 keypair generation      & 0.017\,ms & 0.019\,ms \\
 Receipt sign (CBOR + Ed25519)   & 0.022\,ms & 0.023\,ms \\
 Receipt verify                  & 0.046\,ms & 0.054\,ms \\
 \hline
-\textbf{Per-inference crypto (1\,KB)} & \textbf{0.027\,ms} & --- \\
+\textbf{Per-inference crypto (1\,KB)} & \textbf{0.028\,ms} & --- \\
 \hline
 \end{tabular}
 \end{table}
 
-The per-inference cryptographic budget of 0.027\,ms represents 0.03\% of the 81\,ms inference latency, confirming that encryption overhead is negligible.
+The per-inference cryptographic budget of 0.028\,ms represents $\sim$0.03\% of the 79\,ms inference latency, confirming that encryption overhead is negligible.
 
 \subsection{COSE Attestation Verification}
 
@@ -445,9 +497,9 @@ Table~\ref{tab:e2e} shows the per-request overhead of the full encrypted inferen
 \hline
 \textbf{Component} & \textbf{Mean Latency} \\
 \hline
-Per-request crypto (encrypt + decrypt + receipt) & 0.162\,ms \\
-Session setup (one-time)                         & 0.137\,ms \\
-TCP handshake (one-time)                         & 0.176\,ms \\
+Per-request crypto (encrypt + decrypt + receipt) & 0.164\,ms \\
+Session setup (one-time)                         & 0.138\,ms \\
+TCP handshake (one-time)                         & 0.153\,ms \\
 \hline
 \end{tabular}
 \end{table}
@@ -464,10 +516,10 @@ Table~\ref{tab:concurrency} evaluates throughput scaling with parallel inference
 \hline
 \textbf{Threads} & \textbf{Throughput} & \textbf{Mean Latency} & \textbf{Efficiency} \\
 \hline
-1 & 12.43\,inf/s & 80.4\,ms  & 100\% \\
-2 & 14.32\,inf/s & 139.7\,ms & 57.6\% \\
-4 & 14.23\,inf/s & 277.0\,ms & 28.6\% \\
-8 & 14.20\,inf/s & 558.7\,ms & 14.3\% \\
+1 & 12.75\,inf/s & 78.4\,ms  & 100\% \\
+2 & 14.73\,inf/s & 135.8\,ms & 57.8\% \\
+4 & 14.66\,inf/s & 270.4\,ms & 28.8\% \\
+8 & 14.57\,inf/s & 546.1\,ms & 14.3\% \\
 \hline
 \end{tabular}
 \end{table}
@@ -478,8 +530,8 @@ The model's GEMM operations already saturate available cores at 2 threads, so ad
 \subsection{Output Quality}
 
 We compare the embedding vectors produced by bare-metal and enclave inference for identical inputs.
-The cosine similarity is \textbf{0.999999999999926} on the logged reference embedding slice (first 8 dimensions), with maximum absolute difference $3.24\\times 10^{-7}$, indicating negligible numerical divergence for CPU inference in the enclave.
-This confirms that TEE execution introduces no numerical divergence for CPU inference.
+Across repeated runs in each environment, the reference embedding SHA-256 is stable (bit-identical), demonstrating deterministic output under fixed inputs and software versions.
+Cross-environment comparisons show near-identical embeddings (cosine similarity $\approx 1.0$ with small floating-point differences), indicating negligible numerical divergence for CPU inference in the enclave.
 
 \subsection{Cost Analysis}
 
@@ -493,8 +545,8 @@ Table~\ref{tab:cost} shows the per-inference cost on \texttt{m6i.xlarge} (\$0.19
 \hline
 \textbf{Metric} & \textbf{Bare Metal} & \textbf{Enclave} \\
 \hline
-Cost per 1M inferences & \$4.34 & \$4.97 \\
-Cost multiplier        & ---    & 1.15$\times$ \\
+Cost per 1M inferences & \$4.19 & \$4.72 \\
+Cost multiplier        & ---    & 1.13$\times$ \\
 \hline
 \end{tabular}
 \end{table}
@@ -509,7 +561,7 @@ The 15\% cost premium for confidential inference is modest, especially given tha
 Intel SGX has been used for confidential inference in systems such as Slalom~\cite{tramer2019} and Occlumency~\cite{lee2019}, but SGX's limited Enclave Page Cache (128\,MB in SGXv1) restricts model size and causes heavy paging overhead for large models.
 AMD SEV-SNP provides VM-level isolation with lower overhead; published BERT inference benchmarks report 10--15\% overhead~\cite{akram2024}, consistent with our 14.5\% result on Nitro Enclaves for a comparably sized model (MiniLM-L6-v2, 22.7M parameters).
 However, overhead scales with model size: Schnabl et~al.~\cite{schnabl2025} report $2.2\times$ CPU overhead for Llama-3.1-8B (8 billion parameters) running inside Nitro Enclaves, driven by increased memory pressure and enclave kernel overhead at scale.
-This suggests that our 14.5\% result, while representative for embedding-class models, should not be extrapolated to billion-parameter LLMs without further evaluation.
+This suggests that our \BenchOverheadPct{} result, while representative for embedding-class models, should not be extrapolated to billion-parameter LLMs without further evaluation.
 Intel TDX offers similar VM-level confidential computing; early benchmarks suggest comparable overhead for inference workloads~\cite{intel2023}.
 
 \paragraph{GPU TEEs.}
@@ -533,7 +585,7 @@ Fully homomorphic encryption (FHE) and secure multi-party computation (MPC) can 
 \label{sec:discussion}
 
 \paragraph{Cold Start Optimization.}
-The 7.1-second cold start is dominated by fetching the model over VSock from S3 (6.6\,s).
+The \BenchColdStartTotalMs{}\,ms cold start is dominated by fetching the model over VSock from S3 (\BenchS3FetchMs{}\,ms).
 Three mitigation strategies are planned:
 (1) embedding model weights directly in the EIF image (eliminating the S3 fetch entirely),
 (2) implementing a pre-warming protocol that begins model loading before the first client request, and
@@ -548,7 +600,7 @@ The current v1 implements ``Gateway Only'' mode where the enclave processes infe
 A planned ``Shield Mode'' would add query budgets, differential privacy noise injection, and rate limiting at the enclave level.
 
 \paragraph{Memory Overhead.}
-The 2$\times$ memory overhead (535\,MB vs.\ 1{,}064\,MB) is attributable to the enclave kernel, VSock message buffers, and duplicate runtime libraries.
+The memory overhead (266\,MB vs.\ 1{,}018\,MB peak RSS in our steady-state runs) is attributable to the enclave kernel, VSock message buffers, and additional runtime footprint inside the enclave.
 Optimizing the enclave image (e.g., using a minimal init process, pre-allocating buffers) could reduce this.
 
 \paragraph{Multi-Model Serving.}
@@ -569,7 +621,7 @@ The client verifies enclave identity through PCR measurements (PCR0, PCR1, PCR2)
 Following the approach of Nitriding~\cite{winter2023}, which emphasizes user-verifiable enclave code, a reproducible build pipeline (pinned base image digests, deterministic Dockerfile, CI-published PCR values) would close this trust gap and allow clients to independently verify the enclave binary.
 
 \paragraph{Overhead Scaling with Model Size.}
-Our 14.5\% overhead result is measured on MiniLM-L6-v2 (22.7M parameters, 535\,MB RSS).
+Our \BenchOverheadPct{} overhead result is measured on \BenchModelName{} (\BenchModelParams{} parameters).
 Published results for Llama-3.1-8B on Nitro Enclaves show $2.2\times$ overhead~\cite{schnabl2025}, indicating that enclave overhead grows substantially with model size due to increased memory pressure, larger VSock transfers, and enclave kernel overhead.
 Evaluating \textsc{EphemeralML} on billion-parameter models---potentially with INT4/INT8 quantization to fit within enclave memory constraints---is an important direction for validating the system's applicability to large language models.
 
@@ -579,10 +631,10 @@ Evaluating \textsc{EphemeralML} on billion-parameter models---potentially with I
 
 We presented \textsc{EphemeralML}, a confidential AI inference system that runs ML models inside AWS Nitro Enclaves with the host operating as a blind relay of encrypted data.
 Our evaluation on MiniLM-L6-v2 demonstrates that hardware-enforced confidential inference is practical:
-14.5\% inference overhead, 0.027\,ms per-inference (enclave-side) cryptographic cost, near-identical output quality, and a 15\% cost premium over bare-metal execution.
+\BenchOverheadPct{} inference overhead, 0.028\,ms per-inference (enclave-side) cryptographic cost, near-identical output quality, and a $\sim$13\% cost premium over bare-metal execution.
 
 The system's three-zone architecture, transcript-bound HPKE sessions, attestation-gated key management, and Ed25519-signed execution receipts provide defense-in-depth against a fully compromised host.
-The implementation in 13,000+ lines of Rust, with feature-gated dual compilation and 106 passing tests, demonstrates that confidential ML inference can be achieved with production-quality engineering.
+The implementation in 13,000+ lines of Rust, with feature-gated dual compilation and 110+ passing tests, demonstrates that confidential ML inference can be achieved with production-quality engineering.
 
 \textsc{EphemeralML} is open-source and available at \url{https://github.com/cyntrisec/EphemeralML}.
 
