@@ -363,7 +363,7 @@ Peak RSS (VmHWM) & \BenchBarePeakRssMb{}\,MB    & \BenchEnclavePeakRssMb{}\,MB &
 \end{tabular}
 \end{table}
 
-The \BenchOverheadPct{} mean inference overhead for \BenchModelName{} falls within the ``Acceptable'' range and is consistent with published AMD SEV-SNP results for BERT-class models~\cite{akram2024}.
+The \BenchOverheadPct{} mean inference overhead for \BenchModelName{} falls within the ``Acceptable'' range and is consistent with published AMD SEV-SNP overhead for TensorFlow BERT (2--16\%)~\cite{misono2024}.
 Peak RSS is measured from \texttt{/proc/self/status} (VmHWM); the enclave's 2.2$\times$ memory overhead is attributable to the enclave kernel and VSock message buffers.
 
 \subsection{Overhead vs.\ Model Size (Encoder Models)}
@@ -656,14 +656,14 @@ The 14\% cost premium for confidential inference is modest, especially given tha
 
 \paragraph{TEE-Based ML Inference.}
 Intel SGX has been used for confidential inference in systems such as Slalom~\cite{tramer2019} and Occlumency~\cite{lee2019}, but SGX's limited Enclave Page Cache (128\,MB in SGXv1) restricts model size and causes heavy paging overhead for large models.
-AMD SEV-SNP provides VM-level isolation with lower overhead; published BERT inference benchmarks report 10--15\% overhead~\cite{akram2024}, consistent with our \BenchOverheadRange{} result on Nitro Enclaves across three encoder models (22.7M--110M parameters).
-However, overhead scales with model size: Schnabl et~al.~\cite{schnabl2025} report $2.2\times$ CPU overhead for Llama-3.1-8B (8 billion parameters) running inside Nitro Enclaves, driven by increased memory pressure and enclave kernel overhead at scale.
+AMD SEV-SNP provides VM-level isolation with lower overhead; Misono et~al.~\cite{misono2024} report 2--16\% overhead for TensorFlow BERT inference on SEV-SNP (varying with VM configuration), consistent with our \BenchOverheadRange{} result on Nitro Enclaves across three encoder models (22.7M--110M parameters).
+However, overhead scales with model size: Schnabl et~al.~\cite{schnabl2025} report $2.2\times$ cost overhead for Llama-3.1-8B-Instruct (8 billion parameters, 4-bit quantized) running inside Nitro Enclaves, driven by the need for larger instances to accommodate enclave memory reservation.
 This suggests that our \BenchOverheadRange{} result, while well-validated for embedding-class models across multiple sizes, should not be extrapolated to billion-parameter LLMs without further evaluation.
-Intel TDX offers similar VM-level confidential computing; early benchmarks suggest comparable overhead for inference workloads~\cite{intel2023}.
+Intel TDX offers similar VM-level confidential computing; Intel reports $\sim$4\% overhead for TensorFlow BERT on 4th Gen Xeon~\cite{intel2023}.
 
 \paragraph{GPU TEEs.}
 NVIDIA's Confidential Computing (cGPU) with H100 GPUs enables TEE-protected GPU inference.
-Early measurements show 5--8\% overhead for large language models~\cite{nvidia2024}, though the threat model differs (GPU memory is trusted, CPU-GPU transfers are encrypted).
+Zhu et~al.~\cite{zhu2024} benchmark H100 confidential computing and report 5--7\% throughput overhead for Llama-3.1-8B and Phi-3-14B, though the threat model differs (GPU memory is trusted, CPU-GPU transfers are encrypted).
 Graviton~\cite{volos2018} and HIX~\cite{jang2019} proposed earlier GPU isolation schemes with higher overhead.
 
 \paragraph{Nitro Enclave Systems.}
@@ -674,7 +674,7 @@ Schnabl et~al.~\cite{schnabl2025} use Nitro Enclaves for verifiable AI safety au
 To our knowledge, \textsc{EphemeralML} is the first open-source system providing end-to-end confidential ML \emph{inference serving} with HPKE session management, attestation-gated key release, and attested execution receipts on Nitro Enclaves.
 
 \paragraph{Cryptographic Inference.}
-Fully homomorphic encryption (FHE) and secure multi-party computation (MPC) can provide inference without trusting any party, but current implementations incur $10{,}000\times$+ overhead for neural network inference~\cite{gilad2016}, making them impractical for latency-sensitive workloads.
+Fully homomorphic encryption (FHE) and secure multi-party computation (MPC) can provide inference without trusting any party, but incur orders-of-magnitude overhead: CryptoNets~\cite{gilad2016} requires $\sim$250 seconds for a single MNIST prediction under FHE, making such approaches impractical for latency-sensitive workloads.
 \textsc{EphemeralML}'s TEE-based approach trades the stronger cryptographic guarantees of FHE/MPC for practical performance.
 
 % ============================================================
@@ -721,7 +721,7 @@ Following the approach of Nitriding~\cite{winter2023}, which emphasizes user-ver
 \paragraph{Overhead Scaling with Model Size.}
 Our multi-model evaluation shows that inference overhead remains in a narrow \BenchOverheadRange{} band across encoder models spanning 22.7M to 110M parameters (Table~\ref{tab:model-scaling}).
 The slight decrease from +\BenchOverheadPct{} (\BenchModelName{}) to +\ModelBertBaseOverheadPct{} (BERT-base) suggests that the enclave's fixed costs (kernel, VSock buffers) are amortized over longer per-inference compute times for larger models.
-However, published results for Llama-3.1-8B on Nitro Enclaves show $2.2\times$ overhead~\cite{schnabl2025}, indicating that this amortization effect does not hold at the billion-parameter scale, where memory pressure, page faults, and enclave kernel overhead become dominant.
+However, published results for Llama-3.1-8B on Nitro Enclaves show $2.2\times$ cost overhead~\cite{schnabl2025}, driven by the need for larger instances to accommodate enclave memory reservation, indicating that the total cost of confidential inference grows substantially at the billion-parameter scale.
 Evaluating \textsc{EphemeralML} on billion-parameter models---potentially with INT4/INT8 quantization to fit within enclave memory constraints---is an important direction for validating the system's applicability beyond embedding-class models.
 
 % ============================================================
@@ -741,10 +741,10 @@ The implementation in 13,000+ lines of Rust, with feature-gated dual compilation
 % ============================================================
 \begin{thebibliography}{10}
 
-\bibitem{akram2024}
-A.~Akram, A.~Mukherjee, and M.~Huzaifa,
-``Performance analysis of confidential VMs for deep learning inference,''
-in \emph{Proc.\ IEEE International Symposium on Secure and Private Execution Environment Design (SEED)}, 2024.
+\bibitem{misono2024}
+T.~Misono, D.~Stavrakakis, N.~Santos, and P.~Bhatotia,
+``Confidential VMs explained: An empirical analysis of AMD SEV-SNP and Intel TDX,''
+in \emph{Proc.\ ACM on Measurement and Analysis of Computing Systems (SIGMETRICS)}, vol.~8, no.~3, 2024.
 
 \bibitem{tramer2019}
 F.~Tram\`er and D.~Boneh,
@@ -752,20 +752,20 @@ F.~Tram\`er and D.~Boneh,
 in \emph{Proc.\ ICLR}, 2019.
 
 \bibitem{lee2019}
-T.~Lee, Z.~Lin, S.~Pushp, C.~Li, Y.~Liu, Y.~Song, T.~Xu, and Z.~Zhang,
+T.~Lee, Z.~Lin, S.~Pushp, C.~Li, Y.~Liu, Y.~Lee, F.~Xu, C.~Xu, J.~Song, and L.~Zhang,
 ``Occlumency: Privacy-preserving remote deep-learning inference using SGX,''
 in \emph{Proc.\ ACM MobiCom}, 2019.
 
 \bibitem{intel2023}
 Intel Corporation,
-``Intel Trust Domain Extensions (TDX): Whitepaper,''
+``Performance considerations: Intel Trust Domain Extensions on 4th Gen Intel Xeon Scalable Processors,''
 2023.
-\url{https://www.intel.com/content/www/us/en/developer/tools/trust-domain-extensions/overview.html}
+\url{https://www.intel.com/content/www/us/en/developer/articles/technical/trust-domain-extensions-on-4th-gen-xeon-processors.html}
 
-\bibitem{nvidia2024}
-NVIDIA Corporation,
-``NVIDIA Confidential Computing: Protecting AI workloads with H100 GPUs,''
-2024.
+\bibitem{zhu2024}
+J.~Zhu, H.~Tian, M.~Xue, and X.~Wang,
+``Confidential computing on NVIDIA H100 GPU: A performance benchmark study,''
+arXiv preprint arXiv:2409.03992, 2024.
 
 \bibitem{volos2018}
 S.~Volos, K.~Vaswani, and R.~Bruno,
@@ -795,7 +795,7 @@ in \emph{Proc.\ DaMoN (SIGMOD Workshop)}, 2025.
 \bibitem{schnabl2025}
 C.~Schnabl, D.~Hugenroth, B.~Marino, and A.~R.~Beresford,
 ``Attestable Audits: Verifiable AI safety benchmarks using trusted execution environments,''
-in \emph{Proc.\ ICML}, 2025.
+in \emph{ICML Workshop on Technical AI Governance (TAIG)}, 2025.
 
 \end{thebibliography}
 
