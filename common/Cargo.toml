@@ -25,6 +25,9 @@ hkdf = "0.12"
 # CBOR serialization
 serde_cbor = "0.11"
 
+# Lazy initialization
+lazy_static = "1.4"
+
 # Serde bytes for efficient byte array serialization
 serde_bytes = "0.11"
 byteorder = "1.5.0"

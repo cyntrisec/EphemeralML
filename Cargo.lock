@@ -1654,6 +1654,7 @@ dependencies = [
  "hex",
  "hkdf",
  "hpke",
+ "lazy_static",
  "proptest",
  "rand 0.8.5",
  "serde",

@@ -11,6 +11,7 @@ pub mod inference;
 pub mod kms_proxy;
 pub mod metrics;
 pub mod model_manifest;
+pub mod model_registry;
 pub mod protocol;
 pub mod receipt_signing;
 pub mod storage_protocol;

@@ -1,8 +1,12 @@
 //! Bare-metal benchmark baseline for EphemeralML.
 //!
-//! Runs the same MiniLM-L6-v2 inference workload as the enclave benchmark mode,
-//! but on the host without any TEE overhead. Outputs JSON results to stdout
-//! for direct comparison with enclave results.
+//! Runs embedding model inference workloads on the host without any TEE overhead.
+//! Outputs JSON results to stdout for direct comparison with enclave results.
+//!
+//! Supports multiple models via --model-id flag:
+//!   - minilm-l6  (MiniLM-L6-v2, 22.7M params, default)
+//!   - minilm-l12 (MiniLM-L12-v2, 33.4M params)
+//!   - bert-base  (BERT-base-uncased, 110M params)
 
 use candle_core::{DType, Device};
 use candle_nn::VarBuilder;
@@ -10,6 +14,7 @@ use candle_transformers::models::bert::{BertModel, Config as BertConfig};
 use chacha20poly1305::{aead::Aead, ChaCha20Poly1305, Key, KeyInit, Nonce};
 use ephemeral_ml_common::inference::run_single_inference;
 use ephemeral_ml_common::metrics;
+use ephemeral_ml_common::model_registry::{get_model_info_or_default, list_models};
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
 const BENCHMARK_INPUT_TEXTS: &[&str] = &[
@@ -32,6 +37,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args: Vec<String> = std::env::args().collect();
 
     // Parse optional arguments
+    let model_id = args
+        .iter()
+        .position(|a| a == "--model-id")
+        .and_then(|i| args.get(i + 1))
+        .map(|s| s.as_str())
+        .unwrap_or("minilm-l6");
+
     let model_dir = args
         .iter()
         .position(|a| a == "--model-dir")
@@ -46,19 +58,63 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .map(|s| s.as_str())
         .unwrap_or("unknown");
 
+    // Handle --help
+    if args.iter().any(|a| a == "--help" || a == "-h") {
+        eprintln!("Usage: benchmark_baseline [OPTIONS]");
+        eprintln!();
+        eprintln!("Options:");
+        eprintln!("  --model-id MODEL      Model to benchmark (default: minilm-l6)");
+        eprintln!("  --model-dir DIR       Directory containing model artifacts");
+        eprintln!("  --instance-type TYPE  Hardware identifier for JSON output");
+        eprintln!();
+        eprintln!("Available models: {}", list_models().join(", "));
+        return Ok(());
+    }
+
+    // Get model metadata from registry
+    let model_info = get_model_info_or_default(model_id);
+
     eprintln!("[baseline] Starting bare-metal benchmark");
+    eprintln!(
+        "[baseline] Model: {} ({}, {} params)",
+        model_info.display_name, model_id, model_info.params
+    );
     eprintln!("[baseline] Model directory: {}", model_dir);
 
     let total_start = Instant::now();
     let device = Device::Cpu;
 
     // ── Stage 1: Load model artifacts from local filesystem ──
+    // Try model-specific subdirectory first, fall back to flat directory
+    let (config_path, tokenizer_path, weights_path) = {
+        let subdir = format!("{}/{}", model_dir, model_id);
+        if std::path::Path::new(&subdir).exists() {
+            (
+                format!("{}/config.json", subdir),
+                format!("{}/tokenizer.json", subdir),
+                format!("{}/{}", subdir, model_info.weights_filename(model_id)),
+            )
+        } else {
+            // Backwards compatibility: flat directory with legacy naming
+            let weights_file = if model_id == "minilm-l6" || model_id == "mini-lm-v2" {
+                "mini-lm-v2-weights.enc".to_string()
+            } else {
+                model_info.weights_filename(model_id)
+            };
+            (
+                format!("{}/config.json", model_dir),
+                format!("{}/tokenizer.json", model_dir),
+                format!("{}/{}", model_dir, weights_file),
+            )
+        }
+    };
+
     eprintln!("[baseline] Stage 1: Loading model artifacts from disk");
     let fetch_start = Instant::now();
 
-    let config_bytes = std::fs::read(format!("{}/config.json", model_dir))?;
-    let tokenizer_bytes = std::fs::read(format!("{}/tokenizer.json", model_dir))?;
-    let encrypted_weights = std::fs::read(format!("{}/mini-lm-v2-weights.enc", model_dir))?;
+    let config_bytes = std::fs::read(&config_path)?;
+    let tokenizer_bytes = std::fs::read(&tokenizer_path)?;
+    let encrypted_weights = std::fs::read(&weights_path)?;
 
     let model_fetch_ms = fetch_start.elapsed().as_secs_f64() * 1000.0;
     eprintln!(
@@ -158,8 +214,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let results = serde_json::json!({
         "environment": "bare_metal",
-        "model": "MiniLM-L6-v2",
-        "model_params": 22_700_000,
+        "model": model_info.display_name,
+        "model_id": model_id,
+        "model_params": model_info.params,
         "hardware": instance_type,
         "timestamp": format!("{}Z", timestamp),
         "commit": commit,
