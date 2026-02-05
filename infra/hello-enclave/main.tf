@@ -377,20 +377,13 @@ variable "attest_test_pcr0" {
 }
 
 # IAM policy granting the host role permission to use the attest test key.
-# KMS requires BOTH a key policy AND an identity-based policy when the key policy
-# includes the root account statement (which enables IAM policy evaluation).
-# The key policy's PCR0 condition still enforces attestation — the IAM policy just
-# provides the identity-based "half" of the authorization.
+# Required because the key policy includes the root account statement,
+# enabling combined (key policy + IAM) evaluation.
 resource "aws_iam_role_policy" "kms_attest_test_access" {
   count = var.attest_test_pcr0 != "" ? 1 : 0
   name  = "${var.project_name}-kms-attest-test-access"
   role  = aws_iam_role.host.id
 
-  # NOTE: The IAM policy must NOT include kms:RecipientAttestation conditions.
-  # Those condition keys are only valid in KMS key policies, not IAM policies.
-  # Attestation enforcement is handled by the key policy's Condition block.
-  # The IAM policy provides the identity-based "half" of authorization that KMS
-  # requires when the key policy enables IAM policy evaluation (via root statement).
   policy = jsonencode({
     Version = "2012-10-17"
     Statement = [
