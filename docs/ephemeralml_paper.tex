@@ -10,9 +10,9 @@
 \usepackage{tabularx}
 
 % --- Title ---
-% --- Paper benchmark macros (3-run averages, commit 8fc6c36, 2026-02-05) ---
+% --- Paper benchmark macros (3-run averages, 2026-02-05) ---
+% Commits: MiniLM-L6 & BERT-base at 8fc6c36, MiniLM-L12 at f0b372a
 \newcommand{\BenchInstance}{m6i.xlarge}
-\newcommand{\BenchCommit}{8fc6c36}
 \newcommand{\BenchModelName}{MiniLM-L6-v2}
 \newcommand{\BenchModelParams}{22.7M}
 \newcommand{\BenchNumRuns}{3}
@@ -292,7 +292,7 @@ After each inference, the enclave produces an Attested Execution Receipt (AER) c
   \item Receipt ID, protocol version, and security mode
   \item Enclave measurements (PCR0/1/2) and attestation document hash
   \item SHA-256 hashes of the request and response
-  \item Model ID, version, execution time, and peak memory
+  \item Model ID, version, and execution time
   \item Monotonic sequence number
 \end{itemize}
 
@@ -340,7 +340,7 @@ All tests pass in CI (GitHub Actions) on every push to \texttt{main}.
 We evaluate \textsc{EphemeralML} on an \texttt{\BenchInstance{}} EC2 instance (4~vCPUs, 16\,GB RAM, Intel Xeon Ice Lake) running Amazon Linux~2023.
 The enclave is allocated 2~vCPUs and 4096\,MB RAM.
 We benchmark three encoder models: \BenchModelName{} (\BenchModelParams{} parameters, 384-dim embeddings), MiniLM-L12-v2 (\ModelLTwelveParams{}, 384-dim), and BERT-base-uncased (\ModelBertBaseParams{}, 768-dim).
-All latency measurements use 100 iterations after 3 warmup runs, repeated \BenchNumRuns{} times per model at commit \texttt{\BenchCommit{}}.
+All latency measurements use 100 iterations after 3 warmup runs, repeated \BenchNumRuns{} times per model (MiniLM-L6-v2 and BERT-base at commit \texttt{8fc6c36}; MiniLM-L12-v2 at commit \texttt{f0b372a}; inference logic unchanged between commits).
 Results are highly reproducible: coefficient of variation is $< 1\%$ for both bare-metal and enclave inference latency across all models and runs.
 
 \subsection{Inference Latency}
@@ -560,7 +560,8 @@ Table~\ref{tab:input-scaling} measures inference latency as a function of input 
 \end{tabular}
 \end{table}
 
-The linear fit is $\mathrm{latency} = -18.1\,\text{ms} + 0.953\,\text{ms/token}$, confirming that BERT self-attention complexity dominates and scales linearly with sequence length in this range.
+The linear fit is $\mathrm{latency} = -18.1\,\text{ms} + 0.953\,\text{ms/token}$.
+While BERT self-attention is theoretically quadratic in sequence length, the empirical fit is near-linear over the 32--256 token range tested, likely because GEMM constants and memory access patterns dominate at these moderate lengths.
 
 \subsection{True End-to-End Latency}
 
@@ -663,7 +664,7 @@ Intel TDX offers similar VM-level confidential computing; Intel reports $\sim$4\
 
 \paragraph{GPU TEEs.}
 NVIDIA's Confidential Computing (cGPU) with H100 GPUs enables TEE-protected GPU inference.
-Zhu et~al.~\cite{zhu2024} benchmark H100 confidential computing and report 5--7\% throughput overhead for Llama-3.1-8B and Phi-3-14B, though the threat model differs (GPU memory is trusted, CPU-GPU transfers are encrypted).
+Zhu et~al.~\cite{zhu2024} benchmark H100 confidential computing and report $\sim$5--7\% TPS throughput overhead for Llama-3.1-8B (6.9\%) and Phi-3-14B (4.6\%), with negligible overhead for Llama-3.1-70B, though the threat model differs (GPU memory is trusted, CPU-GPU transfers are encrypted).
 Graviton~\cite{volos2018} and HIX~\cite{jang2019} proposed earlier GPU isolation schemes with higher overhead.
 
 \paragraph{Nitro Enclave Systems.}
@@ -752,7 +753,7 @@ F.~Tram\`er and D.~Boneh,
 in \emph{Proc.\ ICLR}, 2019.
 
 \bibitem{lee2019}
-T.~Lee, Z.~Lin, S.~Pushp, C.~Li, Y.~Liu, Y.~Lee, F.~Xu, C.~Xu, J.~Song, and L.~Zhang,
+T.~Lee, Z.~Lin, S.~Pushp, C.~Li, Y.~Liu, Y.~Lee, F.~Xu, C.~Xu, L.~Zhang, and J.~Song,
 ``Occlumency: Privacy-preserving remote deep-learning inference using SGX,''
 in \emph{Proc.\ ACM MobiCom}, 2019.
 
@@ -763,8 +764,8 @@ Intel Corporation,
 \url{https://www.intel.com/content/www/us/en/developer/articles/technical/trust-domain-extensions-on-4th-gen-xeon-processors.html}
 
 \bibitem{zhu2024}
-J.~Zhu, H.~Tian, M.~Xue, and X.~Wang,
-``Confidential computing on NVIDIA H100 GPU: A performance benchmark study,''
+J.~Zhu, H.~Yin, and S.~Zhou,
+``Confidential computing on NVIDIA Hopper GPUs: A performance benchmark study,''
 arXiv preprint arXiv:2409.03992, 2024.
 
 \bibitem{volos2018}
