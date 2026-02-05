@@ -156,7 +156,10 @@ if [[ ${#HARDWARE[@]} -gt 0 ]]; then
 fi
 
 echo ""
-if [[ $FAIL -eq 0 ]]; then
+if [[ $TOTAL -eq 0 ]]; then
+    red "Result: NO VALID DIRECTORIES AUDITED (glob matched nothing or all skipped)"
+    exit 1
+elif [[ $FAIL -eq 0 ]]; then
     green "Result: ALL CHECKS PASSED"
     exit 0
 else
