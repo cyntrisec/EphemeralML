@@ -27,7 +27,7 @@
 #   - Rust toolchain installed
 #
 # Usage:
-#   ./scripts/run_benchmark.sh [--model-id MODEL] [--clean] [--skip-baseline] [--skip-build] [--output-dir DIR]
+#   ./scripts/run_benchmark.sh [--model-id MODEL] [--clean] [--skip-baseline] [--skip-build] [--require-kms] [--allow-kms-bypass] [--output-dir DIR]
 #
 # Flags:
 #   --model-id       Model to benchmark (default: minilm-l6). Must be uploaded to S3.
@@ -36,6 +36,9 @@
 #                    (option_env! is evaluated at compile time, not runtime).
 #   --skip-baseline  Skip the bare-metal baseline benchmark.
 #   --skip-build     Reuse existing binaries (skip all cargo build / docker build steps).
+#   --require-kms    Enforce fail-closed KMS attestation path (default).
+#   --allow-kms-bypass
+#                    Disable fail-closed KMS enforcement for enclave benchmark (default: enforce).
 #   --output-dir     Write results to this directory (default: $PROJECT_ROOT/benchmark_results).
 
 set -Eeuo pipefail
@@ -49,6 +52,7 @@ CLEAN_BUILD=false
 ENCLAVE_MEMORY_MB=4096
 ENCLAVE_CPUS=2
 MODEL_ID="minilm-l6"
+REQUIRE_KMS=true
 # IMDSv2 requires a token; fall back to IMDSv1, then "unknown"
 IMDS_TOKEN=$(curl -sf -X PUT "http://169.254.169.254/latest/api/token" -H "X-aws-ec2-metadata-token-ttl-seconds: 60" 2>/dev/null || true)
 if [ -n "$IMDS_TOKEN" ]; then
@@ -66,6 +70,8 @@ while [[ $# -gt 0 ]]; do
         --skip-build) SKIP_BUILD=true; shift ;;
         --clean) CLEAN_BUILD=true; shift ;;
         --model-id) MODEL_ID="$2"; shift 2 ;;
+        --require-kms) REQUIRE_KMS=true; shift ;;
+        --allow-kms-bypass) REQUIRE_KMS=false; shift ;;
         --output-dir) OUTPUT_DIR="$2"; shift 2 ;;
         *) echo "Unknown argument: $1"; exit 1 ;;
     esac
@@ -77,6 +83,14 @@ mkdir -p "$OUTPUT_DIR"
 
 export GIT_COMMIT INSTANCE_TYPE
 
+if $REQUIRE_KMS; then
+    log "KMS fail-closed enforcement: enabled (--require-kms)"
+    REQUIRE_KMS_BUILD_ARG=1
+else
+    log "KMS fail-closed enforcement: disabled (--allow-kms-bypass)"
+    REQUIRE_KMS_BUILD_ARG=0
+fi
+
 # Capture run metadata for reproducibility (separate from per-binary JSON outputs).
 RUN_TS="$(date -u +%s)"
 cat >"$OUTPUT_DIR/run_metadata.json" <<EOF
@@ -85,6 +99,7 @@ cat >"$OUTPUT_DIR/run_metadata.json" <<EOF
   "git_commit": "${GIT_COMMIT}",
   "instance_type": "${INSTANCE_TYPE}",
   "model_id": "${MODEL_ID}",
+  "require_kms": ${REQUIRE_KMS},
   "enclave_memory_mb": ${ENCLAVE_MEMORY_MB},
   "enclave_cpus": ${ENCLAVE_CPUS}
 }
@@ -137,6 +152,7 @@ if ! $SKIP_BUILD; then
         --build-arg GIT_COMMIT="$GIT_COMMIT" \
         --build-arg INSTANCE_TYPE="$INSTANCE_TYPE" \
         --build-arg MODEL_ID="$MODEL_ID" \
+        --build-arg REQUIRE_KMS="$REQUIRE_KMS_BUILD_ARG" \
         -t vsock-pingpong-benchmark:latest \
         "$PROJECT_ROOT" 2>&1 | tail -10
     log "  Docker image built"
@@ -208,12 +224,14 @@ while [[ $SECONDS -lt $DEADLINE ]]; do
 done
 
 # Extract JSON from console log
+ENCLAVE_RESULTS_FOUND=false
 if grep -q "BENCHMARK_RESULTS_JSON_BEGIN" "$OUTPUT_DIR/enclave_console.log"; then
     sed -n '/BENCHMARK_RESULTS_JSON_BEGIN/,/BENCHMARK_RESULTS_JSON_END/p' \
         "$OUTPUT_DIR/enclave_console.log" | \
         grep -v "BENCHMARK_RESULTS_JSON" \
         > "$OUTPUT_DIR/enclave_results.json"
     log "  Enclave results saved to $OUTPUT_DIR/enclave_results.json"
+    ENCLAVE_RESULTS_FOUND=true
 else
     log "  WARNING: Benchmark results not found in console output"
     log "  Check $OUTPUT_DIR/enclave_console.log for details"
@@ -223,6 +241,22 @@ fi
 kill "$CONSOLE_PID" 2>/dev/null || true
 sudo nitro-cli terminate-enclave --enclave-id "$ENCLAVE_ID" 2>/dev/null || true
 kill "$KMS_PROXY_PID" 2>/dev/null || true
+
+if $REQUIRE_KMS && ! $ENCLAVE_RESULTS_FOUND; then
+    log "  ERROR: require-kms enforced and enclave benchmark produced no results"
+    log "  This usually means KMS attestation failed closed; inspect enclave_console.log"
+    exit 1
+fi
+
+if $REQUIRE_KMS && $ENCLAVE_RESULTS_FOUND; then
+    kms_exercised=$(python3 -c "import json; d=json.load(open('$OUTPUT_DIR/enclave_results.json')); print(str(d.get('security',{}).get('kms_exercised', None)).lower())" 2>/dev/null || echo "parse_error")
+    kms_bypassed=$(python3 -c "import json; d=json.load(open('$OUTPUT_DIR/enclave_results.json')); print(str(d.get('security',{}).get('kms_bypassed', None)).lower())" 2>/dev/null || echo "parse_error")
+    if [ "$kms_exercised" != "true" ] || [ "$kms_bypassed" != "false" ]; then
+        log "  ERROR: require-kms violation in enclave_results.json (kms_exercised=$kms_exercised, kms_bypassed=$kms_bypassed)"
+        exit 1
+    fi
+    log "  require-kms check passed (kms_exercised=true, kms_bypassed=false)"
+fi
 
 # ── Step 6a: Existing bare-metal benchmarks (crypto, e2e, cose, concurrent) ──
 log "Step 6a: Running bare-metal benchmark suite (crypto, e2e, cose, concurrent)"
