@@ -886,6 +886,135 @@ async fn run_kms_audit() {
         }
     }
 
+    // ── Test 6: Bit-flipped attestation doc (1 byte changed in real doc) ──
+    {
+        eprintln!("[kms-audit] Test 6: Bit-flipped attestation doc");
+        let mut flipped_doc = attestation_doc.clone();
+        // Flip one byte near the middle of the attestation document
+        if flipped_doc.len() > 100 {
+            flipped_doc[100] ^= 0xFF;
+        }
+        let start = Instant::now();
+        let req_env = KmsProxyRequestEnvelope {
+            request_id: generate_id(),
+            trace_id: Some("kms-audit-test6".to_string()),
+            request: KmsRequest::GenerateDataKey {
+                key_id: key_alias.clone(),
+                key_spec: "AES_256".to_string(),
+                encryption_context: None,
+                recipient: Some(flipped_doc),
+            },
+        };
+        let result = kms_roundtrip(&req_env);
+        let latency_ms = start.elapsed().as_secs_f64() * 1000.0;
+
+        let (actual, error_code, cfr_present, pt_present, kms_req_id) = match result {
+            Ok(env) => match &env.response {
+                KmsResponse::GenerateDataKey {
+                    ciphertext_for_recipient,
+                    plaintext,
+                    ..
+                } => (
+                    "success",
+                    serde_json::Value::Null,
+                    ciphertext_for_recipient.is_some(),
+                    plaintext.as_ref().map_or(false, |p| !p.is_empty()),
+                    env.kms_request_id.clone(),
+                ),
+                KmsResponse::Error { code, message } => (
+                    "error",
+                    serde_json::json!(format!("{:?}: {}", code, message)),
+                    false,
+                    false,
+                    env.kms_request_id.clone(),
+                ),
+                _ => ("unexpected", serde_json::Value::Null, false, false, None),
+            },
+            Err(e) => (
+                "transport_error",
+                serde_json::json!(e),
+                false,
+                false,
+                None,
+            ),
+        };
+        eprintln!("[kms-audit] Test 6 result: {}", actual);
+        results.push(serde_json::json!({
+            "test_id": "bitflipped_attestation_doc",
+            "test_num": 6,
+            "expected": "error",
+            "actual": actual,
+            "error_code": error_code,
+            "kms_request_id": kms_req_id,
+            "latency_ms": round2(latency_ms),
+            "ciphertext_for_recipient_present": cfr_present,
+            "plaintext_present": pt_present
+        }));
+    }
+
+    // ── Test 7: Replay previously used attestation doc ──
+    // Re-send the same attestation doc that was used in Test 1 (minutes later)
+    {
+        eprintln!("[kms-audit] Test 7: Replay attestation doc (same doc as Test 1)");
+        let start = Instant::now();
+        let req_env = KmsProxyRequestEnvelope {
+            request_id: generate_id(),
+            trace_id: Some("kms-audit-test7-replay".to_string()),
+            request: KmsRequest::GenerateDataKey {
+                key_id: key_alias.clone(),
+                key_spec: "AES_256".to_string(),
+                encryption_context: None,
+                recipient: Some(attestation_doc.clone()),
+            },
+        };
+        let result = kms_roundtrip(&req_env);
+        let latency_ms = start.elapsed().as_secs_f64() * 1000.0;
+
+        let (actual, error_code, cfr_present, pt_present, kms_req_id) = match result {
+            Ok(env) => match &env.response {
+                KmsResponse::GenerateDataKey {
+                    ciphertext_for_recipient,
+                    plaintext,
+                    ..
+                } => (
+                    "success",
+                    serde_json::Value::Null,
+                    ciphertext_for_recipient.is_some(),
+                    plaintext.as_ref().map_or(false, |p| !p.is_empty()),
+                    env.kms_request_id.clone(),
+                ),
+                KmsResponse::Error { code, message } => (
+                    "error",
+                    serde_json::json!(format!("{:?}: {}", code, message)),
+                    false,
+                    false,
+                    env.kms_request_id.clone(),
+                ),
+                _ => ("unexpected", serde_json::Value::Null, false, false, None),
+            },
+            Err(e) => (
+                "transport_error",
+                serde_json::json!(e),
+                false,
+                false,
+                None,
+            ),
+        };
+        eprintln!("[kms-audit] Test 7 result: {}", actual);
+        results.push(serde_json::json!({
+            "test_id": "replay_attestation_doc",
+            "test_num": 7,
+            "expected": "success_or_error",
+            "actual": actual,
+            "error_code": error_code,
+            "kms_request_id": kms_req_id,
+            "latency_ms": round2(latency_ms),
+            "ciphertext_for_recipient_present": cfr_present,
+            "plaintext_present": pt_present,
+            "note": "Replay of same attestation doc used in Test 1"
+        }));
+    }
+
     // ── Output structured results ──
     let output = serde_json::json!({
         "audit_type": "kms_attestation_enforcement",
