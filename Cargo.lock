@@ -5110,6 +5110,7 @@ dependencies = [
  "safetensors 0.7.0",
  "serde",
  "serde_bytes",
+ "serde_cbor",
  "serde_json",
  "sha2",
  "tokenizers",

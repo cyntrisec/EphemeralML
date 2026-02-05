@@ -278,8 +278,9 @@ async fn handle_connection<S: AsyncStream + 'static>(
                     event = "storage_request_raw",
                     payload_len = msg.payload.len()
                 );
-                let req: StorageRequest = serde_json::from_slice(&msg.payload).map_err(|e| {
-                    error!(event = "storage_parse_error", error = %e, payload = ?String::from_utf8_lossy(&msg.payload));
+                // Use CBOR for Storage channel - binary-efficient encoding for large payloads
+                let req: StorageRequest = serde_cbor::from_slice(&msg.payload).map_err(|e| {
+                    error!(event = "storage_parse_error", error = %e);
                     e
                 })?;
                 info!(event = "storage_request", model_id = %req.model_id, "fetching model data");
@@ -295,7 +296,8 @@ async fn handle_connection<S: AsyncStream + 'static>(
                     }
                 };
 
-                let resp_payload = serde_json::to_vec(&resp)?;
+                // Use CBOR for Storage channel - binary-efficient encoding for large payloads
+                let resp_payload = serde_cbor::to_vec(&resp)?;
                 let resp_msg = VSockMessage::new(MessageType::Storage, msg.sequence, resp_payload)?;
                 stream.write_all(&resp_msg.encode()).await?;
             }

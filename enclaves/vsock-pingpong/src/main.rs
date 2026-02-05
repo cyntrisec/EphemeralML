@@ -1073,7 +1073,8 @@ fn fetch_artifact(model_key: &str) -> Vec<u8> {
         model_id: model_key.to_string(),
         part_index: 0,
     };
-    let payload = serde_json::to_vec(&storage_req).unwrap();
+    // Use CBOR for Storage channel - binary-efficient encoding for large payloads
+    let payload = serde_cbor::to_vec(&storage_req).unwrap();
     let msg = VSockMessage::new(MessageType::Storage, 0, payload).unwrap();
 
     let mut stream = vsock_connect(8082);
@@ -1098,7 +1099,8 @@ fn fetch_artifact(model_key: &str) -> Vec<u8> {
         ));
     }
 
-    let resp: StorageResponse = serde_json::from_slice(&resp_msg.payload).unwrap();
+    // Use CBOR for Storage channel - binary-efficient encoding for large payloads
+    let resp: StorageResponse = serde_cbor::from_slice(&resp_msg.payload).unwrap();
     match resp {
         StorageResponse::Data { payload, .. } => payload,
         StorageResponse::Error { message } => {
