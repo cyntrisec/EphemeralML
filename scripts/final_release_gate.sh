@@ -35,12 +35,17 @@ if [[ -z "$OUTPUT_DIR" ]]; then
     PASSTHROUGH_ARGS+=(--output-dir "$OUTPUT_DIR")
 fi
 
-# Ensure --require-kms is present (add if no kms flag was given).
+# Release gate requires --require-kms; reject --allow-kms-bypass.
+for arg in "${PASSTHROUGH_ARGS[@]}"; do
+    if [[ "$arg" == "--allow-kms-bypass" ]]; then
+        echo "ERROR: --allow-kms-bypass is not permitted in the release gate." >&2
+        exit 1
+    fi
+done
+# Add --require-kms if not already present.
 HAS_KMS_FLAG=false
 for arg in "${PASSTHROUGH_ARGS[@]}"; do
-    case "$arg" in
-        --require-kms|--allow-kms-bypass) HAS_KMS_FLAG=true ;;
-    esac
+    [[ "$arg" == "--require-kms" ]] && HAS_KMS_FLAG=true
 done
 if ! $HAS_KMS_FLAG; then
     PASSTHROUGH_ARGS+=(--require-kms)
