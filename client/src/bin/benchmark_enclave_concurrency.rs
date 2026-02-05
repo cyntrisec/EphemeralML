@@ -22,7 +22,7 @@ use ephemeral_ml_common::{
 };
 use sha2::{Digest, Sha256};
 use std::sync::Arc;
-use std::time::{Instant, SystemTime, UNIX_EPOCH};
+use std::time::Instant;
 
 const BENCHMARK_INPUT_TEXTS: &[&str] = &[
     "What is the capital of France?",
@@ -385,10 +385,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let attestation_doc_hash = attestation_hash;
 
     let commit = option_env!("GIT_COMMIT").unwrap_or("unknown");
-    let timestamp = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_secs();
+    let timestamp = ephemeral_ml_common::metrics::iso8601_now();
 
     let mut results_per_level = Vec::new();
     for &n in CONCURRENCY_LEVELS {
@@ -436,7 +433,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         "model": model_info.display_name,
         "model_id": model_id,
         "model_params": model_info.params,
-        "timestamp": format!("{}Z", timestamp),
+        "timestamp": timestamp,
         "commit": commit,
         "iterations_per_client": ITERATIONS_PER_CLIENT,
         "warmup": NUM_WARMUP,

@@ -12,7 +12,7 @@ use ephemeral_ml_common::model_registry::{
     get_model_info_or_default, list_models, resolve_local_artifact_paths,
 };
 use std::sync::Arc;
-use std::time::{Instant, SystemTime, UNIX_EPOCH};
+use std::time::Instant;
 
 const BENCHMARK_INPUT_TEXTS: &[&str] = &[
     "What is the capital of France?",
@@ -232,10 +232,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     eprintln!("[concurrent] Model loaded, starting benchmarks...");
 
     let commit = option_env!("GIT_COMMIT").unwrap_or("unknown");
-    let timestamp = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_secs();
+    let timestamp = ephemeral_ml_common::metrics::iso8601_now();
 
     // Run at each concurrency level
     let mut results_per_level = Vec::new();
@@ -275,7 +272,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         "model": model_info.display_name,
         "model_id": model_id,
         "model_params": model_info.params,
-        "timestamp": format!("{}Z", timestamp),
+        "timestamp": timestamp,
         "commit": commit,
         "iterations_per_thread": ITERATIONS_PER_THREAD,
         "warmup": NUM_WARMUP,

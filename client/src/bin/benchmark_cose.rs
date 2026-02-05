@@ -23,7 +23,7 @@ use openssl::pkey::PKey;
 use openssl::sign::{Signer, Verifier};
 use openssl::x509::extension::{BasicConstraints, SubjectKeyIdentifier};
 use openssl::x509::{X509Builder, X509NameBuilder, X509};
-use std::time::{Instant, SystemTime, UNIX_EPOCH};
+use std::time::Instant;
 
 const NUM_WARMUP: usize = 3;
 const NUM_ITERATIONS: usize = 100;
@@ -604,16 +604,13 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
     );
 
     let commit = option_env!("GIT_COMMIT").unwrap_or("unknown");
-    let timestamp = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_secs();
+    let timestamp = ephemeral_ml_common::metrics::iso8601_now();
 
     let results = serde_json::json!({
         "benchmark": "cose_attestation_verification",
         "environment": "bare_metal",
         "hardware": instance_type,
-        "timestamp": format!("{}Z", timestamp),
+        "timestamp": timestamp,
         "commit": commit,
         "iterations": NUM_ITERATIONS,
         "warmup": NUM_WARMUP,

@@ -25,12 +25,22 @@ if [ -z "$mode" ]; then
   mode="vsock"
 fi
 
-echo "[init] launching /vsock-pingpong --mode ${mode} (argv: $*)"
+require_kms="${VSOCK_PINGPONG_REQUIRE_KMS:-0}"
+require_kms_flag=""
+case "$require_kms" in
+  1|true|TRUE|yes|YES) require_kms_flag="--require-kms" ;;
+esac
+
+echo "[init] launching /vsock-pingpong --mode ${mode} ${require_kms_flag} (argv: $*)"
 export RUST_BACKTRACE=1
 
 # Run as a child so PID1 stays alive even if the app dies.
 # Use env to propagate current environment variables
-env /vsock-pingpong --mode "$mode"
+if [ -n "$require_kms_flag" ]; then
+  env /vsock-pingpong --mode "$mode" "$require_kms_flag"
+else
+  env /vsock-pingpong --mode "$mode"
+fi
 rc=$?
 echo "[init] /vsock-pingpong exited rc=$rc"
 

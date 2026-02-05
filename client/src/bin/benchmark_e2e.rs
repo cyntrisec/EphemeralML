@@ -16,7 +16,7 @@ use ephemeral_ml_common::{
 };
 
 use sha2::{Digest, Sha256};
-use std::time::{Instant, SystemTime, UNIX_EPOCH};
+use std::time::Instant;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpListener;
 
@@ -374,10 +374,7 @@ async fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
     );
 
     let commit = option_env!("GIT_COMMIT").unwrap_or("unknown");
-    let timestamp = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_secs();
+    let timestamp = ephemeral_ml_common::metrics::iso8601_now();
 
     // 1. In-process crypto pipeline (no TCP overhead)
     let (setup_stats, request_stats) = bench_e2e_crypto_pipeline();
@@ -391,7 +388,7 @@ async fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
         "benchmark": "e2e_encrypted_request",
         "environment": "bare_metal_mock",
         "hardware": instance_type,
-        "timestamp": format!("{}Z", timestamp),
+        "timestamp": timestamp,
         "commit": commit,
         "iterations": NUM_ITERATIONS,
         "warmup": NUM_WARMUP,

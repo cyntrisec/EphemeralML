@@ -1,8 +1,14 @@
 use crate::{EphemeralError, Result};
 use byteorder::{BigEndian, ByteOrder};
 
-/// Maximum message size (1GB) to prevent DoS while allowing model weights
+/// Maximum message size (1GB) for model-weight transfers over VSock (host proxy, model loader).
+/// This must be large because encrypted SafeTensors can be hundreds of MB.
 pub const MAX_MESSAGE_SIZE: usize = 1024 * 1024 * 1024;
+
+/// Maximum frame size (32MB) for inference/session protocol messages.
+/// This is the limit enforced on client-facing and enclave-serving paths
+/// where the peer is less trusted. Aligns with ValidationLimits::max_payload_size.
+pub const MAX_FRAME_SIZE: usize = 32 * 1024 * 1024;
 
 /// VSock protocol message type
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

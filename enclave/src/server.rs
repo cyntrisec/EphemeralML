@@ -103,6 +103,22 @@ impl<
             }
             let len = u32::from_be_bytes(len_buf) as usize;
 
+            // Guard: reject frames larger than the inference protocol limit
+            if len > ephemeral_ml_common::vsock::MAX_FRAME_SIZE {
+                eprintln!(
+                    "[server] frame too large: {} bytes (max {})",
+                    len,
+                    ephemeral_ml_common::vsock::MAX_FRAME_SIZE
+                );
+                return Err(EnclaveError::Enclave(EphemeralError::Validation(
+                    ephemeral_ml_common::ValidationError::SizeLimitExceeded(format!(
+                        "Frame size {} exceeds maximum {}",
+                        len,
+                        ephemeral_ml_common::vsock::MAX_FRAME_SIZE
+                    )),
+                )));
+            }
+
             // 2. Read message body
             let mut body = vec![0u8; len];
             stream.read_exact(&mut body).await.map_err(|e| {

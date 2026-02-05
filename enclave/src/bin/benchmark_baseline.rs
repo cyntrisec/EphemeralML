@@ -16,7 +16,7 @@ use ephemeral_ml_common::metrics;
 use ephemeral_ml_common::model_registry::{
     get_model_info_or_default, list_models, resolve_local_artifact_paths,
 };
-use std::time::{Instant, SystemTime, UNIX_EPOCH};
+use std::time::Instant;
 
 const BENCHMARK_INPUT_TEXTS: &[&str] = &[
     "What is the capital of France?",
@@ -193,10 +193,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // ── Stage 8: Localhost TCP RTT for baseline comparison ──
     // Not applicable for bare metal — set to 0
     let commit = option_env!("GIT_COMMIT").unwrap_or("unknown");
-    let timestamp = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_secs();
+    let timestamp = ephemeral_ml_common::metrics::iso8601_now();
 
     let results = serde_json::json!({
         "environment": "bare_metal",
@@ -204,7 +201,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         "model_id": model_id,
         "model_params": model_info.params,
         "hardware": instance_type,
-        "timestamp": format!("{}Z", timestamp),
+        "timestamp": timestamp,
         "commit": commit,
         "stages": {
             "attestation_ms": 0.0,

@@ -123,6 +123,15 @@ impl SecureClient for SecureEnclaveClient {
             .await
             .map_err(|e| ClientError::Client(EphemeralError::NetworkError(e.to_string())))?;
         let total_len = u32::from_be_bytes(len_buf) as usize;
+        if total_len > ephemeral_ml_common::vsock::MAX_FRAME_SIZE {
+            return Err(ClientError::Client(EphemeralError::Validation(
+                ephemeral_ml_common::ValidationError::SizeLimitExceeded(format!(
+                    "ServerHello frame size {} exceeds maximum {}",
+                    total_len,
+                    ephemeral_ml_common::vsock::MAX_FRAME_SIZE
+                )),
+            )));
+        }
         let mut body = vec![0u8; total_len];
         stream
             .read_exact(&mut body)
@@ -251,6 +260,15 @@ impl SecureClient for SecureEnclaveClient {
             .await
             .map_err(|e| ClientError::Client(EphemeralError::NetworkError(e.to_string())))?;
         let total_len = u32::from_be_bytes(len_buf) as usize;
+        if total_len > ephemeral_ml_common::vsock::MAX_FRAME_SIZE {
+            return Err(ClientError::Client(EphemeralError::Validation(
+                ephemeral_ml_common::ValidationError::SizeLimitExceeded(format!(
+                    "Inference response frame size {} exceeds maximum {}",
+                    total_len,
+                    ephemeral_ml_common::vsock::MAX_FRAME_SIZE
+                )),
+            )));
+        }
         let mut body = vec![0u8; total_len];
         stream
             .read_exact(&mut body)

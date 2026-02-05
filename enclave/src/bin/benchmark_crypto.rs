@@ -12,7 +12,7 @@
 use ephemeral_ml_common::{
     AttestationReceipt, EnclaveMeasurements, HPKESession, ReceiptSigningKey, SecurityMode,
 };
-use std::time::{Instant, SystemTime, UNIX_EPOCH};
+use std::time::Instant;
 use x25519_dalek::{PublicKey, StaticSecret};
 
 const NUM_WARMUP: usize = 3;
@@ -344,10 +344,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     );
 
     let commit = option_env!("GIT_COMMIT").unwrap_or("unknown");
-    let timestamp = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_secs();
+    let timestamp = ephemeral_ml_common::metrics::iso8601_now();
 
     // Run all benchmarks
     let hpke_session_setup = bench_hpke_session_setup();
@@ -365,7 +362,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         "benchmark": "crypto_primitives",
         "environment": "bare_metal",
         "hardware": instance_type,
-        "timestamp": format!("{}Z", timestamp),
+        "timestamp": timestamp,
         "commit": commit,
         "iterations": NUM_ITERATIONS,
         "warmup": NUM_WARMUP,

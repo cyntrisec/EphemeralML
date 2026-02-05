@@ -21,7 +21,7 @@ use ephemeral_ml_common::{
     ReceiptSigningKey, SecurityMode,
 };
 use sha2::{Digest, Sha256};
-use std::time::{Instant, SystemTime, UNIX_EPOCH};
+use std::time::Instant;
 
 const BENCHMARK_TEXT: &str = "What is the capital of France?";
 const NUM_WARMUP: usize = 3;
@@ -259,10 +259,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     );
 
     let commit = option_env!("GIT_COMMIT").unwrap_or("unknown");
-    let timestamp = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_secs();
+    let timestamp = ephemeral_ml_common::metrics::iso8601_now();
 
     let (peak_rss_mb, peak_rss_source) = metrics::peak_rss_mb_with_source();
 
@@ -273,7 +270,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         "model": model_info.display_name,
         "model_id": model_id,
         "model_params": model_info.params,
-        "timestamp": format!("{}Z", timestamp),
+        "timestamp": timestamp,
         "commit": commit,
         "iterations": NUM_ITERATIONS,
         "warmup": NUM_WARMUP,

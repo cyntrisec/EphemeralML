@@ -48,6 +48,9 @@ RUN chmod +x /vsock-pingpong /init
 ARG MODE=vsock
 ENV VSOCK_PINGPONG_MODE=${MODE}
 
+ARG REQUIRE_KMS=0
+ENV VSOCK_PINGPONG_REQUIRE_KMS=${REQUIRE_KMS}
+
 # PCR_MARKER: changing this value produces a different EIF with a different PCR0.
 # Used by kms-audit wrong-PCR negative tests to verify that KMS rejects
 # enclaves whose PCR0 doesn't match the key policy.

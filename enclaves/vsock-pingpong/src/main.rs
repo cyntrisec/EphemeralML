@@ -17,14 +17,23 @@ enum Mode {
     Benchmark,
 }
 
-fn parse_mode() -> Mode {
+#[derive(Debug, Clone, Copy)]
+struct RuntimeArgs {
+    mode: Mode,
+    require_kms: bool,
+}
+
+fn parse_runtime_args() -> RuntimeArgs {
     let args: Vec<String> = std::env::args().collect();
     eprintln!("[enclave] debug: raw args: {:?}", args);
+    let mut mode = Mode::Vsock;
+    let mut require_kms = false;
+
     let mut i = 1;
     while i < args.len() {
         if args[i] == "--mode" && i + 1 < args.len() {
             let v = &args[i + 1];
-            return match v.as_str() {
+            mode = match v.as_str() {
                 "basic" => Mode::Basic,
                 "vsock" => Mode::Vsock,
                 "attestation" => Mode::Attestation,
@@ -33,10 +42,14 @@ fn parse_mode() -> Mode {
                 "benchmark" => Mode::Benchmark,
                 _ => Mode::Vsock,
             };
+            i += 1;
+        } else if args[i] == "--require-kms" {
+            require_kms = true;
         }
         i += 1;
     }
-    Mode::Vsock
+
+    RuntimeArgs { mode, require_kms }
 }
 
 // AF_VSOCK server: listen on port 5000; reply "pong" when receiving "ping".
@@ -118,7 +131,7 @@ fn make_listener(port: u32) -> RawFd {
     fd
 }
 
-fn run(mode: Mode) {
+fn run(mode: Mode, require_kms: bool) {
     match mode {
         Mode::Basic => {
             eprintln!("[enclave] basic mode: alive; sleeping forever");
@@ -355,13 +368,16 @@ fn run(mode: Mode) {
             }
         }
         Mode::Benchmark => {
-            eprintln!("[enclave] benchmark mode: starting benchmark suite");
+            eprintln!(
+                "[enclave] benchmark mode: starting benchmark suite (require_kms={})",
+                require_kms
+            );
             let rt = tokio::runtime::Builder::new_current_thread()
                 .enable_all()
                 .build()
                 .unwrap();
             rt.block_on(async {
-                run_benchmark().await;
+                run_benchmark(require_kms).await;
             });
             eprintln!("[enclave] benchmark complete; sleeping");
             loop {
@@ -1210,12 +1226,19 @@ fn measure_vsock_rtt(payload_size: usize) -> f64 {
     samples[samples.len() / 2]
 }
 
-async fn run_benchmark() {
+const BENCHMARK_FIXED_DEK_HEX: &str =
+    "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+
+fn benchmark_fixed_dek() -> Vec<u8> {
+    hex::decode(BENCHMARK_FIXED_DEK_HEX).expect("hardcoded benchmark DEK hex must be valid")
+}
+
+async fn run_benchmark(require_kms: bool) {
     use candle_core::Device;
-    use candle_nn::VarBuilder;
     use candle_transformers::models::bert::{BertModel, Config as BertConfig};
     use chacha20poly1305::{aead::Aead, ChaCha20Poly1305, Key, KeyInit, Nonce};
     use ephemeral_ml_common::model_registry::get_model_info_or_default;
+    use std::collections::HashMap;
 
     let total_start = Instant::now();
     let device = Device::Cpu;
@@ -1228,25 +1251,39 @@ async fn run_benchmark() {
     );
 
     // ── Stage 1: Attestation + KMS key release timing ──
-    // We measure both together: RSA keygen + NSM attestation doc + KMS GenerateDataKey +
-    // KMS Decrypt with RecipientInfo (the real attestation-bound key release flow).
+    // We measure both together: RSA keygen + NSM attestation doc + KMS GenerateDataKey
+    // with RecipientInfo (attestation-bound key release flow).
     eprintln!("[bench] Stage 1: Attestation document generation");
+    eprintln!("[bench] require_kms = {}", require_kms);
     let attest_start = Instant::now();
     let nsm_fd = aws_nitro_enclaves_nsm_api::driver::nsm_init();
     if nsm_fd < 0 {
         eprintln!("[bench] WARNING: NSM driver not available (running outside enclave?)");
     }
 
-    // These will hold the real measured DEK (or fallback to hardcoded if KMS unavailable)
+    // These track whether attested KMS key release was actually exercised.
     let mut attestation_ms: f64 = 0.0;
     let mut kms_key_release_ms: f64 = 0.0;
+    let mut kms_exercised = false;
+    let mut kms_bypassed = false;
+    let mut kms_bypass_reason: Option<String> = None;
+
+    let mut fallback_to_hardcoded_dek = |reason: &str| -> Vec<u8> {
+        if require_kms {
+            panic!("[bench] require-kms enabled: {reason}");
+        }
+        kms_bypassed = true;
+        kms_bypass_reason = Some(reason.to_string());
+        eprintln!(
+            "[bench] WARNING: using hardcoded DEK, KMS attestation was NOT exercised ({})",
+            reason
+        );
+        benchmark_fixed_dek()
+    };
 
     // Try to get a real DEK via the KMS flow; fall back to hardcoded if NSM/KMS unavailable.
     let fixed_dek = if nsm_fd >= 0 {
-        use ephemeral_ml_common::{
-            generate_id, KmsProxyRequestEnvelope, KmsProxyResponseEnvelope, KmsRequest,
-            KmsResponse, MessageType, VSockMessage,
-        };
+        use ephemeral_ml_common::{generate_id, KmsProxyRequestEnvelope, KmsRequest, KmsResponse};
         use rand::rngs::OsRng;
         use rsa::{pkcs8::EncodePublicKey, RsaPrivateKey};
 
@@ -1266,100 +1303,105 @@ async fn run_benchmark() {
         };
         let response = aws_nitro_enclaves_nsm_api::driver::nsm_process_request(nsm_fd, request);
         let attestation_doc = match response {
-            aws_nitro_enclaves_nsm_api::api::Response::Attestation { document } => document,
-            _ => {
-                eprintln!(
-                    "[bench] WARNING: failed to get attestation doc, falling back to hardcoded DEK"
-                );
+            aws_nitro_enclaves_nsm_api::api::Response::Attestation { document } => {
                 aws_nitro_enclaves_nsm_api::driver::nsm_exit(nsm_fd);
                 attestation_ms = attest_start.elapsed().as_secs_f64() * 1000.0;
-                hex::decode("0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef")
-                    .unwrap()
+                eprintln!(
+                    "[bench] attestation_ms = {:.2} (doc {} bytes)",
+                    attestation_ms,
+                    document.len()
+                );
+                Some(document)
+            }
+            _ => {
+                aws_nitro_enclaves_nsm_api::driver::nsm_exit(nsm_fd);
+                attestation_ms = attest_start.elapsed().as_secs_f64() * 1000.0;
+                None
             }
         };
 
         // If we got the attestation doc, proceed with real KMS round-trip
-        if attestation_doc.len() > 100 {
-            aws_nitro_enclaves_nsm_api::driver::nsm_exit(nsm_fd);
-            attestation_ms = attest_start.elapsed().as_secs_f64() * 1000.0;
-            eprintln!(
-                "[bench] attestation_ms = {:.2} (doc {} bytes)",
-                attestation_ms,
-                attestation_doc.len()
-            );
+        if let Some(attestation_doc) = attestation_doc {
+            if attestation_doc.len() <= 100 {
+                fallback_to_hardcoded_dek("attestation document too short")
+            } else {
+                // 2. KMS GenerateDataKey with RecipientInfo (single attested call)
+                eprintln!("[bench] Stage 2: KMS key release (attested GenerateDataKey)");
+                let kms_start = Instant::now();
 
-            // 2. KMS GenerateDataKey with RecipientInfo (single attested call)
-            eprintln!("[bench] Stage 2: KMS key release (attested GenerateDataKey)");
-            let kms_start = Instant::now();
+                let encryption_context = Some(HashMap::from([(
+                    "model_id".to_string(),
+                    model_id.to_string(),
+                )]));
+                let gen_req = KmsRequest::GenerateDataKey {
+                    key_id: "alias/ephemeral-ml-test".to_string(),
+                    key_spec: "AES_256".to_string(),
+                    encryption_context,
+                    recipient: Some(attestation_doc),
+                };
+                let gen_env = KmsProxyRequestEnvelope {
+                    request_id: generate_id(),
+                    trace_id: Some("bench-genkey".to_string()),
+                    request: gen_req,
+                };
+                let gen_result = kms_roundtrip(&gen_env);
 
-            let gen_req = KmsRequest::GenerateDataKey {
-                key_id: "alias/ephemeral-ml-test".to_string(),
-                key_spec: "AES_256".to_string(),
-                encryption_context: None,
-                recipient: Some(attestation_doc),
-            };
-            let gen_env = KmsProxyRequestEnvelope {
-                request_id: generate_id(),
-                trace_id: Some("bench-genkey".to_string()),
-                request: gen_req,
-            };
-            let payload = serde_json::to_vec(&gen_env).unwrap();
-            let msg = VSockMessage::new(MessageType::KmsProxy, 0, payload).unwrap();
-            let mut stream = vsock_connect(8082);
-            stream.write_all(&msg.encode()).unwrap();
+                kms_key_release_ms = kms_start.elapsed().as_secs_f64() * 1000.0;
+                eprintln!("[bench] kms_key_release_ms = {:.2}", kms_key_release_ms);
 
-            let mut len_buf = [0u8; 4];
-            stream.read_exact(&mut len_buf).unwrap();
-            let len = u32::from_be_bytes(len_buf) as usize;
-            let mut body = vec![0u8; len];
-            stream.read_exact(&mut body).unwrap();
-            let mut full_msg = len_buf.to_vec();
-            full_msg.extend_from_slice(&body);
-            let resp_msg = VSockMessage::decode(&full_msg).unwrap();
-            let resp_env: KmsProxyResponseEnvelope =
-                serde_json::from_slice(&resp_msg.payload).unwrap();
-
-            match resp_env.response {
-                KmsResponse::GenerateDataKey {
-                    key_id,
-                    ciphertext_for_recipient,
-                    ..
-                } => {
-                    if ciphertext_for_recipient.is_some() {
-                        eprintln!(
-                            "[bench] Attested GenerateDataKey OK for {}: SUCCESS",
-                            key_id
-                        );
-                    } else {
-                        eprintln!(
-                            "[bench] GenerateDataKey for {}: no wrapped key returned (policy issue?)",
-                            key_id
-                        );
+                match gen_result {
+                    Ok(resp_env) => match resp_env.response {
+                        KmsResponse::GenerateDataKey {
+                            key_id,
+                            ciphertext_for_recipient,
+                            ..
+                        } => {
+                            if ciphertext_for_recipient.is_some() {
+                                kms_exercised = true;
+                                eprintln!(
+                                    "[bench] Attested GenerateDataKey OK for {}: SUCCESS",
+                                    key_id
+                                );
+                                // Keep model decrypt deterministic against benchmark fixture DEK.
+                                benchmark_fixed_dek()
+                            } else {
+                                eprintln!(
+                                    "[bench] GenerateDataKey for {}: no wrapped key returned (policy issue?)",
+                                    key_id
+                                );
+                                fallback_to_hardcoded_dek(
+                                    "GenerateDataKey returned no ciphertext_for_recipient",
+                                )
+                            }
+                        }
+                        KmsResponse::Error { code, message } => {
+                            eprintln!(
+                                "[bench] KMS GenerateDataKey Error ({:?}): {}",
+                                code, message
+                            );
+                            fallback_to_hardcoded_dek(&format!(
+                                "KMS GenerateDataKey failed: {:?}: {}",
+                                code, message
+                            ))
+                        }
+                        _ => {
+                            eprintln!("[bench] KMS GenerateDataKey: unexpected response");
+                            fallback_to_hardcoded_dek(
+                                "KMS GenerateDataKey returned unexpected response",
+                            )
+                        }
+                    },
+                    Err(err) => {
+                        eprintln!("[bench] KMS GenerateDataKey transport error: {}", err);
+                        fallback_to_hardcoded_dek(&format!("KMS proxy roundtrip failed: {}", err))
                     }
                 }
-                KmsResponse::Error { code, message } => {
-                    eprintln!(
-                        "[bench] KMS GenerateDataKey Error ({:?}): {}",
-                        code, message
-                    );
-                }
-                _ => {
-                    eprintln!("[bench] KMS GenerateDataKey: unexpected response");
-                }
             }
-
-            kms_key_release_ms = kms_start.elapsed().as_secs_f64() * 1000.0;
-            eprintln!("[bench] kms_key_release_ms = {:.2}", kms_key_release_ms);
-
-            // Use the fixed DEK for model decryption (the KMS-returned key is for
-            // the benchmark key, not the model encryption key)
-            hex::decode("0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef").unwrap()
         } else {
-            attestation_doc // This branch shouldn't happen but satisfies the type system
+            fallback_to_hardcoded_dek("failed to get attestation document from NSM")
         }
     } else {
-        eprintln!("[bench] NSM unavailable — skipping attestation & KMS, using hardcoded DEK");
-        hex::decode("0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef").unwrap()
+        fallback_to_hardcoded_dek("NSM unavailable; skipped attestation and KMS key release")
     };
     eprintln!("[bench] attestation_ms = {:.2}", attestation_ms);
     eprintln!("[bench] kms_key_release_ms = {:.2}", kms_key_release_ms);
@@ -1514,6 +1556,12 @@ async fn run_benchmark() {
             "tokenizer_setup_ms": round2(tokenizer_setup_ms),
             "cold_start_total_ms": round2(cold_start_total_ms)
         },
+        "security": {
+            "require_kms": require_kms,
+            "kms_exercised": kms_exercised,
+            "kms_bypassed": kms_bypassed,
+            "kms_bypass_reason": kms_bypass_reason
+        },
         "inference": {
             "input_texts": BENCHMARK_INPUT_TEXTS,
             "num_iterations": NUM_ITERATIONS,
@@ -1562,22 +1610,19 @@ fn round2(v: f64) -> f64 {
 }
 
 fn chrono_now_iso() -> String {
-    // Simple ISO-8601 without chrono dependency
-    use std::time::{SystemTime, UNIX_EPOCH};
-    let secs = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_secs();
-    format!("{}Z", secs)
+    ephemeral_ml_common::metrics::iso8601_now()
 }
 
 fn main() {
-    let mode = parse_mode();
-    eprintln!("[enclave] mode={mode:?}");
+    let args = parse_runtime_args();
+    eprintln!(
+        "[enclave] mode={:?}, require_kms={}",
+        args.mode, args.require_kms
+    );
 
     // If the enclave panics and exits immediately, we lose all visibility.
     // Catch panics, log them, then sleep forever so `nitro-cli console` (or attach-console) can inspect.
-    let res = std::panic::catch_unwind(|| run(mode));
+    let res = std::panic::catch_unwind(|| run(args.mode, args.require_kms));
     if res.is_err() {
         eprintln!("[enclave] PANIC: caught unwind; sleeping forever for debugging");
         loop {
