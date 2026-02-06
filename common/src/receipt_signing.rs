@@ -409,13 +409,73 @@ impl ReceiptVerifier {
         binding.verify_receipt_binding(receipt)
     }
 
-    /// Extract user data from attestation document (simplified for v1)
-    fn extract_user_data(&self, _attestation_doc: &[u8]) -> Result<AttestationUserData> {
-        // In production, this would parse the actual attestation document
-        // For v1, we return a placeholder
-        Err(EphemeralError::Internal(
-            "Attestation parsing not implemented".to_string(),
-        ))
+    /// Extract user data from an attestation document.
+    ///
+    /// Handles both COSE_Sign1 (production: CBOR array with payload at index 2)
+    /// and plain CBOR map (mock) formats.
+    fn extract_user_data(&self, attestation_doc: &[u8]) -> Result<AttestationUserData> {
+        let doc: serde_cbor::Value = serde_cbor::from_slice(attestation_doc)
+            .map_err(|e| EphemeralError::ValidationError(format!("Invalid CBOR: {}", e)))?;
+
+        let map = match &doc {
+            // COSE_Sign1: [protected, unprotected, payload, signature]
+            serde_cbor::Value::Array(arr) if arr.len() == 4 => {
+                let payload_bytes = match &arr[2] {
+                    serde_cbor::Value::Bytes(b) => b,
+                    _ => {
+                        return Err(EphemeralError::ValidationError(
+                            "COSE_Sign1 payload is not bytes".to_string(),
+                        ))
+                    }
+                };
+                let inner: serde_cbor::Value =
+                    serde_cbor::from_slice(payload_bytes).map_err(|e| {
+                        EphemeralError::ValidationError(format!(
+                            "Invalid COSE_Sign1 payload: {}",
+                            e
+                        ))
+                    })?;
+                match inner {
+                    serde_cbor::Value::Map(m) => m,
+                    _ => {
+                        return Err(EphemeralError::ValidationError(
+                            "COSE_Sign1 payload is not a CBOR map".to_string(),
+                        ))
+                    }
+                }
+            }
+            serde_cbor::Value::Map(m) => m.clone(),
+            _ => {
+                return Err(EphemeralError::ValidationError(
+                    "Attestation document is neither COSE_Sign1 nor CBOR map".to_string(),
+                ))
+            }
+        };
+
+        let user_data_key = serde_cbor::Value::Text("user_data".to_string());
+        let user_data_bytes = match map.get(&user_data_key) {
+            Some(serde_cbor::Value::Bytes(b)) => b,
+            Some(_) => {
+                return Err(EphemeralError::ValidationError(
+                    "user_data field is not bytes".to_string(),
+                ))
+            }
+            None => {
+                return Err(EphemeralError::ValidationError(
+                    "user_data field not found in attestation".to_string(),
+                ))
+            }
+        };
+
+        serde_json::from_slice(user_data_bytes)
+            .or_else(|_| {
+                serde_cbor::from_slice(user_data_bytes).map_err(|e| {
+                    EphemeralError::ValidationError(format!("Invalid user_data: {}", e))
+                })
+            })
+            .map_err(|e| {
+                EphemeralError::ValidationError(format!("Failed to parse user_data: {}", e))
+            })
     }
 }
 
@@ -542,6 +602,65 @@ mod tests {
 
         // Canonical encoding should be deterministic
         assert_eq!(encoding1, encoding2);
+    }
+
+    #[test]
+    fn test_extract_user_data_from_cbor_map() {
+        let user_data = AttestationUserData::new([1u8; 32], [2u8; 32], 1, vec![]);
+        let user_data_json = serde_json::to_vec(&user_data).unwrap();
+
+        // Build a plain CBOR map with a user_data field (mock format)
+        let mut map = std::collections::BTreeMap::new();
+        map.insert(
+            serde_cbor::Value::Text("user_data".to_string()),
+            serde_cbor::Value::Bytes(user_data_json),
+        );
+        let doc_bytes = serde_cbor::to_vec(&serde_cbor::Value::Map(map)).unwrap();
+
+        let verifier = ReceiptVerifier::new(vec![]);
+        let extracted = verifier.extract_user_data(&doc_bytes).unwrap();
+        assert_eq!(extracted.hpke_public_key, [1u8; 32]);
+        assert_eq!(extracted.receipt_signing_key, [2u8; 32]);
+    }
+
+    #[test]
+    fn test_extract_user_data_from_cose_sign1() {
+        let user_data = AttestationUserData::new([3u8; 32], [4u8; 32], 1, vec![]);
+        let user_data_json = serde_json::to_vec(&user_data).unwrap();
+
+        // Build a CBOR map payload with user_data
+        let mut map = std::collections::BTreeMap::new();
+        map.insert(
+            serde_cbor::Value::Text("user_data".to_string()),
+            serde_cbor::Value::Bytes(user_data_json),
+        );
+        let payload_bytes = serde_cbor::to_vec(&serde_cbor::Value::Map(map)).unwrap();
+
+        // Wrap in COSE_Sign1 array: [protected, unprotected, payload, signature]
+        let cose = serde_cbor::Value::Array(vec![
+            serde_cbor::Value::Bytes(vec![]),           // protected
+            serde_cbor::Value::Map(Default::default()), // unprotected
+            serde_cbor::Value::Bytes(payload_bytes),    // payload
+            serde_cbor::Value::Bytes(vec![0u8; 64]),    // signature
+        ]);
+        let doc_bytes = serde_cbor::to_vec(&cose).unwrap();
+
+        let verifier = ReceiptVerifier::new(vec![]);
+        let extracted = verifier.extract_user_data(&doc_bytes).unwrap();
+        assert_eq!(extracted.hpke_public_key, [3u8; 32]);
+        assert_eq!(extracted.receipt_signing_key, [4u8; 32]);
+    }
+
+    #[test]
+    fn test_extract_user_data_rejects_invalid_format() {
+        let verifier = ReceiptVerifier::new(vec![]);
+
+        // A CBOR integer is neither a map nor COSE_Sign1
+        let bad_bytes = serde_cbor::to_vec(&serde_cbor::Value::Integer(42)).unwrap();
+        assert!(verifier.extract_user_data(&bad_bytes).is_err());
+
+        // Totally invalid CBOR
+        assert!(verifier.extract_user_data(&[0xff, 0xff]).is_err());
     }
 
     mod prop_tests {
