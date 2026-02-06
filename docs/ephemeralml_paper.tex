@@ -49,7 +49,7 @@
 \newcommand{\ModelBertBaseEnclaveMeanMs}{73.49}
 \newcommand{\ModelBertBaseOverheadPct}{11.9\%}
 \newcommand{\ModelBertBaseParams}{110M}
-\newcommand{\BenchOverheadRange}{12--14\%}
+\newcommand{\BenchOverheadRange}{12--13\%}
 
 \title{\textbf{EphemeralML: Confidential AI Inference on AWS Nitro Enclaves\\with \BenchOverheadRange{} Overhead}}
 \author{Cyntrisec}
@@ -363,8 +363,8 @@ Table~\ref{tab:inference} shows the core inference overhead.
 \textbf{Metric} & \textbf{Bare Metal} & \textbf{Enclave} & \textbf{Overhead} \\
 \hline
 Mean latency     & \BenchBareMeanMs{}\,ms  & \BenchEnclaveMeanMs{}\,ms  & +\BenchOverheadPct{} \\
-P95 latency      & \BenchBarePNinetyFiveMs{}\,ms  & \BenchEnclavePNinetyFiveMs{}\,ms  & +14.0\% \\
-Throughput       & \BenchBareThroughput{}\,inf/s & \BenchEnclaveThroughput{}\,inf/s & $-$12.2\% \\
+P95 latency      & \BenchBarePNinetyFiveMs{}\,ms  & \BenchEnclavePNinetyFiveMs{}\,ms  & +13.6\% \\
+Throughput       & \BenchBareThroughput{}\,inf/s & \BenchEnclaveThroughput{}\,inf/s & $-$11.7\% \\
 Peak RSS (VmHWM) & \BenchBarePeakRssMb{}\,MB    & \BenchEnclavePeakRssMb{}\,MB & +120\% \\
 \hline
 \end{tabular}
@@ -422,7 +422,7 @@ Tokenizer setup            & \BenchTokenizerMs{}\,ms \\
 
 Cold start is dominated by the S3 model fetch over VSock (93\% of total).
 This could be reduced by embedding weights in the EIF image or implementing a pre-warming protocol.
-The one-time attestation and KMS costs (\BenchAttestationMs{} + \BenchKmsMs{} $\approx$ 290\,ms combined) are negligible for session-based workloads.
+The one-time attestation and KMS costs (\BenchAttestationMs{} + \BenchKmsMs{} $\approx$ 228\,ms combined) are negligible for session-based workloads.
 Attestation latency varies between runs (94--300\,ms) due to NSM warm-up effects.
 
 \subsection{VSock Round-Trip Time}
