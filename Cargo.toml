@@ -60,7 +60,7 @@ rsa = { version = "0.9", features = ["sha2"] }
 
 # X.509 and PKI
 openssl = "0.10"
-x509-parser = "0.15"
+x509-parser = "0.18"
 
 # Testing
 proptest = "1.0"
