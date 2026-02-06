@@ -493,7 +493,7 @@ COSE\_Sign1 verify (ECDSA-P384) & 0.740\,ms & 0.770\,ms \\
 Certificate chain walk (3 certs) & 2.219\,ms & 2.263\,ms \\
 CBOR payload parse               & 0.001\,ms & 0.001\,ms \\
 \hline
-\textbf{Full verification pipeline} & \textbf{2.999\,ms} & \textbf{3.069\,ms} \\
+\textbf{Full verification pipeline} & \textbf{2.960\,ms} & \textbf{3.034\,ms} \\
 \hline
 \end{tabular}
 \end{table}
@@ -650,7 +650,7 @@ Table~\ref{tab:cost} shows the per-inference cost on \texttt{m6i.xlarge} (\$0.19
 \hline
 \textbf{Metric} & \textbf{Bare Metal} & \textbf{Enclave} \\
 \hline
-Inferences/hour        & 45{,}449 & 40{,}129 \\
+Inferences/hour        & 45{,}468 & 40{,}140 \\
 Cost per 1M inferences & \$4.22 & \$4.78 \\
 Cost multiplier        & ---    & 1.13$\times$ \\
 \hline
