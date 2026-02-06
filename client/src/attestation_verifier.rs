@@ -416,11 +416,22 @@ impl AttestationVerifier {
                 )))
             })?;
 
-            let pubkey = last_cert.public_key().unwrap();
-            if !cert.verify(&pubkey).unwrap() {
+            let pubkey = last_cert.public_key().map_err(|e| {
+                ClientError::Client(crate::EphemeralError::AttestationError(format!(
+                    "Failed to extract public key from cert at index {}: {}",
+                    i, e
+                )))
+            })?;
+            let verified = cert.verify(&pubkey).map_err(|e| {
+                ClientError::Client(crate::EphemeralError::AttestationError(format!(
+                    "Certificate verification failed at index {}: {}",
+                    i, e
+                )))
+            })?;
+            if !verified {
                 return Err(ClientError::Client(
                     crate::EphemeralError::AttestationError(format!(
-                        "Cert verification failed at index {}",
+                        "Certificate signature mismatch at index {}",
                         i
                     )),
                 ));

@@ -69,6 +69,27 @@ impl SecureEnclaveClient {
             server_attestation_doc: None,
         }
     }
+
+    /// Create a client with a pre-configured policy manager.
+    ///
+    /// Preferred for production use — ensures PCR validation has an allowlist
+    /// loaded before attestation verification is attempted.
+    pub fn with_policy(client_id: String, policy_manager: PolicyManager) -> Self {
+        Self {
+            client_id,
+            hpke_session: None,
+            policy_manager,
+            receipt_verifier: ReceiptVerifier::new(vec![]),
+            client_private_key: None,
+            server_receipt_signing_key: None,
+            server_attestation_doc: None,
+        }
+    }
+
+    /// Check whether a policy is loaded.
+    pub fn has_policy(&self) -> bool {
+        self.policy_manager.current_policy().is_some()
+    }
 }
 
 #[async_trait::async_trait]
@@ -78,6 +99,16 @@ impl SecureClient for SecureEnclaveClient {
         use crate::attestation_verifier::AttestationVerifier;
         use rand::rngs::OsRng;
         use x25519_dalek::{PublicKey, StaticSecret};
+
+        // In production mode, fail fast if no policy is loaded — without a
+        // measurement allowlist, PCR validation will reject every attestation
+        // with a misleading "RootKeyNotFound" error.
+        #[cfg(all(feature = "production", not(feature = "mock")))]
+        if !self.has_policy() {
+            return Err(ClientError::Client(EphemeralError::InvalidInput(
+                "No attestation policy loaded. Call with_policy() or load a policy before establishing a channel.".to_string(),
+            )));
+        }
 
         let mut stream = TcpStream::connect(addr)
             .await

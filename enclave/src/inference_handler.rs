@@ -45,113 +45,97 @@ impl<A: AttestationProvider, I: InferenceEngine> InferenceHandler<A, I> {
     ) -> Result<EncryptedMessage> {
         let session_id = &encrypted_request.session_id;
 
-        // Note: we might need to make with_session async or handle differently
-        // Since we are adding async audit logs.
-        // For simplicity in this task, we'll use a block_on or change the pattern.
-        // Actually, let's keep it simple: fetch session, then do work.
+        // Perform all session-dependent work (decrypt, inference, receipt,
+        // encrypt) inside with_session so the session stays in the HashMap
+        // and remains visible to concurrent requests for the same session.
+        // Async audit logging happens after the closure returns.
+        let inference_engine = &self.inference_engine;
+        let attestation_provider = &self.attestation_provider;
 
-        let mut session = self
-            .session_manager
-            .get_session(session_id)
-            .ok_or_else(|| {
-                EnclaveError::Enclave(EphemeralError::InvalidInput(format!(
-                    "Session {} not found",
-                    session_id
-                )))
+        // Capture the encrypted_request by reference for the closure
+        let (encrypted_response, audit_model_id, duration_ms) =
+            self.session_manager.with_session(session_id, |session| {
+                // 1. Decrypt Request
+                let plaintext = session.decrypt(encrypted_request)?;
+
+                // 2. Parse Input
+                let input: InferenceHandlerInput =
+                    serde_json::from_slice(&plaintext).map_err(|e| {
+                        EnclaveError::Enclave(EphemeralError::SerializationError(e.to_string()))
+                    })?;
+
+                let model_id = input.model_id.clone();
+
+                // 3. Execute Inference (Mock or Real)
+                // Pass only the model_id to the engine; CandleInferenceEngine::execute()
+                // looks up the registered model by ID and ignores topology/weights here.
+                use crate::assembly::CandleModel;
+                let model_ref = CandleModel {
+                    id: input.model_id.clone(),
+                    topology: Default::default(),
+                    weights: vec![],
+                };
+
+                let start_time = std::time::Instant::now();
+                let output_tensor = inference_engine.execute(&model_ref, &input.input_data)?;
+                let duration_ms = start_time.elapsed().as_millis() as u64;
+
+                // 4. Generate Receipt
+                let output_bytes = serde_json::to_vec(&output_tensor).map_err(|e| {
+                    EnclaveError::Enclave(EphemeralError::SerializationError(e.to_string()))
+                })?;
+
+                let mut receipt = ReceiptBuilder::build(
+                    session,
+                    attestation_provider,
+                    &plaintext,
+                    &output_bytes,
+                    input.model_id,
+                    "v1.0".to_string(),
+                    duration_ms,
+                    0, // Memory peak placeholder
+                )?;
+
+                // 5. Sign Receipt
+                session.sign_receipt(&mut receipt)?;
+
+                // 6. Construct Response
+                let response = InferenceHandlerOutput {
+                    output_tensor,
+                    receipt,
+                };
+
+                let response_bytes = serde_json::to_vec(&response).map_err(|e| {
+                    EnclaveError::Enclave(EphemeralError::SerializationError(e.to_string()))
+                })?;
+
+                // 7. Encrypt Response
+                let encrypted_response = session.encrypt(&response_bytes)?;
+
+                Ok((encrypted_response, model_id, duration_ms))
             })?;
 
-        // 1. Decrypt Request
-        let plaintext = session.decrypt(encrypted_request)?;
-
-        // 2. Parse Input
-        let input: InferenceHandlerInput = serde_json::from_slice(&plaintext).map_err(|e| {
-            EnclaveError::Enclave(EphemeralError::SerializationError(e.to_string()))
-        })?;
-
+        // Audit logging (async, non-critical) — done outside the session lock
         self.audit_logger
             .info(
                 ephemeral_ml_common::AuditEventType::InferenceStarted,
                 vec![
                     ("session_id", serde_json::json!(session_id)),
-                    ("model_id", serde_json::json!(input.model_id)),
+                    ("model_id", serde_json::json!(&audit_model_id)),
                 ],
             )
             .await;
 
-        // 3. Execute Inference (Mock or Real)
-        use crate::assembly::{CandleModel, TopologyKey};
-        let dummy_model = CandleModel {
-            id: input.model_id.clone(),
-            topology: TopologyKey {
-                // Minimal dummy topology
-                graph_id: "dummy".to_string(),
-                nodes: vec![],
-                edges: vec![],
-                input_shapes: vec![],
-                output_shapes: vec![],
-                metadata: ephemeral_ml_common::ModelMetadata {
-                    name: "dummy".to_string(),
-                    version: "v1".to_string(),
-                    description: None,
-                    created_at: 0,
-                    checksum: "dummy".to_string(),
-                },
-            },
-            weights: vec![0.5],
-        };
-
-        let start_time = std::time::Instant::now();
-        let output_tensor = self
-            .inference_engine
-            .execute(&dummy_model, &input.input_data)?;
-        let duration_ms = start_time.elapsed().as_millis() as u64;
-
-        // Metric log
         self.audit_logger
             .metric(
                 ephemeral_ml_common::AuditEventType::InferenceCompleted,
                 Some(session_id.clone()),
                 vec![
                     ("duration_ms", serde_json::json!(duration_ms)),
-                    ("model_id", serde_json::json!(input.model_id)),
+                    ("model_id", serde_json::json!(&audit_model_id)),
                 ],
             )
             .await;
-
-        // 4. Generate Receipt
-        let output_bytes = serde_json::to_vec(&output_tensor).map_err(|e| {
-            EnclaveError::Enclave(EphemeralError::SerializationError(e.to_string()))
-        })?;
-
-        let mut receipt = ReceiptBuilder::build(
-            &session,
-            &self.attestation_provider,
-            &plaintext,
-            &output_bytes,
-            input.model_id,
-            "v1.0".to_string(),
-            duration_ms,
-            0, // Memory peak placeholder
-        )?;
-
-        // 5. Sign Receipt
-        session.sign_receipt(&mut receipt)?;
-
-        // 6. Construct Response
-        let response = InferenceHandlerOutput {
-            output_tensor,
-            receipt,
-        };
-
-        let response_bytes = serde_json::to_vec(&response).map_err(|e| {
-            EnclaveError::Enclave(EphemeralError::SerializationError(e.to_string()))
-        })?;
-
-        // 7. Encrypt Response
-        let encrypted_response = session.encrypt(&response_bytes)?;
-
-        // Update session back in manager if needed (sequence numbers changed)
-        self.session_manager.add_session(session)?;
 
         Ok(encrypted_response)
     }

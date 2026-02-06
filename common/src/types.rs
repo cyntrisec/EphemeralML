@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
 /// Topology key containing computation graph structure without weights
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Default)]
 pub struct TopologyKey {
     pub graph_id: String,
     pub nodes: Vec<GraphNode>,
@@ -53,7 +53,7 @@ impl TensorShape {
 }
 
 /// Model metadata
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Default)]
 pub struct ModelMetadata {
     pub name: String,
     pub version: String,
