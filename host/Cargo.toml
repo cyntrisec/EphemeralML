@@ -23,7 +23,7 @@ ephemeral-ml-client = { path = "../client", default-features = false }
 # Host-specific dependencies
 tokio-vsock = { workspace = true, optional = true }
 libc = "0.2"
-aws-config = "1.8.12"
+aws-config = "1.8.13"
 aws-sdk-kms = "1.97.0"
 aws-sdk-s3 = "1.66.0"
 aws-types = "1.3.11"
