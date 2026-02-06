@@ -38,7 +38,7 @@
 \newcommand{\BenchDecryptMs}{101}
 \newcommand{\BenchLoadMs}{40}
 \newcommand{\BenchTokenizerMs}{24}
-\newcommand{\BenchColdStartTotalMs}{5843}
+\newcommand{\BenchColdStartTotalMs}{5833}
 
 % Multi-model scaling table (3-run means from benchmark_results_multimodel_20260205)
 \newcommand{\ModelLTwelveBareMeanMs}{157.25}
@@ -49,7 +49,7 @@
 \newcommand{\ModelBertBaseEnclaveMeanMs}{73.49}
 \newcommand{\ModelBertBaseOverheadPct}{11.9\%}
 \newcommand{\ModelBertBaseParams}{110M}
-\newcommand{\BenchOverheadRange}{12--13\%}
+\newcommand{\BenchOverheadRange}{11.9--13.3\%}
 
 \title{\textbf{EphemeralML: Confidential AI Inference on AWS Nitro Enclaves\\with \BenchOverheadRange{} Overhead}}
 \author{Cyntrisec}
@@ -336,7 +336,7 @@ Error types are hierarchical (\texttt{EphemeralError}, \texttt{HostError}, \text
 
 \paragraph{Testing.}
 The test suite comprises 110+ tests covering unit tests (inline \texttt{\#[cfg(test)]} modules), integration tests (\texttt{tests/} directories), and end-to-end protocol tests.
-All tests pass in CI (GitHub Actions) on every push to \texttt{main}.
+The CI pipeline runs formatting, clippy, and test jobs on every push to \texttt{main}; these core jobs pass for the release-gate commit.
 
 % ============================================================
 \section{Evaluation}
@@ -639,11 +639,11 @@ Despite this, the overhead consistently falls within the \BenchOverheadRange{} r
 
 \subsection{Cost Analysis}
 
-Table~\ref{tab:cost} shows the per-inference cost on \texttt{m6i.xlarge} (\$0.192/hr on-demand).
+Table~\ref{tab:cost} shows the per-inference cost on \texttt{m6i.xlarge} (\$0.192/hr on-demand as of 2026-02-06).
 
 \begin{table}[ht]
 \centering
-\caption{Cost analysis (m6i.xlarge, \$0.192/hr on-demand pricing).}
+\caption{Cost analysis (m6i.xlarge, \$0.192/hr on-demand pricing as of 2026-02-06).}
 \label{tab:cost}
 \begin{tabular}{lrr}
 \hline
@@ -677,7 +677,7 @@ Graviton~\cite{volos2018} and HIX~\cite{jang2019} proposed earlier GPU isolation
 \paragraph{Nitro Enclave Systems.}
 AWS Nitro Enclaves have been used for key management (AWS ACM for Nitro Enclaves) and secure computation (Anjuna, Fortanix).
 Nitriding~\cite{winter2023} provides a general-purpose toolkit that abstracts away the constrained Nitro Enclave development model, enabling unmodified applications with Internet connectivity and user-verifiable code; however, it does not address ML inference, cryptographic session management, or attested execution receipts.
-Lutsch et~al.~\cite{lutsch2025} analyze Nitro Enclave overhead for analytical database workloads, characterizing the VSock communication bottleneck that also dominates \textsc{EphemeralML}'s cold start.
+Lutsch et~al.~\cite{lutsch2025} analyze Nitro Enclave overhead for analytical database workloads, highlighting communication limitations that are consistent with the communication-heavy behavior in \textsc{EphemeralML}'s cold start path.
 Schnabl et~al.~\cite{schnabl2025} use Nitro Enclaves for verifiable AI safety auditing with transparency logs, demonstrating a complementary use case (benchmarking rather than serving) with a similar attestation-based trust model.
 To our knowledge, \textsc{EphemeralML} is the first open-source system providing end-to-end confidential ML \emph{inference serving} with HPKE session management, attestation-gated key release, and attested execution receipts on Nitro Enclaves.
 
@@ -732,6 +732,11 @@ The slight decrease from +\BenchOverheadPct{} (\BenchModelName{}) to +\ModelBert
 However, published results for Llama-3.1-8B on Nitro Enclaves show $2.2\times$ cost overhead~\cite{schnabl2025}, driven by the need for larger instances to accommodate enclave memory reservation, indicating that the total cost of confidential inference grows substantially at the billion-parameter scale.
 Evaluating \textsc{EphemeralML} on billion-parameter models---potentially with INT4/INT8 quantization to fit within enclave memory constraints---is an important direction for validating the system's applicability beyond embedding-class models.
 
+\paragraph{Threats to Validity.}
+Our strongest evidence is for encoder-style CPU inference on \texttt{m6i.xlarge}.
+Although the multi-model campaign uses commits (\texttt{f0b372a}, \texttt{8fc6c36}) where inference logic was unchanged relative to \texttt{\BenchCommit{}}, non-inference drift between commits cannot be fully excluded.
+The current measurements also do not directly generalize to decoder-only billion-parameter LLM serving or GPU-backed confidential inference, where memory reservation and CPU--GPU transfer overheads can dominate.
+
 % ============================================================
 \section{Conclusion}
 \label{sec:conclusion}
@@ -757,6 +762,7 @@ Each run verified \texttt{kms\_exercised=true} and \texttt{kms\_bypassed=false},
 \begin{description}
   \item[Source code] \url{https://github.com/cyntrisec/EphemeralML}, commit \texttt{\BenchCommit{}}
   \item[Artifact archive] \texttt{s3://ephemeral-ml-models-demo/benchmark\_temp/kms\_validation\_20260205\_234917.tar.gz}
+  \item[Public reproducibility materials] \url{https://github.com/cyntrisec/EphemeralML/tree/main/benchmark_results_multimodel_20260205} and \url{https://github.com/cyntrisec/EphemeralML/tree/main/scripts}
   \item[Archive SHA-256] \texttt{20309ab610e7321de5e29d019f0d4b15fee6a7cdafe919686ec1cbd4fabe5937}
   \item[Instance] \texttt{\BenchInstance{}} (4~vCPUs, 16\,GB, Intel Xeon Ice Lake), enclave: 2~vCPUs, 4096\,MB
   \item[Model] \BenchModelName{} (\BenchModelParams{} parameters)
@@ -773,16 +779,19 @@ Multi-model scaling data (MiniLM-L12-v2, BERT-base) were collected in a separate
 T.~Misono, D.~Stavrakakis, N.~Santos, and P.~Bhatotia,
 ``Confidential VMs explained: An empirical analysis of AMD SEV-SNP and Intel TDX,''
 in \emph{Proc.\ ACM on Measurement and Analysis of Computing Systems (SIGMETRICS)}, vol.~8, no.~3, 2024.
+\url{https://doi.org/10.1145/3700418}
 
 \bibitem{tramer2019}
 F.~Tram\`er and D.~Boneh,
 ``Slalom: Fast, verifiable and private execution of neural networks in trusted hardware,''
 in \emph{Proc.\ ICLR}, 2019.
+\url{https://openreview.net/forum?id=rJVorjCcKQ}
 
 \bibitem{lee2019}
 T.~Lee, Z.~Lin, S.~Pushp, C.~Li, Y.~Liu, Y.~Lee, F.~Xu, C.~Xu, L.~Zhang, and J.~Song,
 ``Occlumency: Privacy-preserving remote deep-learning inference using SGX,''
 in \emph{Proc.\ ACM MobiCom}, 2019.
+\url{https://doi.org/10.1145/3300061.3345447}
 
 \bibitem{intel2023}
 Intel Corporation,
@@ -794,36 +803,43 @@ Intel Corporation,
 J.~Zhu, H.~Yin, P.~Deng, A.~Almeida, and S.~Zhou,
 ``Confidential computing on NVIDIA Hopper GPUs: A performance benchmark study,''
 arXiv preprint arXiv:2409.03992, 2024.
+\url{https://arxiv.org/abs/2409.03992}
 
 \bibitem{volos2018}
 S.~Volos, K.~Vaswani, and R.~Bruno,
 ``Graviton: Trusted execution environments on GPUs,''
 in \emph{Proc.\ USENIX OSDI}, 2018.
+\url{https://www.usenix.org/conference/osdi18/presentation/volos}
 
 \bibitem{jang2019}
 I.~Jang, A.~Tang, T.~Kim, S.~Sethumadhavan, and J.~Huh,
 ``Heterogeneous isolated execution for commodity GPUs,''
 in \emph{Proc.\ ACM ASPLOS}, 2019.
+\url{https://doi.org/10.1145/3297858.3304021}
 
 \bibitem{gilad2016}
 R.~Gilad-Bachrach, N.~Dowlin, K.~Laine, K.~Lauter, M.~Naehrig, and J.~Wernsing,
 ``CryptoNets: Applying neural networks to encrypted data with high throughput and accuracy,''
 in \emph{Proc.\ ICML}, 2016.
+\url{https://proceedings.mlr.press/v48/gilad-bachrach16.html}
 
 \bibitem{winter2023}
 P.~Winter, R.~Giles, M.~Schafhuber, and H.~Haddadi,
 ``Nitriding: A tool kit for building scalable, networked, secure enclaves,''
 arXiv preprint arXiv:2206.04123, 2023.
+\url{https://arxiv.org/abs/2206.04123}
 
 \bibitem{lutsch2025}
 A.~Lutsch, C.~Franck, M.~El-Hindi, Z.~Istv\'an, and C.~Binnig,
 ``An analysis of AWS Nitro Enclaves for database workloads,''
 in \emph{Proc.\ DaMoN (SIGMOD Workshop)}, 2025.
+\url{https://doi.org/10.1145/3736227.3736234}
 
 \bibitem{schnabl2025}
 C.~Schnabl, D.~Hugenroth, B.~Marino, and A.~R.~Beresford,
 ``Attestable Audits: Verifiable AI safety benchmarks using trusted execution environments,''
 in \emph{ICML Workshop on Technical AI Governance (TAIG)}, 2025.
+\url{https://openreview.net/forum?id=PDmEwPjCrM}
 
 \end{thebibliography}
 
