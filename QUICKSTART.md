@@ -30,12 +30,12 @@ cargo run -p ephemeral-ml-enclave
 **Run Client/Host Integration:**
 ```bash
 # In separate terminals
-cargo run -p ephemeral-ml-host
-cargo run -p ephemeral-ml-client
+cargo run -p ephemeral-ml-host --bin kms_proxy_host
+cargo run -p ephemeral-ml-client --bin commander
 ```
 
 ### 2. Production Mode (AWS)
-See `projects/EphemeralML/infra/hello-enclave/HELLO_ENCLAVE_RUNBOOK.md` for a step-by-step guide to deploying on AWS.
+See `infra/hello-enclave/HELLO_ENCLAVE_RUNBOOK.md` for a step-by-step guide to deploying on AWS.
 
 ## Verification
 

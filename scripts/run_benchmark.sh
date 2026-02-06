@@ -92,10 +92,10 @@ else
 fi
 
 # Capture run metadata for reproducibility (separate from per-binary JSON outputs).
-RUN_TS="$(date -u +%s)"
+RUN_TS="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 cat >"$OUTPUT_DIR/run_metadata.json" <<EOF
 {
-  "timestamp": "${RUN_TS}Z",
+  "timestamp": "${RUN_TS}",
   "git_commit": "${GIT_COMMIT}",
   "instance_type": "${INSTANCE_TYPE}",
   "model_id": "${MODEL_ID}",

@@ -83,7 +83,8 @@ Unlike solutions that use Library OS (LibOS) wrappers like Anjuna or Fortanix, E
 ## Performance Results
 
 > **Measured** on AWS EC2 m6i.xlarge (us-east-1), February 4, 2026.
-> Commit `b00bab1`. 3 independent runs, 100 iterations each, 3 warmup. Overhead range: 12.4–12.8% (runs 2–3; run 1 cold-cache outlier at 17.6%).
+> Commit `b00bab1`. Paper (\S7) uses canonical release-gate data from commit `057a85a`.
+> 3 independent runs, 100 iterations each, 3 warmup. Overhead range: 12.4–12.8% (runs 2–3; run 1 cold-cache outlier at 17.6%).
 > VmHWM memory measurement confirmed. Full-embedding SHA-256 comparison enabled.
 > Raw JSON data available in the [GitHub Release](https://github.com/cyntrisec/EphemeralML/releases) for this version.
 

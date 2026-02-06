@@ -89,7 +89,7 @@
 
 ## Performance
 
-Measured on AWS EC2 m6i.xlarge (4 vCPU, 16GB RAM) with MiniLM-L6-v2 (22.7M params), 3 independent runs of 100 iterations each. Commit `b00bab1`. Raw JSON available in [GitHub Releases](https://github.com/cyntrisec/EphemeralML/releases).
+Measured on AWS EC2 m6i.xlarge (4 vCPU, 16GB RAM) with MiniLM-L6-v2 (22.7M params), 3 independent runs of 100 iterations each. Commit `b00bab1`. Paper (\S7) uses canonical release-gate data from commit `057a85a`. Raw JSON available in [GitHub Releases](https://github.com/cyntrisec/EphemeralML/releases).
 
 ### Inference Overhead
 
@@ -229,7 +229,8 @@ cd infra/hello-enclave
 terraform init && terraform apply
 
 # 2. Build enclave image
-./scripts/build_enclave.sh
+docker build -f enclave/Dockerfile.enclave -t ephemeral-ml-enclave .
+nitro-cli build-enclave --docker-uri ephemeral-ml-enclave:latest --output-file enclave.eif
 
 # 3. Run
 nitro-cli run-enclave --eif-path enclave.eif --cpu-count 2 --memory 4096

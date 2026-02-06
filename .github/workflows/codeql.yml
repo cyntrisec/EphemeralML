@@ -1,3 +1,6 @@
+# CodeQL analyzes Python only (encrypt/benchmark scripts).
+# Rust static analysis is covered by `cargo clippy` and `cargo audit` in ci.yml.
+# CodeQL does not natively support Rust.
 name: CodeQL
 
 on:

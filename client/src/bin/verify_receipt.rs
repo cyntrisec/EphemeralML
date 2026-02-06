@@ -179,9 +179,33 @@ fn extract_user_data_from_attestation(attestation_bytes: &[u8]) -> Result<Attest
     let doc: serde_cbor::Value =
         serde_cbor::from_slice(attestation_bytes).context("Failed to parse attestation CBOR")?;
 
+    // Try COSE_Sign1 format first (production), then fall back to CBOR map (mock).
+    // COSE_Sign1 is a CBOR array: [protected, unprotected, payload, signature].
+    // The payload (index 2) contains the attestation document as a CBOR map.
+    match &doc {
+        serde_cbor::Value::Array(arr) if arr.len() == 4 => {
+            // COSE_Sign1: extract payload bytes from index 2
+            if let serde_cbor::Value::Bytes(payload_bytes) = &arr[2] {
+                extract_user_data_from_map_bytes(payload_bytes)
+            } else {
+                bail!("COSE_Sign1 payload is not bytes")
+            }
+        }
+        serde_cbor::Value::Map(_) => extract_user_data_from_map(&doc),
+        _ => bail!("Attestation document is neither a COSE_Sign1 array nor a CBOR map"),
+    }
+}
+
+fn extract_user_data_from_map_bytes(map_bytes: &[u8]) -> Result<AttestationUserData> {
+    let doc: serde_cbor::Value =
+        serde_cbor::from_slice(map_bytes).context("Failed to parse COSE_Sign1 payload as CBOR")?;
+    extract_user_data_from_map(&doc)
+}
+
+fn extract_user_data_from_map(doc: &serde_cbor::Value) -> Result<AttestationUserData> {
     let map = match doc {
         serde_cbor::Value::Map(m) => m,
-        _ => bail!("Attestation document is not a CBOR map"),
+        _ => bail!("Attestation payload is not a CBOR map"),
     };
 
     // Extract user_data field
