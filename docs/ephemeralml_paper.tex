@@ -8,6 +8,7 @@
 \usepackage{url}
 \usepackage[margin=1in]{geometry}
 \usepackage{tabularx}
+\setlength{\emergencystretch}{2em}
 
 % --- Title ---
 % --- Paper benchmark macros (canonical release-gate run, 2026-02-06) ---
@@ -322,11 +323,12 @@ The client verifies the signature using the Ed25519 public key extracted from th
 The same codebase compiles for two targets via Cargo feature flags:
 \begin{itemize}
   \item \textbf{\texttt{mock}} (default): Simulates NSM attestation and VSock for local development and testing.
-  \item \textbf{\texttt{production}}: Uses real NSM API (\texttt{aws-nitro-enclaves-nsm-api}~0.4) and \texttt{tokio-vsock}~0.4.
+  \item \textbf{\texttt{production}}: Uses the real NSM API and production VSock transport.
 \end{itemize}
 
 \paragraph{Inference Engine.}
-Model inference uses the Candle framework (\texttt{candle-core}~0.9, \texttt{candle-nn}~0.9) with SafeTensors~0.7 for weight deserialization and HuggingFace Tokenizers~0.21.
+Model inference uses Candle (\texttt{candle-core}~0.9, \texttt{candle-nn}~0.9).
+Weights are deserialized with SafeTensors~0.7 and tokenization uses HuggingFace Tokenizers~0.21.
 The \texttt{cuda} feature flag enables GPU acceleration where available.
 
 \paragraph{Security Practices.}
@@ -771,9 +773,11 @@ PCR-conditioned key release was validated separately in a non-debug enclave at t
   \item[Artifact file]
   \texttt{kms\_validation\_20260205\_234917.tar.gz}
   \item[Public reproducibility materials]
-  \url{https://github.com/cyntrisec/EphemeralML/tree/main/benchmark_results_multimodel_20260205}
+  \url{https://github.com/cyntrisec/EphemeralML}
   \newline
-  \url{https://github.com/cyntrisec/EphemeralML/tree/main/scripts}
+  \texttt{benchmark\_results\_multimodel\_20260205/}
+  \newline
+  \texttt{scripts/}
   \item[Archive SHA-256]
   \texttt{20309ab610e7321de5e29d019f0d4b15}
   \newline
