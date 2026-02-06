@@ -294,7 +294,10 @@ impl AttestationProvider for MockAttestationProvider {
         // Let's make it try HPKE if RSA fails, or just make the test server use RSA.
 
         let padding = Oaep::new::<Sha256>();
-        match self.kms_keypair.decrypt(padding, ciphertext) {
+        match self
+            .kms_keypair
+            .decrypt_blinded(&mut rand::thread_rng(), padding, ciphertext)
+        {
             Ok(pt) => Ok(pt),
             Err(_) => {
                 // Fallback for tests that might use HPKE-encrypted blobs in the mock server

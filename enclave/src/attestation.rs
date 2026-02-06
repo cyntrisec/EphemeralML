@@ -298,12 +298,14 @@ impl AttestationProvider for NSMAttestationProvider {
 
     fn decrypt_kms(&self, ciphertext: &[u8]) -> Result<Vec<u8>> {
         let padding = Oaep::new::<Sha256>();
-        self.kms_keypair.decrypt(padding, ciphertext).map_err(|e| {
-            EnclaveError::Enclave(EphemeralError::DecryptionError(format!(
-                "KMS decryption failed: {}",
-                e
-            )))
-        })
+        self.kms_keypair
+            .decrypt_blinded(&mut rand::thread_rng(), padding, ciphertext)
+            .map_err(|e| {
+                EnclaveError::Enclave(EphemeralError::DecryptionError(format!(
+                    "KMS decryption failed: {}",
+                    e
+                )))
+            })
     }
 }
 
