@@ -156,7 +156,7 @@ It maintains a PCR allowlist (SHA-384 hashes of PCR0, PCR1, PCR2) and verifies t
 The host runs on the parent EC2 instance and acts as a \emph{blind relay}.
 It proxies three types of requests over VSock (port 8082, CID 3):
 \begin{itemize}
-  \item \textbf{KmsProxy}: Forwards attestation-gated KMS \texttt{Decrypt} requests.
+  \item \textbf{KmsProxy}: Forwards attestation-gated KMS \texttt{Decrypt} and \texttt{GenerateDataKey} requests.
   \item \textbf{Storage}: Fetches encrypted model artifacts from S3 and streams them to the enclave.
   \item \textbf{Audit}: Forwards enclave log messages to the host's logging infrastructure.
 \end{itemize}
@@ -168,7 +168,8 @@ On startup, it:
 (1) obtains the model decryption key from KMS (attestation-gated),
 (2) fetches and decrypts model artifacts via the host's S3 proxy,
 (3) loads the model into the Candle inference engine, and
-(4) begins accepting client connections over VSock.
+(4) begins accepting client connections over VSock.%
+\footnote{The v1.0 prototype verifies S3 connectivity and KMS key release at boot but defers model registration to the benchmark binary; the production \texttt{main.rs} boot sequence is a roadmap item (Phase~1).}
 For each client session, it generates a fresh attestation document via the Nitro Security Module (NSM), creates ephemeral X25519 and Ed25519 key pairs (embedding the public keys in the attestation user data), and establishes an HPKE-encrypted channel before serving inference requests.
 
 % ============================================================
@@ -760,6 +761,8 @@ The implementation in 13,000+ lines of Rust, with feature-gated dual compilation
 The primary MiniLM-L6-v2 benchmark results (Tables~\ref{tab:inference}--\ref{tab:cost} except the multi-model scaling table) are produced by a single release-gate run with KMS fail-closed enforcement.
 All \BenchNumRuns{} runs executed at commit \texttt{\BenchCommit{}} on the same \texttt{\BenchInstance{}} instance on 2026-02-06.
 Each run verified \texttt{kms\_exercised=true} and \texttt{kms\_bypassed=false}, confirming that attested KMS key release was exercised and not bypassed.
+Enclave benchmarks run with \texttt{-{}-debug-mode} to capture console output; this zeroes PCR values in the attestation document, so the benchmark KMS path uses a permissive key policy.
+PCR-conditioned key release was validated separately in a non-debug enclave at the same commit (see \texttt{README.md}, ``KMS Attestation Audit Results'').
 
 \begin{description}
   \item[Source code] \url{https://github.com/cyntrisec/EphemeralML}, commit \texttt{\BenchCommit{}}
