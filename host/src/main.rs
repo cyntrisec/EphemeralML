@@ -2,7 +2,7 @@ use ephemeral_ml_host::{mock::MockVSockProxy, VSockProxy};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    println!("EphemeralNet Host Proxy (Mock Mode)");
+    println!("EphemeralML Host Proxy (Mock Mode)");
 
     // Create mock proxy
     let mut proxy = MockVSockProxy::new(8081);

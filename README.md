@@ -1,9 +1,9 @@
 [![CI](https://github.com/cyntrisec/EphemeralML/actions/workflows/ci.yml/badge.svg)](https://github.com/cyntrisec/EphemeralML/actions/workflows/ci.yml)
-[![Status](https://img.shields.io/badge/Status-v1.0%20Complete-brightgreen?style=for-the-badge)]()
-[![Tests](https://img.shields.io/badge/Tests-110%20Passing-success?style=for-the-badge)]()
-[![Platform](https://img.shields.io/badge/Platform-AWS%20Nitro%20Enclaves-orange?style=for-the-badge&logo=amazon-aws)]()
-[![Language](https://img.shields.io/badge/Rust-13k%20LOC-b7410e?style=for-the-badge&logo=rust&logoColor=white)]()
-[![License](https://img.shields.io/badge/Apache%202.0-blue?style=for-the-badge)]()
+[![Status](https://img.shields.io/badge/Status-v1.0%20Complete-brightgreen?style=for-the-badge)](https://github.com/cyntrisec/EphemeralML/releases/tag/v1.0.0)
+[![Tests](https://img.shields.io/badge/Tests-111%20Passing-success?style=for-the-badge)](https://github.com/cyntrisec/EphemeralML/actions/workflows/ci.yml)
+[![Platform](https://img.shields.io/badge/Platform-AWS%20Nitro%20Enclaves-orange?style=for-the-badge&logo=amazon-aws)](https://aws.amazon.com/ec2/nitro/nitro-enclaves/)
+[![Language](https://img.shields.io/badge/Language-Rust-b7410e?style=for-the-badge&logo=rust&logoColor=white)](https://www.rust-lang.org/)
+[![License](https://img.shields.io/badge/Apache%202.0-blue?style=for-the-badge)](LICENSE)
 
 # 🔒 EphemeralML
 
@@ -82,7 +82,7 @@
 - **Attested Execution Receipts** (AER) for audit
 - **Policy update system** with signature verification and hot-reload
 - **Model format validation** (safetensors, dtype enforcement)
-- **110 unit tests** across 4 crates
+- **111 unit tests** across 4 crates
 - **Deterministic builds** for reproducibility
 
 ---

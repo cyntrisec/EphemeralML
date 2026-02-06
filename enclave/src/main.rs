@@ -12,10 +12,10 @@ use ephemeral_ml_enclave::server::ProductionEnclaveServer;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    println!("EphemeralNet Enclave v1.0.1-debug");
+    println!("EphemeralML Enclave v1.0.1-debug");
     #[cfg(not(feature = "production"))]
     {
-        println!("EphemeralNet Enclave (Mock Mode)");
+        println!("EphemeralML Enclave (Mock Mode)");
 
         // Test new DefaultAttestationProvider (uses mock in development)
         let default_provider = DefaultAttestationProvider::new()?;
@@ -68,7 +68,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     #[cfg(feature = "production")]
     {
-        println!("EphemeralNet Enclave (Production Mode)");
+        println!("EphemeralML Enclave (Production Mode)");
 
         let attestation_provider = DefaultAttestationProvider::new()?;
         let inference_engine = CandleInferenceEngine::new()?;
