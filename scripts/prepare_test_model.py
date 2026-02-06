@@ -36,7 +36,7 @@ except ImportError:
 # ============================================================================
 MODEL_ID = "test-model-001"
 MODEL_VERSION = "1.0.0"
-S3_BUCKET = "ephemeral-ml-models-1769608207"
+S3_BUCKET = os.environ.get("EPHEMERALML_S3_BUCKET", "ephemeral-ml-models-demo")
 
 # FIXED values for deterministic output (test only - production uses random!)
 FIXED_DEK = bytes.fromhex("0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef")
