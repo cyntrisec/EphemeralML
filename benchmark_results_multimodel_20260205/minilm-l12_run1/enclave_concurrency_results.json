@@ -1,0 +1,80 @@
+{
+  "benchmark": "enclave_concurrency",
+  "commit": "f0b372a",
+  "environment": "mock",
+  "hardware": "m6i.xlarge",
+  "iterations_per_client": 50,
+  "levels": [
+    {
+      "concurrency": 1,
+      "iterations_per_client": 50,
+      "latency_ms": {
+        "max": 169.0638,
+        "mean": 156.8427,
+        "min": 155.3494,
+        "p50": 156.6447,
+        "p95": 157.4894,
+        "p99": 169.0638
+      },
+      "throughput_inferences_per_sec": 6.38,
+      "total_inferences": 50,
+      "wall_time_ms": 7842.78
+    },
+    {
+      "concurrency": 2,
+      "iterations_per_client": 50,
+      "latency_ms": {
+        "max": 298.3861,
+        "mean": 274.9803,
+        "min": 264.5242,
+        "p50": 272.5096,
+        "p95": 288.8441,
+        "p99": 296.8775
+      },
+      "throughput_inferences_per_sec": 7.27,
+      "total_inferences": 100,
+      "wall_time_ms": 13750.86
+    },
+    {
+      "concurrency": 4,
+      "iterations_per_client": 50,
+      "latency_ms": {
+        "max": 681.1278,
+        "mean": 544.4506,
+        "min": 234.5181,
+        "p50": 550.6642,
+        "p95": 617.9229,
+        "p99": 640.0774
+      },
+      "throughput_inferences_per_sec": 7.31,
+      "total_inferences": 200,
+      "wall_time_ms": 27358.21
+    }
+  ],
+  "model": "MiniLM-L12-v2",
+  "model_id": "minilm-l12",
+  "model_params": 33400000,
+  "notes": "Full E2E path per request: HPKE encrypt + decrypt + BERT inference + receipt sign/verify. Excludes VSock transport.",
+  "scaling_efficiency": [
+    {
+      "concurrency": 1,
+      "efficiency_pct": 100.0,
+      "speedup": 1.0,
+      "throughput": 6.38
+    },
+    {
+      "concurrency": 2,
+      "efficiency_pct": 56.97,
+      "speedup": 1.14,
+      "throughput": 7.27
+    },
+    {
+      "concurrency": 4,
+      "efficiency_pct": 28.64,
+      "speedup": 1.15,
+      "throughput": 7.31
+    }
+  ],
+  "timestamp": "1770296897Z",
+  "warmup": 3
+}

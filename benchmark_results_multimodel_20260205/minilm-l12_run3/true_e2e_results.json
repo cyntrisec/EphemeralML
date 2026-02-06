@@ -1,0 +1,42 @@
+{
+  "benchmark": "true_e2e",
+  "commit": "f0b372a",
+  "crypto_overhead_ms": 0.3073,
+  "environment": "mock",
+  "hardware": "m6i.xlarge",
+  "inference_only_ms": {
+    "max": 164.8388,
+    "mean": 157.2069,
+    "min": 156.4586,
+    "p50": 157.0223,
+    "p95": 158.2147,
+    "p99": 161.8003
+  },
+  "iterations": 100,
+  "memory": {
+    "peak_rss_mb": 389.83,
+    "peak_rss_source": "VmHWM"
+  },
+  "model": "MiniLM-L12-v2",
+  "model_id": "minilm-l12",
+  "model_params": 33400000,
+  "notes": "Excludes VSock transport (measured separately in vsock RTT benchmark). E2E = HPKE encrypt + decrypt + BERT inference + receipt sign + receipt verify.",
+  "per_request_e2e_ms": {
+    "max": 165.1514,
+    "mean": 157.5142,
+    "min": 156.7572,
+    "p50": 157.325,
+    "p95": 158.51,
+    "p99": 162.164
+  },
+  "session_setup_ms": {
+    "max": 0.1741,
+    "mean": 0.1438,
+    "min": 0.1356,
+    "p50": 0.1427,
+    "p95": 0.153,
+    "p99": 0.1736
+  },
+  "timestamp": "1770297638Z",
+  "warmup": 3
+}

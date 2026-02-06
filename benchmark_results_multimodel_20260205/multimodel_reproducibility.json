@@ -1,0 +1,234 @@
+{
+  "benchmark": "multimodel_reproducibility",
+  "hardware": "m6i.xlarge",
+  "models": {
+    "minilm-l6": {
+      "name": "MiniLM-L6-v2",
+      "params": "22.7M",
+      "num_runs": 3,
+      "runs": [
+        {
+          "baseline_mean_ms": 79.3,
+          "enclave_mean_ms": 90.33,
+          "overhead_pct": 13.9,
+          "commit": "8fc6c36"
+        },
+        {
+          "baseline_mean_ms": 79.63,
+          "enclave_mean_ms": 90.16,
+          "overhead_pct": 13.2,
+          "commit": "8fc6c36"
+        },
+        {
+          "baseline_mean_ms": 78.92,
+          "enclave_mean_ms": 90.59,
+          "overhead_pct": 14.8,
+          "commit": "8fc6c36"
+        }
+      ],
+      "aggregate": {
+        "baseline_mean_ms": {
+          "mean": 79.28,
+          "stdev": 0.36,
+          "cv_pct": 0.45,
+          "min": 78.92,
+          "max": 79.63
+        },
+        "enclave_mean_ms": {
+          "mean": 90.36,
+          "stdev": 0.22,
+          "cv_pct": 0.24,
+          "min": 90.16,
+          "max": 90.59
+        },
+        "overhead_pct": {
+          "mean": 13.97,
+          "stdev": 0.78,
+          "cv_pct": 5.61,
+          "min": 13.22,
+          "max": 14.79
+        },
+        "baseline_p95_ms": {
+          "mean": 81.07,
+          "stdev": 0.24,
+          "cv_pct": 0.3,
+          "min": 80.81,
+          "max": 81.28
+        },
+        "enclave_p95_ms": {
+          "mean": 92.44,
+          "stdev": 0.61,
+          "cv_pct": 0.66,
+          "min": 92.08,
+          "max": 93.14
+        },
+        "baseline_rss_mb": {
+          "mean": 266.14,
+          "stdev": 0.2,
+          "cv_pct": 0.07,
+          "min": 265.94,
+          "max": 266.33
+        },
+        "enclave_rss_mb": {
+          "mean": 585.69,
+          "stdev": 0.11,
+          "cv_pct": 0.02,
+          "min": 585.59,
+          "max": 585.8
+        }
+      }
+    },
+    "minilm-l12": {
+      "name": "MiniLM-L12-v2",
+      "params": "33.4M",
+      "num_runs": 3,
+      "runs": [
+        {
+          "baseline_mean_ms": 158.23,
+          "enclave_mean_ms": 178.14,
+          "overhead_pct": 12.6,
+          "commit": "f0b372a"
+        },
+        {
+          "baseline_mean_ms": 156.01,
+          "enclave_mean_ms": 178.38,
+          "overhead_pct": 14.3,
+          "commit": "f0b372a"
+        },
+        {
+          "baseline_mean_ms": 157.51,
+          "enclave_mean_ms": 176.18,
+          "overhead_pct": 11.9,
+          "commit": "f0b372a"
+        }
+      ],
+      "aggregate": {
+        "baseline_mean_ms": {
+          "mean": 157.25,
+          "stdev": 1.13,
+          "cv_pct": 0.72,
+          "min": 156.01,
+          "max": 158.23
+        },
+        "enclave_mean_ms": {
+          "mean": 177.57,
+          "stdev": 1.21,
+          "cv_pct": 0.68,
+          "min": 176.18,
+          "max": 178.38
+        },
+        "overhead_pct": {
+          "mean": 12.92,
+          "stdev": 1.28,
+          "cv_pct": 9.88,
+          "min": 11.85,
+          "max": 14.34
+        },
+        "baseline_p95_ms": {
+          "mean": 160.85,
+          "stdev": 5.27,
+          "cv_pct": 3.28,
+          "min": 157.41,
+          "max": 166.92
+        },
+        "enclave_p95_ms": {
+          "mean": 184.17,
+          "stdev": 6.92,
+          "cv_pct": 3.76,
+          "min": 177.09,
+          "max": 190.91
+        },
+        "baseline_rss_mb": {
+          "mean": 388.01,
+          "stdev": 0.02,
+          "cv_pct": 0.01,
+          "min": 388.0,
+          "max": 388.04
+        },
+        "enclave_rss_mb": {
+          "mean": 1494.06,
+          "stdev": 0.11,
+          "cv_pct": 0.01,
+          "min": 1493.94,
+          "max": 1494.16
+        }
+      }
+    },
+    "bert-base": {
+      "name": "BERT-base-uncased",
+      "params": "110M",
+      "num_runs": 3,
+      "runs": [
+        {
+          "baseline_mean_ms": 65.49,
+          "enclave_mean_ms": 73.63,
+          "overhead_pct": 12.4,
+          "commit": "8fc6c36"
+        },
+        {
+          "baseline_mean_ms": 65.57,
+          "enclave_mean_ms": 73.39,
+          "overhead_pct": 11.9,
+          "commit": "8fc6c36"
+        },
+        {
+          "baseline_mean_ms": 65.92,
+          "enclave_mean_ms": 73.45,
+          "overhead_pct": 11.4,
+          "commit": "8fc6c36"
+        }
+      ],
+      "aggregate": {
+        "baseline_mean_ms": {
+          "mean": 65.66,
+          "stdev": 0.23,
+          "cv_pct": 0.35,
+          "min": 65.49,
+          "max": 65.92
+        },
+        "enclave_mean_ms": {
+          "mean": 73.49,
+          "stdev": 0.12,
+          "cv_pct": 0.17,
+          "min": 73.39,
+          "max": 73.63
+        },
+        "overhead_pct": {
+          "mean": 11.93,
+          "stdev": 0.5,
+          "cv_pct": 4.22,
+          "min": 11.42,
+          "max": 12.43
+        },
+        "baseline_p95_ms": {
+          "mean": 71.33,
+          "stdev": 0.62,
+          "cv_pct": 0.86,
+          "min": 70.62,
+          "max": 71.75
+        },
+        "enclave_p95_ms": {
+          "mean": 81.73,
+          "stdev": 0.33,
+          "cv_pct": 0.41,
+          "min": 81.45,
+          "max": 82.1
+        },
+        "baseline_rss_mb": {
+          "mean": 1262.31,
+          "stdev": 0.11,
+          "cv_pct": 0.01,
+          "min": 1262.21,
+          "max": 1262.43
+        },
+        "enclave_rss_mb": {
+          "mean": 2825.89,
+          "stdev": 0.09,
+          "cv_pct": 0.0,
+          "min": 2825.82,
+          "max": 2825.99
+        }
+      }
+    }
+  }
+}

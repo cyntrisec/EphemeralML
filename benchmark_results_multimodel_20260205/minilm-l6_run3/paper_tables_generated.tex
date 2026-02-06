@@ -1,0 +1,42 @@
+% === Inference latency comparison (generated) ===
+\begin{tabular}{lrrr}
+\hline
+\textbf{Metric} & \textbf{Bare Metal} & \textbf{Enclave} & \textbf{Overhead} \\
+\hline
+Mean latency     & 78.92\,ms  & 90.59\,ms  & +14.8\% \\
+P95 latency      & 80.81\,ms  & 93.14\,ms  & +15.3\% \\
+Throughput       & 12.7\,inf/s & 11.0\,inf/s & -12.9\% \\
+Peak RSS         & 266\,MB    & 586\,MB & +120.2\% \\
+\hline
+\end{tabular}
+
+% === Cold start breakdown (generated) ===
+\begin{tabular}{lr}
+\hline
+\textbf{Phase} & \textbf{Latency} \\
+\hline
+NSM attestation generation & 300\,ms \\
+KMS key release            & 83\,ms \\
+S3 model fetch (via VSock) & 5728\,ms \\
+Model decryption           & 101\,ms \\
+Model load (Candle)        & 40\,ms \\
+Tokenizer setup            & 25\,ms \\
+\hline
+\textbf{Total}             & \textbf{6284\,ms} \\
+\hline
+\end{tabular}
+
+% Quality (full embedding, dim=384): cosine=1.000000000000, max_abs_diff=5.811e-07
+
+% === Input size scaling (generated) ===
+\begin{tabular}{rrrrrr}
+\hline
+\textbf{Tokens} & \textbf{Mean} & \textbf{P50} & \textbf{P95} & \textbf{P99} & \textbf{Min} \\
+\hline
+32 & 23.61\,ms & 23.48\,ms & 25.81\,ms & 27.26\,ms & 21.72\,ms \\
+63 & 41.82\,ms & 41.63\,ms & 44.15\,ms & 45.03\,ms & 39.17\,ms \\
+128 & 89.73\,ms & 89.71\,ms & 91.52\,ms & 92.23\,ms & 88.02\,ms \\
+256 & 240.63\,ms & 240.27\,ms & 245.64\,ms & 247.95\,ms & 236.28\,ms \\
+\hline
+\end{tabular}
+% Linear fit: latency = -18.89ms + 0.9840ms/token

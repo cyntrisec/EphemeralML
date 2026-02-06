@@ -1,0 +1,8 @@
+{
+  "timestamp": "1770297049Z",
+  "git_commit": "f0b372a",
+  "instance_type": "m6i.xlarge",
+  "model_id": "minilm-l12",
+  "enclave_memory_mb": 4096,
+  "enclave_cpus": 2
+}

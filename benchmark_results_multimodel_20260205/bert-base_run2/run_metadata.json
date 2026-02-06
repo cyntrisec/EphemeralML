@@ -1,0 +1,9 @@
+{
+  "timestamp": "1770314272Z",
+  "git_commit": "8fc6c36",
+  "instance_type": "m6i.xlarge",
+  "model_id": "bert-base",
+  "enclave_memory_mb": 4096,
+  "enclave_cpus": 2
+}
+

@@ -1,0 +1,54 @@
+{
+  "benchmark": "cose_attestation_verification",
+  "cbor_payload_parse_ms": {
+    "max": 0.0011,
+    "mean": 0.001,
+    "min": 0.001,
+    "p50": 0.001,
+    "p95": 0.0011,
+    "p99": 0.0011
+  },
+  "cert_chain_depth": 3,
+  "cert_chain_verify_ms": {
+    "max": 2.2687,
+    "mean": 2.2172,
+    "min": 2.2032,
+    "p50": 2.2158,
+    "p95": 2.2352,
+    "p99": 2.2589
+  },
+  "commit": "f0b372a",
+  "cose_sign1_size_bytes": 3209,
+  "cose_signature_verify_ms": {
+    "max": 0.7818,
+    "mean": 0.7496,
+    "min": 0.7371,
+    "p50": 0.7472,
+    "p95": 0.7681,
+    "p99": 0.7713
+  },
+  "curve": "P-384 (secp384r1)",
+  "environment": "bare_metal",
+  "full_verification_ms": {
+    "max": 3.1388,
+    "mean": 3.0069,
+    "min": 2.9837,
+    "p50": 3.0023,
+    "p95": 3.0325,
+    "p99": 3.0726
+  },
+  "hardware": "m6i.xlarge",
+  "hash": "SHA-384",
+  "iterations": 100,
+  "notes": {
+    "cbor_payload_parse": "Deserialize CBOR attestation payload (~1KB with certificate field)",
+    "cert_chain_verify": "Walk 3-cert chain (root→intermediate→leaf), verify each signature with issuer pubkey",
+    "cose_signature_verify": "Parse COSE_Sign1 + extract leaf cert from payload + coset verify_signature() + ecdsa_raw_to_der + ECDSA-P384-SHA384 verify",
+    "curve_note": "AWS Nitro root CA uses P-384 (secp384r1). Test chain uses identical curve and key sizes.",
+    "full_verification": "All three steps combined (COSE verify + chain walk + payload parse)",
+    "signature_format": "Raw (r||s) matching NSM output, converted to DER for OpenSSL verification"
+  },
+  "payload_size_bytes": 3101,
+  "timestamp": "1770297438Z",
+  "warmup": 3
+}

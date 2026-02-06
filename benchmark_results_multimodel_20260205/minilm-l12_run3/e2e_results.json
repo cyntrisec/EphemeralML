@@ -1,0 +1,38 @@
+{
+  "benchmark": "e2e_encrypted_request",
+  "commit": "f0b372a",
+  "environment": "bare_metal_mock",
+  "hardware": "m6i.xlarge",
+  "iterations": 100,
+  "notes": {
+    "per_request_crypto": "HPKE encrypt request + decrypt request + receipt sign + HPKE encrypt response + decrypt response + receipt verify (excludes inference)",
+    "session_setup": "X25519 keygen + HPKE session creation + establishment (both sides)",
+    "tcp_handshake": "Full ClientHello→ServerHello→attestation verify→HPKE establish over TCP loopback"
+  },
+  "per_request_crypto_ms": {
+    "max": 0.2095,
+    "mean": 0.1661,
+    "min": 0.1619,
+    "p50": 0.1638,
+    "p95": 0.178,
+    "p99": 0.1845
+  },
+  "session_setup_ms": {
+    "max": 0.2221,
+    "mean": 0.138,
+    "min": 0.1356,
+    "p50": 0.1365,
+    "p95": 0.144,
+    "p99": 0.1544
+  },
+  "tcp_handshake_ms": {
+    "max": 0.1761,
+    "mean": 0.1529,
+    "min": 0.1489,
+    "p50": 0.152,
+    "p95": 0.1635,
+    "p99": 0.176
+  },
+  "timestamp": "1770297437Z",
+  "warmup": 3
+}

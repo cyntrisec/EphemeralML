@@ -1,0 +1,75 @@
+{
+  "benchmark": "input_scaling",
+  "commit": "8fc6c36",
+  "embedding_dim": 384,
+  "environment": "bare_metal",
+  "hardware": "m6i.xlarge",
+  "iterations_per_size": 100,
+  "memory": {
+    "peak_rss_mb": 266.1,
+    "peak_rss_source": "VmHWM"
+  },
+  "model": "MiniLM-L6-v2",
+  "model_id": "minilm-l6",
+  "model_params": 22700000,
+  "scaling_fit": {
+    "base_overhead_ms": -18.89,
+    "per_token_ms": 0.984
+  },
+  "sizes": [
+    {
+      "actual_tokens": 32,
+      "latency_ms": {
+        "max": 27.47,
+        "mean": 23.61,
+        "min": 21.72,
+        "p50": 23.48,
+        "p95": 25.81,
+        "p99": 27.26
+      },
+      "target_tokens": 32,
+      "text_length_chars": 140
+    },
+    {
+      "actual_tokens": 63,
+      "latency_ms": {
+        "max": 45.28,
+        "mean": 41.82,
+        "min": 39.17,
+        "p50": 41.63,
+        "p95": 44.15,
+        "p99": 45.03
+      },
+      "target_tokens": 64,
+      "text_length_chars": 286
+    },
+    {
+      "actual_tokens": 128,
+      "latency_ms": {
+        "max": 94.01,
+        "mean": 89.73,
+        "min": 88.02,
+        "p50": 89.71,
+        "p95": 91.52,
+        "p99": 92.23
+      },
+      "target_tokens": 128,
+      "text_length_chars": 585
+    },
+    {
+      "actual_tokens": 256,
+      "latency_ms": {
+        "max": 248.55,
+        "mean": 240.63,
+        "min": 236.28,
+        "p50": 240.27,
+        "p95": 245.64,
+        "p99": 247.95
+      },
+      "target_tokens": 256,
+      "text_length_chars": 1180
+    }
+  ],
+  "timestamp": "1770324819Z",
+  "warmup": 3
+}

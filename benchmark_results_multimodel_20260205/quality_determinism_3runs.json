@@ -1,0 +1,64 @@
+{
+  "benchmark": "quality_determinism",
+  "baseline": {
+    "num_runs": 3,
+    "files": [
+      "benchmark_results_multimodel_20260205/minilm-l6_run1/baseline_results.json",
+      "benchmark_results_multimodel_20260205/minilm-l6_run2/baseline_results.json",
+      "benchmark_results_multimodel_20260205/minilm-l6_run3/baseline_results.json"
+    ],
+    "deterministic": true,
+    "unique_sha256_count": 1,
+    "sha256": [
+      "c4f3b51daa1900db2030e89fe6b6b6bd13854e6cafbed41cfbee672c8701da6b"
+    ],
+    "pairwise_cosine_similarity": {
+      "min": 1.0000000000000002,
+      "max": 1.0000000000000002,
+      "mean": 1.0000000000000002
+    },
+    "pairwise_max_abs_diff": {
+      "min": 0.0,
+      "max": 0.0,
+      "mean": 0.0
+    }
+  },
+  "num_runs": 3,
+  "enclave": {
+    "num_runs": 3,
+    "files": [
+      "benchmark_results_multimodel_20260205/minilm-l6_run1/enclave_results.json",
+      "benchmark_results_multimodel_20260205/minilm-l6_run2/enclave_results.json",
+      "benchmark_results_multimodel_20260205/minilm-l6_run3/enclave_results.json"
+    ],
+    "deterministic": true,
+    "unique_sha256_count": 1,
+    "sha256": [
+      "8425c4f36d93057fe4aeed9f5688b2ff63942ab2dd84c232f55a2bca1a44faf1"
+    ],
+    "pairwise_cosine_similarity": {
+      "min": 0.9999999999999999,
+      "max": 0.9999999999999999,
+      "mean": 0.9999999999999999
+    },
+    "pairwise_max_abs_diff": {
+      "min": 0.0,
+      "max": 0.0,
+      "mean": 0.0
+    }
+  },
+  "cross_environment": {
+    "sha256_match": false,
+    "cosine_similarity": {
+      "min": 0.999999999999871,
+      "max": 0.999999999999871,
+      "mean": 0.9999999999998711
+    },
+    "max_abs_diff": {
+      "min": 5.811452865600586e-07,
+      "max": 5.811452865600586e-07,
+      "mean": 5.811452865600586e-07
+    },
+    "verdict": "near-identical (f32 precision)"
+  }
+}

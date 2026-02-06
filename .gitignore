@@ -129,7 +129,9 @@ docs/E2E_DEPLOY_GUIDE.md
 docs/investors/*.pdf
 
 # LaTeX build artifacts
+*.aux
 docs/ephemeralml_paper.pdf
+ephemeralml_paper.pdf
 audit
 
 # Benchmark run log (local troubleshooting notes)

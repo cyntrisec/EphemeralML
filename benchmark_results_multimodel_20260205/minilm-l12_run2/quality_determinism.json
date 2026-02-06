@@ -1,0 +1,40 @@
+{
+  "benchmark": "quality_determinism",
+  "baseline": {
+    "num_runs": 1,
+    "files": [
+      "/tmp/benchmark_results/minilm-l12_run2/baseline_results.json"
+    ],
+    "deterministic": true,
+    "unique_sha256_count": 1,
+    "sha256": [
+      "d3be598b4284393b8970261a2abc4c1fa71f28b97a4bee9b87aa1242abe38e13"
+    ]
+  },
+  "num_runs": 1,
+  "enclave": {
+    "num_runs": 1,
+    "files": [
+      "/tmp/benchmark_results/minilm-l12_run2/enclave_results.json"
+    ],
+    "deterministic": true,
+    "unique_sha256_count": 1,
+    "sha256": [
+      "6d3d8527454f61ba72a2c8ccea5f4da7402f45b83579f9234434eb433e596027"
+    ]
+  },
+  "cross_environment": {
+    "sha256_match": false,
+    "cosine_similarity": {
+      "min": 0.9999999999994706,
+      "max": 0.9999999999994706,
+      "mean": 0.9999999999994706
+    },
+    "max_abs_diff": {
+      "min": 7.450580596923828e-07,
+      "max": 7.450580596923828e-07,
+      "mean": 7.450580596923828e-07
+    },
+    "verdict": "near-identical (f32 precision)"
+  }
+}

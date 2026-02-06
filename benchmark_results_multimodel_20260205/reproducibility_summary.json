@@ -1,0 +1,191 @@
+{
+  "benchmark": "multimodel_reproducibility",
+  "model": "MiniLM-L6-v2",
+  "model_id": "minilm-l6",
+  "model_params": 22700000,
+  "hardware": "m6i.xlarge",
+  "commit": "8fc6c36",
+  "num_runs": 3,
+  "runs": {
+    "run1": {
+      "baseline_mean_ms": 79.3,
+      "enclave_mean_ms": 90.33,
+      "overhead_pct": 13.9,
+      "baseline_p95_ms": 81.13,
+      "enclave_p95_ms": 92.08,
+      "baseline_throughput": 12.61,
+      "enclave_throughput": 11.07,
+      "baseline_rss_mb": 266.15,
+      "enclave_rss_mb": 585.8,
+      "attestation_ms": 93.77,
+      "kms_ms": 81.21,
+      "model_fetch_ms": 5611.44,
+      "cold_start_ms": 5960.58,
+      "timestamp": "1770320952Z",
+      "quality_sha256_baseline": "c4f3b51daa1900db2030e89fe6b6b6bd13854e6cafbed41cfbee672c8701da6b",
+      "quality_sha256_enclave": "8425c4f36d93057fe4aeed9f5688b2ff63942ab2dd84c232f55a2bca1a44faf1"
+    },
+    "run2": {
+      "baseline_mean_ms": 79.63,
+      "enclave_mean_ms": 90.16,
+      "overhead_pct": 13.2,
+      "baseline_p95_ms": 81.28,
+      "enclave_p95_ms": 92.1,
+      "baseline_throughput": 12.56,
+      "enclave_throughput": 11.09,
+      "baseline_rss_mb": 266.33,
+      "enclave_rss_mb": 585.68,
+      "attestation_ms": 229.69,
+      "kms_ms": 82.4,
+      "model_fetch_ms": 6384.43,
+      "cold_start_ms": 6870.32,
+      "timestamp": "1770322252Z",
+      "quality_sha256_baseline": "c4f3b51daa1900db2030e89fe6b6b6bd13854e6cafbed41cfbee672c8701da6b",
+      "quality_sha256_enclave": "8425c4f36d93057fe4aeed9f5688b2ff63942ab2dd84c232f55a2bca1a44faf1"
+    },
+    "run3": {
+      "baseline_mean_ms": 78.92,
+      "enclave_mean_ms": 90.59,
+      "overhead_pct": 14.8,
+      "baseline_p95_ms": 80.81,
+      "enclave_p95_ms": 93.14,
+      "baseline_throughput": 12.67,
+      "enclave_throughput": 11.04,
+      "baseline_rss_mb": 265.94,
+      "enclave_rss_mb": 585.59,
+      "attestation_ms": 299.63,
+      "kms_ms": 82.87,
+      "model_fetch_ms": 5727.77,
+      "cold_start_ms": 6283.81,
+      "timestamp": "1770324674Z",
+      "quality_sha256_baseline": "c4f3b51daa1900db2030e89fe6b6b6bd13854e6cafbed41cfbee672c8701da6b",
+      "quality_sha256_enclave": "8425c4f36d93057fe4aeed9f5688b2ff63942ab2dd84c232f55a2bca1a44faf1"
+    }
+  },
+  "aggregate": {
+    "baseline_mean_ms": {
+      "mean": 79.28,
+      "stdev": 0.36,
+      "cv_pct": 0.45,
+      "min": 78.92,
+      "max": 79.63
+    },
+    "enclave_mean_ms": {
+      "mean": 90.36,
+      "stdev": 0.22,
+      "cv_pct": 0.24,
+      "min": 90.16,
+      "max": 90.59
+    },
+    "overhead_pct": {
+      "mean": 13.97,
+      "stdev": 0.78,
+      "cv_pct": 5.61,
+      "min": 13.22,
+      "max": 14.79
+    },
+    "baseline_p95_ms": {
+      "mean": 81.07,
+      "stdev": 0.24,
+      "cv_pct": 0.3,
+      "min": 80.81,
+      "max": 81.28
+    },
+    "enclave_p95_ms": {
+      "mean": 92.44,
+      "stdev": 0.61,
+      "cv_pct": 0.66,
+      "min": 92.08,
+      "max": 93.14
+    },
+    "baseline_throughput": {
+      "mean": 12.61,
+      "stdev": 0.06,
+      "cv_pct": 0.44,
+      "min": 12.56,
+      "max": 12.67
+    },
+    "enclave_throughput": {
+      "mean": 11.07,
+      "stdev": 0.03,
+      "cv_pct": 0.23,
+      "min": 11.04,
+      "max": 11.09
+    },
+    "baseline_rss_mb": {
+      "mean": 266.14,
+      "stdev": 0.2,
+      "cv_pct": 0.07,
+      "min": 265.94,
+      "max": 266.33
+    },
+    "enclave_rss_mb": {
+      "mean": 585.69,
+      "stdev": 0.11,
+      "cv_pct": 0.02,
+      "min": 585.59,
+      "max": 585.8
+    },
+    "attestation_ms": {
+      "mean": 207.7,
+      "stdev": 104.68,
+      "cv_pct": 50.4,
+      "min": 93.77,
+      "max": 299.63
+    },
+    "kms_key_release_ms": {
+      "mean": 82.16,
+      "stdev": 0.86,
+      "cv_pct": 1.04,
+      "min": 81.21,
+      "max": 82.87
+    },
+    "model_fetch_ms": {
+      "mean": 5907.88,
+      "stdev": 416.78,
+      "cv_pct": 7.05,
+      "min": 5611.44,
+      "max": 6384.43
+    },
+    "cold_start_ms": {
+      "mean": 6371.57,
+      "stdev": 461.18,
+      "cv_pct": 7.24,
+      "min": 5960.58,
+      "max": 6870.32
+    },
+    "vsock_rtt_64b_ms": {
+      "mean": 0.18,
+      "stdev": 0.01,
+      "cv_pct": 5.56,
+      "min": 0.17,
+      "max": 0.19
+    },
+    "vsock_rtt_1mb_ms": {
+      "mean": 4.4,
+      "stdev": 0.01,
+      "cv_pct": 0.26,
+      "min": 4.39,
+      "max": 4.41
+    },
+    "vsock_throughput_mbps": {
+      "mean": 226.97,
+      "stdev": 0.7,
+      "cv_pct": 0.31,
+      "min": 226.57,
+      "max": 227.78
+    }
+  },
+  "quality": {
+    "baseline_deterministic": true,
+    "baseline_unique_sha256": [
+      "c4f3b51daa1900db2030e89fe6b6b6bd13854e6cafbed41cfbee672c8701da6b"
+    ],
+    "enclave_deterministic": true,
+    "enclave_unique_sha256": [
+      "8425c4f36d93057fe4aeed9f5688b2ff63942ab2dd84c232f55a2bca1a44faf1"
+    ],
+    "cross_environment_cosine": 0.999999999999871,
+    "cross_environment_max_abs_diff": 5.811e-07
+  }
+}
