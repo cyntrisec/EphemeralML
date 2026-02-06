@@ -10,30 +10,35 @@
 \usepackage{tabularx}
 
 % --- Title ---
-% --- Paper benchmark macros (3-run averages, 2026-02-05) ---
-% Commits: MiniLM-L6 & BERT-base at 8fc6c36, MiniLM-L12 at f0b372a
+% --- Paper benchmark macros (canonical release-gate run, 2026-02-06) ---
+% MiniLM-L6: 3 runs at commit 057a85a with KMS fail-closed enforcement
+% MiniLM-L12 & BERT-base: 3 runs from benchmark_results_multimodel_20260205
+%   (MiniLM-L12 at f0b372a, BERT-base at 8fc6c36)
+% Artifact: s3://ephemeral-ml-models-demo/benchmark_temp/kms_validation_20260205_234917.tar.gz
+% SHA-256:  20309ab610e7321de5e29d019f0d4b15fee6a7cdafe919686ec1cbd4fabe5937
 \newcommand{\BenchInstance}{m6i.xlarge}
 \newcommand{\BenchModelName}{MiniLM-L6-v2}
 \newcommand{\BenchModelParams}{22.7M}
 \newcommand{\BenchNumRuns}{3}
+\newcommand{\BenchCommit}{057a85a}
 
-\newcommand{\BenchBareMeanMs}{79.28}
-\newcommand{\BenchEnclaveMeanMs}{90.36}
-\newcommand{\BenchOverheadPct}{14.0\%}
-\newcommand{\BenchBarePNinetyFiveMs}{81.07}
-\newcommand{\BenchEnclavePNinetyFiveMs}{92.44}
-\newcommand{\BenchBareThroughput}{12.61}
-\newcommand{\BenchEnclaveThroughput}{11.07}
+\newcommand{\BenchBareMeanMs}{79.21}
+\newcommand{\BenchEnclaveMeanMs}{89.71}
+\newcommand{\BenchOverheadPct}{13.3\%}
+\newcommand{\BenchBarePNinetyFiveMs}{80.64}
+\newcommand{\BenchEnclavePNinetyFiveMs}{91.62}
+\newcommand{\BenchBareThroughput}{12.63}
+\newcommand{\BenchEnclaveThroughput}{11.15}
 \newcommand{\BenchBarePeakRssMb}{266}
 \newcommand{\BenchEnclavePeakRssMb}{586}
 
-\newcommand{\BenchAttestationMs}{208}
-\newcommand{\BenchKmsMs}{82}
-\newcommand{\BenchSThreeFetchMs}{5908}
+\newcommand{\BenchAttestationMs}{153}
+\newcommand{\BenchKmsMs}{75}
+\newcommand{\BenchSThreeFetchMs}{5440}
 \newcommand{\BenchDecryptMs}{101}
 \newcommand{\BenchLoadMs}{40}
 \newcommand{\BenchTokenizerMs}{24}
-\newcommand{\BenchColdStartTotalMs}{6372}
+\newcommand{\BenchColdStartTotalMs}{5843}
 
 % Multi-model scaling table (3-run means from benchmark_results_multimodel_20260205)
 \newcommand{\ModelLTwelveBareMeanMs}{157.25}
@@ -340,7 +345,9 @@ All tests pass in CI (GitHub Actions) on every push to \texttt{main}.
 We evaluate \textsc{EphemeralML} on an \texttt{\BenchInstance{}} EC2 instance (4~vCPUs, 16\,GB RAM, Intel Xeon Ice Lake) running Amazon Linux~2023.
 The enclave is allocated 2~vCPUs and 4096\,MB RAM.
 We benchmark three encoder models: \BenchModelName{} (\BenchModelParams{} parameters, 384-dim embeddings), MiniLM-L12-v2 (\ModelLTwelveParams{}, 384-dim), and BERT-base-uncased (\ModelBertBaseParams{}, 768-dim).
-All latency measurements use 100 iterations after 3 warmup runs, repeated \BenchNumRuns{} times per model (MiniLM-L6-v2 and BERT-base at commit \texttt{8fc6c36}; MiniLM-L12-v2 at commit \texttt{f0b372a}; inference logic unchanged between commits).
+All latency measurements use 100 iterations after 3 warmup runs, repeated \BenchNumRuns{} times per model.
+The primary MiniLM-L6-v2 results reported below are from a single-commit release-gate run at \texttt{\BenchCommit{}} with KMS fail-closed enforcement verified per run (see Artifact Provenance, Section~\ref{sec:provenance}).
+Multi-model scaling data (MiniLM-L12-v2 and BERT-base) were collected in a separate campaign (MiniLM-L12-v2 at \texttt{f0b372a}, BERT-base at \texttt{8fc6c36}; inference logic unchanged between commits).
 Results are highly reproducible: coefficient of variation is $< 1\%$ for both bare-metal and enclave inference latency across all models and runs.
 
 \subsection{Inference Latency}
@@ -619,7 +626,7 @@ Table~\ref{tab:reproducibility} summarizes the coefficient of variation (CV\%) a
 \hline
 \textbf{Model} & \textbf{BL CV\%} & \textbf{EN CV\%} & \textbf{Overhead CV\%} \\
 \hline
-\BenchModelName{} & 0.5\% & 0.2\% & 5.6\% \\
+\BenchModelName{} & 0.1\% & 0.3\% & 3.9\% \\
 MiniLM-L12-v2     & 0.7\% & 0.7\% & 9.9\% \\
 BERT-base          & 0.3\% & 0.2\% & 4.2\% \\
 \hline
@@ -642,14 +649,14 @@ Table~\ref{tab:cost} shows the per-inference cost on \texttt{m6i.xlarge} (\$0.19
 \hline
 \textbf{Metric} & \textbf{Bare Metal} & \textbf{Enclave} \\
 \hline
-Inferences/hour        & 45{,}393 & 39{,}858 \\
-Cost per 1M inferences & \$4.23 & \$4.82 \\
-Cost multiplier        & ---    & 1.14$\times$ \\
+Inferences/hour        & 45{,}449 & 40{,}129 \\
+Cost per 1M inferences & \$4.22 & \$4.78 \\
+Cost multiplier        & ---    & 1.13$\times$ \\
 \hline
 \end{tabular}
 \end{table}
 
-The 14\% cost premium for confidential inference is modest, especially given that the enclave provides hardware-enforced isolation, cryptographic attestation, and end-to-end encryption.
+The 13\% cost premium for confidential inference is modest, especially given that the enclave provides hardware-enforced isolation, cryptographic attestation, and end-to-end encryption.
 
 % ============================================================
 \section{Related Work}
@@ -731,13 +738,33 @@ Evaluating \textsc{EphemeralML} on billion-parameter models---potentially with I
 
 We presented \textsc{EphemeralML}, a confidential AI inference system that runs ML models inside AWS Nitro Enclaves with the host operating as a blind relay of encrypted data.
 Our evaluation across three encoder models (22.7M--110M parameters), each benchmarked \BenchNumRuns{} times, demonstrates that hardware-enforced confidential inference is practical:
-\BenchOverheadRange{} mean inference overhead (CV $< 1\%$ across runs), 0.028\,ms per-inference cryptographic cost, bit-identical output within environments, near-identical output across environments (cosine similarity $\approx 1.0$), and a $\sim$14\% cost premium over bare-metal execution.
+\BenchOverheadRange{} mean inference overhead (CV $< 1\%$ across runs), 0.028\,ms per-inference cryptographic cost, bit-identical output within environments, near-identical output across environments (cosine similarity $\approx 1.0$), and a $\sim$13\% cost premium over bare-metal execution.
 Notably, overhead remains stable or decreases slightly as model size increases, suggesting that the enclave's fixed costs are amortized over longer inference times.
 
 The system's three-zone architecture, transcript-bound HPKE sessions, attestation-gated key management, and Ed25519-signed execution receipts provide defense-in-depth against a fully compromised host.
 The implementation in 13,000+ lines of Rust, with feature-gated dual compilation and 110+ passing tests, demonstrates that confidential ML inference can be achieved with production-quality engineering.
 
 \textsc{EphemeralML} is open-source and available at \url{https://github.com/cyntrisec/EphemeralML}.
+
+% ============================================================
+\section*{Artifact Provenance}
+\label{sec:provenance}
+
+The primary MiniLM-L6-v2 benchmark results (Tables~\ref{tab:inference}--\ref{tab:cost} except the multi-model scaling table) are produced by a single release-gate run with KMS fail-closed enforcement.
+All \BenchNumRuns{} runs executed at commit \texttt{\BenchCommit{}} on the same \texttt{\BenchInstance{}} instance on 2026-02-06.
+Each run verified \texttt{kms\_exercised=true} and \texttt{kms\_bypassed=false}, confirming that attested KMS key release was exercised and not bypassed.
+
+\begin{description}
+  \item[Source code] \url{https://github.com/cyntrisec/EphemeralML}, commit \texttt{\BenchCommit{}}
+  \item[Artifact archive] \texttt{s3://ephemeral-ml-models-demo/benchmark\_temp/kms\_validation\_20260205\_234917.tar.gz}
+  \item[Archive SHA-256] \texttt{20309ab610e7321de5e29d019f0d4b15fee6a7cdafe919686ec1cbd4fabe5937}
+  \item[Instance] \texttt{\BenchInstance{}} (4~vCPUs, 16\,GB, Intel Xeon Ice Lake), enclave: 2~vCPUs, 4096\,MB
+  \item[Model] \BenchModelName{} (\BenchModelParams{} parameters)
+  \item[Runs] \BenchNumRuns{} $\times$ 100 iterations (3 warmup), \texttt{require\_kms=true}
+  \item[Canonical manifest] \texttt{final\_validation\_manifest.json} inside the archive
+\end{description}
+
+Multi-model scaling data (MiniLM-L12-v2, BERT-base) were collected in a separate campaign under the same methodology but at earlier commits (\texttt{f0b372a} and \texttt{8fc6c36} respectively; inference logic unchanged).
 
 % ============================================================
 \begin{thebibliography}{10}
