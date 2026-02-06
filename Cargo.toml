@@ -63,4 +63,4 @@ openssl = "0.10"
 x509-parser = "0.18"
 
 # Testing
-proptest = "1.0"
+proptest = "1.10"
