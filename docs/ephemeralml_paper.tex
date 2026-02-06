@@ -165,12 +165,11 @@ At no point does the host possess decryption keys or see plaintext model data.
 \paragraph{Enclave Zone.}
 The enclave runs inside a Nitro Enclave with no network access, no persistent storage, and no interactive shell.
 On startup, it:
-(1) generates an attestation document via the Nitro Security Module (NSM),
-(2) generates ephemeral X25519 and Ed25519 key pairs and embeds the public keys in the attestation user data,
-(3) obtains the model decryption key from KMS (attestation-gated),
-(4) fetches and decrypts model artifacts via the host's S3 proxy,
-(5) loads the model into the Candle inference engine, and
-(6) serves encrypted inference requests over VSock.
+(1) obtains the model decryption key from KMS (attestation-gated),
+(2) fetches and decrypts model artifacts via the host's S3 proxy,
+(3) loads the model into the Candle inference engine, and
+(4) begins accepting client connections over VSock.
+For each client session, it generates a fresh attestation document via the Nitro Security Module (NSM), creates ephemeral X25519 and Ed25519 key pairs (embedding the public keys in the attestation user data), and establishes an HPKE-encrypted channel before serving inference requests.
 
 % ============================================================
 \section{Cryptographic Protocol}
@@ -302,14 +301,14 @@ After each inference, the enclave produces an Attested Execution Receipt (AER) c
   \item Monotonic sequence number
 \end{itemize}
 
-The receipt is CBOR-encoded with deterministic sorted map keys, then signed with the enclave's ephemeral Ed25519 private key (64-byte signature).
+The receipt is CBOR-encoded with deterministic field ordering, then signed with the enclave's ephemeral Ed25519 private key (64-byte signature).
 The client verifies the signature using the Ed25519 public key extracted from the attestation document.
 
 % ============================================================
 \section{Implementation}
 \label{sec:implementation}
 
-\textsc{EphemeralML} is implemented in 13,000+ lines of Rust (2021 edition, stable toolchain, MSRV 1.75+) organized as a Cargo workspace with four crates:
+\textsc{EphemeralML} is implemented in 13,000+ lines of Rust (2021 edition, stable toolchain, MSRV 1.75+) organized as a Cargo workspace with four core crates (plus a VSock benchmarking utility):
 
 \begin{description}
   \item[\texttt{common/}] Shared cryptographic primitives (HPKE sessions, receipt signing), protocol definitions, VSock abstractions, input validation, and policy types.
@@ -395,7 +394,7 @@ BERT-base & \ModelBertBaseParams{} & \ModelBertBaseBareMeanMs{}\,ms & \ModelBert
 \end{tabular}
 \end{table}
 
-Notably, BERT-base (110M parameters) has a lower overhead percentage (+\ModelBertBaseOverheadPct{}) than \BenchModelName{} (+\BenchOverheadPct{}) despite being 5$\times$ larger, suggesting that enclave overhead is partly fixed-cost (kernel, VSock buffers) rather than proportional to model size.
+Notably, BERT-base (110M parameters) has a lower overhead percentage (+\ModelBertBaseOverheadPct{}) than \BenchModelName{} (+\BenchOverheadPct{}) despite being $\sim$4.8$\times$ larger, suggesting that enclave overhead is partly fixed-cost (kernel, VSock buffers) rather than proportional to model size.
 
 \subsection{Cold Start Breakdown}
 
@@ -587,12 +586,12 @@ Session setup (one-time) & 0.15\,ms & 0.14\,ms & 0.17\,ms & 0.18\,ms \\
 Per-request E2E          & 79.30\,ms & 79.26\,ms & 80.53\,ms & 81.46\,ms \\
 Inference only           & 79.00\,ms & 78.97\,ms & 80.20\,ms & 81.14\,ms \\
 \hline
-\multicolumn{5}{l}{\textbf{Crypto overhead per request: 0.301\,ms} (0.38\% of E2E)} \\
+\multicolumn{5}{l}{\textbf{Crypto overhead per request: 0.300\,ms} (0.38\% of E2E)} \\
 \hline
 \end{tabular}
 \end{table}
 
-The 0.301\,ms crypto overhead per request confirms that HPKE encryption, decryption, and receipt signing/verification add negligible latency compared to model inference.
+The 0.300\,ms crypto overhead per request confirms that HPKE encryption, decryption, and receipt signing/verification add negligible latency compared to model inference.
 
 \subsection{Enclave Concurrency}
 
