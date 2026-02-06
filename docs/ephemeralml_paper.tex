@@ -371,7 +371,7 @@ Peak RSS (VmHWM) & \BenchBarePeakRssMb{}\,MB    & \BenchEnclavePeakRssMb{}\,MB &
 \end{tabular}
 \end{table}
 
-The \BenchOverheadPct{} mean inference overhead for \BenchModelName{} falls within the ``Acceptable'' range and is consistent with published AMD SEV-SNP overhead for TensorFlow BERT (2--16\%)~\cite{misono2024}.
+The \BenchOverheadPct{} mean inference overhead for \BenchModelName{} falls within the ``Acceptable'' range and is consistent with published AMD SEV-SNP overhead for TensorFlow BERT (2.3--16\%, depending on VM and polling configuration)~\cite{misono2024}.
 Peak RSS is measured from \texttt{/proc/self/status} (VmHWM); the enclave's 2.2$\times$ memory overhead is attributable to the enclave kernel and VSock message buffers.
 
 \subsection{Overhead vs.\ Model Size (Encoder Models)}
@@ -665,8 +665,8 @@ The 13\% cost premium for confidential inference is modest, especially given tha
 
 \paragraph{TEE-Based ML Inference.}
 Intel SGX has been used for confidential inference in systems such as Slalom~\cite{tramer2019} and Occlumency~\cite{lee2019}, but SGX's limited Enclave Page Cache (128\,MB in SGXv1) restricts model size and causes heavy paging overhead for large models.
-AMD SEV-SNP provides VM-level isolation with lower overhead; Misono et~al.~\cite{misono2024} report 2--16\% overhead for TensorFlow BERT inference on SEV-SNP (varying with VM and polling configuration), consistent with our \BenchOverheadRange{} result on Nitro Enclaves across three encoder models (22.7M--110M parameters).
-However, overhead scales with model size: Schnabl et~al.~\cite{schnabl2025} report $2.2\times$ cost overhead for Llama-3.1-8B-Instruct (8 billion parameters, 4-bit quantized) running inside Nitro Enclaves, driven by the need for larger instances to accommodate enclave memory reservation.
+AMD SEV-SNP provides VM-level isolation with lower overhead; Misono et~al.~\cite{misono2024} report 2.3--16\% overhead for TensorFlow BERT inference on SEV-SNP (varying with VM and polling configuration), consistent with our \BenchOverheadRange{} result on Nitro Enclaves across three encoder models (22.7M--110M parameters).
+However, overhead scales with model size: Schnabl et~al.~\cite{schnabl2025} report $2.2\times$ cost overhead for Llama-3.1-8B-Instruct (8 billion parameters, 4-bit quantized) running inside Nitro Enclaves, and note that the magnitude is sensitive to instance sizing (larger instances can reduce overhead).
 This suggests that our \BenchOverheadRange{} result, while well-validated for embedding-class models across multiple sizes, should not be extrapolated to billion-parameter LLMs without further evaluation.
 Intel TDX offers similar VM-level confidential computing; Intel reports $\sim$4\% overhead for TensorFlow BERT on 4th Gen Xeon~\cite{intel2023}.
 
@@ -730,7 +730,7 @@ Following the approach of Nitriding~\cite{winter2023}, which emphasizes user-ver
 \paragraph{Overhead Scaling with Model Size.}
 Our multi-model evaluation shows that inference overhead remains in a narrow \BenchOverheadRange{} band across encoder models spanning 22.7M to 110M parameters (Table~\ref{tab:model-scaling}).
 The slight decrease from +\BenchOverheadPct{} (\BenchModelName{}) to +\ModelBertBaseOverheadPct{} (BERT-base) suggests that the enclave's fixed costs (kernel, VSock buffers) are amortized over longer per-inference compute times for larger models.
-However, published results for Llama-3.1-8B on Nitro Enclaves show $2.2\times$ cost overhead~\cite{schnabl2025}, driven by the need for larger instances to accommodate enclave memory reservation, indicating that the total cost of confidential inference grows substantially at the billion-parameter scale.
+However, published results for Llama-3.1-8B on Nitro Enclaves show $2.2\times$ cost overhead~\cite{schnabl2025}, with the authors noting that the magnitude is sensitive to instance sizing and can be reduced with larger instances; even so, confidential inference at the billion-parameter scale remains substantially more expensive than small encoder models.
 Evaluating \textsc{EphemeralML} on billion-parameter models---potentially with INT4/INT8 quantization to fit within enclave memory constraints---is an important direction for validating the system's applicability beyond embedding-class models.
 
 \paragraph{Threats to Validity.}
