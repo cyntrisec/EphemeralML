@@ -14,13 +14,14 @@
 % MiniLM-L6: 3 runs at commit 057a85a with KMS fail-closed enforcement
 % MiniLM-L12 & BERT-base: 3 runs from benchmark_results_multimodel_20260205
 %   (MiniLM-L12 at f0b372a, BERT-base at 8fc6c36)
-% Artifact: s3://ephemeral-ml-models-demo/benchmark_temp/kms_validation_20260205_234917.tar.gz
+% Public artifact page: https://github.com/cyntrisec/EphemeralML/releases/tag/v1.0.0
 % SHA-256:  20309ab610e7321de5e29d019f0d4b15fee6a7cdafe919686ec1cbd4fabe5937
 \newcommand{\BenchInstance}{m6i.xlarge}
 \newcommand{\BenchModelName}{MiniLM-L6-v2}
 \newcommand{\BenchModelParams}{22.7M}
 \newcommand{\BenchNumRuns}{3}
 \newcommand{\BenchCommit}{057a85a}
+\newcommand{\BenchArtifactReleasePage}{https://github.com/cyntrisec/EphemeralML/releases/tag/v1.0.0}
 
 \newcommand{\BenchBareMeanMs}{79.21}
 \newcommand{\BenchEnclaveMeanMs}{89.71}
@@ -52,7 +53,7 @@
 \newcommand{\BenchOverheadRange}{11.9--13.3\%}
 
 \title{\textbf{EphemeralML: Confidential AI Inference on AWS Nitro Enclaves\\with \BenchOverheadRange{} Overhead}}
-\author{Cyntrisec}
+\author{Borys Tsyrulnikov\\Cyntrisec}
 \date{February 2026}
 
 \begin{document}
@@ -749,7 +750,9 @@ Notably, overhead remains stable or decreases slightly as model size increases, 
 The system's three-zone architecture, transcript-bound HPKE sessions, attestation-gated key management, and Ed25519-signed execution receipts provide defense-in-depth against a fully compromised host.
 The implementation in 13,000+ lines of Rust, with feature-gated dual compilation and 110+ passing tests, demonstrates that confidential ML inference can be achieved with production-quality engineering.
 
-\textsc{EphemeralML} is open-source and available at \url{https://github.com/cyntrisec/EphemeralML}.
+\textsc{EphemeralML} is open-source and available at GitHub:
+\newline
+\texttt{https://github.com/cyntrisec/EphemeralML}.
 
 % ============================================================
 \section*{Artifact Provenance}
@@ -761,9 +764,18 @@ Each run verified \texttt{kms\_exercised=true} and \texttt{kms\_bypassed=false},
 
 \begin{description}
   \item[Source code] \url{https://github.com/cyntrisec/EphemeralML}, commit \texttt{\BenchCommit{}}
-  \item[Artifact archive] \texttt{s3://ephemeral-ml-models-demo/benchmark\_temp/kms\_validation\_20260205\_234917.tar.gz}
-  \item[Public reproducibility materials] \url{https://github.com/cyntrisec/EphemeralML/tree/main/benchmark_results_multimodel_20260205} and \url{https://github.com/cyntrisec/EphemeralML/tree/main/scripts}
-  \item[Archive SHA-256] \texttt{20309ab610e7321de5e29d019f0d4b15fee6a7cdafe919686ec1cbd4fabe5937}
+  \item[Public artifact page]
+  \url{\BenchArtifactReleasePage{}}
+  \item[Artifact file]
+  \texttt{kms\_validation\_20260205\_234917.tar.gz}
+  \item[Public reproducibility materials]
+  \url{https://github.com/cyntrisec/EphemeralML/tree/main/benchmark_results_multimodel_20260205}
+  \newline
+  \url{https://github.com/cyntrisec/EphemeralML/tree/main/scripts}
+  \item[Archive SHA-256]
+  \texttt{20309ab610e7321de5e29d019f0d4b15}
+  \newline
+  \texttt{fee6a7cdafe919686ec1cbd4fabe5937}
   \item[Instance] \texttt{\BenchInstance{}} (4~vCPUs, 16\,GB, Intel Xeon Ice Lake), enclave: 2~vCPUs, 4096\,MB
   \item[Model] \BenchModelName{} (\BenchModelParams{} parameters)
   \item[Runs] \BenchNumRuns{} $\times$ 100 iterations (3 warmup), \texttt{require\_kms=true}

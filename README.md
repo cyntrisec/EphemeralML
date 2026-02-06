@@ -195,6 +195,24 @@ For ad-hoc auditing of existing result directories:
 ./scripts/check_kms_integrity.sh benchmark_results_final/kms_validation_*/run_*
 ```
 
+### Publish Public Artifact (Reader-Friendly)
+
+To publish benchmark evidence without requiring reader AWS access:
+
+```bash
+# 1) Package + scan for sensitive markers
+./scripts/prepare_public_artifact.sh \
+  --input-dir benchmark_results_final/kms_validation_20260205_234917 \
+  --name kms_validation_20260205_234917.tar.gz
+
+# 2) Upload to a GitHub Release tag
+./scripts/publish_public_artifact.sh \
+  --tag v1.0.0 \
+  --artifact artifacts/public/kms_validation_20260205_234917.tar.gz
+```
+
+See [`docs/ARTIFACT_PUBLICATION.md`](docs/ARTIFACT_PUBLICATION.md) for full details.
+
 ---
 
 ## Quick Start
