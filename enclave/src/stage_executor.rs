@@ -73,6 +73,7 @@ impl<A: AttestationProvider + Send + Sync> StageExecutor for EphemeralStageExecu
         let input_bytes = input_tensor.data.as_ref();
 
         // Execute inference via CandleInferenceEngine
+        let infer_start = std::time::Instant::now();
         let output = self
             .engine
             .execute_by_id(&self.model_id, input_bytes)
@@ -81,6 +82,7 @@ impl<A: AttestationProvider + Send + Sync> StageExecutor for EphemeralStageExecu
                 micro_batch,
                 reason: format!("Inference failed: {}", e),
             })?;
+        let infer_ms = infer_start.elapsed().as_millis() as u64;
 
         // Encode output as f32 bytes
         let output_bytes: Vec<u8> = output.iter().flat_map(|f| f.to_le_bytes()).collect();
@@ -106,8 +108,8 @@ impl<A: AttestationProvider + Send + Sync> StageExecutor for EphemeralStageExecu
                 input_bytes,
                 &output_bytes,
                 self.model_id.clone(),
-                "v1.0".to_string(),
-                0,
+                "1.0".to_string(),
+                infer_ms,
                 0,
             )
             .map_err(|e| StageError::ForwardFailed {
