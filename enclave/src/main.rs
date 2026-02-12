@@ -15,7 +15,10 @@ use ephemeral_ml_enclave::attestation_bridge::AttestationBridge;
 use ephemeral_ml_enclave::DefaultAttestationProvider;
 
 #[derive(Parser, Debug)]
-#[command(name = "ephemeral-ml-enclave", about = "EphemeralML Enclave Stage Worker")]
+#[command(
+    name = "ephemeral-ml-enclave",
+    about = "EphemeralML Enclave Stage Worker"
+)]
 struct Args {
     /// Path to model directory containing config.json, tokenizer.json, model.safetensors
     #[arg(long, default_value = "test_assets/minilm")]
@@ -71,8 +74,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
         println!("Starting pipeline stage worker on TCP...");
 
-        use ephemeral_ml_enclave::mock::MockAttestationProvider;
         use confidential_ml_transport::MockProvider;
+        use ephemeral_ml_enclave::mock::MockAttestationProvider;
 
         let mock_provider = MockAttestationProvider::new();
         let receipt_key = ReceiptSigningKey::generate()?;
@@ -83,7 +86,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         let transport_provider = MockProvider::new();
         let verifier = MockVerifier::new();
 
-        println!("Stage worker: control=127.0.0.1:9000, data_in=127.0.0.1:9001, data_out→127.0.0.1:9002");
+        println!(
+            "Stage worker: control=127.0.0.1:9000, data_in=127.0.0.1:9001, data_out→127.0.0.1:9002"
+        );
 
         run_stage_tcp(
             executor,
@@ -104,13 +109,32 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         let attestation_provider = DefaultAttestationProvider::new()?;
         let engine = CandleInferenceEngine::new()?;
 
+        // Generate receipt signing key early — needed for KMS attestation binding
+        let receipt_key = ReceiptSigningKey::generate()?;
+        let receipt_pk = receipt_key.public_key_bytes();
+
         // Connectivity health check
         println!("[boot] Starting connectivity health check...");
         use ephemeral_ml_enclave::kms_client::KmsClient;
         use ephemeral_ml_enclave::model_loader::ModelLoader;
 
-        let kms_client = KmsClient::new(attestation_provider.clone());
-        let loader = ModelLoader::new(kms_client, [0u8; 32]);
+        let kms_client = KmsClient::new(attestation_provider.clone(), receipt_pk);
+
+        // Load trusted model signing key from environment (hex-encoded Ed25519 public key)
+        let trusted_signing_key: [u8; 32] = {
+            let key_hex = std::env::var("EPHEMERALML_MODEL_SIGNING_KEY").unwrap_or_else(|_| {
+                // Default to the policy root public key (same trust anchor)
+                "12740b4f2ff1f9dac52cac6db77f3a57950fb15134c8580295c98bd809673444".to_string()
+            });
+            let key_bytes =
+                hex::decode(&key_hex).expect("EPHEMERALML_MODEL_SIGNING_KEY must be valid hex");
+            assert!(
+                key_bytes.len() == 32 && key_bytes.iter().any(|&b| b != 0),
+                "Model signing key must be 32 non-zero bytes"
+            );
+            key_bytes.try_into().unwrap()
+        };
+        let loader = ModelLoader::new(kms_client, trusted_signing_key);
 
         let expected_encrypted_hash =
             hex::decode("542c469d0d4c936b05fc57e64e0f5acd1048f186c4705801dcddf718cfde9b74")
@@ -137,15 +161,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             ),
         }
 
-        // Start stage worker on VSock
-        let receipt_key = ReceiptSigningKey::generate()?;
-        let receipt_pk = receipt_key.public_key_bytes();
-
-        let executor = EphemeralStageExecutor::new(
-            engine,
-            attestation_provider.clone(),
-            receipt_key,
-        );
+        // Start stage worker
+        let executor =
+            EphemeralStageExecutor::new(engine, attestation_provider.clone(), receipt_key);
         let bridge = AttestationBridge::new(attestation_provider, receipt_pk);
         let verifier = MockVerifier::new();
 

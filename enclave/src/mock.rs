@@ -1,6 +1,4 @@
-use crate::{
-    current_timestamp, AttestationProvider, EnclaveError, EphemeralError, Result,
-};
+use crate::{current_timestamp, AttestationProvider, EnclaveError, EphemeralError, Result};
 pub use ephemeral_ml_common::{AttestationDocument, PcrMeasurements};
 use rsa::{pkcs8::EncodePublicKey, Oaep, RsaPrivateKey};
 use sha2::{Digest, Sha256};
@@ -265,4 +263,3 @@ impl AttestationProvider for MockAttestationProvider {
         }
     }
 }
-

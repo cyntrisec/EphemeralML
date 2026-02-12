@@ -190,8 +190,7 @@ mod tests {
 
     #[test]
     fn test_ephemeral_user_data_with_kms() {
-        let data =
-            EphemeralUserData::new([2u8; 32], 1, vec![]).with_kms_key(vec![0xAA; 128]);
+        let data = EphemeralUserData::new([2u8; 32], 1, vec![]).with_kms_key(vec![0xAA; 128]);
         let cbor = data.to_cbor().unwrap();
         let decoded = EphemeralUserData::from_cbor(&cbor).unwrap();
         assert_eq!(decoded.kms_public_key.unwrap().len(), 128);

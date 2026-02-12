@@ -273,7 +273,8 @@ mod tests {
 
         // Setup Client with Proxy
         let proxy_client = KmsProxyClient::new().with_addr(format!("127.0.0.1:{}", port));
-        let kms_client = KmsClient::new_with_proxy(provider, proxy_client);
+        let kms_client =
+            KmsClient::new_with_proxy(provider, proxy_client, verifying_key.to_bytes());
         let loader = ModelLoader::new(kms_client, verifying_key.to_bytes());
 
         // Mock KMS Wrapped DEK (dummy for this test since our mock server ignores input and returns `dek` encrypted)

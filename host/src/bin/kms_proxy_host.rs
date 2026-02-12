@@ -225,6 +225,7 @@ async fn handle_connection<S: AsyncStream + 'static>(
                         response: resp,
                     },
                     Err(e) => {
+                        // Log full error on host only — never forward details to enclave
                         error!(event = "kms_error", error = %e, "KMS operation failed");
                         KmsProxyResponseEnvelope {
                             request_id: req_env.request_id,
@@ -232,7 +233,7 @@ async fn handle_connection<S: AsyncStream + 'static>(
                             kms_request_id: None,
                             response: KmsResponse::Error {
                                 code: KmsProxyErrorCode::Internal,
-                                message: e.to_string(),
+                                message: "KMS operation failed".to_string(),
                             },
                         }
                     }
@@ -244,10 +245,7 @@ async fn handle_connection<S: AsyncStream + 'static>(
                     .map_err(|e| anyhow::anyhow!("write_frame error: {}", e))?;
             }
             TAG_STORAGE => {
-                info!(
-                    event = "storage_request_raw",
-                    payload_len = payload.len()
-                );
+                info!(event = "storage_request_raw", payload_len = payload.len());
                 let req: StorageRequest = serde_cbor::from_slice(&payload).map_err(|e| {
                     error!(event = "storage_parse_error", error = %e);
                     e

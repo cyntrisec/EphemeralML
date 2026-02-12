@@ -242,7 +242,10 @@ async fn single_stage_pipeline_with_receipts() {
     // 8. Verify output structure
     assert_eq!(result.outputs.len(), 1, "expected 1 micro-batch");
     let tensors = &result.outputs[0];
-    assert!(tensors.len() >= 2, "expected at least output + receipt tensors");
+    assert!(
+        tensors.len() >= 2,
+        "expected at least output + receipt tensors"
+    );
 
     // 9. Find and verify receipt tensor
     let receipt_tensor = tensors
@@ -253,8 +256,14 @@ async fn single_stage_pipeline_with_receipts() {
     let receipt: AttestationReceipt =
         serde_json::from_slice(&receipt_tensor.data).expect("failed to deserialize receipt");
 
-    assert!(!receipt.receipt_id.is_empty(), "receipt_id should not be empty");
-    assert_eq!(receipt.sequence_number, 0, "first request should have seq=0");
+    assert!(
+        !receipt.receipt_id.is_empty(),
+        "receipt_id should not be empty"
+    );
+    assert_eq!(
+        receipt.sequence_number, 0,
+        "first request should have seq=0"
+    );
     assert_eq!(receipt.model_id, "test-stage-0");
     assert_eq!(receipt.model_version, "v1.0");
     assert!(receipt.signature.is_some(), "receipt should be signed");

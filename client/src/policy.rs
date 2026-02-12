@@ -3,9 +3,12 @@ use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
 use thiserror::Error;
 
-/// Static policy root key for v1 (checked into client config)
-/// In production, this would be a well-known public key for policy verification
-pub const POLICY_ROOT_PUBLIC_KEY: &str = "ed25519:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=";
+/// Static policy root public key for Ed25519 policy signature verification.
+///
+/// This is a real Ed25519 public key. The corresponding private key is stored
+/// offline for policy signing (keys/policy_root_private.hex, git-ignored).
+/// All policy bundles must be signed with the matching private key.
+pub const POLICY_ROOT_PUBLIC_KEY: &str = "ed25519:EnQLTy/x+drFLKxtt386V5UPsVE0yFgClcmL2AlnNEQ=";
 
 /// Policy root key management errors
 #[derive(Error, Debug)]
@@ -120,8 +123,21 @@ pub struct PolicyManager {
 }
 
 impl PolicyManager {
-    /// Create a new policy manager with the default root key
+    /// Create a new policy manager with the default root key.
+    ///
+    /// Panics at startup if the compiled-in root key is all zeros (placeholder).
     pub fn new() -> Self {
+        // Startup assertion: reject placeholder zero-byte keys
+        use base64::{engine::general_purpose::STANDARD, Engine as _};
+        if let Some(key_b64) = POLICY_ROOT_PUBLIC_KEY.strip_prefix("ed25519:") {
+            if let Ok(bytes) = STANDARD.decode(key_b64) {
+                assert!(
+                    bytes.iter().any(|&b| b != 0),
+                    "POLICY_ROOT_PUBLIC_KEY is all zeros — this is a placeholder and must be replaced with a real key"
+                );
+            }
+        }
+
         Self {
             current_policy: None,
             root_public_key: POLICY_ROOT_PUBLIC_KEY.to_string(),
@@ -294,10 +310,7 @@ impl PolicyManager {
 
         if public_key_bytes.len() != 32 {
             return Err(PolicyError::InvalidFormat {
-                reason: format!(
-                    "Root key must be 32 bytes, got {}",
-                    public_key_bytes.len()
-                ),
+                reason: format!("Root key must be 32 bytes, got {}", public_key_bytes.len()),
             });
         }
 
@@ -808,6 +821,8 @@ mod tests {
         let manager = PolicyManager::new();
         assert!(manager.current_policy.is_none());
         assert_eq!(manager.root_public_key, POLICY_ROOT_PUBLIC_KEY);
+        // Verify root key is not the old all-zeros placeholder
+        assert!(!POLICY_ROOT_PUBLIC_KEY.contains("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="));
     }
 
     #[test]

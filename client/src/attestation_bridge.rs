@@ -35,10 +35,7 @@ impl CoseVerifierBridge {
         }
     }
 
-    fn identity_to_verified(
-        identity: &EnclaveIdentity,
-        _raw_doc: &[u8],
-    ) -> VerifiedAttestation {
+    fn identity_to_verified(identity: &EnclaveIdentity, _raw_doc: &[u8]) -> VerifiedAttestation {
         // Convert PCR measurements to BTreeMap
         let mut measurements = BTreeMap::new();
         measurements.insert(0, identity.measurements.pcr0.clone());

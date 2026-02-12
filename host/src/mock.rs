@@ -85,9 +85,10 @@ impl MockKmsProxyServer {
                 })?;
         }
 
-        stream.flush().await.map_err(|e| {
-            HostError::Host(EphemeralError::IoError(e.to_string()))
-        })?;
+        stream
+            .flush()
+            .await
+            .map_err(|e| HostError::Host(EphemeralError::IoError(e.to_string())))?;
         Ok(())
     }
 }

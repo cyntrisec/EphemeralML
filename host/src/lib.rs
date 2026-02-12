@@ -1,3 +1,10 @@
+// Prevent accidentally building with both mock and production features enabled.
+#[cfg(all(feature = "mock", feature = "production"))]
+compile_error!(
+    "Features `mock` and `production` are mutually exclusive. \
+     Build with: --no-default-features --features production"
+);
+
 pub mod aws_proxy;
 pub mod circuit_breaker;
 pub mod error;

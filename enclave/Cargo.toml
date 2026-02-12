@@ -39,7 +39,7 @@ aws-sdk-kms = "1.97.0"
 aws-config = "1.8.13"
 byteorder = "1.5.0"
 confidential-ml-transport = { workspace = true, features = ["mock", "tcp"] }
-confidential-ml-pipeline = { path = "../../confidential-ml-pipeline", default-features = false, features = ["mock", "tcp"] }
+confidential-ml-pipeline = { workspace = true, features = ["mock", "tcp"] }
 bytes = { workspace = true }
 async-trait = { workspace = true }
 

@@ -17,7 +17,10 @@ fn print_receipt(receipt: &AttestationReceipt) {
     println!("========================================================");
     println!();
     println!("  Receipt ID:      {}", receipt.receipt_id);
-    println!("  Model:           {} v{}", receipt.model_id, receipt.model_version);
+    println!(
+        "  Model:           {} v{}",
+        receipt.model_id, receipt.model_version
+    );
     println!("  Sequence:        #{}", receipt.sequence_number);
     println!("  Security Mode:   {:?}", receipt.security_mode);
     println!("  Protocol:        v{}", receipt.protocol_version);
@@ -26,27 +29,43 @@ fn print_receipt(receipt: &AttestationReceipt) {
     println!("  --- Cryptographic Bindings ---");
     println!("  Request hash:    {}", hex::encode(receipt.request_hash));
     println!("  Response hash:   {}", hex::encode(receipt.response_hash));
-    println!("  Attestation hash:{}", hex::encode(receipt.attestation_doc_hash));
+    println!(
+        "  Attestation hash:{}",
+        hex::encode(receipt.attestation_doc_hash)
+    );
     println!();
     println!("  --- Enclave Measurements ---");
     println!(
         "  PCR0 (image):    {}...",
-        hex::encode(&receipt.enclave_measurements.pcr0[..std::cmp::min(16, receipt.enclave_measurements.pcr0.len())])
+        hex::encode(
+            &receipt.enclave_measurements.pcr0
+                [..std::cmp::min(16, receipt.enclave_measurements.pcr0.len())]
+        )
     );
     println!(
         "  PCR1 (kernel):   {}...",
-        hex::encode(&receipt.enclave_measurements.pcr1[..std::cmp::min(16, receipt.enclave_measurements.pcr1.len())])
+        hex::encode(
+            &receipt.enclave_measurements.pcr1
+                [..std::cmp::min(16, receipt.enclave_measurements.pcr1.len())]
+        )
     );
     println!(
         "  PCR2 (app):      {}...",
-        hex::encode(&receipt.enclave_measurements.pcr2[..std::cmp::min(16, receipt.enclave_measurements.pcr2.len())])
+        hex::encode(
+            &receipt.enclave_measurements.pcr2
+                [..std::cmp::min(16, receipt.enclave_measurements.pcr2.len())]
+        )
     );
     println!();
     println!("  --- Signature ---");
     match &receipt.signature {
         Some(sig) => {
             println!("  Algorithm:       Ed25519");
-            println!("  Signature:       {}...{}", hex::encode(&sig[..8]), hex::encode(&sig[sig.len()-8..]));
+            println!(
+                "  Signature:       {}...{}",
+                hex::encode(&sig[..8]),
+                hex::encode(&sig[sig.len() - 8..])
+            );
             println!("  Status:          SIGNED");
         }
         None => {
@@ -74,7 +93,11 @@ fn print_embeddings(data: &[u8], shape: &[u32]) {
         .map(|c| f32::from_le_bytes([c[0], c[1], c[2], c[3]]))
         .collect();
 
-    let dims = if shape.is_empty() { floats.len() } else { shape[shape.len() - 1] as usize };
+    let dims = if shape.is_empty() {
+        floats.len()
+    } else {
+        shape[shape.len() - 1] as usize
+    };
     let l2_norm: f32 = floats.iter().map(|x| x * x).sum::<f32>().sqrt();
     let first_n: Vec<String> = floats.iter().take(5).map(|f| format!("{:.4}", f)).collect();
 
@@ -158,7 +181,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         println!("Health check passed.");
 
         // 6. Run inference
-        let input_text = b"Confidential AI inference with cryptographic proof of ephemeral execution";
+        let input_text =
+            b"Confidential AI inference with cryptographic proof of ephemeral execution";
         let input = vec![vec![OwnedTensor {
             name: "input".to_string(),
             dtype: DType::U8,
@@ -214,7 +238,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     #[cfg(feature = "production")]
     {
         eprintln!("ERROR: The main host binary is for pipeline orchestration only.");
-        eprintln!("For production KMS proxy, run: cargo run --features production --bin kms_proxy_host");
+        eprintln!(
+            "For production KMS proxy, run: cargo run --features production --bin kms_proxy_host"
+        );
         std::process::exit(1);
     }
 

@@ -7,20 +7,33 @@ use std::collections::HashMap;
 pub struct KmsClient<A: crate::attestation::AttestationProvider> {
     attestation_provider: A,
     proxy_client: KmsProxyClient,
+    /// Receipt signing public key embedded in attestation user_data for KMS binding.
+    /// Must be set to the actual session receipt key, not a placeholder.
+    receipt_signing_pubkey: [u8; 32],
 }
 
 impl<A: crate::attestation::AttestationProvider> KmsClient<A> {
-    pub fn new(attestation_provider: A) -> Self {
+    pub fn new(attestation_provider: A, receipt_signing_pubkey: [u8; 32]) -> Self {
+        assert!(
+            receipt_signing_pubkey.iter().any(|&b| b != 0),
+            "KmsClient receipt_signing_pubkey must not be all zeros"
+        );
         Self {
             attestation_provider,
             proxy_client: KmsProxyClient::new(),
+            receipt_signing_pubkey,
         }
     }
 
-    pub fn new_with_proxy(attestation_provider: A, proxy_client: KmsProxyClient) -> Self {
+    pub fn new_with_proxy(
+        attestation_provider: A,
+        proxy_client: KmsProxyClient,
+        receipt_signing_pubkey: [u8; 32],
+    ) -> Self {
         Self {
             attestation_provider,
             proxy_client,
+            receipt_signing_pubkey,
         }
     }
 
@@ -42,13 +55,12 @@ impl<A: crate::attestation::AttestationProvider> KmsClient<A> {
         ciphertext: &[u8],
         encryption_context: Option<HashMap<String, String>>,
     ) -> Result<Vec<u8>> {
-        // 1. Generate attestation document with random nonce
+        // 1. Generate attestation document with random nonce and receipt signing key binding
         let mut nonce = [0u8; 16];
         rand::RngCore::fill_bytes(&mut rand::thread_rng(), &mut nonce);
-        // KMS attestation doesn't need a real receipt key — pass zeroed placeholder
         let attestation_doc = self
             .attestation_provider
-            .generate_attestation(&nonce, [0u8; 32])?;
+            .generate_attestation(&nonce, self.receipt_signing_pubkey)?;
 
         let recipient_bytes = attestation_doc.signature; // In our impl, signature holds the CBOR bytes
 

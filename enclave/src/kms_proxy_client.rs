@@ -160,7 +160,7 @@ impl KmsProxyClient {
         .map_err(|_| {
             EnclaveError::Enclave(EphemeralError::Timeout("Proxy write timeout".to_string()))
         })?
-        .map_err(|e| EnclaveError::Enclave(e))?;
+        .map_err(EnclaveError::Enclave)?;
 
         // Read response frame
         let (resp_tag, resp_payload) = tokio::time::timeout(
@@ -171,7 +171,7 @@ impl KmsProxyClient {
         .map_err(|_| {
             EnclaveError::Enclave(EphemeralError::Timeout("Proxy read timeout".to_string()))
         })?
-        .map_err(|e| EnclaveError::Enclave(e))?;
+        .map_err(EnclaveError::Enclave)?;
 
         if resp_tag != tag {
             return Err(EnclaveError::Enclave(EphemeralError::ProtocolError(
@@ -199,10 +199,9 @@ impl KmsProxyClient {
 
         let response_payload = self.send_tagged(TAG_STORAGE, &payload).await?;
 
-        let response: StorageResponse =
-            serde_cbor::from_slice(&response_payload).map_err(|e| {
-                EnclaveError::Enclave(EphemeralError::SerializationError(e.to_string()))
-            })?;
+        let response: StorageResponse = serde_cbor::from_slice(&response_payload).map_err(|e| {
+            EnclaveError::Enclave(EphemeralError::SerializationError(e.to_string()))
+        })?;
 
         match response {
             StorageResponse::Data { payload, .. } => Ok(payload),
@@ -233,8 +232,7 @@ mod tests {
             let (tag, payload) = simple_frame::read_frame(&mut socket).await.unwrap();
             assert_eq!(tag, TAG_KMS);
 
-            let req_env: KmsProxyRequestEnvelope =
-                serde_json::from_slice(&payload).unwrap();
+            let req_env: KmsProxyRequestEnvelope = serde_json::from_slice(&payload).unwrap();
             assert!(!req_env.request_id.is_empty());
             assert_eq!(req_env.trace_id.as_deref(), Some("trace-test-1"));
 

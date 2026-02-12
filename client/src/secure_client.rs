@@ -39,6 +39,7 @@ pub trait SecureClient {
 /// The `SecureChannel` handles all encryption/decryption and handshake.
 /// This client only needs to send/receive plaintext and verify receipts.
 pub struct SecureEnclaveClient {
+    #[allow(dead_code)]
     client_id: String,
     channel: Option<SecureChannel<TcpStream>>,
     policy_manager: PolicyManager,
@@ -50,7 +51,7 @@ pub struct SecureEnclaveClient {
 impl SecureEnclaveClient {
     pub fn new(client_id: String) -> Self {
         Self {
-            client_id: client_id,
+            client_id,
             channel: None,
             policy_manager: PolicyManager::new(),
             receipt_verifier: ReceiptVerifier::new(vec![]),
@@ -65,7 +66,7 @@ impl SecureEnclaveClient {
     /// loaded before attestation verification is attempted.
     pub fn with_policy(client_id: String, policy_manager: PolicyManager) -> Self {
         Self {
-            client_id: client_id,
+            client_id,
             channel: None,
             policy_manager,
             receipt_verifier: ReceiptVerifier::new(vec![]),
@@ -156,12 +157,18 @@ impl SecureClient for SecureEnclaveClient {
             .send(bytes::Bytes::from(plaintext))
             .await
             .map_err(|e| {
-                ClientError::Client(EphemeralError::TransportError(format!("Send failed: {}", e)))
+                ClientError::Client(EphemeralError::TransportError(format!(
+                    "Send failed: {}",
+                    e
+                )))
             })?;
 
         // 3. Receive response
         let msg = channel.recv().await.map_err(|e| {
-            ClientError::Client(EphemeralError::TransportError(format!("Recv failed: {}", e)))
+            ClientError::Client(EphemeralError::TransportError(format!(
+                "Recv failed: {}",
+                e
+            )))
         })?;
 
         let response_bytes = match msg {
@@ -172,9 +179,10 @@ impl SecureClient for SecureEnclaveClient {
                 )));
             }
             other => {
-                return Err(ClientError::Client(EphemeralError::ProtocolError(
-                    format!("Expected Data response, got {:?}", other),
-                )));
+                return Err(ClientError::Client(EphemeralError::ProtocolError(format!(
+                    "Expected Data response, got {:?}",
+                    other
+                ))));
             }
         };
 
@@ -226,9 +234,7 @@ mod tests {
     use bytes::Bytes;
     use confidential_ml_transport::session::channel::Message;
     use confidential_ml_transport::{SecureChannel, SessionConfig};
-    use ephemeral_ml_common::{
-        EnclaveMeasurements, ReceiptSigningKey, SecurityMode,
-    };
+    use ephemeral_ml_common::{EnclaveMeasurements, ReceiptSigningKey, SecurityMode};
 
     #[tokio::test]
     async fn test_full_secure_inference_mock() {
@@ -239,7 +245,7 @@ mod tests {
 
         // Generate receipt signing key for the server
         let receipt_key = ReceiptSigningKey::generate().unwrap();
-        let receipt_pk_bytes = receipt_key.public_key_bytes();
+        let _receipt_pk_bytes = receipt_key.public_key_bytes();
 
         tokio::spawn(async move {
             let (stream, _) = listener.accept().await.unwrap();
@@ -291,10 +297,9 @@ mod tests {
         let verifier = MockVerifierBridge::new();
         let stream = TcpStream::connect(&addr).await.unwrap();
         let config = SessionConfig::builder().build().unwrap();
-        let mut channel =
-            SecureChannel::connect_with_attestation(stream, &verifier, config)
-                .await
-                .unwrap();
+        let mut channel = SecureChannel::connect_with_attestation(stream, &verifier, config)
+            .await
+            .unwrap();
 
         // Send inference request
         let input = InferenceHandlerInput {

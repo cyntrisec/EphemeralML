@@ -1,3 +1,11 @@
+// Prevent accidentally building with both mock and production features enabled.
+// Production builds MUST use: --no-default-features --features production
+#[cfg(all(feature = "mock", feature = "production"))]
+compile_error!(
+    "Features `mock` and `production` are mutually exclusive. \
+     Build with: --no-default-features --features production"
+);
+
 pub mod attestation;
 pub mod attestation_bridge;
 pub mod audit;

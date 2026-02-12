@@ -75,10 +75,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
         // Call client.execute_inference
         // Note: Using the signature from SecureEnclaveClient which requires (addr, model_id, tensor)
-        match client
-            .execute_inference(model_id, input_tensor)
-            .await
-        {
+        match client.execute_inference(model_id, input_tensor).await {
             Ok(embeddings) => {
                 sequence_count += 1;
 

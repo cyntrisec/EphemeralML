@@ -31,7 +31,7 @@ hex = "0.4"
 x25519-dalek = { workspace = true }
 zeroize = { workspace = true }
 confidential-ml-transport = { workspace = true, features = ["mock", "tcp"] }
-confidential-ml-pipeline = { path = "../../confidential-ml-pipeline", default-features = false, features = ["mock", "tcp"] }
+confidential-ml-pipeline = { workspace = true, features = ["mock", "tcp"] }
 bytes = { workspace = true }
 
 # Observability (v1)

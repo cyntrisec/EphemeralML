@@ -17,7 +17,7 @@ echo "[1/5] Checking model weights..."
 bash "$SCRIPT_DIR/download_model.sh"
 echo
 
-# Step 2: Build
+# Step 2: Build (mock mode — for production use --no-default-features --features production)
 echo "[2/5] Building enclave and host (release)..."
 cd "$PROJECT_DIR"
 cargo build --release --features mock -p ephemeral-ml-enclave -p ephemeral-ml-host 2>&1 | tail -5
