@@ -261,11 +261,13 @@ impl PolicyManager {
         }
     }
 
-    /// Verify policy signature using the root public key
+    /// Verify policy signature using the root public key.
+    ///
+    /// All policies MUST have a valid Ed25519 signature regardless of build mode.
+    /// Empty signatures and invalid root keys are rejected.
     fn verify_policy_signature(&self, policy: &PolicyBundle) -> Result<(), PolicyError> {
-        #[cfg(feature = "mock")]
         if policy.signature.is_empty() {
-            return Ok(());
+            return Err(PolicyError::InvalidSignature);
         }
 
         // Create canonical encoding for signature verification
@@ -275,11 +277,9 @@ impl PolicyManager {
         // Format expected: "ed25519:<base64_encoded_key>"
         let key_parts: Vec<&str> = self.root_public_key.split(':').collect();
         if key_parts.len() != 2 || key_parts[0] != "ed25519" {
-            #[cfg(feature = "mock")]
-            return Ok(()); // In mock mode, if key is invalid/placeholder, we might skip
-
-            #[cfg(not(feature = "mock"))]
-            return Err(PolicyError::RootKeyNotFound); // Or invalid format
+            return Err(PolicyError::InvalidFormat {
+                reason: "Root key must be in format 'ed25519:<base64_key>'".to_string(),
+            });
         }
 
         use base64::{engine::general_purpose::STANDARD, Engine as _};
@@ -293,12 +293,11 @@ impl PolicyManager {
         use ed25519_dalek::{Signature, Verifier, VerifyingKey};
 
         if public_key_bytes.len() != 32 {
-            #[cfg(feature = "mock")]
-            return Ok(()); // Allow placeholder keys in mock
-
-            #[cfg(not(feature = "mock"))]
             return Err(PolicyError::InvalidFormat {
-                reason: "Invalid public key length".to_string(),
+                reason: format!(
+                    "Root key must be 32 bytes, got {}",
+                    public_key_bytes.len()
+                ),
             });
         }
 
@@ -835,13 +834,34 @@ mod tests {
     }
 
     #[test]
-    #[cfg(feature = "mock")]
-    fn test_policy_loading_mock_mode() {
+    fn test_policy_loading_requires_valid_signature() {
         let mut manager = PolicyManager::new();
         let policy = PolicyManager::create_default_policy();
         let policy_data = serde_json::to_vec(&policy).unwrap();
 
-        // Should succeed in mock mode
+        // Unsigned policy must be rejected even in mock builds
+        assert!(manager.load_policy(&policy_data).is_err());
+        assert!(manager.current_policy().is_none());
+    }
+
+    #[test]
+    fn test_policy_loading_with_signed_policy() {
+        use base64::{engine::general_purpose::STANDARD, Engine as _};
+        use ed25519_dalek::{Signer, SigningKey};
+        use rand::rngs::OsRng;
+
+        let signing_key = SigningKey::generate(&mut OsRng);
+        let verifying_key = signing_key.verifying_key();
+        let root_key_str = format!("ed25519:{}", STANDARD.encode(verifying_key.to_bytes()));
+
+        let mut manager = PolicyManager::with_root_key(root_key_str);
+        let mut policy = PolicyManager::create_default_policy();
+
+        let canonical_bytes = manager.create_canonical_policy_data(&policy).unwrap();
+        let signature = signing_key.sign(&canonical_bytes);
+        policy.signature = signature.to_bytes().to_vec();
+
+        let policy_data = serde_json::to_vec(&policy).unwrap();
         assert!(manager.load_policy(&policy_data).is_ok());
         assert!(manager.current_policy().is_some());
     }
@@ -1132,12 +1152,24 @@ mod tests {
     }
 
     #[test]
-    #[cfg(feature = "mock")]
     fn test_load_from_file() {
-        let manager = PolicyManager::new();
+        use base64::{engine::general_purpose::STANDARD, Engine as _};
+        use ed25519_dalek::{Signer, SigningKey};
+        use rand::rngs::OsRng;
+
+        let signing_key = SigningKey::generate(&mut OsRng);
+        let verifying_key = signing_key.verifying_key();
+        let root_key_str = format!("ed25519:{}", STANDARD.encode(verifying_key.to_bytes()));
+
+        let manager = PolicyManager::with_root_key(root_key_str.clone());
         let update_mgr = PolicyUpdateManager::new(manager);
 
-        let policy = PolicyManager::create_default_policy();
+        let temp_manager = PolicyManager::with_root_key(root_key_str);
+        let mut policy = PolicyManager::create_default_policy();
+        let canonical = temp_manager.create_canonical_policy_data(&policy).unwrap();
+        let sig = signing_key.sign(&canonical);
+        policy.signature = sig.to_bytes().to_vec();
+
         let data = serde_json::to_vec(&policy).unwrap();
 
         let dir = std::env::temp_dir().join("ephemeral_ml_test_policy");

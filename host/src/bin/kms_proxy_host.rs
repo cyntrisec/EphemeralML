@@ -31,7 +31,7 @@ async fn main() -> Result<()> {
         .ok()
         .and_then(|v| v.parse().ok())
         .unwrap_or(8082);
-    let tcp_port: u16 = std::env::var("EPHEMERALML_VSOCK_PORT")
+    let tcp_port: u16 = std::env::var("EPHEMERALML_TCP_PORT")
         .ok()
         .and_then(|v| v.parse().ok())
         .unwrap_or(8082);

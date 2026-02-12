@@ -213,11 +213,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     #[cfg(feature = "production")]
     {
-        println!("EphemeralML Host (Production Mode)");
-        println!("Starting KMS proxy server on port 8081...");
-
-        let kms_proxy = MockKmsProxyServer::new(8081);
-        kms_proxy.start().await?;
+        eprintln!("ERROR: The main host binary is for pipeline orchestration only.");
+        eprintln!("For production KMS proxy, run: cargo run --features production --bin kms_proxy_host");
+        std::process::exit(1);
     }
 
     Ok(())

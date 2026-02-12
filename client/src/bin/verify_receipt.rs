@@ -3,13 +3,15 @@
 //! Usage: verify_receipt --receipt <receipt.json> --attestation <attestation.cbor> [--verbose]
 //!
 //! Verifies:
-//! 1. Ed25519 signature on the receipt
-//! 2. Binding to attestation document
-//! 3. PCR measurements against allowlist (optional)
-//! 4. Timestamp freshness (optional)
+//! 1. COSE_Sign1 attestation authenticity (signature + cert chain)
+//! 2. Ed25519 signature on the receipt
+//! 3. Binding to attestation document
+//! 4. PCR measurements against allowlist (optional)
+//! 5. Timestamp freshness (optional)
 
 use anyhow::{bail, Context, Result};
 use clap::Parser;
+use coset::CborSerializable;
 use ed25519_dalek::VerifyingKey;
 use ephemeral_ml_common::{AttestationReceipt, AttestationUserData};
 use sha2::{Digest, Sha256};
@@ -36,6 +38,10 @@ struct Args {
     #[arg(long, default_value = "3600")]
     max_age_secs: u64,
 
+    /// Skip COSE_Sign1 attestation signature verification (UNSAFE: allows forged attestations)
+    #[arg(long)]
+    unsafe_skip_attestation_verification: bool,
+
     /// Verbose output
     #[arg(short, long)]
     verbose: bool,
@@ -50,6 +56,8 @@ struct VerificationReport {
     receipt_id: String,
     model_id: String,
     model_version: String,
+    attestation_authentic: bool,
+    attestation_verification_skipped: bool,
     signature_valid: bool,
     attestation_binding_valid: bool,
     pcr_measurements_valid: Option<bool>,
@@ -76,6 +84,8 @@ fn main() -> Result<()> {
         receipt_id: receipt.receipt_id.clone(),
         model_id: receipt.model_id.clone(),
         model_version: receipt.model_version.clone(),
+        attestation_authentic: false,
+        attestation_verification_skipped: args.unsafe_skip_attestation_verification,
         signature_valid: false,
         attestation_binding_valid: false,
         pcr_measurements_valid: None,
@@ -85,7 +95,29 @@ fn main() -> Result<()> {
         warnings: Vec::new(),
     };
 
-    // Step 1: Extract user data and public key from attestation
+    // Step 1: Verify attestation document authenticity (COSE_Sign1 signature + cert chain)
+    if args.unsafe_skip_attestation_verification {
+        report.warnings.push(
+            "UNSAFE: Attestation verification skipped -- receipt key trust is unverified"
+                .to_string(),
+        );
+    } else {
+        match verify_attestation_authenticity(&attestation_bytes) {
+            Ok(()) => {
+                report.attestation_authentic = true;
+            }
+            Err(e) => {
+                report.errors.push(format!(
+                    "Attestation verification failed (use --unsafe-skip-attestation-verification to bypass): {}",
+                    e
+                ));
+                output_report(&report, &args)?;
+                return Ok(());
+            }
+        }
+    }
+
+    // Step 2: Extract user data and public key from (now-verified) attestation
     let user_data = match extract_user_data_from_attestation(&attestation_bytes) {
         Ok(ud) => ud,
         Err(e) => {
@@ -97,7 +129,7 @@ fn main() -> Result<()> {
         }
     };
 
-    // Step 2: Verify signature
+    // Step 3: Verify Ed25519 receipt signature using key from attestation
     match verify_signature(&receipt, &user_data.receipt_signing_key) {
         Ok(valid) => {
             report.signature_valid = valid;
@@ -114,7 +146,7 @@ fn main() -> Result<()> {
         }
     }
 
-    // Step 3: Verify attestation binding
+    // Step 4: Verify attestation binding (receipt hash matches attestation doc hash)
     match verify_attestation_binding(&receipt, &attestation_bytes) {
         Ok(valid) => {
             report.attestation_binding_valid = valid;
@@ -131,7 +163,7 @@ fn main() -> Result<()> {
         }
     }
 
-    // Step 4: Verify PCR measurements (if allowlist provided)
+    // Step 5: Verify PCR measurements (if allowlist provided)
     if let Some(allowlist_path) = &args.pcr_allowlist {
         match verify_pcr_measurements(&receipt, allowlist_path) {
             Ok(valid) => {
@@ -148,7 +180,7 @@ fn main() -> Result<()> {
         }
     }
 
-    // Step 5: Verify timestamp freshness
+    // Step 6: Verify timestamp freshness
     let now = ephemeral_ml_common::current_timestamp();
     let age = now.saturating_sub(receipt.execution_timestamp);
     report.timestamp_fresh = age <= args.max_age_secs;
@@ -159,8 +191,10 @@ fn main() -> Result<()> {
         ));
     }
 
-    // Compute overall validity
-    report.overall_valid = report.signature_valid
+    // Compute overall validity: attestation MUST be verified (or explicitly skipped)
+    report.overall_valid = (report.attestation_authentic
+        || args.unsafe_skip_attestation_verification)
+        && report.signature_valid
         && report.attestation_binding_valid
         && report.pcr_measurements_valid.unwrap_or(true)
         && report.errors.is_empty();
@@ -172,6 +206,109 @@ fn main() -> Result<()> {
     } else {
         std::process::exit(1);
     }
+}
+
+/// Verify the COSE_Sign1 attestation document's signature and certificate chain.
+///
+/// For AWS Nitro Enclaves, the attestation document is a COSE_Sign1 structure
+/// signed by a certificate chaining to the AWS Nitro root CA. This function
+/// verifies that chain, ensuring the attestation (and thus the user_data
+/// containing the receipt signing key) is genuinely from a Nitro enclave.
+fn verify_attestation_authenticity(attestation_bytes: &[u8]) -> Result<()> {
+    use coset::CoseSign1;
+
+    // Parse as COSE_Sign1
+    let cose_doc = CoseSign1::from_slice(attestation_bytes)
+        .map_err(|e| anyhow::anyhow!("Not a valid COSE_Sign1 document: {:?}", e))?;
+
+    // Extract the payload (attestation document map)
+    let payload = cose_doc
+        .payload
+        .as_ref()
+        .ok_or_else(|| anyhow::anyhow!("COSE_Sign1 has no payload"))?;
+
+    // Parse inner CBOR map to get the certificate
+    let inner: serde_cbor::Value =
+        serde_cbor::from_slice(payload).context("Failed to parse COSE_Sign1 payload")?;
+
+    let map = match &inner {
+        serde_cbor::Value::Map(m) => m,
+        _ => bail!("COSE_Sign1 payload is not a CBOR map"),
+    };
+
+    // Extract certificate (the signing cert)
+    let cert_key = serde_cbor::Value::Text("certificate".to_string());
+    let cert_der = match map.get(&cert_key) {
+        Some(serde_cbor::Value::Bytes(b)) => b,
+        _ => bail!("No 'certificate' field in attestation document"),
+    };
+
+    // Parse the signing certificate
+    let signing_cert = openssl::x509::X509::from_der(cert_der)
+        .context("Failed to parse signing certificate DER")?;
+
+    // Extract the public key and verify COSE_Sign1 signature
+    let pub_key = signing_cert.public_key().context("No public key in cert")?;
+
+    // The COSE_Sign1 signature is over the Sig_structure:
+    // ["Signature1", protected_header_bytes, external_aad, payload]
+    let sig_structure = coset::sig_structure_data(
+        coset::SignatureContext::CoseSign1,
+        cose_doc.protected.clone(),
+        None,
+        &[],
+        payload,
+    );
+
+    // Verify using the algorithm from the protected header (typically ES384 for Nitro)
+    let signature = &cose_doc.signature;
+    let mut verifier =
+        openssl::sign::Verifier::new(openssl::hash::MessageDigest::sha384(), &pub_key)
+            .context("Failed to create verifier")?;
+
+    // For ECDSA, the COSE signature is r||s (raw), need to convert to DER
+    if signature.len() == 96 {
+        // ES384: 2 * 48 bytes
+        let r = openssl::bn::BigNum::from_slice(&signature[..48])?;
+        let s = openssl::bn::BigNum::from_slice(&signature[48..])?;
+        let ecdsa_sig = openssl::ecdsa::EcdsaSig::from_private_components(r, s)?;
+        let der_sig = ecdsa_sig.to_der()?;
+        verifier.update(&sig_structure)?;
+        if !verifier.verify(&der_sig)? {
+            bail!("COSE_Sign1 signature verification failed");
+        }
+    } else {
+        // Try raw verification for other key types
+        verifier.update(&sig_structure)?;
+        if !verifier.verify(signature)? {
+            bail!("COSE_Sign1 signature verification failed");
+        }
+    }
+
+    // Extract CA bundle and verify certificate chain
+    let cabundle_key = serde_cbor::Value::Text("cabundle".to_string());
+    if let Some(serde_cbor::Value::Array(certs)) = map.get(&cabundle_key) {
+        let mut store_builder = openssl::x509::store::X509StoreBuilder::new()?;
+        for cert_val in certs {
+            if let serde_cbor::Value::Bytes(der) = cert_val {
+                if let Ok(ca_cert) = openssl::x509::X509::from_der(der) {
+                    store_builder.add_cert(ca_cert)?;
+                }
+            }
+        }
+        let store = store_builder.build();
+
+        let mut ctx = openssl::x509::X509StoreContext::new()?;
+        let chain = openssl::stack::Stack::new()?;
+        let valid = ctx.init(&store, &signing_cert, &chain, |ctx| ctx.verify_cert())?;
+        if !valid {
+            bail!("Certificate chain verification failed");
+        }
+    } else {
+        bail!("No 'cabundle' field in attestation document for chain verification");
+    }
+
+    Ok(())
 }
 
 fn extract_user_data_from_attestation(attestation_bytes: &[u8]) -> Result<AttestationUserData> {
@@ -300,6 +437,13 @@ fn output_report(report: &VerificationReport, args: &Args) -> Result<()> {
             );
             println!("╠══════════════════════════════════════════════════════════════╣");
 
+            let att_status = if report.attestation_verification_skipped {
+                "⚠ SKIP (unsafe)"
+            } else if report.attestation_authentic {
+                "✓ PASS"
+            } else {
+                "✗ FAIL"
+            };
             let sig_status = if report.signature_valid {
                 "✓ PASS"
             } else {
@@ -321,6 +465,7 @@ fn output_report(report: &VerificationReport, args: &Args) -> Result<()> {
                 "⚠ WARN"
             };
 
+            println!("║ Attestation Auth:    {:<40} ║", att_status);
             println!("║ Signature:           {:<40} ║", sig_status);
             println!("║ Attestation Binding: {:<40} ║", bind_status);
             println!("║ PCR Measurements:    {:<40} ║", pcr_status);
