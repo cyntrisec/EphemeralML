@@ -3,8 +3,8 @@ use aws_config::BehaviorVersion;
 use ephemeral_ml_common::{
     audit::{AuditLogRequest, AuditLogResponse},
     storage_protocol::{StorageRequest, StorageResponse},
-    KmsProxyErrorCode, KmsProxyRequestEnvelope, KmsProxyResponseEnvelope, KmsResponse, MessageType,
-    VSockMessage,
+    transport_types::simple_frame::{self, TAG_AUDIT, TAG_KMS, TAG_STORAGE},
+    KmsProxyErrorCode, KmsProxyRequestEnvelope, KmsProxyResponseEnvelope, KmsResponse,
 };
 use ephemeral_ml_host::aws_proxy::AWSApiProxy;
 #[cfg(feature = "production")]
@@ -152,57 +152,27 @@ async fn handle_connection<S: AsyncStream + 'static>(
     storage: impl WeightStorage + Clone + 'static,
 ) -> Result<()> {
     loop {
-        let mut len_buf = [0u8; 4];
-        if stream.read_exact(&mut len_buf).await.is_err() {
-            break; // Connection closed
-        }
-        let total_len = u32::from_be_bytes(len_buf) as usize;
+        // Read tagged frame using simple_frame
+        let (tag, payload) = match simple_frame::read_frame(&mut stream).await {
+            Ok(frame) => frame,
+            Err(_) => break, // Connection closed
+        };
 
         info!(
-            event = "frame_header",
-            len_prefix = ?len_buf,
-            total_len = total_len,
-            "received frame header"
+            event = "frame_received",
+            tag = tag,
+            payload_len = payload.len(),
+            "received simple_frame"
         );
 
-        if total_len > ephemeral_ml_common::vsock::MAX_MESSAGE_SIZE + 100 {
-            return Err(anyhow::anyhow!("Message too large"));
-        }
-
-        let mut body = vec![0u8; total_len];
-        stream.read_exact(&mut body).await?;
-
-        // Debug: log first 64 bytes of body
-        let preview_len = body.len().min(64);
-        info!(
-            event = "frame_body",
-            body_len = body.len(),
-            body_preview = ?&body[..preview_len],
-            body_str = ?String::from_utf8_lossy(&body[..preview_len]),
-            "received frame body"
-        );
-
-        let mut full_buf = Vec::with_capacity(4 + total_len);
-        full_buf.extend_from_slice(&len_buf);
-        full_buf.extend_from_slice(&body);
-
-        let msg = VSockMessage::decode(&full_buf)?;
-
-        info!(
-            event = "frame_decoded",
-            msg_type = ?msg.msg_type,
-            sequence = msg.sequence,
-            payload_len = msg.payload.len(),
-            "decoded VSockMessage"
-        );
-
-        match msg.msg_type {
-            MessageType::KmsProxy => {
-                info!(event = "kms_request_raw", payload_len = msg.payload.len());
-                let req_env: KmsProxyRequestEnvelope = serde_json::from_slice(&msg.payload).map_err(|e| {
-                    error!(event = "kms_parse_error", error = %e, payload = ?String::from_utf8_lossy(&msg.payload));
-                    e
-                })?;
+        match tag {
+            TAG_KMS => {
+                info!(event = "kms_request_raw", payload_len = payload.len());
+                let req_env: KmsProxyRequestEnvelope =
+                    serde_json::from_slice(&payload).map_err(|e| {
+                        error!(event = "kms_parse_error", error = %e);
+                        e
+                    })?;
 
                 info!(
                     event = "kms_request",
@@ -269,17 +239,16 @@ async fn handle_connection<S: AsyncStream + 'static>(
                 };
 
                 let resp_payload = serde_json::to_vec(&response_env)?;
-                let resp_msg =
-                    VSockMessage::new(MessageType::KmsProxy, msg.sequence, resp_payload)?;
-                stream.write_all(&resp_msg.encode()).await?;
+                simple_frame::write_frame(&mut stream, TAG_KMS, &resp_payload)
+                    .await
+                    .map_err(|e| anyhow::anyhow!("write_frame error: {}", e))?;
             }
-            MessageType::Storage => {
+            TAG_STORAGE => {
                 info!(
                     event = "storage_request_raw",
-                    payload_len = msg.payload.len()
+                    payload_len = payload.len()
                 );
-                // Use CBOR for Storage channel - binary-efficient encoding for large payloads
-                let req: StorageRequest = serde_cbor::from_slice(&msg.payload).map_err(|e| {
+                let req: StorageRequest = serde_cbor::from_slice(&payload).map_err(|e| {
                     error!(event = "storage_parse_error", error = %e);
                     e
                 })?;
@@ -296,15 +265,15 @@ async fn handle_connection<S: AsyncStream + 'static>(
                     }
                 };
 
-                // Use CBOR for Storage channel - binary-efficient encoding for large payloads
                 let resp_payload = serde_cbor::to_vec(&resp)?;
-                let resp_msg = VSockMessage::new(MessageType::Storage, msg.sequence, resp_payload)?;
-                stream.write_all(&resp_msg.encode()).await?;
+                simple_frame::write_frame(&mut stream, TAG_STORAGE, &resp_payload)
+                    .await
+                    .map_err(|e| anyhow::anyhow!("write_frame error: {}", e))?;
             }
-            MessageType::Audit => {
-                info!(event = "audit_request_raw", payload_len = msg.payload.len());
-                let req: AuditLogRequest = serde_json::from_slice(&msg.payload).map_err(|e| {
-                    error!(event = "audit_parse_error", error = %e, payload = ?String::from_utf8_lossy(&msg.payload));
+            TAG_AUDIT => {
+                info!(event = "audit_request_raw", payload_len = payload.len());
+                let req: AuditLogRequest = serde_json::from_slice(&payload).map_err(|e| {
+                    error!(event = "audit_parse_error", error = %e);
                     e
                 })?;
 
@@ -336,11 +305,12 @@ async fn handle_connection<S: AsyncStream + 'static>(
                     error: None,
                 };
                 let resp_payload = serde_json::to_vec(&resp)?;
-                let resp_msg = VSockMessage::new(MessageType::Audit, msg.sequence, resp_payload)?;
-                stream.write_all(&resp_msg.encode()).await?;
+                simple_frame::write_frame(&mut stream, TAG_AUDIT, &resp_payload)
+                    .await
+                    .map_err(|e| anyhow::anyhow!("write_frame error: {}", e))?;
             }
             _ => {
-                return Err(anyhow::anyhow!("Unsupported message type"));
+                return Err(anyhow::anyhow!("Unsupported tag: 0x{:02x}", tag));
             }
         }
     }

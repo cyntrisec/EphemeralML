@@ -1,7 +1,5 @@
 use crate::kms_proxy_client::KmsProxyClient;
-use ephemeral_ml_common::{
-    audit::AuditLogRequest, AuditEventType, AuditLogEntry, AuditSeverity, MessageType, VSockMessage,
-};
+use ephemeral_ml_common::{audit::AuditLogRequest, AuditEventType, AuditLogEntry, AuditSeverity};
 use serde_json::Value;
 use std::collections::HashMap;
 
@@ -59,14 +57,12 @@ impl AuditLogger {
             println!("[AUDIT] {}", json);
         }
 
-        // Try to send via VSock
+        // Try to send via simple_frame
         let request = AuditLogRequest { entry };
         match serde_json::to_vec(&request) {
             Ok(payload) => {
-                if let Ok(msg) = VSockMessage::new(MessageType::Audit, 0, payload) {
-                    if let Err(e) = self.proxy_client.send_raw(msg).await {
-                        eprintln!("[audit] VSock send failed (non-fatal): {:?}", e);
-                    }
+                if let Err(e) = self.proxy_client.send_audit(&payload).await {
+                    eprintln!("[audit] send failed (non-fatal): {:?}", e);
                 }
             }
             Err(e) => eprintln!("[audit] Serialize failed: {}", e),

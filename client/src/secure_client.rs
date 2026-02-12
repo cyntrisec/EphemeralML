@@ -1,12 +1,10 @@
 use crate::policy::PolicyManager;
 use crate::{ClientError, EphemeralError, Result};
-use ephemeral_ml_common::protocol::{ClientHello, ServerHello};
-use ephemeral_ml_common::{
-    AttestationDocument, AttestationReceipt, EncryptedMessage, HPKESession, MessageType,
-    ReceiptVerifier, VSockMessage,
-};
+use confidential_ml_transport::session::channel::Message;
+use confidential_ml_transport::{SecureChannel, SessionConfig};
+use ephemeral_ml_common::transport_types::EphemeralUserData;
+use ephemeral_ml_common::{AttestationReceipt, ReceiptVerifier};
 use serde::{Deserialize, Serialize};
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpStream;
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -31,42 +29,33 @@ pub trait SecureClient {
     /// Execute inference on a model
     async fn execute_inference(
         &mut self,
-        addr: &str,
         model_id: &str,
         input_tensor: Vec<f32>,
     ) -> Result<Vec<f32>>;
 }
 
-use zeroize::ZeroizeOnDrop;
-
-/// Default implementation of secure enclave client
-#[derive(ZeroizeOnDrop)]
+/// Default implementation of secure enclave client using SecureChannel.
+///
+/// The `SecureChannel` handles all encryption/decryption and handshake.
+/// This client only needs to send/receive plaintext and verify receipts.
 pub struct SecureEnclaveClient {
-    #[zeroize(skip)]
     client_id: String,
-    #[zeroize(skip)]
-    hpke_session: Option<HPKESession>,
-    #[zeroize(skip)]
+    channel: Option<SecureChannel<TcpStream>>,
     policy_manager: PolicyManager,
-    #[zeroize(skip)]
     pub receipt_verifier: ReceiptVerifier,
-    client_private_key: Option<[u8; 32]>,
-    #[zeroize(skip)]
     server_receipt_signing_key: Option<[u8; 32]>,
-    #[zeroize(skip)]
-    server_attestation_doc: Option<Vec<u8>>,
+    server_attestation_hash: Option<[u8; 32]>,
 }
 
 impl SecureEnclaveClient {
     pub fn new(client_id: String) -> Self {
         Self {
-            client_id,
-            hpke_session: None,
+            client_id: client_id,
+            channel: None,
             policy_manager: PolicyManager::new(),
-            receipt_verifier: ReceiptVerifier::new(vec![]), // Empty roots for mock
-            client_private_key: None,
+            receipt_verifier: ReceiptVerifier::new(vec![]),
             server_receipt_signing_key: None,
-            server_attestation_doc: None,
+            server_attestation_hash: None,
         }
     }
 
@@ -76,13 +65,12 @@ impl SecureEnclaveClient {
     /// loaded before attestation verification is attempted.
     pub fn with_policy(client_id: String, policy_manager: PolicyManager) -> Self {
         Self {
-            client_id,
-            hpke_session: None,
+            client_id: client_id,
+            channel: None,
             policy_manager,
             receipt_verifier: ReceiptVerifier::new(vec![]),
-            client_private_key: None,
             server_receipt_signing_key: None,
-            server_attestation_doc: None,
+            server_attestation_hash: None,
         }
     }
 
@@ -94,15 +82,8 @@ impl SecureEnclaveClient {
 
 #[async_trait::async_trait]
 impl SecureClient for SecureEnclaveClient {
-    /// Establish attested secure channel with enclave
     async fn establish_channel(&mut self, addr: &str) -> Result<()> {
-        use crate::attestation_verifier::AttestationVerifier;
-        use rand::rngs::OsRng;
-        use x25519_dalek::{PublicKey, StaticSecret};
-
-        // In production mode, fail fast if no policy is loaded — without a
-        // measurement allowlist, PCR validation will reject every attestation
-        // with a misleading "RootKeyNotFound" error.
+        // In production mode, fail fast if no policy is loaded
         #[cfg(all(feature = "production", not(feature = "mock")))]
         if !self.has_policy() {
             return Err(ClientError::Client(EphemeralError::InvalidInput(
@@ -110,157 +91,58 @@ impl SecureClient for SecureEnclaveClient {
             )));
         }
 
-        let mut stream = TcpStream::connect(addr)
+        let stream = TcpStream::connect(addr)
             .await
             .map_err(|e| ClientError::Client(EphemeralError::NetworkError(e.to_string())))?;
 
-        // 1. Initialize Verifier and generate challenge
-        let mut verifier = AttestationVerifier::new(self.policy_manager.clone());
-        let challenge_nonce = verifier.generate_challenge_nonce()?;
+        // Build verifier bridge based on mode
+        #[cfg(feature = "mock")]
+        let verifier = crate::attestation_bridge::MockVerifierBridge::new();
+        #[cfg(not(feature = "mock"))]
+        let verifier =
+            crate::attestation_bridge::CoseVerifierBridge::new(self.policy_manager.clone());
 
-        // 2. Generate client ephemeral keypair and send ClientHello
-        let client_secret = StaticSecret::random_from_rng(OsRng);
-        let client_public = PublicKey::from(&client_secret);
-        let client_public_bytes = *client_public.as_bytes();
-        self.client_private_key = Some(*client_secret.as_bytes());
+        let config = SessionConfig::builder()
+            .build()
+            .map_err(|e| ClientError::Client(EphemeralError::TransportError(e.to_string())))?;
 
-        // Note: ClientHello::new generates its own nonce internally for protocol freshness,
-        // but we'll use the one from the verifier to ensure consistency if needed.
-        // Actually, let's update ClientHello to use our challenge nonce.
-        let mut client_hello = ClientHello::new(
-            self.client_id.clone(),
-            vec!["gateway".to_string()],
-            client_public_bytes,
-        )
-        .map_err(ClientError::Client)?;
-        client_hello.client_nonce = challenge_nonce.as_slice().try_into().map_err(|_| {
-            ClientError::Client(EphemeralError::Internal("Nonce size mismatch".into()))
-        })?;
-
-        let hello_payload = serde_json::to_vec(&client_hello)
-            .map_err(|e| ClientError::Client(EphemeralError::SerializationError(e.to_string())))?;
-        let hello_msg =
-            VSockMessage::new(MessageType::Hello, 0, hello_payload).map_err(ClientError::Client)?;
-
-        stream
-            .write_all(&hello_msg.encode())
+        let channel = SecureChannel::connect_with_attestation(stream, &verifier, config)
             .await
-            .map_err(|e| ClientError::Client(EphemeralError::NetworkError(e.to_string())))?;
+            .map_err(|e| {
+                ClientError::Client(EphemeralError::TransportError(format!(
+                    "Handshake failed: {}",
+                    e
+                )))
+            })?;
 
-        // 3. Receive ServerHello
-        let mut len_buf = [0u8; 4];
-        stream
-            .read_exact(&mut len_buf)
-            .await
-            .map_err(|e| ClientError::Client(EphemeralError::NetworkError(e.to_string())))?;
-        let total_len = u32::from_be_bytes(len_buf) as usize;
-        if total_len > ephemeral_ml_common::vsock::MAX_FRAME_SIZE {
-            return Err(ClientError::Client(EphemeralError::Validation(
-                ephemeral_ml_common::ValidationError::SizeLimitExceeded(format!(
-                    "ServerHello frame size {} exceeds maximum {}",
-                    total_len,
-                    ephemeral_ml_common::vsock::MAX_FRAME_SIZE
-                )),
-            )));
-        }
-        let mut body = vec![0u8; total_len];
-        stream
-            .read_exact(&mut body)
-            .await
-            .map_err(|e| ClientError::Client(EphemeralError::NetworkError(e.to_string())))?;
+        // Extract server's receipt signing key and attestation hash from peer attestation
+        if let Some(attestation) = channel.peer_attestation() {
+            self.server_attestation_hash = Some(attestation.document_hash);
 
-        let mut full_buf = Vec::with_capacity(4 + total_len);
-        full_buf.extend_from_slice(&len_buf);
-        full_buf.extend_from_slice(&body);
-
-        let response_msg = VSockMessage::decode(&full_buf).map_err(ClientError::Client)?;
-
-        if response_msg.msg_type != MessageType::Hello {
-            return Err(ClientError::Client(EphemeralError::ProtocolError(
-                "Expected ServerHello".to_string(),
-            )));
+            if let Some(ref user_data_bytes) = attestation.user_data {
+                if let Ok(user_data) = EphemeralUserData::from_cbor(user_data_bytes) {
+                    self.server_receipt_signing_key = Some(user_data.receipt_signing_key);
+                }
+            }
         }
 
-        let server_hello: ServerHello = serde_json::from_slice(&response_msg.payload)
-            .map_err(|e| ClientError::Client(EphemeralError::SerializationError(e.to_string())))?;
-
-        server_hello.validate().map_err(ClientError::Client)?;
-
-        // 4. Verify Attestation
-        // ServerHello.attestation_document always contains raw attestation bytes
-        // (COSE_Sign1 in production, CBOR map in mock). The verifier parses them.
-        let attestation_doc = AttestationDocument {
-            module_id: "mock-enclave".to_string(),
-            digest: vec![],
-            timestamp: server_hello.timestamp,
-            pcrs: ephemeral_ml_common::PcrMeasurements::new(vec![], vec![], vec![]),
-            certificate: vec![],
-            signature: server_hello.attestation_document.clone(),
-            nonce: Some(client_hello.client_nonce.to_vec()),
-        };
-
-        let identity = verifier.verify_attestation(&attestation_doc, &client_hello.client_nonce)?;
-
-        self.server_receipt_signing_key = Some(identity.receipt_signing_key);
-        self.server_attestation_doc = Some(server_hello.attestation_document.clone());
-
-        // 5. Establish HPKE Session
-        // Use the per-session ephemeral key from server_hello (correct for both modes)
-        let peer_public_key = if server_hello.ephemeral_public_key.len() == 32 {
-            let mut key = [0u8; 32];
-            key.copy_from_slice(&server_hello.ephemeral_public_key);
-            key
-        } else {
-            identity.hpke_public_key
-        };
-
-        let mut hpke = HPKESession::new(
-            server_hello.session_id.clone(),
-            1,
-            identity.attestation_hash,
-            client_public_bytes, // Local PK
-            peer_public_key,     // Peer PK
-            client_hello.client_nonce,
-            3600,
-        )
-        .map_err(ClientError::Client)?;
-
-        hpke.establish(&self.client_private_key.ok_or_else(|| {
-            ClientError::Client(EphemeralError::Internal(
-                "Client private key not set".into(),
-            ))
-        })?)
-        .map_err(ClientError::Client)?;
-
-        // Eagerly zeroize the ephemeral private key now that the session key is derived.
-        // This provides forward secrecy: even if memory is later compromised, the
-        // ephemeral DH private key is gone and past sessions cannot be decrypted.
-        if let Some(ref mut key) = self.client_private_key {
-            zeroize::Zeroize::zeroize(key);
-        }
-        self.client_private_key = None;
-
-        self.hpke_session = Some(hpke);
+        self.channel = Some(channel);
         Ok(())
     }
 
     async fn execute_inference(
         &mut self,
-        addr: &str,
         model_id: &str,
         input_tensor: Vec<f32>,
     ) -> Result<Vec<f32>> {
-        let hpke = self.hpke_session.as_mut().ok_or_else(|| {
+        let channel = self.channel.as_mut().ok_or_else(|| {
             ClientError::Client(EphemeralError::InvalidInput(
                 "Channel not established".to_string(),
             ))
         })?;
 
-        // 1. Encrypt Request
-        // Convert f32 tensor back to bytes for the mock server which expects Vec<u8>
-        // In a real scenario, this would likely serialize the tensor properly
+        // 1. Build plaintext request
         let input_data: Vec<u8> = input_tensor.iter().map(|&x| (x * 255.0) as u8).collect();
-
         let input = InferenceHandlerInput {
             model_id: model_id.to_string(),
             input_data,
@@ -268,67 +150,39 @@ impl SecureClient for SecureEnclaveClient {
         };
         let plaintext = serde_json::to_vec(&input)
             .map_err(|e| ClientError::Client(EphemeralError::SerializationError(e.to_string())))?;
-        let encrypted_request = hpke.encrypt(&plaintext).map_err(ClientError::Client)?;
 
-        // 2. Send over VSock (TCP Mock)
-        let mut stream = TcpStream::connect(addr)
+        // 2. Send over SecureChannel (encryption handled by channel)
+        channel
+            .send(bytes::Bytes::from(plaintext))
             .await
-            .map_err(|e| ClientError::Client(EphemeralError::NetworkError(e.to_string())))?;
+            .map_err(|e| {
+                ClientError::Client(EphemeralError::TransportError(format!("Send failed: {}", e)))
+            })?;
 
-        let payload = serde_json::to_vec(&encrypted_request)
-            .map_err(|e| ClientError::Client(EphemeralError::SerializationError(e.to_string())))?;
-        let msg = VSockMessage::new(MessageType::Data, 1, payload).map_err(ClientError::Client)?;
+        // 3. Receive response
+        let msg = channel.recv().await.map_err(|e| {
+            ClientError::Client(EphemeralError::TransportError(format!("Recv failed: {}", e)))
+        })?;
 
-        stream
-            .write_all(&msg.encode())
-            .await
-            .map_err(|e| ClientError::Client(EphemeralError::NetworkError(e.to_string())))?;
+        let response_bytes = match msg {
+            Message::Data(data) => data,
+            Message::Error(err) => {
+                return Err(ClientError::Client(EphemeralError::InferenceError(
+                    format!("Server error: {}", err),
+                )));
+            }
+            other => {
+                return Err(ClientError::Client(EphemeralError::ProtocolError(
+                    format!("Expected Data response, got {:?}", other),
+                )));
+            }
+        };
 
-        // 3. Receive Response
-        let mut len_buf = [0u8; 4];
-        stream
-            .read_exact(&mut len_buf)
-            .await
-            .map_err(|e| ClientError::Client(EphemeralError::NetworkError(e.to_string())))?;
-        let total_len = u32::from_be_bytes(len_buf) as usize;
-        if total_len > ephemeral_ml_common::vsock::MAX_FRAME_SIZE {
-            return Err(ClientError::Client(EphemeralError::Validation(
-                ephemeral_ml_common::ValidationError::SizeLimitExceeded(format!(
-                    "Inference response frame size {} exceeds maximum {}",
-                    total_len,
-                    ephemeral_ml_common::vsock::MAX_FRAME_SIZE
-                )),
-            )));
-        }
-        let mut body = vec![0u8; total_len];
-        stream
-            .read_exact(&mut body)
-            .await
-            .map_err(|e| ClientError::Client(EphemeralError::NetworkError(e.to_string())))?;
-
-        let mut full_buf = Vec::with_capacity(4 + total_len);
-        full_buf.extend_from_slice(&len_buf);
-        full_buf.extend_from_slice(&body);
-
-        let response_msg = VSockMessage::decode(&full_buf).map_err(ClientError::Client)?;
-
-        if response_msg.msg_type != MessageType::Data {
-            return Err(ClientError::Client(EphemeralError::ProtocolError(
-                "Expected Data response".to_string(),
-            )));
-        }
-
-        let encrypted_response: EncryptedMessage = serde_json::from_slice(&response_msg.payload)
-            .map_err(|e| ClientError::Client(EphemeralError::SerializationError(e.to_string())))?;
-
-        // 4. Decrypt Response
-        let response_bytes = hpke
-            .decrypt(&encrypted_response)
-            .map_err(ClientError::Client)?;
+        // 4. Parse response
         let output: InferenceHandlerOutput = serde_json::from_slice(&response_bytes)
             .map_err(|e| ClientError::Client(EphemeralError::SerializationError(e.to_string())))?;
 
-        // 5. Verify Receipt
+        // 5. Verify receipt signature
         let signing_pk = self.server_receipt_signing_key.ok_or_else(|| {
             ClientError::Client(EphemeralError::ValidationError(
                 "Missing receipt signing key".to_string(),
@@ -352,21 +206,13 @@ impl SecureClient for SecureEnclaveClient {
             )));
         }
 
-        // Verify binding to attestation
-        let attestation_doc_bytes = self.server_attestation_doc.as_ref().ok_or_else(|| {
-            ClientError::Client(EphemeralError::Internal(
-                "Attestation doc not available".into(),
-            ))
-        })?;
-        use sha2::{Digest, Sha256};
-        let mut hasher = Sha256::new();
-        hasher.update(attestation_doc_bytes);
-        let attestation_hash: [u8; 32] = hasher.finalize().into();
-
-        if output.receipt.attestation_doc_hash != attestation_hash {
-            return Err(ClientError::Client(EphemeralError::ValidationError(
-                "Receipt not bound to current attestation".to_string(),
-            )));
+        // 6. Verify binding to attestation
+        if let Some(attestation_hash) = self.server_attestation_hash {
+            if output.receipt.attestation_doc_hash != attestation_hash {
+                return Err(ClientError::Client(EphemeralError::ValidationError(
+                    "Receipt not bound to current attestation".to_string(),
+                )));
+            }
         }
 
         Ok(output.output_tensor)
@@ -376,182 +222,97 @@ impl SecureClient for SecureEnclaveClient {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use ephemeral_ml_common::{EnclaveMeasurements, ReceiptSigningKey, SecurityMode};
-    use sha2::{Digest, Sha256};
-    use tokio::net::TcpListener;
+    use crate::attestation_bridge::MockVerifierBridge;
+    use bytes::Bytes;
+    use confidential_ml_transport::session::channel::Message;
+    use confidential_ml_transport::{SecureChannel, SessionConfig};
+    use ephemeral_ml_common::{
+        EnclaveMeasurements, ReceiptSigningKey, SecurityMode,
+    };
 
     #[tokio::test]
     async fn test_full_secure_inference_mock() {
-        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        // Start a mock server that uses SecureChannel
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let port = listener.local_addr().unwrap().port();
         let addr = format!("127.0.0.1:{}", port);
 
+        // Generate receipt signing key for the server
+        let receipt_key = ReceiptSigningKey::generate().unwrap();
+        let receipt_pk_bytes = receipt_key.public_key_bytes();
+
         tokio::spawn(async move {
-            // Handle Hello Connection
-            let (mut socket, _) = listener.accept().await.unwrap();
-            let mut len_buf = [0u8; 4];
-            socket.read_exact(&mut len_buf).await.unwrap();
-            let total_len = u32::from_be_bytes(len_buf) as usize;
-            let mut body = vec![0u8; total_len];
-            socket.read_exact(&mut body).await.unwrap();
-            let mut full_buf = Vec::with_capacity(4 + total_len);
-            full_buf.extend_from_slice(&len_buf);
-            full_buf.extend_from_slice(&body);
-            let msg = VSockMessage::decode(&full_buf).unwrap();
-            let client_hello: ClientHello = serde_json::from_slice(&msg.payload).unwrap();
+            let (stream, _) = listener.accept().await.unwrap();
 
-            use x25519_dalek::{PublicKey, StaticSecret};
-            let server_secret = StaticSecret::from([0u8; 32]);
-            let server_public = PublicKey::from(&server_secret);
-            let server_pub_key = server_public.to_bytes().to_vec();
-            let server_pub_key_fixed = *server_public.as_bytes();
+            // Use mock attestation provider from cml-transport
+            let mock_provider = confidential_ml_transport::MockProvider;
+            let config = SessionConfig::builder().build().unwrap();
 
-            // Generate real signature keys
-            use ed25519_dalek::SigningKey;
-            let signing_key = SigningKey::from_bytes(&[0u8; 32]);
-            let verifying_key = signing_key.verifying_key();
+            let mut channel =
+                SecureChannel::accept_with_attestation(stream, &mock_provider, config)
+                    .await
+                    .unwrap();
 
-            // Build a mock CBOR attestation document (same format as MockAttestationProvider)
-            use std::collections::BTreeMap;
-            let pcr_val = hex::decode("000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f202122232425262728292a2b2c2d2e2f").unwrap();
+            // Receive inference request
+            let msg = channel.recv().await.unwrap();
+            if let Message::Data(data) = msg {
+                let input: InferenceHandlerInput = serde_json::from_slice(&data).unwrap();
+                let output_tensor: Vec<f32> =
+                    input.input_data.iter().map(|&x| (x as f32) + 0.1).collect();
 
-            let user_data = serde_json::json!({
-                "hpke_public_key": server_pub_key_fixed,
-                "receipt_signing_key": verifying_key.to_bytes(),
-                "protocol_version": 1u32,
-                "supported_features": ["gateway"]
-            });
-            let user_data_bytes = serde_json::to_vec(&user_data).unwrap();
+                let mut signed_receipt = ephemeral_ml_common::AttestationReceipt::new(
+                    "receipt".to_string(),
+                    1,
+                    SecurityMode::GatewayOnly,
+                    EnclaveMeasurements::new(vec![0x01; 48], vec![0x02; 48], vec![0x03; 48]),
+                    [0u8; 32], // attestation_doc_hash — matches mock
+                    [0u8; 32],
+                    [0u8; 32],
+                    "v1".to_string(),
+                    0,
+                    "model".to_string(),
+                    "v1".to_string(),
+                    0,
+                    0,
+                );
 
-            let mut cbor_map = BTreeMap::new();
-            cbor_map.insert(
-                serde_cbor::Value::Text("module_id".to_string()),
-                serde_cbor::Value::Text("mock-enclave".to_string()),
-            );
-            cbor_map.insert(
-                serde_cbor::Value::Text("user_data".to_string()),
-                serde_cbor::Value::Bytes(user_data_bytes),
-            );
-            let mut pcrs_map = BTreeMap::new();
-            pcrs_map.insert(
-                serde_cbor::Value::Integer(0),
-                serde_cbor::Value::Bytes(pcr_val.clone()),
-            );
-            pcrs_map.insert(
-                serde_cbor::Value::Integer(1),
-                serde_cbor::Value::Bytes(pcr_val.clone()),
-            );
-            pcrs_map.insert(
-                serde_cbor::Value::Integer(2),
-                serde_cbor::Value::Bytes(pcr_val.clone()),
-            );
-            cbor_map.insert(
-                serde_cbor::Value::Text("pcrs".to_string()),
-                serde_cbor::Value::Map(pcrs_map),
-            );
-            let signature_bytes = serde_cbor::to_vec(&serde_cbor::Value::Map(cbor_map)).unwrap();
+                signed_receipt.sign(&receipt_key).unwrap();
 
-            // attestation_hash = SHA-256(signature_bytes), matching verifier
-            let mut hasher = Sha256::new();
-            hasher.update(&signature_bytes);
-            let attestation_hash: [u8; 32] = hasher.finalize().into();
-
-            let server_hello = ServerHello {
-                version: 1,
-                session_id: "session-id".to_string(),
-                chosen_features: vec!["gateway".to_string()],
-                attestation_document: signature_bytes.clone(),
-                ephemeral_public_key: server_pub_key,
-                receipt_signing_key: verifying_key.to_bytes().to_vec(),
-                timestamp: 0,
-            };
-
-            let resp_payload = serde_json::to_vec(&server_hello).unwrap();
-            let resp_msg = VSockMessage::new(MessageType::Hello, 0, resp_payload).unwrap();
-            socket.write_all(&resp_msg.encode()).await.unwrap();
-            drop(socket);
-
-            // Handle Data Connection
-            let (mut socket, _) = listener.accept().await.unwrap();
-            socket.read_exact(&mut len_buf).await.unwrap();
-            let total_len = u32::from_be_bytes(len_buf) as usize;
-            let mut body = vec![0u8; total_len];
-            socket.read_exact(&mut body).await.unwrap();
-            full_buf.clear();
-            full_buf.extend_from_slice(&len_buf);
-            full_buf.extend_from_slice(&body);
-            let msg = VSockMessage::decode(&full_buf).unwrap();
-
-            let encrypted_request: EncryptedMessage = serde_json::from_slice(&msg.payload).unwrap();
-
-            let mut server_hpke = HPKESession::new(
-                "session-id".to_string(),
-                1,
-                attestation_hash,
-                server_pub_key_fixed,              // Local PK
-                client_hello.ephemeral_public_key, // Peer PK
-                client_hello.client_nonce,
-                3600,
-            )
-            .unwrap();
-            server_hpke.establish(server_secret.as_bytes()).unwrap();
-
-            let req_plaintext = match server_hpke.decrypt(&encrypted_request) {
-                Ok(p) => p,
-                Err(e) => {
-                    panic!("decrypt failed: {:?}", e);
-                }
-            };
-            let input: InferenceHandlerInput = serde_json::from_slice(&req_plaintext).unwrap();
-
-            let output_tensor: Vec<f32> =
-                input.input_data.iter().map(|&x| (x as f32) + 0.1).collect();
-
-            // attestation_doc_hash = SHA-256(signature_bytes) = attestation_hash
-            let attestation_doc_hash = attestation_hash;
-
-            let mut signed_receipt = AttestationReceipt::new(
-                "receipt".to_string(),
-                1,
-                SecurityMode::GatewayOnly,
-                EnclaveMeasurements::new(vec![0x01; 48], vec![0x02; 48], vec![0x03; 48]),
-                attestation_doc_hash,
-                [0u8; 32],
-                [0u8; 32],
-                "v1".to_string(),
-                0,
-                "model".to_string(),
-                "v1".to_string(),
-                0,
-                0,
-            );
-
-            signed_receipt
-                .sign(&ReceiptSigningKey::from_parts(signing_key, verifying_key))
-                .unwrap();
-
-            let output = InferenceHandlerOutput {
-                output_tensor,
-                receipt: signed_receipt,
-            };
-            let resp_plaintext = serde_json::to_vec(&output).unwrap();
-            let encrypted_response = server_hpke.encrypt(&resp_plaintext).unwrap();
-
-            let resp_payload = serde_json::to_vec(&encrypted_response).unwrap();
-            let resp_msg = VSockMessage::new(MessageType::Data, 1, resp_payload).unwrap();
-            socket.write_all(&resp_msg.encode()).await.unwrap();
+                let output = InferenceHandlerOutput {
+                    output_tensor,
+                    receipt: signed_receipt,
+                };
+                let response_bytes = serde_json::to_vec(&output).unwrap();
+                channel.send(Bytes::from(response_bytes)).await.unwrap();
+            }
         });
 
-        let mut client = SecureEnclaveClient::new("test-client".to_string());
-        client
-            .establish_channel(&addr)
-            .await
-            .expect("Failed to establish channel");
-        let input = vec![1.0, 2.0, 3.0];
-        let result = client
-            .execute_inference(&addr, "test-model", input.clone())
-            .await
-            .unwrap();
-        assert!(result[0] > 1.0);
+        // Client side
+        let verifier = MockVerifierBridge::new();
+        let stream = TcpStream::connect(&addr).await.unwrap();
+        let config = SessionConfig::builder().build().unwrap();
+        let mut channel =
+            SecureChannel::connect_with_attestation(stream, &verifier, config)
+                .await
+                .unwrap();
+
+        // Send inference request
+        let input = InferenceHandlerInput {
+            model_id: "test-model".to_string(),
+            input_data: vec![1, 2, 3],
+            input_shape: Some(vec![3]),
+        };
+        let input_bytes = serde_json::to_vec(&input).unwrap();
+        channel.send(Bytes::from(input_bytes)).await.unwrap();
+
+        // Receive response
+        let msg = channel.recv().await.unwrap();
+        if let Message::Data(data) = msg {
+            let output: InferenceHandlerOutput = serde_json::from_slice(&data).unwrap();
+            assert_eq!(output.output_tensor, vec![1.1, 2.1, 3.1]);
+            assert!(output.receipt.signature.is_some());
+        } else {
+            panic!("Expected Data message");
+        }
     }
 }

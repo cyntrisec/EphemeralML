@@ -1,4 +1,5 @@
 use ephemeral_ml_client::mock::MockSecureClient;
+use ephemeral_ml_client::secure_client::SecureClient;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -20,8 +21,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     // Test secure channel establishment
-    match client.establish_attested_channel("127.0.0.1:8080") {
-        Ok(channel) => println!("Secure channel established to: {}", channel.endpoint),
+    match client.establish_channel("127.0.0.1:8080").await {
+        Ok(()) => println!("Secure channel established"),
         Err(e) => println!("Failed to establish secure channel: {}", e),
     }
 

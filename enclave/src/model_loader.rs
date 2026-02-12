@@ -144,12 +144,12 @@ mod tests {
     use crate::kms_proxy_client::KmsProxyClient;
     use chacha20poly1305::aead::Aead;
     use ed25519_dalek::{Signer, SigningKey};
-    use ephemeral_ml_common::{KmsResponse, MessageType, VSockMessage};
+    use ephemeral_ml_common::transport_types::simple_frame::{self, TAG_KMS, TAG_STORAGE};
+    use ephemeral_ml_common::KmsResponse;
     use hpke::{kem::X25519HkdfSha256, Deserializable, OpModeS, Serializable};
     use rand::rngs::OsRng;
     use rand::RngCore;
     use serde::Serialize;
-    use tokio::io::{AsyncReadExt, AsyncWriteExt};
     use tokio::net::TcpListener;
 
     #[tokio::test]
@@ -206,30 +206,15 @@ mod tests {
 
         tokio::spawn(async move {
             while let Ok((mut socket, _)) = listener.accept().await {
-                let mut len_buf = [0u8; 4];
-                if socket.read_exact(&mut len_buf).await.is_err() {
-                    break;
-                }
-                let total_len = u32::from_be_bytes(len_buf) as usize;
+                let (tag, payload) = match simple_frame::read_frame(&mut socket).await {
+                    Ok(f) => f,
+                    Err(_) => break,
+                };
 
-                if total_len > ephemeral_ml_common::vsock::MAX_MESSAGE_SIZE {
-                    panic!("Message too large");
-                }
-
-                let mut body = vec![0u8; total_len];
-                if socket.read_exact(&mut body).await.is_err() {
-                    break;
-                }
-
-                let mut full_buf = Vec::with_capacity(4 + total_len);
-                full_buf.extend_from_slice(&len_buf);
-                full_buf.extend_from_slice(&body);
-
-                let msg = VSockMessage::decode(&full_buf).unwrap();
-                match msg.msg_type {
-                    MessageType::KmsProxy => {
+                match tag {
+                    TAG_KMS => {
                         let request_env: ephemeral_ml_common::KmsProxyRequestEnvelope =
-                            serde_json::from_slice(&msg.payload).unwrap();
+                            serde_json::from_slice(&payload).unwrap();
 
                         let mut rng = OsRng;
                         let kem_pub = <X25519HkdfSha256 as hpke::Kem>::PublicKey::from_bytes(
@@ -266,27 +251,22 @@ mod tests {
                         };
 
                         let response_payload = serde_json::to_vec(&response_env).unwrap();
-                        let response_msg = VSockMessage::new(
-                            MessageType::KmsProxy,
-                            msg.sequence,
-                            response_payload,
-                        )
-                        .unwrap();
-                        socket.write_all(&response_msg.encode()).await.unwrap();
+                        simple_frame::write_frame(&mut socket, TAG_KMS, &response_payload)
+                            .await
+                            .unwrap();
                     }
-                    MessageType::Storage => {
+                    TAG_STORAGE => {
                         use ephemeral_ml_common::storage_protocol::StorageResponse;
                         let response = StorageResponse::Data {
                             payload: encrypted_artifact_clone.clone(),
                             is_last: true,
                         };
                         let resp_payload = serde_cbor::to_vec(&response).unwrap();
-                        let resp_msg =
-                            VSockMessage::new(MessageType::Storage, msg.sequence, resp_payload)
-                                .unwrap();
-                        socket.write_all(&resp_msg.encode()).await.unwrap();
+                        simple_frame::write_frame(&mut socket, TAG_STORAGE, &resp_payload)
+                            .await
+                            .unwrap();
                     }
-                    _ => panic!("Unexpected msg type: {:?}", msg.msg_type),
+                    _ => panic!("Unexpected tag: 0x{:02x}", tag),
                 }
             }
         });

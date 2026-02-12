@@ -4,7 +4,6 @@ members = [
     "client",
     "host",
     "enclave",
-    "enclaves/vsock-pingpong"
 ]
 resolver = "2"
 
@@ -61,6 +60,11 @@ rsa = { version = "0.9", features = ["sha2"] }
 # X.509 and PKI
 openssl = "0.10"
 x509-parser = "0.18"
+
+# Confidential ML transport
+confidential-ml-transport = { path = "../confidential-ml-transport", default-features = false }
+bytes = "1.5"
+async-trait = "0.1"
 
 # Testing
 proptest = "1.0"

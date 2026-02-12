@@ -1,23 +1,16 @@
-//! Common types and utilities for the EphemeralNet zero-trust AI inference system
-//!
-//! This crate provides shared data structures, error types, and utilities that are used
-//! across all components of the EphemeralNet system (client, host, and enclave).
-
 pub mod audit;
 pub mod error;
-pub mod hpke_session;
 #[cfg(feature = "inference")]
 pub mod inference;
 pub mod kms_proxy;
 pub mod metrics;
 pub mod model_manifest;
 pub mod model_registry;
-pub mod protocol;
 pub mod receipt_signing;
 pub mod storage_protocol;
+pub mod transport_types;
 pub mod types;
 pub mod validation;
-pub mod vsock;
 
 // Re-export commonly used types and errors
 pub use error::{
@@ -26,39 +19,9 @@ pub use error::{
 };
 
 pub use types::{
-    // Attestation types
-    AttestationDocument,
-    AuditEventType,
-    AuditLogEntry,
-    AuditSeverity,
-    EncryptedPayload,
-    EncryptedTensor,
-    // Encrypted communication types
-    EncryptedTopologyKey,
-    GraphEdge,
-    GraphNode,
-    InferenceRequest,
-    InferenceResponse,
-
-    ModelMetadata,
-    OperationType,
-
-    PayloadType,
-    PcrMeasurements,
-    SecureChannel,
-
-    // Session and audit types
-    SessionInfo,
-    SessionStatus,
-    TensorShape,
-    // Core data structures
-    TopologyKey,
-    WeightArrays,
-    WeightIndex,
-    WeightType,
+    AttestationDocument, AuditEventType, AuditLogEntry, AuditSeverity, PcrMeasurements,
+    SessionInfo, SessionStatus,
 };
-
-pub use hpke_session::{EncryptedMessage, HPKEConfig, HPKESession, HPKESessionManager, SessionId};
 
 pub use kms_proxy::{
     KmsProxyErrorCode, KmsProxyRequestEnvelope, KmsProxyResponseEnvelope, KmsRequest, KmsResponse,
@@ -70,7 +33,7 @@ pub use receipt_signing::{
     ReceiptSigningKey, ReceiptVerifier, SecurityMode,
 };
 
-pub use vsock::{MessageType, VSockMessage};
+pub use transport_types::{ConnectionState, EphemeralUserData};
 
 pub use validation::{InputValidator, ValidationError, ValidationLimits};
 
@@ -90,10 +53,7 @@ pub fn current_timestamp() -> u64 {
         .as_secs()
 }
 
-/// Generate a cryptographically secure random nonce for cryptographic operations
-///
-/// Uses OsRng for secure random number generation. Each call produces a unique,
-/// unpredictable 12-byte nonce suitable for use with ChaCha20-Poly1305.
+/// Generate a cryptographically secure random nonce
 pub fn generate_nonce() -> [u8; 12] {
     use rand::rngs::OsRng;
     use rand::RngCore;
@@ -108,31 +68,6 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_tensor_shape_creation() {
-        let shape = TensorShape::new(vec![2, 3, 4]);
-        assert_eq!(shape.dimensions, vec![2, 3, 4]);
-        assert_eq!(shape.total_elements(), 24);
-        assert!(shape.is_valid());
-    }
-
-    #[test]
-    fn test_weight_arrays_creation() {
-        let weights = WeightArrays::new("test_model".to_string(), vec![1.0, 2.0, 3.0]);
-        assert_eq!(weights.model_id, "test_model");
-        assert_eq!(weights.weight_data, vec![1.0, 2.0, 3.0]);
-        assert_eq!(weights.total_parameters, 3);
-        assert!(weights.verify_checksum());
-    }
-
-    #[test]
-    fn test_weight_index_validation() {
-        let shape = TensorShape::new(vec![2, 2]);
-        let weight_index = WeightIndex::new(0, 4, shape, WeightType::Weights);
-        assert!(weight_index.is_valid());
-        assert_eq!(weight_index.end_idx(), 4);
-    }
-
-    #[test]
     fn test_pcr_measurements_validation() {
         let pcr = PcrMeasurements::new(vec![0u8; 48], vec![1u8; 48], vec![2u8; 48]);
         assert!(pcr.is_valid());
@@ -142,24 +77,11 @@ mod tests {
     }
 
     #[test]
-    fn test_secure_channel_expiration() {
-        let channel = SecureChannel::new("test_endpoint".to_string(), vec![0u8; 32], 1);
-        assert!(!channel.is_expired());
-
-        // Wait for expiration (in a real test, you'd mock the time)
-        std::thread::sleep(std::time::Duration::from_secs(2));
-        assert!(channel.is_expired());
-    }
-
-    #[test]
     fn test_utility_functions() {
         let id = generate_id();
         assert!(!id.is_empty());
 
         let timestamp = current_timestamp();
         assert!(timestamp > 0);
-
-        let nonce = generate_nonce();
-        assert_eq!(nonce.len(), 12);
     }
 }

@@ -1,69 +1,100 @@
-#[cfg(not(feature = "production"))]
-use ephemeral_ml_enclave::{
-    current_timestamp,
-    mock::{MockEnclaveServer, MockEphemeralAssembler},
-    AttestationProvider, DefaultAttestationProvider, EphemeralAssembler,
-};
-#[cfg(feature = "production")]
-use ephemeral_ml_enclave::{CandleInferenceEngine, DefaultAttestationProvider};
+use ephemeral_ml_enclave::candle_engine::CandleInferenceEngine;
+use ephemeral_ml_enclave::server::run_stage_tcp;
+use ephemeral_ml_enclave::stage_executor::EphemeralStageExecutor;
+
+use confidential_ml_pipeline::StageConfig;
+use confidential_ml_transport::MockVerifier;
+use ephemeral_ml_common::ReceiptSigningKey;
+
+use clap::Parser;
+use std::path::PathBuf;
 
 #[cfg(feature = "production")]
-use ephemeral_ml_enclave::server::ProductionEnclaveServer;
+use ephemeral_ml_enclave::attestation_bridge::AttestationBridge;
+#[cfg(feature = "production")]
+use ephemeral_ml_enclave::DefaultAttestationProvider;
+
+#[derive(Parser, Debug)]
+#[command(name = "ephemeral-ml-enclave", about = "EphemeralML Enclave Stage Worker")]
+struct Args {
+    /// Path to model directory containing config.json, tokenizer.json, model.safetensors
+    #[arg(long, default_value = "test_assets/minilm")]
+    model_dir: PathBuf,
+
+    /// Model ID to register (maps to stage ID, e.g. "stage-0")
+    #[arg(long, default_value = "stage-0")]
+    model_id: String,
+}
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    println!("EphemeralML Enclave v1.0.1-debug");
+    let args = Args::parse();
+
+    println!("EphemeralML Enclave v2.0");
+
     #[cfg(not(feature = "production"))]
     {
         println!("EphemeralML Enclave (Mock Mode)");
 
-        // Test new DefaultAttestationProvider (uses mock in development)
-        let default_provider = DefaultAttestationProvider::new()?;
-        let nonce = b"test_nonce_for_demo_12345678901234567890";
-        let attestation = default_provider.generate_attestation(nonce, [0u8; 32])?;
+        // Load model weights
+        let load_start = std::time::Instant::now();
+
+        let config_path = args.model_dir.join("config.json");
+        let tokenizer_path = args.model_dir.join("tokenizer.json");
+        let weights_path = args.model_dir.join("model.safetensors");
+
+        println!("Loading model from: {}", args.model_dir.display());
+
+        let config_bytes = std::fs::read(&config_path)
+            .map_err(|e| format!("Failed to read {}: {}", config_path.display(), e))?;
+        let tokenizer_bytes = std::fs::read(&tokenizer_path)
+            .map_err(|e| format!("Failed to read {}: {}", tokenizer_path.display(), e))?;
+        let weights_bytes = std::fs::read(&weights_path)
+            .map_err(|e| format!("Failed to read {}: {}", weights_path.display(), e))?;
+
+        let engine = CandleInferenceEngine::new()?;
+
+        engine.register_model(
+            &args.model_id,
+            &config_bytes,
+            &weights_bytes,
+            &tokenizer_bytes,
+        )?;
+
+        let load_elapsed = load_start.elapsed();
         println!(
-            "Generated attestation for module: {}",
-            attestation.module_id
+            "Model '{}' loaded in {:.1}ms (weights: {:.1} MB)",
+            args.model_id,
+            load_elapsed.as_secs_f64() * 1000.0,
+            weights_bytes.len() as f64 / (1024.0 * 1024.0),
         );
-        println!(
-            "HPKE public key: {:?}",
-            hex::encode(default_provider.get_hpke_public_key())
-        );
-        // Receipt signing key is now per-session (generated in server.rs during handshake)
 
-        // Test model assembly
-        let mut assembler = MockEphemeralAssembler::new();
+        println!("Starting pipeline stage worker on TCP...");
 
-        let topology = ephemeral_ml_enclave::assembly::TopologyKey {
-            graph_id: "test_graph".to_string(),
-            nodes: vec![],
-            edges: vec![],
-            input_shapes: vec![ephemeral_ml_enclave::assembly::TensorShape {
-                dimensions: vec![1, 10],
-            }],
-            output_shapes: vec![ephemeral_ml_enclave::assembly::TensorShape {
-                dimensions: vec![1, 10],
-            }],
-            metadata: ephemeral_ml_common::ModelMetadata {
-                name: "test_model".to_string(),
-                version: "1.0.0".to_string(),
-                description: Some("Mock test model".to_string()),
-                created_at: current_timestamp(),
-                checksum: "mock_checksum".to_string(),
-            },
-        };
+        use ephemeral_ml_enclave::mock::MockAttestationProvider;
+        use confidential_ml_transport::MockProvider;
 
-        let weights: Vec<f32> = (0..100).map(|i| i as f32 * 0.01).collect();
-        let model = assembler.assemble_model(&topology, &weights)?;
-        println!("Assembled model: {}", model.id);
+        let mock_provider = MockAttestationProvider::new();
+        let receipt_key = ReceiptSigningKey::generate()?;
+        let _receipt_pk = receipt_key.public_key_bytes();
 
-        // Test inference
-        let input_data: Vec<u8> = vec![1, 2, 3, 4, 5];
-        let _output = assembler.execute_inference(&model, &input_data)?;
+        let executor = EphemeralStageExecutor::new(engine, mock_provider, receipt_key);
+        // Use transport-compatible MockProvider for handshake (matches host's MockVerifier)
+        let transport_provider = MockProvider::new();
+        let verifier = MockVerifier::new();
 
-        println!("Starting mock TCP server on port 8082...");
-        let server = MockEnclaveServer::new(8082);
-        server.start().await?;
+        println!("Stage worker: control=127.0.0.1:9000, data_in=127.0.0.1:9001, data_out→127.0.0.1:9002");
+
+        run_stage_tcp(
+            executor,
+            StageConfig::default(),
+            "127.0.0.1:9000",
+            "127.0.0.1:9001",
+            "127.0.0.1:9002".parse()?,
+            &transport_provider,
+            &verifier,
+        )
+        .await?;
     }
 
     #[cfg(feature = "production")]
@@ -71,11 +102,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         println!("EphemeralML Enclave (Production Mode)");
 
         let attestation_provider = DefaultAttestationProvider::new()?;
-        let inference_engine = CandleInferenceEngine::new()?;
+        let engine = CandleInferenceEngine::new()?;
 
-        // PRODUCTION BOOT: Connectivity test - verify VSock → Host → S3 path works
-        // This is NOT a full integrity check (that requires KMS decrypt).
-        // We just verify the encrypted artifact hash to confirm correct fetch.
+        // Connectivity health check
         println!("[boot] Starting connectivity health check...");
         use ephemeral_ml_enclave::kms_client::KmsClient;
         use ephemeral_ml_enclave::model_loader::ModelLoader;
@@ -83,9 +112,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         let kms_client = KmsClient::new(attestation_provider.clone());
         let loader = ModelLoader::new(kms_client, [0u8; 32]);
 
-        // Expected SHA-256 of the ENCRYPTED artifact in S3 (not plaintext!)
-        // Generated by: python scripts/prepare_test_model.py
-        // Encrypted format: [12-byte nonce][ciphertext+tag] = 113 bytes
         let expected_encrypted_hash =
             hex::decode("542c469d0d4c936b05fc57e64e0f5acd1048f186c4705801dcddf718cfde9b74")
                 .unwrap();
@@ -100,11 +126,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 hasher.update(&bytes);
                 let hash = hasher.finalize();
                 if hash.as_slice() == expected_encrypted_hash.as_slice() {
-                    println!("[boot] ✓ VERIFIED: Encrypted artifact hash matches.");
-                    println!("[boot] ✓ E2E path operational: Enclave → VSock → Host → S3 → Host → VSock → Enclave");
+                    println!("[boot] VERIFIED: Encrypted artifact hash matches.");
                 } else {
-                    println!("[boot] ✗ Hash mismatch! Got: {}", hex::encode(hash));
-                    println!("[boot] ✗ Expected: 542c469d0d4c936b05fc57e64e0f5acd1048f186c4705801dcddf718cfde9b74");
+                    println!("[boot] Hash mismatch! Got: {}", hex::encode(hash));
                 }
             }
             Err(e) => println!(
@@ -113,12 +137,31 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             ),
         }
 
-        // Start production VSock server on port 5000 (inference/handshake)
-        // Port 8082 is used for the KMS proxy on the host, not for incoming enclave traffic.
-        let server = ProductionEnclaveServer::new(5000, attestation_provider, inference_engine);
+        // Start stage worker on VSock
+        let receipt_key = ReceiptSigningKey::generate()?;
+        let receipt_pk = receipt_key.public_key_bytes();
 
-        println!("Starting Production VSock Server on port 5000...");
-        server.start().await?;
+        let executor = EphemeralStageExecutor::new(
+            engine,
+            attestation_provider.clone(),
+            receipt_key,
+        );
+        let bridge = AttestationBridge::new(attestation_provider, receipt_pk);
+        let verifier = MockVerifier::new();
+
+        println!("Production stage worker: control=127.0.0.1:5000, data_in=127.0.0.1:5001, data_out→127.0.0.1:5002");
+
+        run_stage_tcp(
+            executor,
+            StageConfig::default(),
+            "127.0.0.1:5000",
+            "127.0.0.1:5001",
+            "127.0.0.1:5002".parse()?,
+            &bridge,
+            &verifier,
+        )
+        .await
+        .map_err(|e| Box::new(e) as Box<dyn std::error::Error>)?;
     }
 
     Ok(())

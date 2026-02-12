@@ -80,6 +80,9 @@ pub enum EphemeralError {
 
     #[error("Internal error: {0}")]
     Internal(String),
+
+    #[error("Transport error: {0}")]
+    TransportError(String),
 }
 
 impl EphemeralError {
@@ -120,6 +123,7 @@ impl EphemeralError {
             EphemeralError::ProtocolError(_) => "Protocol violation".to_string(),
 
             EphemeralError::Internal(_) => "Internal server error".to_string(),
+            EphemeralError::TransportError(_) => "Transport error".to_string(),
         }
     }
 }
@@ -133,6 +137,12 @@ impl From<std::io::Error> for EphemeralError {
 impl From<serde_json::Error> for EphemeralError {
     fn from(err: serde_json::Error) -> Self {
         EphemeralError::SerializationError(err.to_string())
+    }
+}
+
+impl From<confidential_ml_transport::Error> for EphemeralError {
+    fn from(err: confidential_ml_transport::Error) -> Self {
+        EphemeralError::TransportError(err.to_string())
     }
 }
 

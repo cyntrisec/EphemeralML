@@ -1,5 +1,5 @@
+pub mod attestation_bridge;
 pub mod attestation_verifier;
-pub mod decomposer;
 pub mod error;
 pub mod freshness;
 pub mod model_validation;
@@ -12,7 +12,6 @@ pub mod mock;
 
 // Re-export common types and client-specific types
 pub use attestation_verifier::{AttestationError, AttestationVerifier, EnclaveIdentity};
-pub use decomposer::ModelDecomposer;
 pub use ephemeral_ml_common::*;
 pub use error::{ClientError, Result};
 pub use freshness::{

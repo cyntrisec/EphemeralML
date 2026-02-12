@@ -39,6 +39,8 @@ coset = { workspace = true }
 x509-parser = { workspace = true }
 openssl = { workspace = true }
 rand = { workspace = true }
+confidential-ml-transport = { workspace = true, features = ["mock", "tcp"] }
+bytes = { workspace = true }
 
 [dev-dependencies]
 proptest = { workspace = true }
@@ -56,10 +58,3 @@ benchmark = [
     "ephemeral-ml-common/inference",
 ]
 
-[[bin]]
-name = "benchmark_true_e2e"
-required-features = ["benchmark"]
-
-[[bin]]
-name = "benchmark_enclave_concurrency"
-required-features = ["benchmark"]

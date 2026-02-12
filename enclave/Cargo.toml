@@ -20,6 +20,7 @@ thiserror = { workspace = true }
 uuid = { workspace = true }
 sha2 = { workspace = true }
 libc = "0.2"
+clap = { version = "4.5", features = ["derive"] }
 
 # Enclave-specific dependencies
 aws-nitro-enclaves-nsm-api = { workspace = true, optional = true }
@@ -37,6 +38,10 @@ ed25519-dalek = { workspace = true }
 aws-sdk-kms = "1.97.0"
 aws-config = "1.8.13"
 byteorder = "1.5.0"
+confidential-ml-transport = { workspace = true, features = ["mock", "tcp"] }
+confidential-ml-pipeline = { path = "../../confidential-ml-pipeline", default-features = false, features = ["mock", "tcp"] }
+bytes = { workspace = true }
+async-trait = { workspace = true }
 
 [dev-dependencies]
 proptest = { workspace = true }
@@ -46,5 +51,5 @@ serde_bytes = "0.11"
 [features]
 default = ["mock"]
 mock = []
-production = ["aws-nitro-enclaves-nsm-api", "tokio-vsock"]
+production = ["aws-nitro-enclaves-nsm-api", "tokio-vsock", "confidential-ml-transport/vsock", "confidential-ml-transport/nitro", "confidential-ml-pipeline/vsock"]
 cuda = ["candle-core/cuda", "candle-nn/cuda", "candle-transformers/cuda"]

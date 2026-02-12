@@ -1,6 +1,4 @@
-use ephemeral_ml_enclave::assembly::{CandleModel, ModelMetadata, TopologyKey};
 use ephemeral_ml_enclave::candle_engine::CandleInferenceEngine;
-use ephemeral_ml_enclave::inference::InferenceEngine;
 use std::fs;
 use std::path::Path;
 
@@ -35,30 +33,11 @@ fn test_candle_inference_minilm() {
         )
         .expect("Failed to register model");
 
-    let model_info = CandleModel {
-        id: model_id.to_string(),
-        topology: TopologyKey {
-            graph_id: "minilm".to_string(),
-            nodes: vec![],
-            edges: vec![],
-            input_shapes: vec![],
-            output_shapes: vec![],
-            metadata: ModelMetadata {
-                name: "MiniLM-L6-v2".to_string(),
-                version: "v2".to_string(),
-                description: None,
-                created_at: 0,
-                checksum: "none".to_string(),
-            },
-        },
-        weights: vec![], // Not used by CandleInferenceEngine which uses its internal registry
-    };
-
     let input_text = "This is a test sentence for embedding generation.";
     let input_bytes = input_text.as_bytes();
 
     let output = engine
-        .execute(&model_info, input_bytes)
+        .execute_by_id(model_id, input_bytes)
         .expect("Inference failed");
 
     println!("Embedding size: {}", output.len());

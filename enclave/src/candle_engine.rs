@@ -1,5 +1,3 @@
-use crate::assembly::CandleModel;
-use crate::inference::InferenceEngine;
 use crate::{EnclaveError, EphemeralError, Result};
 use candle_core::{Device, Tensor};
 use candle_transformers::models::bert::{BertModel, Config, DTYPE};
@@ -47,7 +45,7 @@ impl CandleInferenceEngine {
         })
     }
 
-    /// Load and register a model from configuration, weights, and tokenizer data
+    /// Load and register a BERT model from configuration, weights, and tokenizer data
     pub fn register_model(
         &self,
         model_id: &str,
@@ -114,21 +112,15 @@ impl CandleInferenceEngine {
         Ok(())
     }
 
-    /// Helper to get device info
-    pub fn device(&self) -> &Device {
-        &self.device
-    }
-}
-
-impl InferenceEngine for CandleInferenceEngine {
-    fn execute(&self, model_info: &CandleModel, input: &[u8]) -> Result<Vec<f32>> {
+    /// Execute inference by model ID
+    pub fn execute_by_id(&self, model_id: &str, input: &[u8]) -> Result<Vec<f32>> {
         let models = self.models.read().map_err(|_| {
             EnclaveError::Enclave(EphemeralError::Internal("Lock poisoned".to_string()))
         })?;
-        let loaded = models.get(&model_info.id).ok_or_else(|| {
+        let loaded = models.get(model_id).ok_or_else(|| {
             EnclaveError::Enclave(EphemeralError::InferenceError(format!(
                 "Model {} not loaded in engine",
-                model_info.id
+                model_id
             )))
         })?;
 
@@ -138,23 +130,11 @@ impl InferenceEngine for CandleInferenceEngine {
         }
     }
 
-    fn validate_input(&self, _model: &CandleModel, input: &[u8]) -> Result<()> {
-        if input.is_empty() {
-            return Err(EnclaveError::Enclave(EphemeralError::InvalidInput(
-                "Input cannot be empty".to_string(),
-            )));
-        }
-        std::str::from_utf8(input).map_err(|e| {
-            EnclaveError::Enclave(EphemeralError::InvalidInput(format!(
-                "Invalid UTF-8 input: {}",
-                e
-            )))
-        })?;
-        Ok(())
+    /// Helper to get device info
+    pub fn device(&self) -> &Device {
+        &self.device
     }
-}
 
-impl CandleInferenceEngine {
     fn execute_bert(&self, loaded: &LoadedBertModel, input: &[u8]) -> Result<Vec<f32>> {
         let text = std::str::from_utf8(input).map_err(|e| {
             EnclaveError::Enclave(EphemeralError::InvalidInput(format!(
@@ -163,7 +143,6 @@ impl CandleInferenceEngine {
             )))
         })?;
 
-        // Tokenization
         let tokens = loaded
             .tokenizer
             .encode(text, true)
@@ -182,7 +161,6 @@ impl CandleInferenceEngine {
             .unsqueeze(0)
             .map_err(|e| EnclaveError::CandleError(e.to_string()))?;
 
-        // Forward pass
         let embeddings = loaded
             .model
             .forward(&input_ids, &token_type_ids, None)
@@ -190,13 +168,12 @@ impl CandleInferenceEngine {
             .squeeze(0)
             .map_err(|e| EnclaveError::CandleError(e.to_string()))?;
 
-        // Pooling: Mask-aware mean pooling across the sequence length
+        // Mask-aware mean pooling
         let mask = Tensor::new(attention_mask, &loaded.device)
             .map_err(|e| EnclaveError::CandleError(e.to_string()))?
             .to_dtype(embeddings.dtype())
             .map_err(|e| EnclaveError::CandleError(e.to_string()))?;
 
-        // Expand mask for broadcast with embeddings [seq_len, hidden_size]
         let mask_expanded = mask
             .unsqueeze(1)
             .map_err(|e| EnclaveError::CandleError(e.to_string()))?
@@ -217,7 +194,6 @@ impl CandleInferenceEngine {
             .to_dtype(embeddings.dtype())
             .map_err(|e| EnclaveError::CandleError(e.to_string()))?;
 
-        // Avoid division by zero
         let mean_embeddings = sum_embeddings
             .broadcast_div(&sum_mask)
             .map_err(|e| EnclaveError::CandleError(e.to_string()))?;
@@ -252,18 +228,11 @@ impl CandleInferenceEngine {
             .unsqueeze(0)
             .map_err(|e| EnclaveError::CandleError(e.to_string()))?;
 
-        // Simple forward pass for the whole sequence
-        // We use a dummy mutable clone here because ModelWeights::forward might take &mut self
-        // depending on the version, but in 0.9 it usually takes &mut self if it uses KV cache.
-        // If we don't care about KV cache (single forward pass), we can just use it.
-
         let mut model = loaded.model.clone();
         let logits = model
             .forward(&input_ids, 0)
             .map_err(|e| EnclaveError::CandleError(e.to_string()))?;
 
-        // For simplicity, return the logits of the last token as a float vector
-        // This is just to demonstrate it's working.
         let logits = logits
             .squeeze(0)
             .map_err(|e| EnclaveError::CandleError(e.to_string()))?;

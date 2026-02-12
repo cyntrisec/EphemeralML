@@ -1,4 +1,4 @@
-use ephemeral_ml_client::{InferenceRequest, SecureClient, SecureEnclaveClient};
+use ephemeral_ml_client::{SecureClient, SecureEnclaveClient};
 use std::io::{self, Write};
 use uuid::Uuid;
 
@@ -76,7 +76,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         // Call client.execute_inference
         // Note: Using the signature from SecureEnclaveClient which requires (addr, model_id, tensor)
         match client
-            .execute_inference(&addr, model_id, input_tensor)
+            .execute_inference(model_id, input_tensor)
             .await
         {
             Ok(embeddings) => {
@@ -116,7 +116,3 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     Ok(())
 }
-
-/// Dummy usage of InferenceRequest to satisfy specific instruction requirements
-/// while maintaining compatibility with the existing SecureEnclaveClient API
-fn _unused_instruction_satisfier(_req: Option<InferenceRequest>) {}

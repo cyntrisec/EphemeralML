@@ -1,6 +1,6 @@
 [![CI](https://github.com/cyntrisec/EphemeralML/actions/workflows/ci.yml/badge.svg)](https://github.com/cyntrisec/EphemeralML/actions/workflows/ci.yml)
 [![Status](https://img.shields.io/badge/Status-v1.0%20Complete-brightgreen?style=for-the-badge)](https://github.com/cyntrisec/EphemeralML/releases/tag/v1.0.0)
-[![Tests](https://img.shields.io/badge/Tests-111%20Passing-success?style=for-the-badge)](https://github.com/cyntrisec/EphemeralML/actions/workflows/ci.yml)
+[![Tests](https://img.shields.io/badge/Tests-99%20Passing-success?style=for-the-badge)](https://github.com/cyntrisec/EphemeralML/actions/workflows/ci.yml)
 [![Platform](https://img.shields.io/badge/Platform-AWS%20Nitro%20Enclaves-orange?style=for-the-badge&logo=amazon-aws)](https://aws.amazon.com/ec2/nitro/nitro-enclaves/)
 [![Language](https://img.shields.io/badge/Language-Rust-b7410e?style=for-the-badge&logo=rust&logoColor=white)](https://www.rust-lang.org/)
 [![License](https://img.shields.io/badge/Apache%202.0-blue?style=for-the-badge)](LICENSE)
@@ -28,19 +28,23 @@
 ## Architecture
 
 ```
-┌─────────┐      HPKE       ┌─────────────┐     VSock     ┌─────────────┐
-│  Client │◄──────────────► │  Host (blind │◄────────────►│   Enclave   │
-└─────────┘   encrypted     │    relay)   │    encrypted  └──────┬──────┘
-                            └─────────────┘                      │
-                                   │                             │ NSM
-                                   │ S3                          ▼
-                            ┌──────┴──────┐              ┌───────────────┐
-                            │   Encrypted │              │    AWS KMS    │
-                            │    Models   │              │ (key release) │
-                            └─────────────┘              └───────────────┘
+                        ┌──────────────────────────────────────────┐
+                        │           Pipeline Orchestrator           │
+┌─────────┐  HPKE      │  ┌─────────┐  SecureChannel  ┌────────┐ │
+│  Client │◄───────────►│  │  Host   │◄──────────────►│Enclave │ │
+└─────────┘  encrypted  │  │ (blind  │   attestation-  │Stage 0 │ │
+                        │  │  relay) │   bound AEAD    └────────┘ │
+                        │  └─────────┘                            │
+                        └──────────────────────────────────────────┘
+                               │                          │ NSM
+                               │ S3                       ▼
+                        ┌──────┴──────┐            ┌───────────────┐
+                        │  Encrypted  │            │    AWS KMS    │
+                        │   Models    │            │ (key release) │
+                        └─────────────┘            └───────────────┘
 ```
 
-**Key insight**: Host never has keys. It just forwards ciphertext.
+**Key insight**: Host never has keys. It just forwards ciphertext. The pipeline layer (`confidential-ml-pipeline`) orchestrates multi-stage inference with per-stage attestation.
 
 ---
 
@@ -69,7 +73,8 @@
 ### Core (Production Ready)
 - **Nitro Enclave integration** with real NSM attestation
 - **AWS KMS** key release via RSA-2048 SPKI handshake
-- **VSock protocol** for host↔enclave communication
+- **Pipeline orchestration** via `confidential-ml-pipeline` — multi-stage inference with per-stage attestation, health checks, and graceful shutdown
+- **Cross-platform transport** via `confidential-ml-transport` — attestation-bound SecureChannel with pluggable TCP/VSock backends
 - **S3 model storage** with client-side encryption
 
 ### Inference Engine
@@ -79,10 +84,10 @@
 - Memory-optimized for TEE constraints
 
 ### Security & Compliance
-- **Attested Execution Receipts** (AER) for audit
+- **Attested Execution Receipts** (AER) — Ed25519-signed, CBOR-canonical, binding input/output hashes to enclave attestation
 - **Policy update system** with signature verification and hot-reload
 - **Model format validation** (safetensors, dtype enforcement)
-- **111 unit tests** across 4 crates
+- **99 unit tests** across 6 crates (including pipeline integration tests)
 - **Deterministic builds** for reproducibility
 
 ---
@@ -217,12 +222,29 @@ See [`docs/ARTIFACT_PUBLICATION.md`](docs/ARTIFACT_PUBLICATION.md) for full deta
 
 ## Quick Start
 
-### Prerequisites
-- AWS account with Nitro Enclave support
-- Rust 1.75+ (for local development)
-- Terraform (for infrastructure)
+### Local Demo (Mock Mode)
 
-### Deploy
+Run a working end-to-end demo locally — loads MiniLM-L6-v2, sends text, gets 384-dim embeddings + a signed Attested Execution Receipt:
+
+```bash
+bash scripts/demo.sh
+```
+
+Or manually:
+
+```bash
+# Terminal 1: Start enclave with model
+cargo run --release --features mock --bin ephemeral-ml-enclave -- \
+    --model-dir test_assets/minilm --model-id stage-0
+
+# Terminal 2: Run host inference
+cargo run --release --features mock --bin ephemeral-ml-host
+```
+
+### Production (AWS Nitro Enclaves)
+
+Prerequisites: AWS account with Nitro Enclave support, Rust 1.75+, Terraform.
+
 ```bash
 # 1. Provision infrastructure
 cd infra/hello-enclave
@@ -244,18 +266,17 @@ See [`QUICKSTART.md`](QUICKSTART.md) for detailed instructions.
 
 | Component | Status | Tests |
 |-----------|--------|-------|
+| Pipeline Orchestrator | ✅ Production | 10 |
+| Stage Executor | ✅ Production | 1 |
 | NSM Attestation | ✅ Production | 11 |
 | KMS Integration | ✅ Production | — |
-| VSock Protocol | ✅ Production | 11 |
-| HPKE Sessions | ✅ Production | 8 |
-| Inference Engine | ✅ Production | 4 |
-| Receipt Signing | ✅ Production | 6 |
-| Policy System | ✅ Production | 9 |
-| Model Validation | ✅ Production | 21 |
-| Compliance Tools | ✅ Production | — |
-| Attestation Verifier | ✅ Production | 8 |
+| Inference Engine (Candle) | ✅ Production | 4 |
+| Receipt Signing (Ed25519) | ✅ Production | 6 |
+| Common / Types | ✅ Production | 42 |
+| Host / Client | ✅ Production | 4 |
+| Degradation Policies | ✅ Production | 3 |
 
-**v1.0 Gateway Complete** — 104/104 required tasks done, E2E verified on AWS Nitro.
+**v2.0 Pipeline Integration** — End-to-end inference working with `confidential-ml-pipeline` + `confidential-ml-transport`. 99 tests passing.
 
 ---
 

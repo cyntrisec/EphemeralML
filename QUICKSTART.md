@@ -9,7 +9,7 @@
 
 ### Mock Mode (Local Development)
 ```bash
-cargo build
+cargo build --features mock
 ```
 
 ### Production Mode (Nitro Enclaves)
@@ -17,35 +17,66 @@ cargo build
 cargo build --features production --no-default-features
 ```
 
-## Running the System
+## Running the Demo
 
-### 1. Mock Mode
-The mock mode allows testing the complete flow locally.
-
-**Start Enclave (Mock Server):**
+### One-command demo
 ```bash
-cargo run -p ephemeral-ml-enclave
+bash scripts/demo.sh
 ```
 
-**Run Client/Host Integration:**
+This will:
+1. Ensure MiniLM-L6-v2 model weights are present (symlinks or downloads from HuggingFace)
+2. Build enclave and host binaries in release mode
+3. Start the enclave stage worker (loads 87MB model, binds TCP ports)
+4. Run the host orchestrator (connects, sends text, receives embeddings + receipt)
+5. Print the Attested Execution Receipt with cryptographic bindings
+
+### Manual Mode
+
+**Terminal 1 — Start Enclave:**
 ```bash
-# In separate terminals
-cargo run -p ephemeral-ml-host --bin kms_proxy_host
-cargo run -p ephemeral-ml-client --bin commander
+cargo run --release --features mock --bin ephemeral-ml-enclave -- \
+    --model-dir test_assets/minilm --model-id stage-0
 ```
 
-### 2. Production Mode (AWS)
-See `infra/hello-enclave/HELLO_ENCLAVE_RUNBOOK.md` for a step-by-step guide to deploying on AWS.
+**Terminal 2 — Run Host:**
+```bash
+cargo run --release --features mock --bin ephemeral-ml-host
+```
+
+### Expected Output
+
+- Model loads in ~150-200ms
+- Inference completes in ~70-120ms
+- 384-dimensional embedding vector returned
+- Signed Attested Execution Receipt with:
+  - SHA-256 request/response/attestation hashes
+  - PCR0/1/2 enclave measurements
+  - Ed25519 signature
+
+### CLI Options (Enclave)
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--model-dir` | `test_assets/minilm` | Directory containing config.json, tokenizer.json, model.safetensors |
+| `--model-id` | `stage-0` | Model ID to register (maps to pipeline stage) |
+
+## Production Mode (AWS)
+
+See `infra/hello-enclave/HELLO_ENCLAVE_RUNBOOK.md` for a step-by-step guide to deploying on AWS Nitro Enclaves.
 
 ## Verification
 
-### Host Blindness (Spy Mode)
-To verify that the host cannot see sensitive data:
+### Run all tests
 ```bash
-cargo test -p ephemeral-ml-host --test spy_test
+cargo test --features mock
 ```
 
-### End-to-End Integration
+### Run specific test suites
 ```bash
-cargo test
+# Pipeline integration tests
+cargo test --features mock -p ephemeral-ml-enclave --test pipeline_integration_test
+
+# Common crate tests (receipts, types, attestation)
+cargo test --features mock -p ephemeral-ml-common
 ```

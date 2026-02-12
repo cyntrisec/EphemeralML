@@ -1,5 +1,26 @@
 # Changelog
 
+## [2.0.0] - 2026-02-12
+
+### Added
+- **Pipeline integration**: End-to-end inference via `confidential-ml-pipeline` orchestrator with per-stage attestation, health checks, and graceful shutdown
+- **Working demo**: `bash scripts/demo.sh` runs MiniLM-L6-v2 inference end-to-end — loads model, sends text, returns 384-dim embeddings + signed Attested Execution Receipt
+- **Stage executor**: `EphemeralStageExecutor` bridges Candle inference engine with pipeline framework, generates receipts alongside inference outputs
+- **Attestation bridge**: Adapts EphemeralML attestation providers to `confidential-ml-transport` trait interface
+- **CLI args for enclave**: `--model-dir` and `--model-id` flags via clap for model loading configuration
+- **Receipt pretty-printer**: Host displays full receipt with hex-encoded hashes, PCR measurements, Ed25519 signature status
+- **Embedding display**: Host shows dimensions, first 5 values, L2 norm of output embeddings
+- **Pipeline integration tests**: 10 tests covering init, health check, forward, receipt generation, multi-batch, and shutdown
+- **Scripts**: `scripts/demo.sh` (one-command demo), `scripts/download_model.sh` (model weight management)
+
+### Changed
+- **Architecture**: Migrated from custom HPKE/VSock protocol to `confidential-ml-transport` SecureChannel + `confidential-ml-pipeline` orchestrator
+- **Removed legacy code**: Deleted custom HPKE sessions, VSock framing, session manager, assembly layer, spy mode, and standalone benchmark binaries (functionality now provided by transport/pipeline crates)
+- **Test count**: 99 tests passing across 6 crates (down from 111 — removed tests for deleted legacy code, added pipeline integration tests)
+
+### Fixed
+- **Model loading**: Enclave now loads model weights before starting pipeline (was creating empty engine causing "Model not loaded" errors)
+
 ## [1.0.3] - 2026-02-01
 
 ### Added

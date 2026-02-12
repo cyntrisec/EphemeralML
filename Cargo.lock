@@ -1157,6 +1157,48 @@ dependencies = [
 ]
 
 [[package]]
+name = "confidential-ml-pipeline"
+version = "0.2.2"
+dependencies = [
+ "async-trait",
+ "bytes",
+ "confidential-ml-transport",
+ "hex",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.18",
+ "tokio",
+ "tokio-vsock 0.7.2",
+ "tracing",
+]
+
+[[package]]
+name = "confidential-ml-transport"
+version = "0.3.0"
+dependencies = [
+ "async-trait",
+ "aws-nitro-enclaves-nsm-api",
+ "bytes",
+ "chacha20poly1305",
+ "ciborium",
+ "coset",
+ "hex",
+ "hkdf",
+ "openssl",
+ "rand 0.8.5",
+ "serde_bytes",
+ "sha2",
+ "subtle",
+ "thiserror 2.0.18",
+ "tokio",
+ "tokio-util",
+ "tokio-vsock 0.7.2",
+ "tracing",
+ "x25519-dalek",
+ "zeroize",
+]
+
+[[package]]
 name = "console"
 version = "0.16.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1665,12 +1707,14 @@ dependencies = [
  "anyhow",
  "async-trait",
  "base64 0.22.1",
+ "bytes",
  "candle-core",
  "candle-nn",
  "candle-transformers",
  "chacha20poly1305",
  "ciborium",
  "clap",
+ "confidential-ml-transport",
  "coset",
  "ed25519-dalek",
  "ephemeral-ml-common",
@@ -1698,15 +1742,14 @@ dependencies = [
 name = "ephemeral-ml-common"
 version = "0.1.0"
 dependencies = [
- "byteorder",
+ "async-trait",
+ "bytes",
  "candle-core",
  "candle-nn",
  "candle-transformers",
- "chacha20poly1305",
+ "confidential-ml-transport",
  "ed25519-dalek",
  "hex",
- "hkdf",
- "hpke",
  "lazy_static",
  "proptest",
  "rand 0.8.5",
@@ -1717,8 +1760,8 @@ dependencies = [
  "sha2",
  "thiserror 1.0.69",
  "tokenizers",
+ "tokio",
  "uuid",
- "x25519-dalek",
  "zeroize",
 ]
 
@@ -1727,14 +1770,19 @@ name = "ephemeral-ml-enclave"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "async-trait",
  "aws-config",
  "aws-nitro-enclaves-nsm-api",
  "aws-sdk-kms",
  "byteorder",
+ "bytes",
  "candle-core",
  "candle-nn",
  "candle-transformers",
  "chacha20poly1305",
+ "clap",
+ "confidential-ml-pipeline",
+ "confidential-ml-transport",
  "ed25519-dalek",
  "ephemeral-ml-common",
  "hex",
@@ -1752,7 +1800,7 @@ dependencies = [
  "thiserror 1.0.69",
  "tokenizers",
  "tokio",
- "tokio-vsock",
+ "tokio-vsock 0.4.0",
  "uuid",
  "x25519-dalek",
  "zeroize",
@@ -1769,7 +1817,9 @@ dependencies = [
  "aws-sdk-s3",
  "aws-types",
  "base64 0.22.1",
- "ephemeral-ml-client",
+ "bytes",
+ "confidential-ml-pipeline",
+ "confidential-ml-transport",
  "ephemeral-ml-common",
  "hex",
  "hpke",
@@ -1785,7 +1835,7 @@ dependencies = [
  "sha2",
  "thiserror 1.0.69",
  "tokio",
- "tokio-vsock",
+ "tokio-vsock 0.4.0",
  "tracing",
  "tracing-opentelemetry",
  "tracing-subscriber",
@@ -3034,6 +3084,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "memoffset"
+version = "0.9.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "488016bfae457b036d996092f6cb448677611ce4449e970ceaf42695203f218a"
+dependencies = [
+ "autocfg",
+]
+
+[[package]]
 name = "mime"
 version = "0.3.17"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3101,6 +3160,19 @@ dependencies = [
  "libc",
  "memoffset 0.7.1",
  "pin-utils",
+]
+
+[[package]]
+name = "nix"
+version = "0.30.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "74523f3a35e05aba87a1d978330aef40f67b0304ac79c1c00b294c9830543db6"
+dependencies = [
+ "bitflags 2.10.0",
+ "cfg-if",
+ "cfg_aliases",
+ "libc",
+ "memoffset 0.9.1",
 ]
 
 [[package]]
@@ -4823,7 +4895,20 @@ dependencies = [
  "futures",
  "libc",
  "tokio",
- "vsock",
+ "vsock 0.3.0",
+]
+
+[[package]]
+name = "tokio-vsock"
+version = "0.7.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8b319ef9394889dab2e1b4f0085b45ba11d0c79dc9d1a9d1afc057d009d0f1c7"
+dependencies = [
+ "bytes",
+ "futures",
+ "libc",
+ "tokio",
+ "vsock 0.5.2",
 ]
 
 [[package]]
@@ -5202,27 +5287,13 @@ dependencies = [
 ]
 
 [[package]]
-name = "vsock-pingpong"
-version = "0.1.0"
+name = "vsock"
+version = "0.5.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e2da6e4ac76cd19635dce0f98985378bb62f8044ee2ff80abd2a7334b920ed63"
 dependencies = [
- "aws-nitro-enclaves-nsm-api",
- "candle-core",
- "candle-nn",
- "candle-transformers",
- "chacha20poly1305",
- "ephemeral-ml-common",
- "hex",
  "libc",
- "rand 0.8.5",
- "rsa",
- "safetensors 0.7.0",
- "serde",
- "serde_bytes",
- "serde_cbor",
- "serde_json",
- "sha2",
- "tokenizers",
- "tokio",
+ "nix 0.30.1",
 ]
 
 [[package]]
