@@ -2,11 +2,15 @@
 
 ## Overview
 
-The Confidential Inference Gateway implements a defense-in-depth architecture for protecting model weights and sensitive user inputs during AI inference. The system operates on Layer 1 (Gateway) security providing TEE isolation with attestation-gated key release and end-to-end encrypted sessions using HPKE. 
+The Confidential Inference Gateway implements a defense-in-depth architecture for protecting model weights and sensitive user inputs during AI inference. The system operates on Layer 1 (Gateway) security providing TEE isolation with attestation-gated key release and end-to-end encrypted sessions using HPKE.
 
 **Shield Mode (Layer 2) is future scope for v1**: In v1, Shield Mode interfaces and policy hooks exist, but no obfuscation is executed; all Shield Mode logic is inactive and reserved for v2.
 
-The architecture follows the principle that the host acts as a blind relay, handling only encrypted data while all sensitive operations occur within the AWS Nitro Enclave's trusted boundary. All AWS API access is mediated through VSock proxies with proper credential management, ensuring the enclave never directly accesses external networks while maintaining cryptographic isolation.
+**Multi-cloud support**: The system supports two deployment targets:
+- **AWS Nitro Enclaves** (`--features production`): The host acts as a blind relay via VSock. All AWS API access is mediated through VSock proxies. Attestation uses NSM (COSE_Sign1).
+- **GCP Confidential Space** (`--features gcp`): The entire CVM is the trust boundary — no host/enclave split, no VSock. The CVM has direct network access. Attestation uses Intel TDX hardware quotes (configfs-tsm). Key release via Attestation API + WIF + Cloud KMS is implemented (`GcpKmsClient`) but not yet wired into the runtime model-loading path.
+
+The core security properties (attestation-gated key release, end-to-end encryption, signed receipts) are platform-independent. The transport layer (`confidential-ml-transport`) abstracts over VSock/TCP and Nitro/TDX attestation backends.
 
 ## Architecture
 
@@ -109,6 +113,49 @@ sequenceDiagram
 1. **Client Zone (Trusted)**: Maintains measurement allowlists, verifies attestation, establishes HPKE sessions, and manages policy updates
 2. **Host Zone (Untrusted Relay)**: Provides networking, storage, and AWS API proxy services without accessing plaintext DEKs
 3. **Enclave Zone (Trusted Compute)**: Performs all sensitive operations within hardware-isolated environment using VSock-mediated AWS access
+
+## GCP Confidential Space Architecture
+
+### Trust Model Differences
+
+| Property | AWS Nitro | GCP Confidential Space |
+|----------|-----------|------------------------|
+| Trust boundary | Enclave process only | Entire CVM |
+| Host relationship | Untrusted, blind relay | No separate host |
+| Network from TEE | None (VSock only) | Full TCP/HTTPS |
+| Attestation hardware | NSM device | Intel TDX (configfs-tsm) |
+| Attestation format | COSE_Sign1 | TDX quote (ECDSA-P256, 8KB) |
+| Measurement registers | PCR0/1/2/8 (SHA-384) | MRTD + RTMR0-3 (SHA-384) |
+| Key release | NSM attestation → AWS KMS RecipientInfo | `GcpKmsClient` (Attestation API → WIF → Cloud KMS), not yet wired into runtime |
+| Model storage | S3 via host VSock proxy | GCS via direct HTTPS |
+
+### TDX Attestation Flow
+
+1. Enclave generates ephemeral X25519 keypair and Ed25519 receipt signing key
+2. Enclave builds `TeeAttestationEnvelope` (CBOR): `{platform: "tdx", tdx_wire: <quote>, user_data: <JSON{hpke_pk, receipt_pk}>}`
+3. TDX REPORTDATA (64 bytes) = `pk[0..32] || nonce[32..64]` — binds the HPKE key and client nonce to hardware attestation
+4. Full CBOR envelope is passed through the transport handshake (not just the TDX wire)
+5. Client's `TdxEnvelopeVerifierBridge` decodes the CBOR, verifies inner TDX document, extracts receipt signing key from `user_data`
+
+### GCP Key Release Flow (Attestation API + WIF)
+
+Current implementation in `enclave/src/gcp_kms_client.rs` uses the Google Cloud Attestation API (not the Launcher socket):
+
+1. CVM obtains metadata server token for API authentication
+2. `GcpKmsClient` creates a challenge via Attestation API (`confidentialcomputing.googleapis.com`)
+3. CVM generates TDX quote with challenge nonce in REPORTDATA
+4. Quote + optional CCEL tables submitted to Attestation API `verifyAttestation` endpoint
+5. Attestation API returns OIDC claims token
+6. OIDC token exchanged via STS (`sts.googleapis.com/v1/token`) for federated access token
+7. Access token used to call Cloud KMS Decrypt API for model DEK
+
+**Note:** `GcpKmsClient` is implemented and tested but not yet wired into the GCP runtime model-loading path. The current GCP main path loads models from local files or GCS directly without KMS-gated decryption.
+
+### Measurement Pinning
+
+- Client can pin expected MRTD via `EPHEMERALML_EXPECTED_MRTD` environment variable (hex-encoded, 48 bytes)
+- `TdxEnvelopeVerifierBridge` passes this to `TdxVerifier` for hardware-level measurement enforcement
+- MRTD corresponds to the CVM's firmware/kernel measurement; RTMRs correspond to application-level measurements
 
 ## AWS Credentials and SigV4 Signing
 
@@ -325,6 +372,12 @@ pub struct AttestationUserData {
 - Session keys are bound to hash(attestation_doc) and parsed user-data keys
 - Canonical transcript hash: attestation_doc_hash || user_data_hash || client_nonce || protocol_version
 - **Design Constraint**: Attestation user_data SHALL be ≤ 1KB and versioned. Feature negotiation MUST NOT rely on expanding user_data in v1
+
+**GCP TDX Key Binding**:
+- TDX REPORTDATA is only 64 bytes (`pk[32] || nonce[32]`), too small for user_data
+- Receipt signing key is carried in a CBOR `TeeAttestationEnvelope` wrapper that bundles `{platform, tdx_wire, user_data}` into the transport-layer attestation document
+- The client `TdxEnvelopeVerifierBridge` verifies the inner TDX document for hardware trust, then extracts `user_data` for the receipt key
+- Trust anchor: hardware-verified REPORTDATA binds the HPKE key; CBOR envelope carries the receipt key alongside
 
 ### Precise Key Binding Specification
 

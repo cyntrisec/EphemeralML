@@ -207,7 +207,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         for (i, tensors) in result.outputs.iter().enumerate() {
             for t in tensors {
                 if t.name == "__receipt__" {
-                    match serde_json::from_slice::<AttestationReceipt>(&t.data) {
+                    // Try CBOR first (canonical format), fall back to JSON
+                    match serde_cbor::from_slice::<AttestationReceipt>(&t.data)
+                        .or_else(|_| serde_json::from_slice::<AttestationReceipt>(&t.data))
+                    {
                         Ok(receipt) => {
                             print_receipt(&receipt);
                         }

@@ -270,10 +270,71 @@ async fn handle_connection<S: AsyncStream + 'static>(
             }
             TAG_AUDIT => {
                 info!(event = "audit_request_raw", payload_len = payload.len());
+
+                // Reject oversized audit payloads (max 64 KB)
+                const MAX_AUDIT_PAYLOAD: usize = 65_536;
+                if payload.len() > MAX_AUDIT_PAYLOAD {
+                    warn!(
+                        event = "audit_rejected",
+                        payload_len = payload.len(),
+                        "Audit entry too large, rejecting"
+                    );
+                    let resp = AuditLogResponse {
+                        success: false,
+                        error: Some("Audit entry too large".to_string()),
+                    };
+                    let resp_payload = serde_json::to_vec(&resp)?;
+                    simple_frame::write_frame(&mut stream, TAG_AUDIT, &resp_payload)
+                        .await
+                        .map_err(|e| anyhow::anyhow!("write_frame error: {}", e))?;
+                    continue;
+                }
+
                 let req: AuditLogRequest = serde_json::from_slice(&payload).map_err(|e| {
                     error!(event = "audit_parse_error", error = %e);
                     e
                 })?;
+
+                // Sanitize: enforce field size limits
+                const MAX_DETAIL_KEYS: usize = 20;
+                const MAX_DETAIL_KEY_LEN: usize = 64;
+                const MAX_DETAIL_VALUE_LEN: usize = 1024;
+                const MAX_SESSION_ID_LEN: usize = 128;
+
+                let details_valid = req.entry.details.len() <= MAX_DETAIL_KEYS
+                    && req.entry.details.keys().all(|k| {
+                        k.len() <= MAX_DETAIL_KEY_LEN
+                            && k.chars()
+                                .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '.')
+                    })
+                    && req
+                        .entry
+                        .details
+                        .values()
+                        .all(|v| v.to_string().len() <= MAX_DETAIL_VALUE_LEN);
+
+                let session_id_valid = req
+                    .entry
+                    .session_id
+                    .as_ref()
+                    .is_none_or(|s| s.len() <= MAX_SESSION_ID_LEN);
+
+                if !details_valid || !session_id_valid {
+                    warn!(
+                        event = "audit_sanitization_failed",
+                        details_count = req.entry.details.len(),
+                        "Audit entry failed field validation"
+                    );
+                    let resp = AuditLogResponse {
+                        success: false,
+                        error: Some("Audit entry failed field validation".to_string()),
+                    };
+                    let resp_payload = serde_json::to_vec(&resp)?;
+                    simple_frame::write_frame(&mut stream, TAG_AUDIT, &resp_payload)
+                        .await
+                        .map_err(|e| anyhow::anyhow!("write_frame error: {}", e))?;
+                    continue;
+                }
 
                 info!(
                     event = "audit_log",
@@ -281,7 +342,6 @@ async fn handle_connection<S: AsyncStream + 'static>(
                     severity = ?req.entry.severity,
                     session_id = ?req.entry.session_id,
                     is_metric = %req.entry.is_metric,
-                    details = ?req.entry.details,
                     "[AUDIT] received from enclave"
                 );
 

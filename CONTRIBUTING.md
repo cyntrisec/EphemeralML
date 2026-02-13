@@ -36,9 +36,12 @@ cargo clippy --workspace
 
 ### Feature Flags
 
-- `mock` (default) — Local development without Nitro hardware
-- `production` — Real NSM attestation and VSock communication
+- `mock` (default) — Local development without TEE hardware
+- `production` — Real NSM attestation and VSock communication (AWS Nitro)
+- `gcp` — Intel TDX attestation, direct TCP, WIF + Cloud KMS (GCP Confidential Space)
 - `cuda` — GPU inference via Candle
+
+**Mutually exclusive:** `mock`, `production`, and `gcp` cannot be combined (enforced by `compile_error!`).
 
 ## How to Contribute
 
@@ -93,7 +96,7 @@ The workspace has 4 main crates:
 | `common` | Shared crypto, protocol, types |
 | `client` | Client library (attestation verification, policy) |
 | `host` | Host relay proxy (KMS, S3, VSock forwarding) |
-| `enclave` | Nitro Enclave application (attestation, inference) |
+| `enclave` | TEE application (Nitro/TDX attestation, inference) |
 
 See [`docs/design.md`](docs/design.md) for the full architecture.
 

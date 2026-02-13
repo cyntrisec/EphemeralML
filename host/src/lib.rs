@@ -1,8 +1,18 @@
-// Prevent accidentally building with both mock and production features enabled.
+// Prevent accidentally building with conflicting features enabled.
 #[cfg(all(feature = "mock", feature = "production"))]
 compile_error!(
     "Features `mock` and `production` are mutually exclusive. \
      Build with: --no-default-features --features production"
+);
+#[cfg(all(feature = "mock", feature = "gcp"))]
+compile_error!(
+    "Features `mock` and `gcp` are mutually exclusive. \
+     Build with: --no-default-features --features gcp"
+);
+#[cfg(all(feature = "production", feature = "gcp"))]
+compile_error!(
+    "Features `production` and `gcp` are mutually exclusive. \
+     Build with: --no-default-features --features gcp"
 );
 
 pub mod aws_proxy;

@@ -30,8 +30,8 @@ sha2 = { workspace = true }
 hex = "0.4"
 x25519-dalek = { workspace = true }
 zeroize = { workspace = true }
-confidential-ml-transport = { workspace = true, features = ["mock", "tcp"] }
-confidential-ml-pipeline = { workspace = true, features = ["mock", "tcp"] }
+confidential-ml-transport = { workspace = true }
+confidential-ml-pipeline = { workspace = true }
 bytes = { workspace = true }
 
 # Observability (v1)
@@ -47,5 +47,5 @@ proptest = { workspace = true }
 
 [features]
 default = ["mock"]
-mock = []
-production = ["tokio-vsock", "confidential-ml-transport/vsock", "confidential-ml-transport/nitro", "confidential-ml-pipeline/vsock"]
+mock = ["confidential-ml-transport/mock", "confidential-ml-transport/tcp", "confidential-ml-pipeline/mock", "confidential-ml-pipeline/tcp"]
+production = ["tokio-vsock", "confidential-ml-transport/vsock", "confidential-ml-transport/nitro", "confidential-ml-pipeline/vsock", "confidential-ml-transport/tcp", "confidential-ml-pipeline/tcp"]

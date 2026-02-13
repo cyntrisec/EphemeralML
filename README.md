@@ -8,17 +8,17 @@
 ```
 
 [![CI](https://github.com/cyntrisec/EphemeralML/actions/workflows/ci.yml/badge.svg)](https://github.com/cyntrisec/EphemeralML/actions/workflows/ci.yml)
-[![Status](https://img.shields.io/badge/Status-v1.0%20Complete-brightgreen?style=for-the-badge)](https://github.com/cyntrisec/EphemeralML/releases/tag/v1.0.0)
+[![Status](https://img.shields.io/badge/Status-v3.0%20Multi--Cloud-brightgreen?style=for-the-badge)](https://github.com/cyntrisec/EphemeralML/releases/tag/v3.0.0)
 [![Tests](https://img.shields.io/badge/Tests-99%20Passing-success?style=for-the-badge)](https://github.com/cyntrisec/EphemeralML/actions/workflows/ci.yml)
-[![Platform](https://img.shields.io/badge/Platform-AWS%20Nitro%20Enclaves-orange?style=for-the-badge&logo=amazon-aws)](https://aws.amazon.com/ec2/nitro/nitro-enclaves/)
+[![Platform](https://img.shields.io/badge/Platform-AWS%20Nitro%20|%20GCP%20TDX-orange?style=for-the-badge&logo=amazon-aws)](https://aws.amazon.com/ec2/nitro/nitro-enclaves/)
 [![Language](https://img.shields.io/badge/Language-Rust-b7410e?style=for-the-badge&logo=rust&logoColor=white)](https://www.rust-lang.org/)
 [![License](https://img.shields.io/badge/Apache%202.0-blue?style=for-the-badge)](LICENSE)
 
 # EphemeralML
 
-**Confidential AI inference with hardware-backed attestation**
+**Confidential AI inference with hardware-backed attestation — multi-cloud**
 
-> Run AI models where prompts and weights stay encrypted — even if the host is compromised.
+> Run AI models where prompts and weights stay encrypted — even if the host is compromised. Deploys on AWS Nitro Enclaves and GCP Confidential Space (Intel TDX).
 
 ---
 
@@ -35,6 +35,8 @@
 ---
 
 ## Architecture
+
+### AWS Nitro Enclaves
 
 ```
                         ┌──────────────────────────────────────────┐
@@ -53,7 +55,27 @@
                         └─────────────┘            └───────────────┘
 ```
 
-**Key insight**: Host never has keys. It just forwards ciphertext. The pipeline layer (`confidential-ml-pipeline`) orchestrates multi-stage inference with per-stage attestation.
+### GCP Confidential Space (Intel TDX)
+
+```
+┌─────────┐  TDX-attested   ┌─────────────────────────────────────────┐
+│  Client │◄────────────────►│  GCP Confidential Space CVM (TDX)      │
+└─────────┘  SecureChannel   │  ┌───────────────────────────────────┐  │
+                             │  │  EphemeralML Container             │  │
+                             │  │  - TDX attestation (configfs-tsm)  │  │
+                             │  │  - Inference + receipt signing      │  │
+                             │  │  - Direct HTTPS to GCS / Cloud KMS │  │
+                             │  └───────────────────────────────────┘  │
+                             └─────────────────────────────────────────┘
+                                     │                    │ TDX quote
+                                     │ GCS               ▼
+                              ┌──────┴──────┐     ┌──────────────────┐
+                              │  Encrypted  │     │ Cloud KMS (WIF)  │
+                              │   Models    │     │ (key release)    │
+                              └─────────────┘     └──────────────────┘
+```
+
+**Key insight**: Host never has keys. On AWS, it just forwards ciphertext. On GCP, the entire CVM is the trust boundary — no host/enclave split, no VSock. The pipeline layer (`confidential-ml-pipeline`) orchestrates multi-stage inference with per-stage attestation.
 
 ---
 
@@ -65,9 +87,10 @@
 - ✅ **Execution integrity** (verified code)
 
 ### How
-1. **Attestation-gated key release** — KMS releases DEK only if enclave PCRs match policy
+1. **Attestation-gated key release** — KMS releases DEK only if enclave measurements match policy (PCRs on Nitro, MRTD/RTMRs on TDX)
 2. **HPKE encrypted sessions** — end-to-end encryption, host sees only ciphertext
 3. **Ed25519 signed receipts** — cryptographic proof of execution
+4. **Cross-platform transport** — `confidential-ml-transport` handles attestation-bound channels on both VSock (Nitro) and TCP (TDX)
 
 ### Threat Model
 - ✓ Compromised host OS → **Protected** (enclave isolation)
@@ -80,11 +103,11 @@
 ## Features
 
 ### Core (Production Ready)
-- **Nitro Enclave integration** with real NSM attestation
-- **AWS KMS** key release via RSA-2048 SPKI handshake
+- **AWS Nitro Enclave integration** with real NSM attestation and PCR-bound KMS key release
+- **GCP Confidential Space integration** with Intel TDX attestation, MRTD/RTMR measurement pinning, and Cloud KMS key release (`GcpKmsClient` implemented, not yet wired into runtime model-loading path)
 - **Pipeline orchestration** via `confidential-ml-pipeline` — multi-stage inference with per-stage attestation, health checks, and graceful shutdown
 - **Cross-platform transport** via `confidential-ml-transport` — attestation-bound SecureChannel with pluggable TCP/VSock backends
-- **S3 model storage** with client-side encryption
+- **S3 model storage** (AWS) and **GCS model storage** (GCP) with client-side encryption
 
 ### Inference Engine
 - **Candle-based** transformer inference (MiniLM, BERT, Llama)
@@ -96,7 +119,7 @@
 - **Attested Execution Receipts** (AER) — Ed25519-signed, CBOR-canonical, binding input/output hashes to enclave attestation
 - **Policy update system** with signature verification and hot-reload
 - **Model format validation** (safetensors, dtype enforcement)
-- **99 unit tests** across 6 crates (including pipeline integration tests)
+- **105 tests** across 4 workspace crates (including pipeline integration and GCP tests)
 - **Deterministic builds** for reproducibility
 
 ---
@@ -267,7 +290,20 @@ nitro-cli build-enclave --docker-uri ephemeral-ml-enclave:latest --output-file e
 nitro-cli run-enclave --eif-path enclave.eif --cpu-count 2 --memory 4096
 ```
 
-See [`QUICKSTART.md`](QUICKSTART.md) for detailed instructions.
+### Production (GCP Confidential Space)
+
+Prerequisites: GCP project with Confidential Computing API enabled, c3-standard-4 (TDX), Rust 1.75+.
+
+```bash
+# Build for GCP (no mock, no default features)
+cargo build --release --no-default-features --features gcp -p ephemeral-ml-enclave
+
+# Run on CVM (--gcp flag required to enter GCP code path)
+./target/release/ephemeral-ml-enclave \
+    --gcp --model-dir /app/model --model-id stage-0
+```
+
+See [`QUICKSTART.md`](QUICKSTART.md) and [`docs/build-matrix.md`](docs/build-matrix.md) for detailed instructions.
 
 ---
 
@@ -277,24 +313,28 @@ See [`QUICKSTART.md`](QUICKSTART.md) for detailed instructions.
 |-----------|--------|-------|
 | Pipeline Orchestrator | ✅ Production | 10 |
 | Stage Executor | ✅ Production | 1 |
-| NSM Attestation | ✅ Production | 11 |
-| KMS Integration | ✅ Production | — |
+| NSM Attestation (AWS) | ✅ Production | 11 |
+| TDX Attestation (GCP) | ✅ Production | — |
+| KMS Integration (AWS) | ✅ Production | — |
+| GCP KMS / WIF | ⚠ Code exists, not wired into runtime | — |
 | Inference Engine (Candle) | ✅ Production | 4 |
 | Receipt Signing (Ed25519) | ✅ Production | 6 |
 | Common / Types | ✅ Production | 42 |
 | Host / Client | ✅ Production | 4 |
 | Degradation Policies | ✅ Production | 3 |
+| GCS Model Loader | ✅ Implemented | — |
+| TDX Verifier Bridge (Client) | ✅ Implemented | — |
 
-**v2.0 Pipeline Integration** — End-to-end inference working with `confidential-ml-pipeline` + `confidential-ml-transport`. 99 tests passing.
+**v3.0 Multi-Cloud** — GCP Confidential Space integration with TDX attestation, GCS model loading, and `TdxEnvelopeVerifierBridge` client. GcpKmsClient (WIF + Cloud KMS) implemented but not yet wired into the model-loading runtime. Three-way feature exclusivity (`mock`/`production`/`gcp`) across all crates. 105 tests passing.
 
 ---
 
 ## Documentation
 
 - [`docs/design.md`](docs/design.md) — Architecture & threat model
+- [`docs/build-matrix.md`](docs/build-matrix.md) — Deployment modes, feature flags & build commands (AWS, GCP, mock)
 - [`docs/benchmarks.md`](docs/benchmarks.md) — Benchmark methodology, results & competitive analysis
 - [`docs/BENCHMARK_SPEC.md`](docs/BENCHMARK_SPEC.md) — Benchmark specification (11-paper literature review)
-- [`docs/tasks.md`](docs/tasks.md) — Implementation progress
 - [`QUICKSTART.md`](QUICKSTART.md) — Deployment guide
 - [`SECURITY_DEMO.md`](SECURITY_DEMO.md) — Security walkthrough
 - [`scripts/run_final_kms_validation.sh`](scripts/run_final_kms_validation.sh) — Multi-run KMS-enforced benchmark validation

@@ -1,5 +1,24 @@
 # Changelog
 
+## [3.0.0] - 2026-02-13
+
+### Added
+- **GCP Confidential Space integration**: Full `--features gcp` path for deploying on Intel TDX CVMs (c3-standard-4)
+- **TDX attestation provider**: `TeeAttestationProvider` in `enclave/src/tee_provider.rs` — builds TDX quotes via configfs-tsm, wraps them in `TeeAttestationEnvelope` (CBOR) with receipt signing key in user_data
+- **TDX attestation bridge**: `TeeAttestationBridge` adapts the TDX attestation envelope to `confidential-ml-transport` trait interface, propagating receipt key through the full CBOR envelope
+- **Client TDX verifier**: `TdxEnvelopeVerifierBridge` in `client/src/attestation_bridge.rs` — decodes CBOR envelope, verifies inner TDX document via `TdxVerifier`, extracts user_data for receipt key delivery
+- **MRTD measurement pinning**: `EPHEMERALML_EXPECTED_MRTD` environment variable for TDX measurement enforcement on the client side
+- **GCP KMS client**: `GcpKmsClient` in `enclave/src/gcp_kms_client.rs` — Attestation API challenge/verify + STS token exchange + Cloud KMS Decrypt API (implemented and tested, not yet wired into runtime model-loading path)
+- **GCS model loader**: `GcsModelLoader` in `enclave/src/gcs_loader.rs` — fetches encrypted models from Google Cloud Storage
+- **Three-way feature exclusivity**: `mock`, `production`, `gcp` are mutually exclusive via `compile_error!` guards in all three crates (client, enclave, host)
+- **Feature-driven dependency activation**: Transport/pipeline features (`mock`, `tcp`, `tdx`, `vsock`) are now driven by crate feature flags instead of hardcoded in base dependency declarations
+
+### Changed
+- **Client verifier dispatch**: 3-way dispatch — `MockVerifierBridge` (mock), `TdxEnvelopeVerifierBridge` (gcp), `CoseVerifierBridge` (production)
+- **Test module gating**: All test modules that import mock types are now `#[cfg(all(test, feature = "mock"))]` instead of bare `#[cfg(test)]`, fixing compilation under `--features gcp`
+- **Workspace description**: Updated to include GCP Confidential Space
+- **Documentation**: Updated README, QUICKSTART, build-matrix, design doc, CONTRIBUTING, SECURITY, and requirements to reflect multi-cloud support
+
 ## [2.0.0] - 2026-02-12
 
 ### Added

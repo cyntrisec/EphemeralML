@@ -29,6 +29,7 @@ clap = { version = "4.4", features = ["derive"] }
 reqwest = { version = "0.13", features = ["json"] }
 hex = "0.4"
 serde_cbor = "0.11"
+serde_bytes = "0.11"
 ed25519-dalek = { workspace = true }
 base64 = "0.22.1"
 async-trait = "0.1"
@@ -39,7 +40,7 @@ coset = { workspace = true }
 x509-parser = { workspace = true }
 openssl = { workspace = true }
 rand = { workspace = true }
-confidential-ml-transport = { workspace = true, features = ["mock", "tcp"] }
+confidential-ml-transport = { workspace = true }
 bytes = { workspace = true }
 
 [dev-dependencies]
@@ -48,8 +49,9 @@ rand = { workspace = true }
 
 [features]
 default = ["mock"]
-mock = []
-production = []
+mock = ["confidential-ml-transport/mock", "confidential-ml-transport/tcp"]
+production = ["confidential-ml-transport/tcp"]
+gcp = ["confidential-ml-transport/tdx", "confidential-ml-transport/tcp"]
 benchmark = [
     "candle-nn",
     "candle-transformers",

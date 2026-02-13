@@ -109,19 +109,19 @@ impl AttestationVerifier {
             let (hpke_public_key, receipt_signing_key, measurements, kms_public_key) =
                 if let Ok(parsed) = serde_cbor::from_slice::<serde_cbor::Value>(&doc.signature) {
                     if let Some(map) = cbor_as_map(&parsed) {
-                        // Extract user_data containing keys
-                        let (hpke_pk, receipt_pk) = if let Ok(ud_bytes) =
-                            get_bytes_field(map, "user_data")
-                        {
-                            if let Ok(ud) = serde_json::from_slice::<AttestationUserData>(&ud_bytes)
-                            {
-                                (ud.hpke_public_key, ud.receipt_signing_key)
-                            } else {
-                                ([0u8; 32], [0u8; 32])
-                            }
-                        } else {
-                            ([0u8; 32], [0u8; 32])
-                        };
+                        // Extract user_data containing keys — reject if missing or unparseable
+                        let ud_bytes = get_bytes_field(map, "user_data").map_err(|_| {
+                            ClientError::Client(crate::EphemeralError::AttestationError(
+                                "Mock attestation missing user_data field".to_string(),
+                            ))
+                        })?;
+                        let ud = serde_json::from_slice::<AttestationUserData>(&ud_bytes).map_err(
+                            |e| {
+                                ClientError::Client(crate::EphemeralError::AttestationError(
+                                    format!("Mock attestation user_data parse failed: {}", e),
+                                ))
+                            },
+                        )?;
 
                         // Extract PCRs
                         let pcrs = self.extract_pcrs(map).unwrap_or_else(|_| doc.pcrs.clone());
@@ -129,12 +129,20 @@ impl AttestationVerifier {
                         // Extract KMS public key
                         let kms_pk = get_bytes_field(map, "public_key").ok();
 
-                        (hpke_pk, receipt_pk, pcrs, kms_pk)
+                        (ud.hpke_public_key, ud.receipt_signing_key, pcrs, kms_pk)
                     } else {
-                        ([0u8; 32], [0u8; 32], doc.pcrs.clone(), None)
+                        return Err(ClientError::Client(
+                            crate::EphemeralError::AttestationError(
+                                "Mock attestation payload is not a CBOR map".to_string(),
+                            ),
+                        ));
                     }
                 } else {
-                    ([0u8; 32], [0u8; 32], doc.pcrs.clone(), None)
+                    return Err(ClientError::Client(
+                        crate::EphemeralError::AttestationError(
+                            "Mock attestation signature is not valid CBOR".to_string(),
+                        ),
+                    ));
                 };
 
             return Ok(EnclaveIdentity {

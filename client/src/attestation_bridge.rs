@@ -108,6 +108,88 @@ fn verify_attestation_for_bridge(
     verifier.verify_attestation(doc, &dummy_nonce)
 }
 
+/// TDX envelope verifier bridge for GCP Confidential Space.
+///
+/// Decodes the `TeeAttestationEnvelope` CBOR format produced by the enclave's
+/// `TeeAttestationBridge`, verifies the inner TDX quote via cml-transport's
+/// `TdxVerifier`, and returns `VerifiedAttestation` with `user_data` containing
+/// `EphemeralUserData` (receipt signing key).
+///
+/// Measurement pinning: reads `EPHEMERALML_EXPECTED_MRTD` env var (hex-encoded
+/// 48-byte MRTD). When set, rejects attestations with non-matching MRTD.
+#[cfg(feature = "gcp")]
+pub struct TdxEnvelopeVerifierBridge {
+    inner: confidential_ml_transport::attestation::tdx::TdxVerifier,
+}
+
+#[cfg(feature = "gcp")]
+impl TdxEnvelopeVerifierBridge {
+    /// Create a new TDX envelope verifier bridge.
+    ///
+    /// `expected_mrtd`: optional 48-byte MRTD to validate against.
+    /// Pass `None` to accept any MRTD (useful for development).
+    ///
+    /// If `expected_mrtd` is `None`, also checks the `EPHEMERALML_EXPECTED_MRTD`
+    /// environment variable (hex-encoded, 48 bytes = 96 hex chars).
+    pub fn new(expected_mrtd: Option<Vec<u8>>) -> Self {
+        let mrtd = expected_mrtd.or_else(|| {
+            std::env::var("EPHEMERALML_EXPECTED_MRTD")
+                .ok()
+                .and_then(|hex_str| hex::decode(hex_str).ok())
+                .filter(|bytes| bytes.len() == 48)
+        });
+
+        Self {
+            inner: confidential_ml_transport::attestation::tdx::TdxVerifier::new(mrtd),
+        }
+    }
+}
+
+#[cfg(feature = "gcp")]
+#[async_trait::async_trait]
+impl CmlAttestationVerifier for TdxEnvelopeVerifierBridge {
+    async fn verify(
+        &self,
+        doc: &CmlAttestationDocument,
+    ) -> std::result::Result<VerifiedAttestation, AttestError> {
+        // Try to decode as TeeAttestationEnvelope (CBOR with tdx_wire + user_data)
+        if let Ok(envelope) = serde_cbor::from_slice::<TdxEnvelopeHelper>(&doc.raw) {
+            if envelope.platform == "tdx" {
+                // Verify the inner TDX document
+                let tdx_doc = CmlAttestationDocument::new(envelope.tdx_wire);
+                let mut verified = self.inner.verify(&tdx_doc).await?;
+
+                // Attach the user_data from the envelope
+                if !envelope.user_data.is_empty() {
+                    // Convert JSON user_data to CBOR for EphemeralUserData::from_cbor()
+                    if let Ok(ud) = serde_json::from_slice::<EphemeralUserData>(&envelope.user_data) {
+                        if let Ok(cbor) = ud.to_cbor() {
+                            verified.user_data = Some(cbor);
+                        }
+                    }
+                }
+
+                return Ok(verified);
+            }
+        }
+
+        // Fallback: treat as plain TDX wire format
+        self.inner.verify(doc).await
+    }
+}
+
+/// Helper struct for deserializing TeeAttestationEnvelope on the client side.
+/// Mirrors enclave's TeeAttestationEnvelope without requiring the enclave crate.
+#[cfg(feature = "gcp")]
+#[derive(serde::Deserialize)]
+struct TdxEnvelopeHelper {
+    platform: String,
+    #[serde(with = "serde_bytes")]
+    tdx_wire: Vec<u8>,
+    #[serde(with = "serde_bytes")]
+    user_data: Vec<u8>,
+}
+
 /// Mock verifier bridge that wraps cml-transport's MockVerifier.
 ///
 /// For use in mock/test mode — delegates directly to cml-transport.

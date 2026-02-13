@@ -137,7 +137,7 @@ impl<A: AttestationProvider> ModelLoader<A> {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "mock"))]
 mod tests {
     use super::*;
     use crate::attestation::DefaultAttestationProvider;

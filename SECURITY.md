@@ -29,16 +29,19 @@ Instead, please use one of these channels:
 The following are in scope for security reports:
 
 - **Cryptographic implementation** (HPKE, Ed25519, ChaCha20-Poly1305, COSE verification)
-- **Attestation verification** (NSM document parsing, certificate chain validation, PCR checks)
+- **Attestation verification** (NSM document parsing, TDX quote verification, certificate chain validation, PCR/MRTD checks)
 - **Key material handling** (zeroization, memory safety, key derivation)
-- **Protocol security** (VSock message framing, session establishment, replay protection)
-- **Policy enforcement** (measurement allowlists, key release conditions)
+- **Protocol security** (VSock/TCP message framing, session establishment, replay protection)
+- **TDX envelope handling** (CBOR envelope parsing, receipt key propagation, measurement pinning)
+- **Policy enforcement** (measurement allowlists, key release conditions, WIF token handling)
 - **Input validation** (model format validation, safetensors parsing, CBOR/JSON deserialization)
 
 ## Supported Versions
 
 | Version | Supported |
 |---------|-----------|
+| 3.0.x   | Yes       |
+| 2.0.x   | Yes       |
 | 1.0.x   | Yes       |
 | < 1.0   | No        |
 

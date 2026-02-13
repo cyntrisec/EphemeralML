@@ -148,9 +148,17 @@ impl NSMAttestationProvider {
 
         match response {
             nsm::api::Response::Attestation { document } => Ok(document),
-            nsm::api::Response::Error(err) => Err(EnclaveError::Enclave(
-                EphemeralError::AttestationError(format!("NSM attestation error: {:?}", err)),
-            )),
+            nsm::api::Response::Error(_err) => {
+                // Redact internal NSM error details — log for diagnostics, never expose to client
+                #[cfg(feature = "production")]
+                eprintln!(
+                    "[nsm] attestation error (redacted from response): {:?}",
+                    _err
+                );
+                Err(EnclaveError::Enclave(EphemeralError::AttestationError(
+                    "Attestation document generation failed".to_string(),
+                )))
+            }
             _ => Err(EnclaveError::Enclave(EphemeralError::AttestationError(
                 "Unexpected NSM response type".to_string(),
             ))),
@@ -309,26 +317,31 @@ impl AttestationProvider for NSMAttestationProvider {
     }
 }
 
-/// Default attestation provider that uses mock in development, NSM in production
+/// Default attestation provider that uses mock in development, NSM in production.
+///
+/// GCP mode uses `TeeAttestationProvider` directly and does not use this type.
 #[derive(Clone)]
+#[cfg(any(feature = "mock", feature = "production"))]
 pub struct DefaultAttestationProvider {
     #[cfg(feature = "production")]
     nsm_provider: NSMAttestationProvider,
-    #[cfg(not(feature = "production"))]
+    #[cfg(all(feature = "mock", not(feature = "production")))]
     mock_provider: crate::mock::MockAttestationProvider,
 }
 
+#[cfg(any(feature = "mock", feature = "production"))]
 impl DefaultAttestationProvider {
     pub fn new() -> Result<Self> {
         Ok(Self {
             #[cfg(feature = "production")]
             nsm_provider: NSMAttestationProvider::new()?,
-            #[cfg(not(feature = "production"))]
+            #[cfg(all(feature = "mock", not(feature = "production")))]
             mock_provider: crate::mock::MockAttestationProvider::new(),
         })
     }
 }
 
+#[cfg(any(feature = "mock", feature = "production"))]
 impl AttestationProvider for DefaultAttestationProvider {
     fn generate_attestation(
         &self,
@@ -341,7 +354,7 @@ impl AttestationProvider for DefaultAttestationProvider {
                 .generate_attestation(nonce, receipt_public_key)
         }
 
-        #[cfg(not(feature = "production"))]
+        #[cfg(all(feature = "mock", not(feature = "production")))]
         {
             self.mock_provider
                 .generate_attestation(nonce, receipt_public_key)
@@ -354,7 +367,7 @@ impl AttestationProvider for DefaultAttestationProvider {
             self.nsm_provider.get_pcr_measurements()
         }
 
-        #[cfg(not(feature = "production"))]
+        #[cfg(all(feature = "mock", not(feature = "production")))]
         {
             self.mock_provider.get_pcr_measurements()
         }
@@ -366,7 +379,7 @@ impl AttestationProvider for DefaultAttestationProvider {
             self.nsm_provider.get_hpke_public_key()
         }
 
-        #[cfg(not(feature = "production"))]
+        #[cfg(all(feature = "mock", not(feature = "production")))]
         {
             self.mock_provider.get_hpke_public_key()
         }
@@ -378,7 +391,7 @@ impl AttestationProvider for DefaultAttestationProvider {
             self.nsm_provider.get_hpke_private_key()
         }
 
-        #[cfg(not(feature = "production"))]
+        #[cfg(all(feature = "mock", not(feature = "production")))]
         {
             self.mock_provider.get_hpke_private_key()
         }
@@ -390,7 +403,7 @@ impl AttestationProvider for DefaultAttestationProvider {
             self.nsm_provider.decrypt_hpke(ciphertext)
         }
 
-        #[cfg(not(feature = "production"))]
+        #[cfg(all(feature = "mock", not(feature = "production")))]
         {
             self.mock_provider.decrypt_hpke(ciphertext)
         }
@@ -402,14 +415,14 @@ impl AttestationProvider for DefaultAttestationProvider {
             self.nsm_provider.decrypt_kms(ciphertext)
         }
 
-        #[cfg(not(feature = "production"))]
+        #[cfg(all(feature = "mock", not(feature = "production")))]
         {
             self.mock_provider.decrypt_kms(ciphertext)
         }
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "mock"))]
 mod tests {
     use super::*;
     use crate::mock::MockAttestationProvider;

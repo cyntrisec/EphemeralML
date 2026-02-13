@@ -8,13 +8,13 @@ members = [
 resolver = "2"
 
 [workspace.package]
-description = "Confidential AI inference on AWS Nitro Enclaves with end-to-end encryption"
+description = "Confidential AI inference on AWS Nitro Enclaves and GCP Confidential Space with end-to-end encryption"
 repository = "https://github.com/cyntrisec/EphemeralML"
 homepage = "https://ephemeralml.cyntrisec.com"
 license = "Apache-2.0"
 edition = "2021"
 rust-version = "1.75"
-keywords = ["confidential-computing", "nitro-enclaves", "tee", "machine-learning", "encryption"]
+keywords = ["confidential-computing", "nitro-enclaves", "confidential-space", "tee", "machine-learning"]
 categories = ["cryptography", "science"]
 
 [workspace.dependencies]

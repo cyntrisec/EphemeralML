@@ -1,6 +1,6 @@
 //! Receipt Verification CLI Tool
 //!
-//! Usage: verify_receipt --receipt <receipt.json> --attestation <attestation.cbor> [--verbose]
+//! Usage: verify_receipt --receipt <receipt.cbor|receipt.json> --attestation <attestation.cbor> [--verbose]
 //!
 //! Verifies:
 //! 1. COSE_Sign1 attestation authenticity (signature + cert chain)
@@ -22,7 +22,7 @@ use std::path::PathBuf;
 #[command(name = "verify_receipt")]
 #[command(about = "Verify EphemeralML Attested Execution Receipts")]
 struct Args {
-    /// Path to the receipt JSON file
+    /// Path to the receipt file (CBOR or JSON)
     #[arg(short, long)]
     receipt: PathBuf,
 
@@ -70,10 +70,14 @@ struct VerificationReport {
 fn main() -> Result<()> {
     let args = Args::parse();
 
-    // Load receipt
-    let receipt_data = fs::read_to_string(&args.receipt).context("Failed to read receipt file")?;
-    let receipt: AttestationReceipt =
-        serde_json::from_str(&receipt_data).context("Failed to parse receipt JSON")?;
+    // Load receipt (try CBOR first for canonical format, then JSON for backwards compat)
+    let receipt_bytes = fs::read(&args.receipt).context("Failed to read receipt file")?;
+    let receipt: AttestationReceipt = serde_cbor::from_slice(&receipt_bytes)
+        .or_else(|_| {
+            // Fall back to JSON (e.g. older receipts or human-readable format)
+            serde_json::from_slice(&receipt_bytes)
+        })
+        .context("Failed to parse receipt (tried CBOR and JSON)")?;
 
     // Load attestation document
     let attestation_bytes =

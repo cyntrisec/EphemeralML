@@ -46,6 +46,10 @@ pub struct SecureEnclaveClient {
     pub receipt_verifier: ReceiptVerifier,
     server_receipt_signing_key: Option<[u8; 32]>,
     server_attestation_hash: Option<[u8; 32]>,
+    /// Tracks the last seen sequence number for replay detection
+    last_sequence_number: u64,
+    /// Maximum allowed receipt age in seconds (default: 5 minutes)
+    max_receipt_age_secs: u64,
 }
 
 impl SecureEnclaveClient {
@@ -57,6 +61,8 @@ impl SecureEnclaveClient {
             receipt_verifier: ReceiptVerifier::new(vec![]),
             server_receipt_signing_key: None,
             server_attestation_hash: None,
+            last_sequence_number: 0,
+            max_receipt_age_secs: 300, // 5 minutes
         }
     }
 
@@ -72,6 +78,8 @@ impl SecureEnclaveClient {
             receipt_verifier: ReceiptVerifier::new(vec![]),
             server_receipt_signing_key: None,
             server_attestation_hash: None,
+            last_sequence_number: 0,
+            max_receipt_age_secs: 300,
         }
     }
 
@@ -99,7 +107,9 @@ impl SecureClient for SecureEnclaveClient {
         // Build verifier bridge based on mode
         #[cfg(feature = "mock")]
         let verifier = crate::attestation_bridge::MockVerifierBridge::new();
-        #[cfg(not(feature = "mock"))]
+        #[cfg(feature = "gcp")]
+        let verifier = crate::attestation_bridge::TdxEnvelopeVerifierBridge::new(None);
+        #[cfg(not(any(feature = "mock", feature = "gcp")))]
         let verifier =
             crate::attestation_bridge::CoseVerifierBridge::new(self.policy_manager.clone());
 
@@ -228,11 +238,65 @@ impl SecureClient for SecureEnclaveClient {
             }
         }
 
+        // 7. Verify model_id matches the requested model
+        if output.receipt.model_id != model_id {
+            return Err(ClientError::Client(EphemeralError::ValidationError(
+                format!(
+                    "Receipt model_id mismatch: expected '{}', got '{}'",
+                    model_id, output.receipt.model_id
+                ),
+            )));
+        }
+
+        // 8. Verify timestamp freshness (reject stale receipts)
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs();
+        let receipt_age = now.saturating_sub(output.receipt.execution_timestamp);
+        if receipt_age > self.max_receipt_age_secs {
+            return Err(ClientError::Client(EphemeralError::ValidationError(
+                format!(
+                    "Receipt too old: {}s (max {}s)",
+                    receipt_age, self.max_receipt_age_secs
+                ),
+            )));
+        }
+
+        // 9. Verify sequence number is monotonically increasing (replay detection)
+        if output.receipt.sequence_number <= self.last_sequence_number {
+            return Err(ClientError::Client(EphemeralError::ValidationError(
+                format!(
+                    "Receipt sequence replay: got {}, last seen {}",
+                    output.receipt.sequence_number, self.last_sequence_number
+                ),
+            )));
+        }
+        self.last_sequence_number = output.receipt.sequence_number;
+
+        // 10. Verify request/response hash binding (computation integrity)
+        {
+            use sha2::{Digest, Sha256};
+            let expected_response_hash: [u8; 32] = {
+                let output_bytes: Vec<u8> = output
+                    .output_tensor
+                    .iter()
+                    .flat_map(|f| f.to_le_bytes())
+                    .collect();
+                Sha256::digest(&output_bytes).into()
+            };
+            if output.receipt.response_hash != expected_response_hash {
+                return Err(ClientError::Client(EphemeralError::ValidationError(
+                    "Receipt response_hash does not match output data".to_string(),
+                )));
+            }
+        }
+
         Ok(output.output_tensor)
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "mock"))]
 mod tests {
     use super::*;
     use crate::attestation_bridge::MockVerifierBridge;
@@ -276,17 +340,30 @@ mod tests {
                 let output_tensor: Vec<f32> =
                     input.input_data.iter().map(|&x| (x as f32) + 0.1).collect();
 
+                // Compute response hash matching what client will verify
+                let output_bytes: Vec<u8> =
+                    output_tensor.iter().flat_map(|f| f.to_le_bytes()).collect();
+                let response_hash: [u8; 32] = {
+                    use sha2::{Digest, Sha256};
+                    Sha256::digest(&output_bytes).into()
+                };
+
+                let now = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap()
+                    .as_secs();
+
                 let mut signed_receipt = ephemeral_ml_common::AttestationReceipt::new(
-                    "receipt".to_string(),
+                    input.model_id.clone(), // model_id must match request
                     1,
                     SecurityMode::GatewayOnly,
                     EnclaveMeasurements::new(vec![0x01; 48], vec![0x02; 48], vec![0x03; 48]),
                     [0u8; 32], // attestation_doc_hash — matches mock
                     [0u8; 32],
-                    [0u8; 32],
+                    response_hash,
                     "v1".to_string(),
-                    0,
-                    "model".to_string(),
+                    now,
+                    input.model_id.clone(),
                     "v1".to_string(),
                     0,
                     0,

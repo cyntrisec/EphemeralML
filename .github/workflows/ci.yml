@@ -37,6 +37,7 @@ jobs:
             target
           key: ${{ runner.os }}-cargo-clippy-${{ hashFiles('**/Cargo.lock') }}
       - run: cargo clippy --workspace -- -D warnings
+      - run: cargo clippy --features mock,gcp -p ephemeral-ml-enclave -- -D warnings
 
   test:
     name: Test
@@ -52,6 +53,22 @@ jobs:
             target
           key: ${{ runner.os }}-cargo-test-${{ hashFiles('**/Cargo.lock') }}
       - run: cargo test --workspace
+      - run: cargo test --features mock,gcp -p ephemeral-ml-enclave
+
+  build-gcp:
+    name: Build (GCP Production)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/cache@v5
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-gcp-${{ hashFiles('**/Cargo.lock') }}
+      - run: cargo build --no-default-features --features gcp -p ephemeral-ml-enclave
 
   audit:
     name: Security Audit

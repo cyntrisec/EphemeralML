@@ -129,12 +129,26 @@ impl<A: AttestationProvider + Send + Sync> StageExecutor for EphemeralStageExecu
             receipt
         };
 
+        // Serialize receipt as canonical CBOR for deterministic encoding.
+        // CBOR with serde_cbor produces deterministic output (sorted keys, no indefinite lengths).
         let receipt_bytes =
-            serde_json::to_vec(&receipt).map_err(|e| StageError::ForwardFailed {
+            serde_cbor::to_vec(&receipt).map_err(|e| StageError::ForwardFailed {
                 request_id,
                 micro_batch,
                 reason: format!("Receipt serialize failed: {}", e),
             })?;
+
+        // Verify determinism: re-decode and re-encode must produce identical bytes
+        #[cfg(debug_assertions)]
+        {
+            let decoded: serde_cbor::Value =
+                serde_cbor::from_slice(&receipt_bytes).expect("CBOR round-trip decode failed");
+            let re_encoded = serde_cbor::to_vec(&decoded).expect("CBOR round-trip encode failed");
+            assert_eq!(
+                receipt_bytes, re_encoded,
+                "CBOR encoding is not deterministic"
+            );
+        }
 
         let receipt_tensor = OwnedTensor {
             name: "__receipt__".to_string(),
@@ -149,7 +163,7 @@ impl<A: AttestationProvider + Send + Sync> StageExecutor for EphemeralStageExecu
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "mock"))]
 mod tests {
     use super::*;
     use crate::attestation::DefaultAttestationProvider;
