@@ -42,11 +42,18 @@ struct Args {
     #[arg(long)]
     gcp: bool,
 
-    /// GCS bucket for model weights (GCP mode).
+    /// Model source for GCP mode (required when --gcp is set).
+    ///   local:   read from --model-dir (bundled in container, no KMS)
+    ///   gcs:     fetch plaintext from GCS (requires --expected-model-hash)
+    ///   gcs-kms: fetch encrypted model from GCS, decrypt via attestation-bound Cloud KMS (requires --expected-model-hash)
+    #[arg(long)]
+    model_source: Option<String>,
+
+    /// GCS bucket for model weights (GCP mode, gcs/gcs-kms).
     #[arg(long, default_value = "ephemeralml-models")]
     gcp_bucket: String,
 
-    /// GCS prefix for model files within the bucket (GCP mode).
+    /// GCS prefix for model files within the bucket (GCP mode, gcs/gcs-kms).
     #[arg(long, default_value = "models/minilm")]
     gcp_model_prefix: String,
 
@@ -58,16 +65,27 @@ struct Args {
     #[arg(long, default_value = "us-central1")]
     gcp_location: String,
 
-    /// Cloud KMS key resource name for model DEK decryption (GCP mode).
+    /// Cloud KMS key resource name for model DEK decryption (GCP mode, gcs-kms).
     /// Format: projects/P/locations/L/keyRings/KR/cryptoKeys/K
-    /// When set, fetches encrypted model from GCS and decrypts via attestation-bound KMS.
     #[arg(long)]
     gcp_kms_key: Option<String>,
 
-    /// Workload Identity Pool audience for STS token exchange (GCP mode).
+    /// Workload Identity Pool audience for STS token exchange (GCP mode, gcs-kms).
     /// Format: //iam.googleapis.com/projects/N/locations/global/workloadIdentityPools/POOL/providers/PROV
     #[arg(long)]
     gcp_wip_audience: Option<String>,
+
+    /// Expected SHA-256 hash of model.safetensors (hex, 64 chars).
+    /// Model weights are verified against this hash after loading.
+    /// Required for gcs and gcs-kms model sources; optional for local.
+    #[arg(long)]
+    expected_model_hash: Option<String>,
+
+    /// Expected MRTD measurement (hex, 96 chars = 48 bytes) for TDX peer verification.
+    /// Also reads EPHEMERALML_EXPECTED_MRTD env var. When set, rejects peers with
+    /// non-matching MRTD.
+    #[arg(long)]
+    expected_mrtd: Option<String>,
 }
 
 #[tokio::main]
@@ -143,6 +161,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             println!("EphemeralML Enclave v2.0 (GCP Confidential VM Mode)");
             println!();
 
+            // 0. Validate required --model-source
+            let model_source = args.model_source.as_deref().ok_or(
+                "--model-source is required in GCP mode (local, gcs, or gcs-kms)"
+            )?;
+
             // 1. Initialize TEE attestation provider
             let tee_provider = if args.synthetic {
                 println!("[gcp] Using synthetic TDX quotes (no hardware)");
@@ -155,135 +178,214 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             let receipt_key = ReceiptSigningKey::generate()?;
             let receipt_pk = receipt_key.public_key_bytes();
 
-            // 2. Load model: local > KMS-encrypted GCS > plaintext GCS
+            // 2. Load model via explicit --model-source
             let engine = CandleInferenceEngine::new()?;
             let load_start = std::time::Instant::now();
 
-            if args.model_dir.exists() {
-                // Local model directory takes precedence (for testing)
-                println!(
-                    "[gcp] Loading model from local: {}",
-                    args.model_dir.display()
-                );
-                let config_bytes = std::fs::read(args.model_dir.join("config.json"))
-                    .map_err(|e| format!("Failed to read config.json: {}", e))?;
-                let tokenizer_bytes = std::fs::read(args.model_dir.join("tokenizer.json"))
-                    .map_err(|e| format!("Failed to read tokenizer.json: {}", e))?;
-                let weights_bytes = std::fs::read(args.model_dir.join("model.safetensors"))
-                    .map_err(|e| format!("Failed to read model.safetensors: {}", e))?;
-
-                engine.register_model(
-                    &args.model_id,
-                    &config_bytes,
-                    &weights_bytes,
-                    &tokenizer_bytes,
-                )?;
-
-                println!(
-                    "[gcp] Model '{}' loaded in {:.1}ms (local, {:.1} MB)",
-                    args.model_id,
-                    load_start.elapsed().as_secs_f64() * 1000.0,
-                    weights_bytes.len() as f64 / (1024.0 * 1024.0),
-                );
-            } else if let (Some(kms_key), Some(wip_audience)) =
-                (&args.gcp_kms_key, &args.gcp_wip_audience)
-            {
-                // KMS-encrypted model: fetch encrypted weights + wrapped DEK from GCS,
-                // decrypt DEK via attestation-bound Cloud KMS, decrypt weights.
-                use ephemeral_ml_enclave::crypto_util::decrypt_artifact;
-                use ephemeral_ml_enclave::gcp_kms_client::GcpKmsClient;
-
-                println!(
-                    "[gcp] Fetching encrypted model from gs://{}/{}",
-                    args.gcp_bucket, args.gcp_model_prefix
-                );
-
-                let kms_provider = if args.synthetic {
-                    ephemeral_ml_enclave::tee_provider::TeeAttestationProvider::synthetic()
-                } else {
-                    ephemeral_ml_enclave::tee_provider::TeeAttestationProvider::new()?
-                };
-                let kms_client = GcpKmsClient::new(
-                    &args.gcp_project,
-                    &args.gcp_location,
-                    wip_audience,
-                    kms_provider,
-                );
-
-                let gcs = GcsModelLoader::new(&args.gcp_bucket);
-
-                // Config and tokenizer are not encrypted (not sensitive)
-                let config_path = format!("{}/config.json", args.gcp_model_prefix);
-                let tokenizer_path = format!("{}/tokenizer.json", args.gcp_model_prefix);
-                // Encrypted weights and wrapped DEK
-                let weights_enc_path = format!("{}/model.safetensors.enc", args.gcp_model_prefix);
-                let dek_path = format!("{}/wrapped_dek.bin", args.gcp_model_prefix);
-
-                let (config_art, tokenizer_art, weights_enc_art, dek_art) = tokio::join!(
-                    gcs.fetch_object(&config_path),
-                    gcs.fetch_object(&tokenizer_path),
-                    gcs.fetch_object(&weights_enc_path),
-                    gcs.fetch_object(&dek_path),
-                );
-
-                let config_bytes = config_art?.bytes;
-                let tokenizer_bytes = tokenizer_art?.bytes;
-                let encrypted_weights = weights_enc_art?.bytes;
-                let wrapped_dek = dek_art?.bytes;
-
-                println!(
-                    "[gcp] Decrypting DEK via Cloud KMS (key: {})",
-                    &kms_key[kms_key.rfind('/').map(|i| i + 1).unwrap_or(0)..]
-                );
-                let dek = kms_client.decrypt(kms_key, &wrapped_dek).await?;
-
-                if dek.len() != 32 {
-                    return Err(format!(
-                        "Invalid DEK length from KMS: expected 32, got {}",
-                        dek.len()
-                    )
-                    .into());
+            // Parse expected model hash if provided
+            let expected_model_hash: Option<[u8; 32]> = match &args.expected_model_hash {
+                Some(hex_str) => {
+                    let bytes = hex::decode(hex_str)
+                        .map_err(|e| format!("--expected-model-hash: invalid hex: {}", e))?;
+                    if bytes.len() != 32 {
+                        return Err(format!(
+                            "--expected-model-hash must be 64 hex chars (32 bytes), got {}",
+                            bytes.len()
+                        ).into());
+                    }
+                    let mut arr = [0u8; 32];
+                    arr.copy_from_slice(&bytes);
+                    Some(arr)
                 }
+                None => None,
+            };
 
-                let dek_array: [u8; 32] = dek.try_into().unwrap();
-                let weights_bytes = decrypt_artifact(&encrypted_weights, &dek_array)?;
+            match model_source {
+                "local" => {
+                    if !args.model_dir.exists() {
+                        return Err(format!(
+                            "--model-source=local but model directory does not exist: {}",
+                            args.model_dir.display()
+                        ).into());
+                    }
+                    println!(
+                        "[gcp] Loading model from local: {}",
+                        args.model_dir.display()
+                    );
+                    let config_bytes = std::fs::read(args.model_dir.join("config.json"))
+                        .map_err(|e| format!("Failed to read config.json: {}", e))?;
+                    let tokenizer_bytes = std::fs::read(args.model_dir.join("tokenizer.json"))
+                        .map_err(|e| format!("Failed to read tokenizer.json: {}", e))?;
+                    let weights_bytes = std::fs::read(args.model_dir.join("model.safetensors"))
+                        .map_err(|e| format!("Failed to read model.safetensors: {}", e))?;
 
-                engine.register_model(
-                    &args.model_id,
-                    &config_bytes,
-                    &weights_bytes,
-                    &tokenizer_bytes,
-                )?;
+                    // Verify hash if provided
+                    if let Some(expected) = &expected_model_hash {
+                        use sha2::{Digest, Sha256};
+                        let actual: [u8; 32] = Sha256::digest(&weights_bytes).into();
+                        if &actual != expected {
+                            return Err(format!(
+                                "Model hash mismatch (local): expected {}, got {}",
+                                hex::encode(expected), hex::encode(actual)
+                            ).into());
+                        }
+                        println!("[gcp] Model hash verified: {}", hex::encode(expected));
+                    }
 
-                println!(
-                    "[gcp] Model '{}' loaded in {:.1}ms (KMS-encrypted GCS, {:.1} MB)",
-                    args.model_id,
-                    load_start.elapsed().as_secs_f64() * 1000.0,
-                    weights_bytes.len() as f64 / (1024.0 * 1024.0),
-                );
-            } else {
-                // Fetch plaintext from GCS (requires metadata server for auth)
-                println!(
-                    "[gcp] Fetching model from gs://{}/{}",
-                    args.gcp_bucket, args.gcp_model_prefix
-                );
-                let gcs = GcsModelLoader::new(&args.gcp_bucket);
-                let (config_bytes, tokenizer_bytes, weights_bytes) =
-                    gcs.fetch_model_files(&args.gcp_model_prefix).await?;
+                    engine.register_model(
+                        &args.model_id,
+                        &config_bytes,
+                        &weights_bytes,
+                        &tokenizer_bytes,
+                    )?;
 
-                engine.register_model(
-                    &args.model_id,
-                    &config_bytes,
-                    &weights_bytes,
-                    &tokenizer_bytes,
-                )?;
+                    println!(
+                        "[gcp] Model '{}' loaded in {:.1}ms (local, {:.1} MB)",
+                        args.model_id,
+                        load_start.elapsed().as_secs_f64() * 1000.0,
+                        weights_bytes.len() as f64 / (1024.0 * 1024.0),
+                    );
+                }
+                "gcs-kms" => {
+                    let kms_key = args.gcp_kms_key.as_ref().ok_or(
+                        "--model-source=gcs-kms requires --gcp-kms-key"
+                    )?;
+                    let wip_audience = args.gcp_wip_audience.as_ref().ok_or(
+                        "--model-source=gcs-kms requires --gcp-wip-audience"
+                    )?;
 
-                println!(
-                    "[gcp] Model '{}' loaded in {:.1}ms (GCS, {:.1} MB)",
-                    args.model_id,
-                    load_start.elapsed().as_secs_f64() * 1000.0,
-                    weights_bytes.len() as f64 / (1024.0 * 1024.0),
-                );
+                    use ephemeral_ml_enclave::crypto_util::decrypt_artifact;
+                    use ephemeral_ml_enclave::gcp_kms_client::GcpKmsClient;
+
+                    println!(
+                        "[gcp] Fetching encrypted model from gs://{}/{}",
+                        args.gcp_bucket, args.gcp_model_prefix
+                    );
+
+                    let kms_provider = if args.synthetic {
+                        ephemeral_ml_enclave::tee_provider::TeeAttestationProvider::synthetic()
+                    } else {
+                        ephemeral_ml_enclave::tee_provider::TeeAttestationProvider::new()?
+                    };
+                    let kms_client = GcpKmsClient::new(
+                        &args.gcp_project,
+                        &args.gcp_location,
+                        wip_audience,
+                        kms_provider,
+                    );
+
+                    let gcs = GcsModelLoader::new(&args.gcp_bucket);
+
+                    let config_path = format!("{}/config.json", args.gcp_model_prefix);
+                    let tokenizer_path = format!("{}/tokenizer.json", args.gcp_model_prefix);
+                    let weights_enc_path = format!("{}/model.safetensors.enc", args.gcp_model_prefix);
+                    let dek_path = format!("{}/wrapped_dek.bin", args.gcp_model_prefix);
+
+                    let (config_art, tokenizer_art, weights_enc_art, dek_art) = tokio::join!(
+                        gcs.fetch_object(&config_path),
+                        gcs.fetch_object(&tokenizer_path),
+                        gcs.fetch_object(&weights_enc_path),
+                        gcs.fetch_object(&dek_path),
+                    );
+
+                    let config_bytes = config_art?.bytes;
+                    let tokenizer_bytes = tokenizer_art?.bytes;
+                    let encrypted_weights = weights_enc_art?.bytes;
+                    let wrapped_dek = dek_art?.bytes;
+
+                    println!(
+                        "[gcp] Decrypting DEK via Cloud KMS (key: {})",
+                        &kms_key[kms_key.rfind('/').map(|i| i + 1).unwrap_or(0)..]
+                    );
+                    let dek = kms_client.decrypt(kms_key, &wrapped_dek).await?;
+
+                    if dek.len() != 32 {
+                        return Err(format!(
+                            "Invalid DEK length from KMS: expected 32, got {}",
+                            dek.len()
+                        )
+                        .into());
+                    }
+
+                    let dek_array: [u8; 32] = dek.try_into().unwrap();
+                    let weights_bytes = decrypt_artifact(&encrypted_weights, &dek_array)?;
+
+                    // Verify hash (required for remote sources)
+                    if let Some(expected) = &expected_model_hash {
+                        use sha2::{Digest, Sha256};
+                        let actual: [u8; 32] = Sha256::digest(&weights_bytes).into();
+                        if &actual != expected {
+                            return Err(format!(
+                                "Model hash mismatch (gcs-kms): expected {}, got {}",
+                                hex::encode(expected), hex::encode(actual)
+                            ).into());
+                        }
+                        println!("[gcp] Model hash verified: {}", hex::encode(expected));
+                    } else {
+                        return Err("--expected-model-hash is required for gcs-kms source. \
+                            Cannot verify model integrity without a pinned hash."
+                            .into());
+                    }
+
+                    engine.register_model(
+                        &args.model_id,
+                        &config_bytes,
+                        &weights_bytes,
+                        &tokenizer_bytes,
+                    )?;
+
+                    println!(
+                        "[gcp] Model '{}' loaded in {:.1}ms (KMS-encrypted GCS, {:.1} MB)",
+                        args.model_id,
+                        load_start.elapsed().as_secs_f64() * 1000.0,
+                        weights_bytes.len() as f64 / (1024.0 * 1024.0),
+                    );
+                }
+                "gcs" => {
+                    println!(
+                        "[gcp] Fetching model from gs://{}/{}",
+                        args.gcp_bucket, args.gcp_model_prefix
+                    );
+                    let gcs = GcsModelLoader::new(&args.gcp_bucket);
+
+                    let expected = expected_model_hash.as_ref().ok_or(
+                        "--expected-model-hash is required for gcs source. \
+                         Cannot verify model integrity without a pinned hash."
+                    )?;
+
+                    let config_path = format!("{}/config.json", args.gcp_model_prefix);
+                    let tokenizer_path = format!("{}/tokenizer.json", args.gcp_model_prefix);
+                    let weights_path = format!("{}/model.safetensors", args.gcp_model_prefix);
+
+                    let (config_art, tokenizer_art) = tokio::join!(
+                        gcs.fetch_object(&config_path),
+                        gcs.fetch_object(&tokenizer_path),
+                    );
+                    let config_bytes = config_art?.bytes;
+                    let tokenizer_bytes = tokenizer_art?.bytes;
+                    let weights_bytes = gcs.fetch_verified(&weights_path, expected).await?;
+
+                    engine.register_model(
+                        &args.model_id,
+                        &config_bytes,
+                        &weights_bytes,
+                        &tokenizer_bytes,
+                    )?;
+
+                    println!("[gcp] Model hash verified: {}", hex::encode(expected));
+
+                    println!(
+                        "[gcp] Model '{}' loaded in {:.1}ms (GCS)",
+                        args.model_id,
+                        load_start.elapsed().as_secs_f64() * 1000.0,
+                    );
+                }
+                other => {
+                    return Err(format!(
+                        "Unknown --model-source '{}'. Valid: local, gcs, gcs-kms",
+                        other
+                    ).into());
+                }
             }
 
             // 3. Probe Confidential Space Launcher socket for container identity
@@ -353,8 +455,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             };
             let bridge = TeeAttestationBridge::new(bridge_provider, receipt_pk);
 
-            // Use TDX verifier for peer verification
-            let verifier = confidential_ml_transport::attestation::tdx::TdxVerifier::new(None);
+            // Use TDX verifier for peer verification with measurement pinning
+            let env_mrtd = std::env::var("EPHEMERALML_EXPECTED_MRTD").ok();
+            let peer_mrtd: Option<Vec<u8>> = args.expected_mrtd.as_ref()
+                .or(env_mrtd.as_ref())
+                .and_then(|hex_str| hex::decode(hex_str).ok())
+                .filter(|bytes| bytes.len() == 48);
+            if peer_mrtd.is_none() && !args.synthetic {
+                eprintln!("[gcp] WARNING: No --expected-mrtd set. Peer TDX measurements are NOT pinned.");
+            }
+            let verifier = confidential_ml_transport::attestation::tdx::TdxVerifier::new(peer_mrtd);
 
             println!(
                 "[gcp] Stage worker: control=0.0.0.0:9000, data_in=0.0.0.0:9001, data_out=0.0.0.0:9002"

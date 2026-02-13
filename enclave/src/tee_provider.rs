@@ -25,7 +25,7 @@ use ephemeral_ml_common::{AttestationDocument, PcrMeasurements};
 
 use hpke::{aead::ChaCha20Poly1305, kem::X25519HkdfSha256, Deserializable, OpModeR};
 use serde::{Deserialize, Serialize};
-use sha2::{Digest, Sha256};
+
 use std::sync::atomic::{AtomicU64, Ordering};
 use zeroize::ZeroizeOnDrop;
 
@@ -250,19 +250,19 @@ impl AttestationProvider for TeeAttestationProvider {
         nonce: &[u8],
         receipt_public_key: [u8; 32],
     ) -> Result<AttestationDocument> {
-        // Build REPORTDATA: pk[0..32] || nonce_hash[32..64]
-        // If nonce > 32 bytes, hash it to fit. If <= 32 bytes, pad with zeros.
+        // Build REPORTDATA: pk[0..32] || nonce[32..64]
+        // Nonce must be exactly 32 bytes for canonical session binding.
+        if nonce.len() != 32 {
+            return Err(EnclaveError::Enclave(EphemeralError::ValidationError(
+                format!(
+                    "TDX nonce must be exactly 32 bytes, got {}",
+                    nonce.len()
+                ),
+            )));
+        }
         let mut report_data = [0u8; 64];
         report_data[..32].copy_from_slice(&self.hpke_keypair.public_key);
-        if nonce.len() == 32 {
-            report_data[32..64].copy_from_slice(nonce);
-        } else if nonce.len() < 32 {
-            report_data[32..32 + nonce.len()].copy_from_slice(nonce);
-        } else {
-            // Hash longer nonces to 32 bytes
-            let hash: [u8; 32] = Sha256::digest(nonce).into();
-            report_data[32..64].copy_from_slice(&hash);
-        }
+        report_data[32..64].copy_from_slice(nonce);
 
         // Generate TDX quote
         let raw_quote = self.generate_quote(&report_data)?;

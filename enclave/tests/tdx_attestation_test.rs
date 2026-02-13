@@ -191,20 +191,21 @@ mod tests {
     }
 
     #[test]
-    fn long_nonce_hashed_to_fit_reportdata() {
+    fn rejects_non_32_byte_nonce() {
         let provider = TeeAttestationProvider::synthetic();
-        let long_nonce = [0xFF; 64]; // > 32 bytes
 
-        let doc = provider
-            .generate_attestation(&long_nonce, [0u8; 32])
-            .unwrap();
+        // Too long
+        let result = provider.generate_attestation(&[0xFF; 64], [0u8; 32]);
+        assert!(result.is_err());
+        let err = format!("{:?}", result.unwrap_err());
+        assert!(err.contains("exactly 32 bytes"), "Error: {}", err);
 
-        let envelope = TeeAttestationEnvelope::from_cbor(&doc.signature).unwrap();
-        let raw_quote = &envelope.tdx_wire[16..];
-        let rd = TeeAttestationProvider::parse_reportdata(raw_quote).unwrap();
+        // Too short
+        let result = provider.generate_attestation(&[0xAA; 16], [0u8; 32]);
+        assert!(result.is_err());
 
-        // Nonce should be SHA-256 of the long nonce
-        let expected: [u8; 32] = sha2::Sha256::digest(&long_nonce).into();
-        assert_eq!(&rd[32..64], &expected);
+        // Empty
+        let result = provider.generate_attestation(&[], [0u8; 32]);
+        assert!(result.is_err());
     }
 }

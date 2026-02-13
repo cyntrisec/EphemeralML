@@ -205,8 +205,11 @@ impl CsTokenClient {
 
     /// Decode JWT claims without signature verification.
     ///
-    /// This is safe because the token comes from the local Launcher socket
-    /// (trusted path). The relying party (client) must verify the full JWT.
+    /// SAFETY: This function does NOT verify the JWT signature. It is only safe
+    /// for informational/logging use because the token comes from the local
+    /// Launcher socket (trusted path). Do NOT use these claims for security
+    /// decisions (access control, key release, policy enforcement).
+    /// The relying party (client) must verify the full JWT via Google's OIDC keys.
     pub fn parse_claims(token: &str) -> Result<CsTokenClaims> {
         // JWT format: header.payload.signature
         let parts: Vec<&str> = token.split('.').collect();

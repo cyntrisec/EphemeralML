@@ -58,4 +58,4 @@ HEALTHCHECK --interval=15s --timeout=3s --start-period=60s --retries=3 \
 
 WORKDIR /app
 ENTRYPOINT ["/app/ephemeral-ml-enclave"]
-CMD ["--gcp", "--model-dir", "/app/model"]
+CMD ["--gcp", "--model-source", "local", "--model-dir", "/app/model"]

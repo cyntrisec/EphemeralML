@@ -159,16 +159,20 @@ impl CmlAttestationVerifier for TdxEnvelopeVerifierBridge {
                 let tdx_doc = CmlAttestationDocument::new(envelope.tdx_wire);
                 let mut verified = self.inner.verify(&tdx_doc).await?;
 
-                // Attach the user_data from the envelope
-                if !envelope.user_data.is_empty() {
-                    // Convert JSON user_data to CBOR for EphemeralUserData::from_cbor()
-                    if let Ok(ud) = serde_json::from_slice::<EphemeralUserData>(&envelope.user_data)
-                    {
-                        if let Ok(cbor) = ud.to_cbor() {
-                            verified.user_data = Some(cbor);
-                        }
-                    }
+                // Attach the user_data from the envelope (fail-closed: reject if missing/invalid)
+                if envelope.user_data.is_empty() {
+                    return Err(AttestError::VerificationFailed(
+                        "TDX envelope user_data is empty — cannot extract receipt signing key".to_string(),
+                    ));
                 }
+                let ud = serde_json::from_slice::<EphemeralUserData>(&envelope.user_data)
+                    .map_err(|e| AttestError::VerificationFailed(
+                        format!("TDX envelope user_data parse failed: {}", e),
+                    ))?;
+                let cbor = ud.to_cbor().map_err(|e| AttestError::VerificationFailed(
+                    format!("TDX envelope user_data CBOR encode failed: {}", e),
+                ))?;
+                verified.user_data = Some(cbor);
 
                 return Ok(verified);
             }
