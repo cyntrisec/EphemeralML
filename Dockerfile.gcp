@@ -38,7 +38,11 @@ FROM us-docker.pkg.dev/confidential-space-images/cs-images/cs-base:latest
 COPY --from=builder /build/target/release/ephemeral-ml-enclave /app/ephemeral-ml-enclave
 
 # Copy default model for smoke testing (override via GCS in production).
-COPY test_assets/minilm /app/model
+# NOTE: model.safetensors must be a real file, not a symlink outside the build
+# context.  deploy.sh resolves the symlink before building.
+COPY test_assets/minilm/config.json     /app/model/config.json
+COPY test_assets/minilm/tokenizer.json  /app/model/tokenizer.json
+COPY test_assets/minilm/model.safetensors /app/model/model.safetensors
 
 # GCP configuration (override via instance metadata or env).
 ENV EPHEMERALML_GCP_WIF_PROVIDER="" \
@@ -47,6 +51,10 @@ ENV EPHEMERALML_GCP_WIF_PROVIDER="" \
     EPHEMERALML_EXPECTED_MRTD=""
 
 EXPOSE 9000 9001 9002
+
+# Health check: TCP connect to control port.
+HEALTHCHECK --interval=15s --timeout=3s --start-period=60s --retries=3 \
+    CMD timeout 2 bash -c 'echo > /dev/tcp/127.0.0.1/9000' 2>/dev/null || exit 1
 
 WORKDIR /app
 ENTRYPOINT ["/app/ephemeral-ml-enclave"]
