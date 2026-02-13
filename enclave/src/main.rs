@@ -57,6 +57,17 @@ struct Args {
     /// GCP location for Attestation API (GCP mode).
     #[arg(long, default_value = "us-central1")]
     gcp_location: String,
+
+    /// Cloud KMS key resource name for model DEK decryption (GCP mode).
+    /// Format: projects/P/locations/L/keyRings/KR/cryptoKeys/K
+    /// When set, fetches encrypted model from GCS and decrypts via attestation-bound KMS.
+    #[arg(long)]
+    gcp_kms_key: Option<String>,
+
+    /// Workload Identity Pool audience for STS token exchange (GCP mode).
+    /// Format: //iam.googleapis.com/projects/N/locations/global/workloadIdentityPools/POOL/providers/PROV
+    #[arg(long)]
+    gcp_wip_audience: Option<String>,
 }
 
 #[tokio::main]
@@ -144,7 +155,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             let receipt_key = ReceiptSigningKey::generate()?;
             let receipt_pk = receipt_key.public_key_bytes();
 
-            // 2. Load model from GCS or local fallback
+            // 2. Load model: local > KMS-encrypted GCS > plaintext GCS
             let engine = CandleInferenceEngine::new()?;
             let load_start = std::time::Instant::now();
 
@@ -174,8 +185,84 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     load_start.elapsed().as_secs_f64() * 1000.0,
                     weights_bytes.len() as f64 / (1024.0 * 1024.0),
                 );
+            } else if let (Some(kms_key), Some(wip_audience)) =
+                (&args.gcp_kms_key, &args.gcp_wip_audience)
+            {
+                // KMS-encrypted model: fetch encrypted weights + wrapped DEK from GCS,
+                // decrypt DEK via attestation-bound Cloud KMS, decrypt weights.
+                use ephemeral_ml_enclave::crypto_util::decrypt_artifact;
+                use ephemeral_ml_enclave::gcp_kms_client::GcpKmsClient;
+
+                println!(
+                    "[gcp] Fetching encrypted model from gs://{}/{}",
+                    args.gcp_bucket, args.gcp_model_prefix
+                );
+
+                let kms_provider = if args.synthetic {
+                    ephemeral_ml_enclave::tee_provider::TeeAttestationProvider::synthetic()
+                } else {
+                    ephemeral_ml_enclave::tee_provider::TeeAttestationProvider::new()?
+                };
+                let kms_client = GcpKmsClient::new(
+                    &args.gcp_project,
+                    &args.gcp_location,
+                    wip_audience,
+                    kms_provider,
+                );
+
+                let gcs = GcsModelLoader::new(&args.gcp_bucket);
+
+                // Config and tokenizer are not encrypted (not sensitive)
+                let config_path = format!("{}/config.json", args.gcp_model_prefix);
+                let tokenizer_path = format!("{}/tokenizer.json", args.gcp_model_prefix);
+                // Encrypted weights and wrapped DEK
+                let weights_enc_path = format!("{}/model.safetensors.enc", args.gcp_model_prefix);
+                let dek_path = format!("{}/wrapped_dek.bin", args.gcp_model_prefix);
+
+                let (config_art, tokenizer_art, weights_enc_art, dek_art) = tokio::join!(
+                    gcs.fetch_object(&config_path),
+                    gcs.fetch_object(&tokenizer_path),
+                    gcs.fetch_object(&weights_enc_path),
+                    gcs.fetch_object(&dek_path),
+                );
+
+                let config_bytes = config_art?.bytes;
+                let tokenizer_bytes = tokenizer_art?.bytes;
+                let encrypted_weights = weights_enc_art?.bytes;
+                let wrapped_dek = dek_art?.bytes;
+
+                println!(
+                    "[gcp] Decrypting DEK via Cloud KMS (key: {})",
+                    &kms_key[kms_key.rfind('/').map(|i| i + 1).unwrap_or(0)..]
+                );
+                let dek = kms_client.decrypt(kms_key, &wrapped_dek).await?;
+
+                if dek.len() != 32 {
+                    return Err(format!(
+                        "Invalid DEK length from KMS: expected 32, got {}",
+                        dek.len()
+                    )
+                    .into());
+                }
+
+                let dek_array: [u8; 32] = dek.try_into().unwrap();
+                let weights_bytes = decrypt_artifact(&encrypted_weights, &dek_array)?;
+
+                engine.register_model(
+                    &args.model_id,
+                    &config_bytes,
+                    &weights_bytes,
+                    &tokenizer_bytes,
+                )?;
+
+                println!(
+                    "[gcp] Model '{}' loaded in {:.1}ms (KMS-encrypted GCS, {:.1} MB)",
+                    args.model_id,
+                    load_start.elapsed().as_secs_f64() * 1000.0,
+                    weights_bytes.len() as f64 / (1024.0 * 1024.0),
+                );
             } else {
-                // Fetch from GCS (requires metadata server for auth)
+                // Fetch plaintext from GCS (requires metadata server for auth)
                 println!(
                     "[gcp] Fetching model from gs://{}/{}",
                     args.gcp_bucket, args.gcp_model_prefix

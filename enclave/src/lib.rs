@@ -20,6 +20,7 @@ pub mod attestation;
 pub mod attestation_bridge;
 pub mod audit;
 pub mod candle_engine;
+pub mod crypto_util;
 pub mod error;
 pub mod kms_client;
 pub mod kms_proxy_client;

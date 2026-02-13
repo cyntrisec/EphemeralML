@@ -60,3 +60,7 @@ benchmark = [
     "ephemeral-ml-common/inference",
 ]
 
+[[bin]]
+name = "ephemeralml-verify"
+path = "src/bin/ephemeralml_verify.rs"
+
