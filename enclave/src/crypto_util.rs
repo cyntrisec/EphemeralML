@@ -128,5 +128,103 @@ mod tests {
         let dek = [0x42u8; 32];
         let result = decrypt_artifact(&[0u8; 10], &dek);
         assert!(result.is_err());
+        let err = format!("{:?}", result.unwrap_err());
+        assert!(err.contains("too short"), "Error: {}", err);
+    }
+
+    // --- Negative / edge-case tests ---
+
+    #[test]
+    fn decrypt_tampered_ciphertext() {
+        let dek = [0x42u8; 32];
+        let plaintext = b"sensitive model weights";
+        let mut encrypted = encrypt_test_data(plaintext, &dek);
+
+        // Flip a bit in the ciphertext portion (after the 12-byte nonce)
+        encrypted[15] ^= 0x01;
+
+        let result = decrypt_artifact(&encrypted, &dek);
+        assert!(result.is_err(), "Tampered ciphertext should fail AEAD");
+    }
+
+    #[test]
+    fn decrypt_tampered_nonce() {
+        let dek = [0x42u8; 32];
+        let plaintext = b"sensitive model weights";
+        let mut encrypted = encrypt_test_data(plaintext, &dek);
+
+        // Flip a bit in the nonce (first 12 bytes)
+        encrypted[0] ^= 0x01;
+
+        let result = decrypt_artifact(&encrypted, &dek);
+        assert!(result.is_err(), "Tampered nonce should fail AEAD");
+    }
+
+    #[test]
+    fn decrypt_exact_minimum_size() {
+        // Minimum valid: 12 (nonce) + 16 (tag) = 28 bytes, 0 bytes plaintext
+        let dek = [0x42u8; 32];
+        let plaintext = b""; // empty
+        let encrypted = encrypt_test_data(plaintext, &dek);
+
+        // Should be exactly 28 bytes (12 nonce + 16 tag)
+        assert_eq!(encrypted.len(), 28);
+
+        let result = decrypt_artifact(&encrypted, &dek).unwrap();
+        assert!(result.is_empty());
+    }
+
+    #[test]
+    fn decrypt_just_below_minimum_size() {
+        let dek = [0x42u8; 32];
+        // 27 bytes: below minimum of 28 (12 nonce + 16 tag)
+        let result = decrypt_artifact(&[0u8; 27], &dek);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn decrypt_large_payload_roundtrip() {
+        let dek = [0x42u8; 32];
+        // 1 MB payload — realistic model shard size
+        let plaintext = vec![0xABu8; 1_000_000];
+        let encrypted = encrypt_test_data(&plaintext, &dek);
+        let decrypted = decrypt_artifact(&encrypted, &dek).unwrap();
+        assert_eq!(decrypted, plaintext);
+    }
+
+    #[test]
+    fn decrypt_and_verify_tampered_after_decrypt() {
+        // Data that decrypts fine but whose hash doesn't match
+        let dek = [0x42u8; 32];
+        let plaintext = b"the real data";
+        let encrypted = encrypt_test_data(plaintext, &dek);
+
+        // Hash of different data
+        let mut hasher = Sha256::new();
+        hasher.update(b"different data");
+        let wrong_hash: [u8; 32] = hasher.finalize().into();
+
+        let result = decrypt_and_verify(&encrypted, &dek, &wrong_hash);
+        assert!(result.is_err());
+        let err = format!("{:?}", result.unwrap_err());
+        assert!(err.contains("Hash mismatch"), "Error: {}", err);
+    }
+
+    #[test]
+    fn decrypt_two_different_keys_produce_different_results() {
+        let dek1 = [0x11u8; 32];
+        let dek2 = [0x22u8; 32];
+        let plaintext = b"data";
+
+        let enc1 = encrypt_test_data(plaintext, &dek1);
+        let enc2 = encrypt_test_data(plaintext, &dek2);
+
+        // Both decrypt with their own key
+        assert_eq!(decrypt_artifact(&enc1, &dek1).unwrap(), plaintext);
+        assert_eq!(decrypt_artifact(&enc2, &dek2).unwrap(), plaintext);
+
+        // Neither decrypts with the other's key
+        assert!(decrypt_artifact(&enc1, &dek2).is_err());
+        assert!(decrypt_artifact(&enc2, &dek1).is_err());
     }
 }

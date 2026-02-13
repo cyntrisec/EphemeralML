@@ -47,6 +47,11 @@ pub struct GcpKmsClient {
     /// Format: `//iam.googleapis.com/projects/{number}/locations/global/workloadIdentityPools/{pool}/providers/{provider}`
     wip_audience: String,
     tee_provider: TeeAttestationProvider,
+    // Base URLs (default from constants, overridable in tests).
+    metadata_url: String,
+    attestation_api_base: String,
+    sts_endpoint: String,
+    kms_api_base: String,
 }
 
 #[derive(Deserialize)]
@@ -54,7 +59,7 @@ struct MetadataTokenResponse {
     access_token: String,
 }
 
-#[derive(Deserialize)]
+#[derive(Debug, Deserialize)]
 struct ChallengeResponse {
     name: String,
     nonce: String, // base64-encoded
@@ -116,6 +121,32 @@ impl GcpKmsClient {
             location: location.to_string(),
             wip_audience: wip_audience.to_string(),
             tee_provider,
+            metadata_url: METADATA_TOKEN_URL.to_string(),
+            attestation_api_base: ATTESTATION_API_BASE.to_string(),
+            sts_endpoint: STS_ENDPOINT.to_string(),
+            kms_api_base: KMS_API_BASE.to_string(),
+        }
+    }
+
+    /// Create a client with custom base URLs (for testing with mock servers).
+    #[cfg(test)]
+    pub(crate) fn with_test_urls(
+        project: &str,
+        location: &str,
+        wip_audience: &str,
+        tee_provider: TeeAttestationProvider,
+        base_url: &str,
+    ) -> Self {
+        Self {
+            http: reqwest::Client::new(),
+            project: project.to_string(),
+            location: location.to_string(),
+            wip_audience: wip_audience.to_string(),
+            tee_provider,
+            metadata_url: format!("{}/metadata/token", base_url),
+            attestation_api_base: format!("{}/v1", base_url),
+            sts_endpoint: format!("{}/sts/token", base_url),
+            kms_api_base: format!("{}/kms/v1", base_url),
         }
     }
 
@@ -123,7 +154,7 @@ impl GcpKmsClient {
     async fn metadata_token(&self) -> Result<String> {
         let resp = self
             .http
-            .get(METADATA_TOKEN_URL)
+            .get(&self.metadata_url)
             .header("Metadata-Flavor", "Google")
             .send()
             .await
@@ -154,7 +185,7 @@ impl GcpKmsClient {
     async fn create_challenge(&self, token: &str) -> Result<ChallengeResponse> {
         let url = format!(
             "{}/projects/{}/locations/{}/challenges",
-            ATTESTATION_API_BASE, self.project, self.location
+            self.attestation_api_base, self.project, self.location
         );
 
         let resp = self
@@ -240,7 +271,11 @@ impl GcpKmsClient {
 
         let url = format!("{}:verifyAttestation", challenge_name);
         // The challenge name already includes the full path, construct full URL
-        let url = format!("{}/{}", ATTESTATION_API_BASE, url.trim_start_matches('/'));
+        let url = format!(
+            "{}/{}",
+            self.attestation_api_base,
+            url.trim_start_matches('/')
+        );
 
         let resp = self
             .http
@@ -293,7 +328,7 @@ impl GcpKmsClient {
 
         let resp = self
             .http
-            .post(STS_ENDPOINT)
+            .post(&self.sts_endpoint)
             .form(&body)
             .send()
             .await
@@ -358,7 +393,7 @@ impl GcpKmsClient {
     pub async fn decrypt(&self, key_name: &str, ciphertext: &[u8]) -> Result<Vec<u8>> {
         let access_token = self.get_attested_token().await?;
 
-        let url = format!("{}/{}:decrypt", KMS_API_BASE, key_name);
+        let url = format!("{}/{}:decrypt", self.kms_api_base, key_name);
 
         let request = KmsDecryptRequest {
             ciphertext: BASE64.encode(ciphertext),
@@ -406,23 +441,30 @@ impl GcpKmsClient {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::test_helpers::MockHttpServer;
+
+    const WIP: &str = "//iam.googleapis.com/projects/12345/locations/global/workloadIdentityPools/pool/providers/prov";
+
+    fn synthetic_client(base_url: &str) -> GcpKmsClient {
+        GcpKmsClient::with_test_urls(
+            "test-project",
+            "us-central1",
+            WIP,
+            TeeAttestationProvider::synthetic(),
+            base_url,
+        )
+    }
 
     #[test]
     fn client_creation() {
         let provider = TeeAttestationProvider::synthetic();
-        let _client = GcpKmsClient::new(
-            "test-project",
-            "us-central1",
-            "//iam.googleapis.com/projects/12345/locations/global/workloadIdentityPools/pool/providers/prov",
-            provider,
-        );
+        let _client = GcpKmsClient::new("test-project", "us-central1", WIP, provider);
     }
 
     #[test]
     fn ccel_tables_graceful_when_missing() {
-        // On non-TDX machines, CCEL tables don't exist — should return None
         let (acpi, data) = GcpKmsClient::read_ccel_tables();
-        // On CI/dev machines these won't exist
+        // On non-TDX machines these won't exist
         assert!(acpi.is_none() || acpi.is_some());
         assert!(data.is_none() || data.is_some());
     }
@@ -430,17 +472,230 @@ mod tests {
     #[test]
     fn quote_generation_with_synthetic_provider() {
         let provider = TeeAttestationProvider::synthetic();
-        let client = GcpKmsClient::new(
-            "test-project",
-            "us-central1",
-            "//iam.googleapis.com/projects/12345/locations/global/workloadIdentityPools/pool/providers/prov",
-            provider,
-        );
+        let client = GcpKmsClient::new("test-project", "us-central1", WIP, provider);
 
         let nonce = [0xAB; 32];
         let raw_quote = client.generate_quote(&nonce).unwrap();
-
-        // Should be a valid TDX quote (header starts with version bytes)
         assert!(raw_quote.len() > 48, "Quote too short: {}", raw_quote.len());
+    }
+
+    // --- Mock HTTP flow tests ---
+
+    #[tokio::test]
+    async fn metadata_token_success() {
+        let server = MockHttpServer::start(vec![(
+            200,
+            r#"{"access_token":"test-meta-token","token_type":"Bearer","expires_in":3600}"#
+                .to_string(),
+        )])
+        .await;
+
+        let client = synthetic_client(&server.base_url);
+        let token = client.metadata_token().await.unwrap();
+        assert_eq!(token, "test-meta-token");
+    }
+
+    #[tokio::test]
+    async fn metadata_token_server_error() {
+        let server =
+            MockHttpServer::start(vec![(500, r#"{"error":"internal"}"#.to_string())]).await;
+
+        let client = synthetic_client(&server.base_url);
+        let result = client.metadata_token().await;
+        assert!(result.is_err());
+        let err = format!("{:?}", result.unwrap_err());
+        assert!(err.contains("Metadata server returned"), "Error: {}", err);
+    }
+
+    #[tokio::test]
+    async fn create_challenge_success() {
+        let server = MockHttpServer::start(vec![
+            // 1. metadata token
+            (
+                200,
+                r#"{"access_token":"meta-tok","token_type":"Bearer","expires_in":3600}"#
+                    .to_string(),
+            ),
+            // 2. create challenge
+            (
+                200,
+                r#"{"name":"projects/test-project/locations/us-central1/challenges/ch-123","nonce":"dGVzdC1ub25jZQ=="}"#
+                    .to_string(),
+            ),
+        ])
+        .await;
+
+        let client = synthetic_client(&server.base_url);
+        let token = client.metadata_token().await.unwrap();
+        let challenge = client.create_challenge(&token).await.unwrap();
+
+        assert_eq!(
+            challenge.name,
+            "projects/test-project/locations/us-central1/challenges/ch-123"
+        );
+        // "dGVzdC1ub25jZQ==" decodes to "test-nonce"
+        let nonce_bytes = BASE64.decode(&challenge.nonce).unwrap();
+        assert_eq!(nonce_bytes, b"test-nonce");
+    }
+
+    #[tokio::test]
+    async fn create_challenge_unauthorized() {
+        let server =
+            MockHttpServer::start(vec![(401, r#"{"error":"unauthorized"}"#.to_string())]).await;
+
+        let client = synthetic_client(&server.base_url);
+        let result = client.create_challenge("bad-token").await;
+        assert!(result.is_err());
+        let err = format!("{:?}", result.unwrap_err());
+        assert!(err.contains("CreateChallenge returned"), "Error: {}", err);
+    }
+
+    #[tokio::test]
+    async fn exchange_token_success() {
+        let server = MockHttpServer::start(vec![(
+            200,
+            r#"{"access_token":"federated-access-token","token_type":"Bearer","expires_in":3600}"#
+                .to_string(),
+        )])
+        .await;
+
+        let client = synthetic_client(&server.base_url);
+        let token = client.exchange_token("oidc-token-123").await.unwrap();
+        assert_eq!(token, "federated-access-token");
+    }
+
+    #[tokio::test]
+    async fn exchange_token_sts_error() {
+        let server =
+            MockHttpServer::start(vec![(400, r#"{"error":"invalid_grant"}"#.to_string())]).await;
+
+        let client = synthetic_client(&server.base_url);
+        let result = client.exchange_token("bad-oidc").await;
+        assert!(result.is_err());
+        let err = format!("{:?}", result.unwrap_err());
+        assert!(err.contains("STS returned"), "Error: {}", err);
+    }
+
+    #[tokio::test]
+    async fn kms_decrypt_full_flow() {
+        // Simulate the full 5-step decrypt flow:
+        // 1. metadata token
+        // 2. create challenge
+        // 3. verify attestation → OIDC token
+        // 4. STS exchange → access token
+        // 5. KMS decrypt → plaintext
+        let plaintext = b"decrypted-dek-32-bytes-of-data!";
+        let plaintext_b64 = BASE64.encode(plaintext);
+
+        let server = MockHttpServer::start(vec![
+            // Step 1: metadata token
+            (
+                200,
+                r#"{"access_token":"meta-tok","token_type":"Bearer","expires_in":3600}"#
+                    .to_string(),
+            ),
+            // Step 2: create challenge
+            (
+                200,
+                r#"{"name":"projects/test-project/locations/us-central1/challenges/ch-1","nonce":"AAAA"}"#
+                    .to_string(),
+            ),
+            // Step 3: verify attestation → OIDC token
+            (
+                200,
+                r#"{"oidcClaimsToken":"eyJhbGciOiJSUzI1NiJ9.eyJhdWQiOiJ0ZXN0In0.sig"}"#.to_string(),
+            ),
+            // Step 4: STS exchange → federated access token
+            (
+                200,
+                r#"{"access_token":"fed-tok","token_type":"Bearer","expires_in":3600}"#
+                    .to_string(),
+            ),
+            // Step 5: KMS decrypt
+            (
+                200,
+                format!(r#"{{"plaintext":"{}"}}"#, plaintext_b64),
+            ),
+        ])
+        .await;
+
+        let client = synthetic_client(&server.base_url);
+        let result = client
+            .decrypt(
+                "projects/test/locations/global/keyRings/kr/cryptoKeys/key",
+                b"encrypted-data",
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(result, plaintext);
+    }
+
+    #[tokio::test]
+    async fn kms_decrypt_kms_api_error() {
+        // Steps 1-4 succeed, step 5 (KMS) fails
+        let server = MockHttpServer::start(vec![
+            (
+                200,
+                r#"{"access_token":"meta","token_type":"Bearer","expires_in":3600}"#.to_string(),
+            ),
+            (
+                200,
+                r#"{"name":"projects/p/locations/l/challenges/c","nonce":"AAAA"}"#.to_string(),
+            ),
+            (200, r#"{"oidcClaimsToken":"tok"}"#.to_string()),
+            (
+                200,
+                r#"{"access_token":"fed","token_type":"Bearer","expires_in":3600}"#.to_string(),
+            ),
+            // KMS returns 403
+            (
+                403,
+                r#"{"error":{"code":403,"message":"Permission denied"}}"#.to_string(),
+            ),
+        ])
+        .await;
+
+        let client = synthetic_client(&server.base_url);
+        let result = client
+            .decrypt("projects/p/locations/l/keyRings/kr/cryptoKeys/k", b"ct")
+            .await;
+        assert!(result.is_err());
+        let err = format!("{:?}", result.unwrap_err());
+        assert!(err.contains("KMS decrypt returned"), "Error: {}", err);
+    }
+
+    #[tokio::test]
+    async fn verify_attestation_success() {
+        let server = MockHttpServer::start(vec![(
+            200,
+            r#"{"oidcClaimsToken":"my-oidc-token-123"}"#.to_string(),
+        )])
+        .await;
+
+        let client = synthetic_client(&server.base_url);
+        let oidc = client
+            .verify_attestation(
+                "bearer-token",
+                "projects/test-project/locations/us-central1/challenges/ch-1",
+                &[0u8; 64],
+            )
+            .await
+            .unwrap();
+        assert_eq!(oidc, "my-oidc-token-123");
+    }
+
+    #[tokio::test]
+    async fn verify_attestation_api_error() {
+        let server =
+            MockHttpServer::start(vec![(400, r#"{"error":"invalid quote"}"#.to_string())]).await;
+
+        let client = synthetic_client(&server.base_url);
+        let result = client
+            .verify_attestation("token", "projects/p/locations/l/challenges/c", &[0u8; 64])
+            .await;
+        assert!(result.is_err());
+        let err = format!("{:?}", result.unwrap_err());
+        assert!(err.contains("VerifyAttestation returned"), "Error: {}", err);
     }
 }

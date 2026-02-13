@@ -42,6 +42,9 @@ pub mod gcp_kms_client;
 #[cfg(feature = "gcp")]
 pub mod gcs_loader;
 
+#[cfg(test)]
+mod test_helpers;
+
 // Re-export common types and enclave-specific types
 #[cfg(any(feature = "mock", feature = "production"))]
 pub use attestation::DefaultAttestationProvider;

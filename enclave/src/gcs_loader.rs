@@ -16,6 +16,8 @@ use sha2::{Digest, Sha256};
 pub struct GcsModelLoader {
     client: reqwest::Client,
     bucket: String,
+    metadata_url: String,
+    gcs_api_base: String,
 }
 
 /// Metadata about a fetched model artifact.
@@ -39,15 +41,19 @@ impl GcsModelLoader {
         Self {
             client: reqwest::Client::new(),
             bucket: bucket.to_string(),
+            metadata_url: METADATA_TOKEN_URL.to_string(),
+            gcs_api_base: GCS_API_BASE.to_string(),
         }
     }
 
-    /// Create a loader with a custom reqwest client (for testing with mock servers).
+    /// Create a loader with custom base URLs (for testing with mock servers).
     #[cfg(test)]
-    pub fn with_client(bucket: &str, client: reqwest::Client) -> Self {
+    pub(crate) fn with_test_urls(bucket: &str, base_url: &str) -> Self {
         Self {
-            client,
+            client: reqwest::Client::new(),
             bucket: bucket.to_string(),
+            metadata_url: format!("{}/metadata/token", base_url),
+            gcs_api_base: format!("{}/storage/v1/b", base_url),
         }
     }
 
@@ -57,7 +63,7 @@ impl GcsModelLoader {
     async fn metadata_token(&self) -> Result<String> {
         let resp = self
             .client
-            .get(METADATA_TOKEN_URL)
+            .get(&self.metadata_url)
             .header("Metadata-Flavor", "Google")
             .send()
             .await
@@ -103,7 +109,7 @@ impl GcsModelLoader {
         let encoded_path = object_path.replace('/', "%2F");
         let url = format!(
             "{}/{}/o/{}?alt=media",
-            GCS_API_BASE, self.bucket, encoded_path
+            self.gcs_api_base, self.bucket, encoded_path
         );
 
         let resp = self
@@ -199,6 +205,7 @@ impl GcsModelLoader {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::test_helpers::MockHttpServer;
 
     #[test]
     fn fetched_artifact_hash_is_correct() {
@@ -221,5 +228,135 @@ mod tests {
     fn gcs_loader_creation() {
         let loader = GcsModelLoader::new("my-bucket");
         assert_eq!(loader.bucket, "my-bucket");
+    }
+
+    // --- Mock HTTP tests ---
+
+    #[tokio::test]
+    async fn fetch_object_success() {
+        let payload = b"model weights data here";
+
+        let server = MockHttpServer::start(vec![
+            // 1. metadata token
+            (
+                200,
+                r#"{"access_token":"tok","token_type":"Bearer","expires_in":3600}"#.to_string(),
+            ),
+            // 2. GCS object fetch
+            (200, String::from_utf8_lossy(payload).to_string()),
+        ])
+        .await;
+
+        let loader = GcsModelLoader::with_test_urls("test-bucket", &server.base_url);
+        let artifact = loader
+            .fetch_object("models/model.safetensors")
+            .await
+            .unwrap();
+
+        assert_eq!(artifact.bytes, payload);
+        assert_eq!(artifact.size, payload.len());
+
+        // Verify hash
+        let mut hasher = Sha256::new();
+        hasher.update(payload);
+        let expected_hash: [u8; 32] = hasher.finalize().into();
+        assert_eq!(artifact.sha256, expected_hash);
+    }
+
+    #[tokio::test]
+    async fn fetch_object_gcs_404() {
+        let server = MockHttpServer::start(vec![
+            // 1. metadata token
+            (
+                200,
+                r#"{"access_token":"tok","token_type":"Bearer","expires_in":3600}"#.to_string(),
+            ),
+            // 2. GCS returns 404
+            (404, r#"{"error":"Not Found"}"#.to_string()),
+        ])
+        .await;
+
+        let loader = GcsModelLoader::with_test_urls("test-bucket", &server.base_url);
+        let result = loader.fetch_object("nonexistent/file.bin").await;
+        assert!(result.is_err());
+        let err = format!("{:?}", result.unwrap_err());
+        assert!(err.contains("GCS returned"), "Error: {}", err);
+    }
+
+    #[tokio::test]
+    async fn fetch_object_metadata_failure() {
+        let server = MockHttpServer::start(vec![
+            // metadata server returns 500
+            (500, r#"{"error":"internal"}"#.to_string()),
+        ])
+        .await;
+
+        let loader = GcsModelLoader::with_test_urls("test-bucket", &server.base_url);
+        let result = loader.fetch_object("models/file.bin").await;
+        assert!(result.is_err());
+        let err = format!("{:?}", result.unwrap_err());
+        assert!(err.contains("Metadata server returned"), "Error: {}", err);
+    }
+
+    #[tokio::test]
+    async fn fetch_verified_hash_match() {
+        let payload = b"verified model data";
+        let mut hasher = Sha256::new();
+        hasher.update(payload);
+        let expected_hash: [u8; 32] = hasher.finalize().into();
+
+        let server = MockHttpServer::start(vec![
+            (
+                200,
+                r#"{"access_token":"tok","token_type":"Bearer","expires_in":3600}"#.to_string(),
+            ),
+            (200, String::from_utf8_lossy(payload).to_string()),
+        ])
+        .await;
+
+        let loader = GcsModelLoader::with_test_urls("test-bucket", &server.base_url);
+        let result = loader
+            .fetch_verified("models/file.bin", &expected_hash)
+            .await
+            .unwrap();
+        assert_eq!(result, payload);
+    }
+
+    #[tokio::test]
+    async fn fetch_verified_hash_mismatch() {
+        let payload = b"actual data";
+        let wrong_hash = [0xFF; 32];
+
+        let server = MockHttpServer::start(vec![
+            (
+                200,
+                r#"{"access_token":"tok","token_type":"Bearer","expires_in":3600}"#.to_string(),
+            ),
+            (200, String::from_utf8_lossy(payload).to_string()),
+        ])
+        .await;
+
+        let loader = GcsModelLoader::with_test_urls("test-bucket", &server.base_url);
+        let result = loader.fetch_verified("models/file.bin", &wrong_hash).await;
+        assert!(result.is_err());
+        let err = format!("{:?}", result.unwrap_err());
+        assert!(err.contains("hash mismatch"), "Error: {}", err);
+    }
+
+    #[tokio::test]
+    async fn fetch_object_empty_response() {
+        let server = MockHttpServer::start(vec![
+            (
+                200,
+                r#"{"access_token":"tok","token_type":"Bearer","expires_in":3600}"#.to_string(),
+            ),
+            (200, String::new()),
+        ])
+        .await;
+
+        let loader = GcsModelLoader::with_test_urls("test-bucket", &server.base_url);
+        let artifact = loader.fetch_object("models/empty.bin").await.unwrap();
+        // Empty response is valid (0-byte file)
+        assert_eq!(artifact.size, 0);
     }
 }

@@ -301,6 +301,138 @@ mod tests {
         assert!(err.contains("Failed to connect"), "Error: {}", err);
     }
 
+    // --- Mock Unix socket round-trip tests ---
+
+    /// Start a mock Launcher socket server that returns a JWT.
+    async fn mock_launcher_socket(
+        socket_path: &str,
+        status: u16,
+        body: &str,
+    ) -> tokio::task::JoinHandle<()> {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        use tokio::net::UnixListener;
+
+        let listener = UnixListener::bind(socket_path).unwrap();
+        let body = body.to_string();
+
+        tokio::spawn(async move {
+            if let Ok((mut stream, _)) = listener.accept().await {
+                // Read the request (HTTP/1.1 over Unix socket)
+                let mut buf = vec![0u8; 8192];
+                let _ = stream.read(&mut buf).await;
+
+                let status_text = match status {
+                    200 => "OK",
+                    400 => "Bad Request",
+                    500 => "Internal Server Error",
+                    _ => "Error",
+                };
+
+                let response = format!(
+                    "HTTP/1.1 {} {}\r\n\
+                     Content-Type: text/plain\r\n\
+                     Content-Length: {}\r\n\
+                     Connection: close\r\n\
+                     \r\n\
+                     {}",
+                    status,
+                    status_text,
+                    body.len(),
+                    body
+                );
+                let _ = stream.write_all(response.as_bytes()).await;
+            }
+        })
+    }
+
+    #[tokio::test]
+    async fn get_token_round_trip_success() {
+        let dir = std::env::temp_dir().join(format!("cs_test_{}", std::process::id()));
+        let _ = std::fs::create_dir_all(&dir);
+        let socket_path = dir.join("launcher.sock");
+        let socket_str = socket_path.to_str().unwrap();
+
+        // Create a synthetic JWT
+        let header = base64_url_encode(b"{\"alg\":\"RS256\",\"typ\":\"JWT\"}");
+        let claims = serde_json::json!({
+            "aud": "test-audience",
+            "eat_nonce": ["nonce-1"],
+            "iss": "https://confidentialcomputing.googleapis.com",
+            "exp": 9999999999u64,
+            "iat": 1000000000u64,
+            "swname": "CONFIDENTIAL_SPACE",
+        });
+        let payload = base64_url_encode(serde_json::to_string(&claims).unwrap().as_bytes());
+        let sig = base64_url_encode(b"fake-sig");
+        let jwt = format!("{}.{}.{}", header, payload, sig);
+
+        let _server = mock_launcher_socket(socket_str, 200, &jwt).await;
+        // Small delay to ensure server is listening
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+
+        let client = CsTokenClient::with_socket_path(socket_str);
+        let token = client
+            .get_token("test-audience", vec!["nonce-1".to_string()])
+            .await
+            .unwrap();
+
+        assert_eq!(token, jwt);
+
+        // Parse and verify claims
+        let parsed = CsTokenClient::parse_claims(&token).unwrap();
+        assert_eq!(parsed.aud, "test-audience");
+        assert_eq!(parsed.eat_nonce, vec!["nonce-1"]);
+        assert_eq!(parsed.swname, "CONFIDENTIAL_SPACE");
+
+        // Cleanup
+        let _ = std::fs::remove_file(&socket_path);
+        let _ = std::fs::remove_dir(&dir);
+    }
+
+    #[tokio::test]
+    async fn get_token_non_200_response() {
+        let dir = std::env::temp_dir().join(format!("cs_test_err_{}", std::process::id()));
+        let _ = std::fs::create_dir_all(&dir);
+        let socket_path = dir.join("launcher_err.sock");
+        let socket_str = socket_path.to_str().unwrap();
+
+        let _server = mock_launcher_socket(socket_str, 400, "invalid audience parameter").await;
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+
+        let client = CsTokenClient::with_socket_path(socket_str);
+        let result = client.get_token("bad-audience", vec![]).await;
+        assert!(result.is_err());
+        let err = format!("{:?}", result.unwrap_err());
+        assert!(
+            err.contains("non-200") || err.contains("400"),
+            "Error: {}",
+            err
+        );
+
+        let _ = std::fs::remove_file(&socket_path);
+        let _ = std::fs::remove_dir(&dir);
+    }
+
+    #[tokio::test]
+    async fn get_token_empty_body_response() {
+        let dir = std::env::temp_dir().join(format!("cs_test_empty_{}", std::process::id()));
+        let _ = std::fs::create_dir_all(&dir);
+        let socket_path = dir.join("launcher_empty.sock");
+        let socket_str = socket_path.to_str().unwrap();
+
+        let _server = mock_launcher_socket(socket_str, 200, "").await;
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+
+        let client = CsTokenClient::with_socket_path(socket_str);
+        let result = client.get_token("audience", vec![]).await;
+        assert!(result.is_err());
+        let err = format!("{:?}", result.unwrap_err());
+        assert!(err.contains("empty token"), "Error: {}", err);
+
+        let _ = std::fs::remove_file(&socket_path);
+        let _ = std::fs::remove_dir(&dir);
+    }
+
     /// Helper: base64url encode without padding.
     fn base64_url_encode(input: &[u8]) -> String {
         use base64::engine::general_purpose::URL_SAFE_NO_PAD;
