@@ -1158,9 +1158,9 @@ dependencies = [
 
 [[package]]
 name = "confidential-ml-pipeline"
-version = "0.2.2"
+version = "0.3.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "868c0e53407947cf00eebd8f2ab1dcc13d8ec3c2206978043bb431085e8ace23"
+checksum = "a54ef8144692cfe801645d7be057d67c8409567dc7690869b48d10652b0c5a5e"
 dependencies = [
  "async-trait",
  "bytes",
@@ -1176,9 +1176,9 @@ dependencies = [
 
 [[package]]
 name = "confidential-ml-transport"
-version = "0.3.0"
+version = "0.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "44e73a28ebdb22aa95e7ff66e5364601c83be0367c14b86c369018ca3b61c4a7"
+checksum = "3333fa575e1659eabcc68ea2528fff6d73d7471b73124872b761f042c7b52211"
 dependencies = [
  "async-trait",
  "aws-nitro-enclaves-nsm-api",

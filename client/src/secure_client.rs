@@ -103,11 +103,16 @@ impl SecureClient for SecureEnclaveClient {
         let verifier =
             crate::attestation_bridge::CoseVerifierBridge::new(self.policy_manager.clone());
 
+        // Client-side attestation provider for mutual attestation.
+        // The client is not in an enclave, so it uses MockProvider —
+        // the server's verifier is configured to accept this.
+        let provider = confidential_ml_transport::MockProvider::new();
+
         let config = SessionConfig::builder()
             .build()
             .map_err(|e| ClientError::Client(EphemeralError::TransportError(e.to_string())))?;
 
-        let channel = SecureChannel::connect_with_attestation(stream, &verifier, config)
+        let channel = SecureChannel::connect_with_attestation(stream, &provider, &verifier, config)
             .await
             .map_err(|e| {
                 ClientError::Client(EphemeralError::TransportError(format!(
@@ -250,12 +255,13 @@ mod tests {
         tokio::spawn(async move {
             let (stream, _) = listener.accept().await.unwrap();
 
-            // Use mock attestation provider from cml-transport
+            // Use mock attestation provider/verifier from cml-transport
             let mock_provider = confidential_ml_transport::MockProvider;
+            let mock_verifier = confidential_ml_transport::MockVerifier;
             let config = SessionConfig::builder().build().unwrap();
 
             let mut channel =
-                SecureChannel::accept_with_attestation(stream, &mock_provider, config)
+                SecureChannel::accept_with_attestation(stream, &mock_provider, &mock_verifier, config)
                     .await
                     .unwrap();
 
@@ -295,9 +301,10 @@ mod tests {
 
         // Client side
         let verifier = MockVerifierBridge::new();
+        let client_provider = confidential_ml_transport::MockProvider;
         let stream = TcpStream::connect(&addr).await.unwrap();
         let config = SessionConfig::builder().build().unwrap();
-        let mut channel = SecureChannel::connect_with_attestation(stream, &verifier, config)
+        let mut channel = SecureChannel::connect_with_attestation(stream, &client_provider, &verifier, config)
             .await
             .unwrap();
 

@@ -62,8 +62,8 @@ openssl = "0.10"
 x509-parser = "0.18"
 
 # Confidential ML transport
-confidential-ml-transport = { version = "0.3", default-features = false }
-confidential-ml-pipeline = { version = "0.2", default-features = false }
+confidential-ml-transport = { version = "0.4", default-features = false }
+confidential-ml-pipeline = { version = "0.3", default-features = false }
 bytes = "1.5"
 async-trait = "0.1"
 
