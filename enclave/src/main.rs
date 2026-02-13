@@ -224,6 +224,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             };
 
             // Track the verified model weights hash for trust evidence.
+            // Every match arm below assigns this before it is read.
+            #[allow(unused_assignments)]
             let mut loaded_model_hash: Option<[u8; 32]> = None;
 
             match model_source {
