@@ -162,7 +162,8 @@ impl CmlAttestationVerifier for TdxEnvelopeVerifierBridge {
                 // Attach the user_data from the envelope
                 if !envelope.user_data.is_empty() {
                     // Convert JSON user_data to CBOR for EphemeralUserData::from_cbor()
-                    if let Ok(ud) = serde_json::from_slice::<EphemeralUserData>(&envelope.user_data) {
+                    if let Ok(ud) = serde_json::from_slice::<EphemeralUserData>(&envelope.user_data)
+                    {
                         if let Ok(cbor) = ud.to_cbor() {
                             verified.user_data = Some(cbor);
                         }

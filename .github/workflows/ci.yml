@@ -37,7 +37,8 @@ jobs:
             target
           key: ${{ runner.os }}-cargo-clippy-${{ hashFiles('**/Cargo.lock') }}
       - run: cargo clippy --workspace -- -D warnings
-      - run: cargo clippy --features mock,gcp -p ephemeral-ml-enclave -- -D warnings
+      - run: cargo clippy --no-default-features --features gcp -p ephemeral-ml-enclave -- -D warnings
+      - run: cargo clippy --no-default-features --features gcp -p ephemeral-ml-client -- -D warnings
 
   test:
     name: Test
@@ -53,7 +54,7 @@ jobs:
             target
           key: ${{ runner.os }}-cargo-test-${{ hashFiles('**/Cargo.lock') }}
       - run: cargo test --workspace
-      - run: cargo test --features mock,gcp -p ephemeral-ml-enclave
+      - run: cargo test --no-default-features --features gcp -p ephemeral-ml-enclave
 
   build-gcp:
     name: Build (GCP Production)

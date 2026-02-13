@@ -49,3 +49,4 @@ proptest = { workspace = true }
 default = ["mock"]
 mock = ["confidential-ml-transport/mock", "confidential-ml-transport/tcp", "confidential-ml-pipeline/mock", "confidential-ml-pipeline/tcp"]
 production = ["tokio-vsock", "confidential-ml-transport/vsock", "confidential-ml-transport/nitro", "confidential-ml-pipeline/vsock", "confidential-ml-transport/tcp", "confidential-ml-pipeline/tcp"]
+gcp = ["confidential-ml-transport/tdx", "confidential-ml-transport/tcp", "confidential-ml-pipeline/tcp"]

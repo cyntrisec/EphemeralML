@@ -37,8 +37,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         println!("EphemeralML Client (GCP Mode)");
         println!("Use SecureEnclaveClient to connect to a GCP enclave.");
 
-        let mut client =
-            ephemeral_ml_client::SecureEnclaveClient::new("gcp-client".to_string());
+        let mut client = ephemeral_ml_client::SecureEnclaveClient::new("gcp-client".to_string());
 
         let addr = std::env::var("EPHEMERALML_ENCLAVE_ADDR")
             .unwrap_or_else(|_| "127.0.0.1:9001".to_string());

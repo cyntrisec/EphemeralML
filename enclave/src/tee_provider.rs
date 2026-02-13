@@ -426,11 +426,7 @@ impl confidential_ml_transport::AttestationProvider for TeeAttestationBridge {
         // Pass the full CBOR envelope (tdx_wire + user_data) to the transport layer.
         // The client's TdxEnvelopeVerifierBridge will decode the envelope, verify
         // the TDX wire via TdxVerifier, and extract user_data (receipt signing key).
-        Ok(
-            confidential_ml_transport::attestation::types::AttestationDocument::new(
-                doc.signature,
-            ),
-        )
+        Ok(confidential_ml_transport::attestation::types::AttestationDocument::new(doc.signature))
     }
 }
 
