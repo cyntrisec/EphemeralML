@@ -369,11 +369,14 @@ impl AttestationProvider for TeeAttestationProvider {
     }
 
     fn decrypt_kms(&self, _ciphertext: &[u8]) -> Result<Vec<u8>> {
-        // Day 3: GCP Cloud KMS integration.
         // TDX Confidential VMs call Cloud KMS directly (no RSA RecipientInfo flow).
         Err(EnclaveError::Enclave(EphemeralError::KmsError(
-            "KMS decrypt not yet implemented for TDX/GCP. See Day 3 spike.".to_string(),
+            "KMS decrypt not available for TDX/GCP. Use GcpKmsClient directly.".to_string(),
         )))
+    }
+
+    fn measurement_type(&self) -> &str {
+        "tdx-mrtd-rtmr"
     }
 }
 

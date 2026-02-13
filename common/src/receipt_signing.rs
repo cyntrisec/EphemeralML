@@ -190,31 +190,54 @@ pub enum SecurityMode {
     ShieldMode,
 }
 
-/// Enclave measurements for receipt binding
+/// Enclave measurements for receipt binding.
+///
+/// On Nitro, pcr0/pcr1/pcr2 are PCR registers. On TDX, pcr0 = MRTD,
+/// pcr1 = RTMR0, pcr2 = RTMR1. The `measurement_type` field disambiguates.
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct EnclaveMeasurements {
-    /// Enclave image measurement (PCR0 equivalent)
+    /// Enclave image measurement (PCR0 / MRTD)
     #[serde(with = "serde_bytes")]
     pub pcr0: Vec<u8>,
-    /// Linux kernel measurement (PCR1 equivalent)
+    /// Kernel/firmware measurement (PCR1 / RTMR0)
     #[serde(with = "serde_bytes")]
     pub pcr1: Vec<u8>,
-    /// Application measurement (PCR2 equivalent)
+    /// Application measurement (PCR2 / RTMR1)
     #[serde(with = "serde_bytes")]
     pub pcr2: Vec<u8>,
-    /// Additional measurements (PCR8 equivalent)
+    /// Additional measurements (PCR8, Nitro only)
     #[serde(with = "serde_bytes")]
     pub pcr8: Option<Vec<u8>>,
+    /// Platform measurement type: "nitro-pcr", "tdx-mrtd-rtmr", or "sev-snp".
+    /// Defaults to "nitro-pcr" for backward compatibility with existing receipts.
+    #[serde(default = "default_measurement_type")]
+    pub measurement_type: String,
+}
+
+fn default_measurement_type() -> String {
+    "nitro-pcr".to_string()
 }
 
 impl EnclaveMeasurements {
-    /// Create new enclave measurements
+    /// Create new Nitro PCR measurements (default type).
     pub fn new(pcr0: Vec<u8>, pcr1: Vec<u8>, pcr2: Vec<u8>) -> Self {
         Self {
             pcr0,
             pcr1,
             pcr2,
             pcr8: None,
+            measurement_type: "nitro-pcr".to_string(),
+        }
+    }
+
+    /// Create new TDX measurements (MRTD + RTMRs).
+    pub fn new_tdx(mrtd: Vec<u8>, rtmr0: Vec<u8>, rtmr1: Vec<u8>) -> Self {
+        Self {
+            pcr0: mrtd,
+            pcr1: rtmr0,
+            pcr2: rtmr1,
+            pcr8: None,
+            measurement_type: "tdx-mrtd-rtmr".to_string(),
         }
     }
 

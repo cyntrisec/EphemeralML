@@ -1,0 +1,310 @@
+//! Confidential Space attestation token client.
+//!
+//! Talks to the Launcher agent via a Unix domain socket at
+//! `/run/container_launcher/teeserver.sock` to obtain OIDC attestation
+//! tokens with `eat_nonce` session binding.
+//!
+//! These tokens carry Confidential Space identity claims (container image
+//! digest, GCE project ID, instance zone, etc.) that are not available
+//! through the Cloud Attestation API path.
+//!
+//! Requires feature: `gcp`
+
+use crate::{EnclaveError, EphemeralError, Result};
+use serde::{Deserialize, Serialize};
+
+/// Default Launcher socket path.
+const DEFAULT_SOCKET_PATH: &str = "/run/container_launcher/teeserver.sock";
+
+/// Token request endpoint (HTTP over Unix socket).
+const TOKEN_PATH: &str = "/v1/token";
+
+/// Confidential Space attestation token client.
+///
+/// Communicates with the Launcher agent over a Unix domain socket to
+/// obtain OIDC tokens with session-binding nonces (`eat_nonce`).
+pub struct CsTokenClient {
+    socket_path: String,
+}
+
+/// Token request body sent to the Launcher.
+#[derive(Serialize)]
+struct TokenRequest<'a> {
+    audience: &'a str,
+    token_type: &'a str,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    nonces: Vec<String>,
+}
+
+/// Parsed (unverified) JWT claims from the attestation token.
+///
+/// The enclave does not verify the JWT signature — it trusts the local
+/// Launcher socket. The relying party (client) verifies the full JWT.
+#[derive(Deserialize, Debug, Clone)]
+pub struct CsTokenClaims {
+    /// Audience the token was requested for.
+    pub aud: String,
+    /// Session-binding nonces (mirrored from request).
+    #[serde(default)]
+    pub eat_nonce: Vec<String>,
+    /// Token issuer (https://confidentialcomputing.googleapis.com).
+    #[serde(default)]
+    pub iss: String,
+    /// Subject (instance resource URI).
+    #[serde(default)]
+    pub sub: String,
+    /// Token expiry (Unix seconds).
+    #[serde(default)]
+    pub exp: u64,
+    /// Token issued-at (Unix seconds).
+    #[serde(default)]
+    pub iat: u64,
+    /// Software name (CONFIDENTIAL_SPACE).
+    #[serde(default)]
+    pub swname: String,
+    /// Software version.
+    #[serde(default)]
+    pub swversion: Vec<String>,
+    /// Container image reference submods (if present).
+    #[serde(default)]
+    pub submods: serde_json::Value,
+}
+
+impl Default for CsTokenClient {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl CsTokenClient {
+    /// Create a client using the default Launcher socket path.
+    pub fn new() -> Self {
+        Self {
+            socket_path: DEFAULT_SOCKET_PATH.to_string(),
+        }
+    }
+
+    /// Create a client with a custom socket path (for testing).
+    pub fn with_socket_path(path: &str) -> Self {
+        Self {
+            socket_path: path.to_string(),
+        }
+    }
+
+    /// Request an OIDC attestation token from the Launcher.
+    ///
+    /// - `audience`: relying party identifier (max 512 bytes).
+    /// - `nonces`: session-binding nonces (up to 6, each 10–74 bytes).
+    ///
+    /// Returns the raw JWT string.
+    pub async fn get_token(&self, audience: &str, nonces: Vec<String>) -> Result<String> {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        use tokio::net::UnixStream;
+
+        let stream = UnixStream::connect(&self.socket_path).await.map_err(|e| {
+            EnclaveError::Enclave(EphemeralError::NetworkError(format!(
+                "Failed to connect to Launcher socket at {}: {}",
+                self.socket_path, e
+            )))
+        })?;
+
+        let request = TokenRequest {
+            audience,
+            token_type: "OIDC",
+            nonces,
+        };
+
+        let body = serde_json::to_vec(&request).map_err(|e| {
+            EnclaveError::Enclave(EphemeralError::SerializationError(format!(
+                "Token request serialization: {}",
+                e
+            )))
+        })?;
+
+        // Build HTTP/1.1 request manually (avoids adding hyper/unix-connector dep).
+        let http_request = format!(
+            "POST {} HTTP/1.1\r\n\
+             Host: localhost\r\n\
+             Content-Type: application/json\r\n\
+             Content-Length: {}\r\n\
+             Connection: close\r\n\
+             \r\n",
+            TOKEN_PATH,
+            body.len(),
+        );
+
+        let (mut reader, mut writer) = stream.into_split();
+
+        writer
+            .write_all(http_request.as_bytes())
+            .await
+            .map_err(|e| {
+                EnclaveError::Enclave(EphemeralError::NetworkError(format!(
+                    "Failed to write HTTP request: {}",
+                    e
+                )))
+            })?;
+        writer.write_all(&body).await.map_err(|e| {
+            EnclaveError::Enclave(EphemeralError::NetworkError(format!(
+                "Failed to write request body: {}",
+                e
+            )))
+        })?;
+        writer.shutdown().await.map_err(|e| {
+            EnclaveError::Enclave(EphemeralError::NetworkError(format!(
+                "Failed to shutdown write half: {}",
+                e
+            )))
+        })?;
+
+        // Read the full HTTP response.
+        let mut response_buf = Vec::with_capacity(8192);
+        reader.read_to_end(&mut response_buf).await.map_err(|e| {
+            EnclaveError::Enclave(EphemeralError::NetworkError(format!(
+                "Failed to read Launcher response: {}",
+                e
+            )))
+        })?;
+
+        let response_str = String::from_utf8(response_buf).map_err(|e| {
+            EnclaveError::Enclave(EphemeralError::SerializationError(format!(
+                "Launcher response is not UTF-8: {}",
+                e
+            )))
+        })?;
+
+        // Parse HTTP response: split headers from body at \r\n\r\n.
+        let (headers, body) = response_str.split_once("\r\n\r\n").ok_or_else(|| {
+            EnclaveError::Enclave(EphemeralError::NetworkError(format!(
+                "Malformed HTTP response from Launcher: no header/body separator. Response: {}",
+                &response_str[..response_str.len().min(200)]
+            )))
+        })?;
+
+        // Check for HTTP 200 status.
+        let status_line = headers.lines().next().unwrap_or("");
+        if !status_line.contains("200") {
+            return Err(EnclaveError::Enclave(EphemeralError::NetworkError(
+                format!(
+                    "Launcher returned non-200: {}. Body: {}",
+                    status_line,
+                    &body[..body.len().min(500)]
+                ),
+            )));
+        }
+
+        let token = body.trim().to_string();
+        if token.is_empty() {
+            return Err(EnclaveError::Enclave(EphemeralError::NetworkError(
+                "Launcher returned empty token".to_string(),
+            )));
+        }
+
+        Ok(token)
+    }
+
+    /// Decode JWT claims without signature verification.
+    ///
+    /// This is safe because the token comes from the local Launcher socket
+    /// (trusted path). The relying party (client) must verify the full JWT.
+    pub fn parse_claims(token: &str) -> Result<CsTokenClaims> {
+        // JWT format: header.payload.signature
+        let parts: Vec<&str> = token.split('.').collect();
+        if parts.len() != 3 {
+            return Err(EnclaveError::Enclave(EphemeralError::ValidationError(
+                format!("Invalid JWT: expected 3 parts, got {}", parts.len()),
+            )));
+        }
+
+        // Decode payload (second part), base64url without padding.
+        let payload = base64_url_decode(parts[1])?;
+
+        serde_json::from_slice(&payload).map_err(|e| {
+            EnclaveError::Enclave(EphemeralError::SerializationError(format!(
+                "JWT claims parse failed: {}",
+                e
+            )))
+        })
+    }
+}
+
+/// Base64url decode (no padding), as used in JWT.
+fn base64_url_decode(input: &str) -> Result<Vec<u8>> {
+    use base64::engine::general_purpose::URL_SAFE_NO_PAD;
+    use base64::Engine;
+
+    URL_SAFE_NO_PAD.decode(input).map_err(|e| {
+        EnclaveError::Enclave(EphemeralError::SerializationError(format!(
+            "Base64url decode failed: {}",
+            e
+        )))
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parse_synthetic_jwt_claims() {
+        // Build a synthetic JWT: header.payload.signature
+        let header = base64_url_encode(b"{\"alg\":\"RS256\",\"typ\":\"JWT\"}");
+        let claims = serde_json::json!({
+            "aud": "test-audience",
+            "eat_nonce": ["nonce-abc123", "nonce-def456"],
+            "iss": "https://confidentialcomputing.googleapis.com",
+            "sub": "projects/12345/zones/us-central1-a/instances/test-vm",
+            "exp": 1721330075u64,
+            "iat": 1721326475u64,
+            "swname": "CONFIDENTIAL_SPACE",
+            "swversion": ["240500"],
+        });
+        let payload = base64_url_encode(serde_json::to_string(&claims).unwrap().as_bytes());
+        let signature = base64_url_encode(b"fake-signature");
+
+        let jwt = format!("{}.{}.{}", header, payload, signature);
+
+        let parsed = CsTokenClient::parse_claims(&jwt).unwrap();
+        assert_eq!(parsed.aud, "test-audience");
+        assert_eq!(parsed.eat_nonce, vec!["nonce-abc123", "nonce-def456"]);
+        assert_eq!(parsed.iss, "https://confidentialcomputing.googleapis.com");
+        assert_eq!(parsed.swname, "CONFIDENTIAL_SPACE");
+        assert_eq!(parsed.exp, 1721330075);
+    }
+
+    #[test]
+    fn parse_claims_rejects_invalid_jwt() {
+        assert!(CsTokenClient::parse_claims("not-a-jwt").is_err());
+        assert!(CsTokenClient::parse_claims("a.b").is_err());
+    }
+
+    #[test]
+    fn parse_claims_handles_missing_optional_fields() {
+        let header = base64_url_encode(b"{\"alg\":\"RS256\"}");
+        let claims = serde_json::json!({"aud": "x"});
+        let payload = base64_url_encode(serde_json::to_string(&claims).unwrap().as_bytes());
+        let sig = base64_url_encode(b"s");
+
+        let jwt = format!("{}.{}.{}", header, payload, sig);
+        let parsed = CsTokenClient::parse_claims(&jwt).unwrap();
+        assert_eq!(parsed.aud, "x");
+        assert!(parsed.eat_nonce.is_empty());
+        assert_eq!(parsed.exp, 0);
+    }
+
+    #[tokio::test]
+    async fn get_token_fails_when_socket_missing() {
+        let client = CsTokenClient::with_socket_path("/nonexistent/socket.sock");
+        let result = client.get_token("audience", vec![]).await;
+        assert!(result.is_err());
+        let err = format!("{:?}", result.unwrap_err());
+        assert!(err.contains("Failed to connect"), "Error: {}", err);
+    }
+
+    /// Helper: base64url encode without padding.
+    fn base64_url_encode(input: &[u8]) -> String {
+        use base64::engine::general_purpose::URL_SAFE_NO_PAD;
+        use base64::Engine;
+        URL_SAFE_NO_PAD.encode(input)
+    }
+}

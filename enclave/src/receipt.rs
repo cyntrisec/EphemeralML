@@ -21,9 +21,12 @@ impl ReceiptBuilder {
         let request_hash: [u8; 32] = Sha256::digest(request_plaintext).into();
         let response_hash: [u8; 32] = Sha256::digest(response_plaintext).into();
 
-        // 2. Get PCRs
+        // 2. Get PCRs / TDX measurements
         let pcrs = provider.get_pcr_measurements()?;
-        let enclave_measurements = EnclaveMeasurements::new(pcrs.pcr0, pcrs.pcr1, pcrs.pcr2);
+        let enclave_measurements = match provider.measurement_type() {
+            "tdx-mrtd-rtmr" => EnclaveMeasurements::new_tdx(pcrs.pcr0, pcrs.pcr1, pcrs.pcr2),
+            _ => EnclaveMeasurements::new(pcrs.pcr0, pcrs.pcr1, pcrs.pcr2),
+        };
 
         // 3. Create Receipt
         let sequence = state.next_seq();

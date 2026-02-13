@@ -91,6 +91,12 @@ pub trait AttestationProvider: Send + Sync {
 
     /// Decrypt ciphertext returned by AWS KMS (RecipientInfo flow)
     fn decrypt_kms(&self, ciphertext: &[u8]) -> Result<Vec<u8>>;
+
+    /// Return the platform measurement type for receipt encoding.
+    /// Override in TDX/SEV-SNP providers; defaults to "nitro-pcr".
+    fn measurement_type(&self) -> &str {
+        "nitro-pcr"
+    }
 }
 
 /// NSM client for production attestation document generation

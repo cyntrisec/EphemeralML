@@ -199,7 +199,39 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 );
             }
 
-            // 3. Emit trust evidence bundle
+            // 3. Probe Confidential Space Launcher socket for container identity
+            {
+                use ephemeral_ml_enclave::cs_token_client::CsTokenClient;
+
+                let cs_client = CsTokenClient::new();
+                let nonce = hex::encode(&receipt_pk[..16]);
+                match cs_client
+                    .get_token("ephemeralml-boot", vec![nonce.clone()])
+                    .await
+                {
+                    Ok(jwt) => match CsTokenClient::parse_claims(&jwt) {
+                        Ok(claims) => {
+                            println!("[gcp] Confidential Space identity:");
+                            println!("  issuer:  {}", claims.iss);
+                            println!("  subject: {}", claims.sub);
+                            println!("  swname:  {}", claims.swname);
+                            if !claims.eat_nonce.is_empty() {
+                                println!("  eat_nonce[0]: {}", claims.eat_nonce[0]);
+                            }
+                        }
+                        Err(e) => {
+                            println!("[gcp] CS token received but claims parse failed: {}", e);
+                        }
+                    },
+                    Err(_) => {
+                        println!(
+                            "[gcp] Launcher socket not available (not running in Confidential Space)"
+                        );
+                    }
+                }
+            }
+
+            // 4. Emit trust evidence bundle
             {
                 use ephemeral_ml_enclave::tee_provider::TeeAttestationEnvelope;
                 use ephemeral_ml_enclave::trust_evidence::TrustEvidenceBundle;
@@ -223,10 +255,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 bundle.print();
             }
 
-            // 4. Create executor with TDX attestation provider
+            // 5. Create executor with TDX attestation provider
             let executor = EphemeralStageExecutor::new(engine, tee_provider, receipt_key);
 
-            // 5. Create transport attestation bridge (for SecureChannel handshake)
+            // 6. Create transport attestation bridge (for SecureChannel handshake)
             let bridge_provider = if args.synthetic {
                 TeeAttestationProvider::synthetic()
             } else {
