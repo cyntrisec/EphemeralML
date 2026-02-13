@@ -102,6 +102,12 @@ struct KmsDecryptResponse {
     plaintext: String, // base64
 }
 
+/// Timeout for metadata server requests (local network, should be fast).
+const METADATA_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(5);
+
+/// Timeout for GCP API requests (Attestation, STS, KMS).
+const API_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
+
 impl GcpKmsClient {
     /// Create a new GCP KMS client.
     ///
@@ -115,8 +121,13 @@ impl GcpKmsClient {
         wip_audience: &str,
         tee_provider: TeeAttestationProvider,
     ) -> Self {
+        let http = reqwest::Client::builder()
+            .timeout(API_TIMEOUT)
+            .connect_timeout(std::time::Duration::from_secs(10))
+            .build()
+            .expect("Failed to build reqwest client");
         Self {
-            http: reqwest::Client::new(),
+            http,
             project: project.to_string(),
             location: location.to_string(),
             wip_audience: wip_audience.to_string(),
@@ -156,6 +167,7 @@ impl GcpKmsClient {
             .http
             .get(&self.metadata_url)
             .header("Metadata-Flavor", "Google")
+            .timeout(METADATA_TIMEOUT)
             .send()
             .await
             .map_err(|e| {
@@ -222,9 +234,15 @@ impl GcpKmsClient {
     /// Step 2: Generate a TDX quote with the challenge nonce in REPORTDATA.
     fn generate_quote(&self, nonce: &[u8]) -> Result<Vec<u8>> {
         use crate::AttestationProvider;
+        use sha2::{Digest, Sha256};
+
+        // GCP challenge nonces are variable-length; TDX REPORTDATA nonce slot
+        // is exactly 32 bytes. Hash to normalize length while preserving the
+        // cryptographic binding to the challenge.
+        let nonce_hash: [u8; 32] = Sha256::digest(nonce).into();
 
         let receipt_key = [0u8; 32]; // Not used for KMS auth, placeholder
-        let doc = self.tee_provider.generate_attestation(nonce, receipt_key)?;
+        let doc = self.tee_provider.generate_attestation(&nonce_hash, receipt_key)?;
 
         // Extract raw quote from the CBOR envelope
         let envelope = crate::tee_provider::TeeAttestationEnvelope::from_cbor(&doc.signature)

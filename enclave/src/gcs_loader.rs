@@ -35,11 +35,22 @@ const METADATA_TOKEN_URL: &str =
 /// GCS JSON API base URL.
 const GCS_API_BASE: &str = "https://storage.googleapis.com/storage/v1/b";
 
+/// Timeout for metadata server requests (short — local network).
+const METADATA_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(5);
+
+/// Timeout for GCS object downloads (large model files may take a while).
+const GCS_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(120);
+
 impl GcsModelLoader {
     /// Create a new GCS loader for the given bucket.
     pub fn new(bucket: &str) -> Self {
+        let client = reqwest::Client::builder()
+            .timeout(GCS_TIMEOUT)
+            .connect_timeout(std::time::Duration::from_secs(10))
+            .build()
+            .expect("Failed to build reqwest client");
         Self {
-            client: reqwest::Client::new(),
+            client,
             bucket: bucket.to_string(),
             metadata_url: METADATA_TOKEN_URL.to_string(),
             gcs_api_base: GCS_API_BASE.to_string(),
@@ -65,6 +76,7 @@ impl GcsModelLoader {
             .client
             .get(&self.metadata_url)
             .header("Metadata-Flavor", "Google")
+            .timeout(METADATA_TIMEOUT)
             .send()
             .await
             .map_err(|e| {

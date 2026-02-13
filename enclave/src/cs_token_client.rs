@@ -45,7 +45,8 @@ pub struct CsTokenClaims {
     /// Audience the token was requested for.
     pub aud: String,
     /// Session-binding nonces (mirrored from request).
-    #[serde(default)]
+    /// CS Launcher may return a single string or an array of strings.
+    #[serde(default, deserialize_with = "deserialize_string_or_vec")]
     pub eat_nonce: Vec<String>,
     /// Token issuer (https://confidentialcomputing.googleapis.com).
     #[serde(default)]
@@ -231,6 +232,43 @@ impl CsTokenClient {
     }
 }
 
+/// Deserialize a JSON value that may be a single string or an array of strings.
+/// CS Launcher returns `"eat_nonce": "single-string"` (string) while the spec
+/// allows `"eat_nonce": ["a", "b"]` (array).
+fn deserialize_string_or_vec<'de, D>(deserializer: D) -> std::result::Result<Vec<String>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    use serde::de;
+
+    struct StringOrVec;
+
+    impl<'de> de::Visitor<'de> for StringOrVec {
+        type Value = Vec<String>;
+
+        fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+            formatter.write_str("a string or an array of strings")
+        }
+
+        fn visit_str<E: de::Error>(self, v: &str) -> std::result::Result<Vec<String>, E> {
+            Ok(vec![v.to_string()])
+        }
+
+        fn visit_seq<A: de::SeqAccess<'de>>(
+            self,
+            mut seq: A,
+        ) -> std::result::Result<Vec<String>, A::Error> {
+            let mut vec = Vec::new();
+            while let Some(s) = seq.next_element()? {
+                vec.push(s);
+            }
+            Ok(vec)
+        }
+    }
+
+    deserializer.deserialize_any(StringOrVec)
+}
+
 /// Base64url decode (no padding), as used in JWT.
 fn base64_url_decode(input: &str) -> Result<Vec<u8>> {
     use base64::engine::general_purpose::URL_SAFE_NO_PAD;
@@ -279,6 +317,26 @@ mod tests {
     fn parse_claims_rejects_invalid_jwt() {
         assert!(CsTokenClient::parse_claims("not-a-jwt").is_err());
         assert!(CsTokenClient::parse_claims("a.b").is_err());
+    }
+
+    #[test]
+    fn parse_claims_string_eat_nonce() {
+        // CS Launcher returns eat_nonce as a single string, not an array.
+        let header = base64_url_encode(b"{\"alg\":\"RS256\",\"typ\":\"JWT\"}");
+        let claims = serde_json::json!({
+            "aud": "test-audience",
+            "eat_nonce": "single-nonce-value",
+            "iss": "https://confidentialcomputing.googleapis.com",
+        });
+        let payload = base64_url_encode(serde_json::to_string(&claims).unwrap().as_bytes());
+        let signature = base64_url_encode(b"fake-signature");
+
+        let jwt = format!("{}.{}.{}", header, payload, signature);
+
+        let parsed = CsTokenClient::parse_claims(&jwt).unwrap();
+        assert_eq!(parsed.aud, "test-audience");
+        assert_eq!(parsed.eat_nonce, vec!["single-nonce-value"]);
+        assert_eq!(parsed.iss, "https://confidentialcomputing.googleapis.com");
     }
 
     #[test]

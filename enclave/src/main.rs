@@ -1,10 +1,14 @@
 use ephemeral_ml_enclave::candle_engine::CandleInferenceEngine;
+#[cfg(feature = "gcp")]
+use ephemeral_ml_enclave::server::run_direct_tcp;
 use ephemeral_ml_enclave::server::run_stage_tcp;
 use ephemeral_ml_enclave::stage_executor::EphemeralStageExecutor;
 
 use confidential_ml_pipeline::StageConfig;
-#[cfg(any(feature = "mock", feature = "production"))]
+#[cfg(feature = "mock")]
 use confidential_ml_transport::MockVerifier;
+#[cfg(feature = "production")]
+use confidential_ml_transport::NitroVerifier;
 use ephemeral_ml_common::ReceiptSigningKey;
 
 use clap::Parser;
@@ -86,6 +90,11 @@ struct Args {
     /// non-matching MRTD.
     #[arg(long)]
     expected_mrtd: Option<String>,
+
+    /// Direct mode: accept client SecureChannel on a single port (9000) and run
+    /// inference immediately. No orchestrator needed. For GCP smoke/E2E testing.
+    #[arg(long)]
+    direct: bool,
 }
 
 #[tokio::main]
@@ -166,13 +175,22 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 "--model-source is required in GCP mode (local, gcs, or gcs-kms)"
             )?;
 
-            // 1. Initialize TEE attestation provider
-            let tee_provider = if args.synthetic {
+            // 1. Initialize TEE attestation provider (auto-detect CS vs configfs-tsm vs synthetic)
+            let cs_mode = std::path::Path::new("/run/container_launcher/teeserver.sock").exists();
+            let has_tsm = std::path::Path::new("/sys/kernel/config/tsm/report").exists();
+
+            let tee_provider = if has_tsm {
+                println!("[gcp] Using real configfs-tsm TDX attestation");
+                TeeAttestationProvider::new()?
+            } else if cs_mode {
+                println!("[gcp] Confidential Space detected (no configfs-tsm) — using Launcher JWT attestation");
+                TeeAttestationProvider::synthetic()
+            } else if args.synthetic {
                 println!("[gcp] Using synthetic TDX quotes (no hardware)");
                 TeeAttestationProvider::synthetic()
             } else {
-                println!("[gcp] Using real configfs-tsm TDX attestation");
-                TeeAttestationProvider::new()?
+                return Err("No TDX attestation source available. Use --synthetic for local dev, \
+                    or deploy on a TDX CVM / Confidential Space.".into());
             };
 
             let receipt_key = ReceiptSigningKey::generate()?;
@@ -200,6 +218,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 None => None,
             };
 
+            // Track the verified model weights hash for trust evidence.
+            let mut loaded_model_hash: Option<[u8; 32]> = None;
+
             match model_source {
                 "local" => {
                     if !args.model_dir.exists() {
@@ -219,17 +240,20 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     let weights_bytes = std::fs::read(args.model_dir.join("model.safetensors"))
                         .map_err(|e| format!("Failed to read model.safetensors: {}", e))?;
 
-                    // Verify hash if provided
-                    if let Some(expected) = &expected_model_hash {
+                    // Compute and verify model hash
+                    {
                         use sha2::{Digest, Sha256};
                         let actual: [u8; 32] = Sha256::digest(&weights_bytes).into();
-                        if &actual != expected {
-                            return Err(format!(
-                                "Model hash mismatch (local): expected {}, got {}",
-                                hex::encode(expected), hex::encode(actual)
-                            ).into());
+                        if let Some(expected) = &expected_model_hash {
+                            if &actual != expected {
+                                return Err(format!(
+                                    "Model hash mismatch (local): expected {}, got {}",
+                                    hex::encode(expected), hex::encode(actual)
+                                ).into());
+                            }
+                            println!("[gcp] Model hash verified: {}", hex::encode(expected));
                         }
-                        println!("[gcp] Model hash verified: {}", hex::encode(expected));
+                        loaded_model_hash = Some(actual);
                     }
 
                     engine.register_model(
@@ -311,20 +335,23 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     let weights_bytes = decrypt_artifact(&encrypted_weights, &dek_array)?;
 
                     // Verify hash (required for remote sources)
-                    if let Some(expected) = &expected_model_hash {
+                    {
                         use sha2::{Digest, Sha256};
                         let actual: [u8; 32] = Sha256::digest(&weights_bytes).into();
-                        if &actual != expected {
-                            return Err(format!(
-                                "Model hash mismatch (gcs-kms): expected {}, got {}",
-                                hex::encode(expected), hex::encode(actual)
-                            ).into());
+                        if let Some(expected) = &expected_model_hash {
+                            if &actual != expected {
+                                return Err(format!(
+                                    "Model hash mismatch (gcs-kms): expected {}, got {}",
+                                    hex::encode(expected), hex::encode(actual)
+                                ).into());
+                            }
+                            println!("[gcp] Model hash verified: {}", hex::encode(expected));
+                        } else {
+                            return Err("--expected-model-hash is required for gcs-kms source. \
+                                Cannot verify model integrity without a pinned hash."
+                                .into());
                         }
-                        println!("[gcp] Model hash verified: {}", hex::encode(expected));
-                    } else {
-                        return Err("--expected-model-hash is required for gcs-kms source. \
-                            Cannot verify model integrity without a pinned hash."
-                            .into());
+                        loaded_model_hash = Some(actual);
                     }
 
                     engine.register_model(
@@ -372,6 +399,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         &tokenizer_bytes,
                     )?;
 
+                    loaded_model_hash = Some(*expected);
                     println!("[gcp] Model hash verified: {}", hex::encode(expected));
 
                     println!(
@@ -432,39 +460,62 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     .map_err(|e| format!("trust evidence: {}", e))?;
                 let raw_quote = &envelope.tdx_wire[16..];
 
-                let bundle = TrustEvidenceBundle::from_boot(
+                let mut bundle = TrustEvidenceBundle::from_boot(
                     raw_quote,
                     tee_provider.get_hpke_public_key(),
                     receipt_pk,
                     &args.model_id,
-                    None, // model weights hash logged separately
+                    None,
                     None,
                     "tdx",
                 );
+                bundle.model_hash = loaded_model_hash;
                 bundle.print();
             }
 
-            // 5. Create executor with TDX attestation provider
-            let executor = EphemeralStageExecutor::new(engine, tee_provider, receipt_key);
-
-            // 6. Create transport attestation bridge (for SecureChannel handshake)
-            let bridge_provider = if args.synthetic {
-                TeeAttestationProvider::synthetic()
-            } else {
+            // 5. Create transport attestation bridge (for SecureChannel handshake)
+            let bridge_provider = if has_tsm {
                 TeeAttestationProvider::new()?
+            } else {
+                TeeAttestationProvider::synthetic()
             };
             let bridge = TeeAttestationBridge::new(bridge_provider, receipt_pk);
 
-            // Use TDX verifier for peer verification with measurement pinning
+            // Use TDX verifier for peer verification with measurement pinning.
+            // Fail-closed: require MRTD in non-synthetic mode.
             let env_mrtd = std::env::var("EPHEMERALML_EXPECTED_MRTD").ok();
             let peer_mrtd: Option<Vec<u8>> = args.expected_mrtd.as_ref()
                 .or(env_mrtd.as_ref())
                 .and_then(|hex_str| hex::decode(hex_str).ok())
                 .filter(|bytes| bytes.len() == 48);
-            if peer_mrtd.is_none() && !args.synthetic {
-                eprintln!("[gcp] WARNING: No --expected-mrtd set. Peer TDX measurements are NOT pinned.");
+            if peer_mrtd.is_none() && !args.synthetic && !cs_mode {
+                return Err(
+                    "--expected-mrtd (or EPHEMERALML_EXPECTED_MRTD env) is required in GCP mode. \
+                     Peer TDX measurements must be pinned for production use. \
+                     Use --synthetic to skip this check in development."
+                        .into(),
+                );
             }
             let verifier = confidential_ml_transport::attestation::tdx::TdxVerifier::new(peer_mrtd);
+
+            // Direct mode: single-port SecureChannel server, no pipeline orchestrator.
+            if args.direct {
+                println!("[gcp] Direct mode: accepting client connections on 0.0.0.0:9000");
+                run_direct_tcp(
+                    engine,
+                    tee_provider,
+                    receipt_key,
+                    "0.0.0.0:9000",
+                    &bridge,
+                    &verifier,
+                )
+                .await
+                .map_err(|e| -> Box<dyn std::error::Error> { e })?;
+                return Ok(());
+            }
+
+            // Pipeline mode: orchestrator connects to control, then data channels.
+            let executor = EphemeralStageExecutor::new(engine, tee_provider, receipt_key);
 
             println!(
                 "[gcp] Stage worker: control=0.0.0.0:9000, data_in=0.0.0.0:9001, data_out=0.0.0.0:9002"
@@ -585,13 +636,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 // Default to the policy root public key (same trust anchor)
                 "12740b4f2ff1f9dac52cac6db77f3a57950fb15134c8580295c98bd809673444".to_string()
             });
-            let key_bytes =
-                hex::decode(&key_hex).expect("EPHEMERALML_MODEL_SIGNING_KEY must be valid hex");
-            assert!(
-                key_bytes.len() == 32 && key_bytes.iter().any(|&b| b != 0),
-                "Model signing key must be 32 non-zero bytes"
-            );
-            key_bytes.try_into().unwrap()
+            let key_bytes = hex::decode(&key_hex).map_err(|e| {
+                format!("EPHEMERALML_MODEL_SIGNING_KEY must be valid hex: {}", e)
+            })?;
+            if key_bytes.len() != 32 || key_bytes.iter().all(|&b| b == 0) {
+                return Err("Model signing key must be 32 non-zero bytes".into());
+            }
+            let mut arr = [0u8; 32];
+            arr.copy_from_slice(&key_bytes);
+            arr
         };
         let loader = ModelLoader::new(kms_client, trusted_signing_key);
 
@@ -624,7 +677,32 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         let executor =
             EphemeralStageExecutor::new(engine, attestation_provider.clone(), receipt_key);
         let bridge = AttestationBridge::new(attestation_provider, receipt_pk);
-        let verifier = MockVerifier::new();
+
+        // Build NitroVerifier with expected PCR measurements for peer verification.
+        // In single-stage mode this verifies pipeline orchestrator connections.
+        // PCRs are loaded from environment: EPHEMERALML_EXPECTED_PCR0, _PCR1, _PCR2 (hex).
+        let mut expected_pcrs = std::collections::BTreeMap::new();
+        for i in 0..3u16 {
+            if let Ok(hex_str) = std::env::var(format!("EPHEMERALML_EXPECTED_PCR{}", i)) {
+                match hex::decode(&hex_str) {
+                    Ok(bytes) if bytes.len() == 48 => {
+                        expected_pcrs.insert(i as usize, bytes);
+                        println!("[boot] Pinned PCR{}: {}...", i, &hex_str[..16]);
+                    }
+                    Ok(bytes) => {
+                        eprintln!("[boot] WARNING: EPHEMERALML_EXPECTED_PCR{} has wrong length ({} bytes, expected 48), ignoring", i, bytes.len());
+                    }
+                    Err(e) => {
+                        eprintln!("[boot] WARNING: EPHEMERALML_EXPECTED_PCR{} invalid hex: {}, ignoring", i, e);
+                    }
+                }
+            }
+        }
+        if expected_pcrs.is_empty() {
+            eprintln!("[boot] WARNING: No EPHEMERALML_EXPECTED_PCR{{0,1,2}} set. Peer Nitro attestation measurements are NOT pinned.");
+        }
+        let verifier = NitroVerifier::new(expected_pcrs)
+            .expect("Failed to initialize NitroVerifier");
 
         println!("Production stage worker: control=127.0.0.1:5000, data_in=127.0.0.1:5001, data_out→127.0.0.1:5002");
 

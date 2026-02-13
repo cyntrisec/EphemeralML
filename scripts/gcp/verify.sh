@@ -17,7 +17,7 @@ PROJECT_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
 # Configuration
 # ---------------------------------------------------------------------------
 INSTANCE_NAME="ephemeralml-cvm"
-DATA_PORT=9001            # client connects to the data_in port, not control
+DATA_PORT=9000            # direct mode: client connects to single port (9000)
 CONTROL_PORT=9000         # used only for the reachability probe
 RECEIPT_PATH="/tmp/ephemeralml-receipt.cbor"
 MAX_WAIT=180              # seconds to wait for port reachability
@@ -107,7 +107,7 @@ cargo build --release --no-default-features --features gcp \
 # It connects to the data_in port (9001) where the enclave accepts inference traffic.
 EPHEMERALML_ENCLAVE_ADDR="${IP}:${DATA_PORT}" \
     cargo run --release --no-default-features --features gcp \
-    -p ephemeral-ml-client 2>&1 | tee /tmp/ephemeralml-verify-output.txt
+    -p ephemeral-ml-client --bin ephemeral-ml-client 2>&1 | tee /tmp/ephemeralml-verify-output.txt
 
 CLIENT_EXIT=${PIPESTATUS[0]}
 

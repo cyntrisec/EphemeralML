@@ -1,0 +1,25 @@
+# Cloud Build config for EphemeralML GCP enclave image.
+#
+# Usage:
+#   gcloud builds submit --config=cloudbuild.yaml --project=$PROJECT_ID
+#
+# The build context must include test_assets/minilm/model.safetensors as a
+# real file (not a symlink). Resolve the symlink before submitting:
+#   cp --remove-destination "$(readlink -f test_assets/minilm/model.safetensors)" \
+#       test_assets/minilm/model.safetensors
+steps:
+  - name: 'gcr.io/cloud-builders/docker'
+    args:
+      - 'build'
+      - '-f'
+      - 'Dockerfile.gcp'
+      - '-t'
+      - 'us-docker.pkg.dev/$PROJECT_ID/ephemeralml/enclave:latest'
+      - '.'
+
+images: ['us-docker.pkg.dev/$PROJECT_ID/ephemeralml/enclave:latest']
+
+options:
+  machineType: 'E2_HIGHCPU_8'
+
+timeout: '1800s'

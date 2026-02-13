@@ -4,6 +4,7 @@
 # Usage:
 #   bash scripts/gcp/deploy.sh                     # production image (no SSH)
 #   bash scripts/gcp/deploy.sh --debug              # debug image (SSH enabled)
+#   bash scripts/gcp/deploy.sh --skip-build         # skip Docker build/push (image already in AR)
 #   bash scripts/gcp/deploy.sh --tag v1.0           # custom image tag
 #   bash scripts/gcp/deploy.sh --zone us-central1-b # custom zone
 set -euo pipefail
@@ -25,14 +26,16 @@ PROJECT="${EPHEMERALML_GCP_PROJECT:-}"
 ZONE="us-central1-a"
 DEBUG=false
 TAG=""
+SKIP_BUILD=false
 
 # Parse args
 while [[ $# -gt 0 ]]; do
     case "$1" in
-        --debug)   DEBUG=true; shift ;;
-        --tag)     TAG="$2"; shift 2 ;;
-        --zone)    ZONE="$2"; shift 2 ;;
-        --project) PROJECT="$2"; shift 2 ;;
+        --debug)      DEBUG=true; shift ;;
+        --skip-build) SKIP_BUILD=true; shift ;;
+        --tag)        TAG="$2"; shift 2 ;;
+        --zone)       ZONE="$2"; shift 2 ;;
+        --project)    PROJECT="$2"; shift 2 ;;
         *) echo "Unknown option: $1"; exit 1 ;;
     esac
 done
@@ -69,73 +72,81 @@ echo "  CS family:  ${CS_IMAGE_FAMILY}"
 echo "  Debug:      ${DEBUG}"
 echo
 
-# ---------------------------------------------------------------------------
-# 1. Resolve model symlink (Docker cannot follow symlinks outside build context)
-# ---------------------------------------------------------------------------
-echo "[1/6] Preparing model files..."
-MODEL_DIR="${PROJECT_DIR}/test_assets/minilm"
-MODEL_WEIGHTS="${MODEL_DIR}/model.safetensors"
-RESTORED_SYMLINK=""
+if $SKIP_BUILD; then
+    echo "[1/6] Skipping model preparation (--skip-build)."
+    echo "[2/6] Skipping Docker auth (--skip-build)."
+    echo "[3/6] Skipping Docker build (--skip-build)."
+    echo "[4/6] Skipping push (--skip-build). Using existing image: ${IMAGE_URI}"
+    echo
+else
+    # ---------------------------------------------------------------------------
+    # 1. Resolve model symlink (Docker cannot follow symlinks outside build context)
+    # ---------------------------------------------------------------------------
+    echo "[1/6] Preparing model files..."
+    MODEL_DIR="${PROJECT_DIR}/test_assets/minilm"
+    MODEL_WEIGHTS="${MODEL_DIR}/model.safetensors"
+    RESTORED_SYMLINK=""
 
-if [[ -L "${MODEL_WEIGHTS}" ]]; then
-    SYMLINK_TARGET="$(readlink -f "${MODEL_WEIGHTS}")"
-    if [[ ! -f "${SYMLINK_TARGET}" ]]; then
-        echo "ERROR: Model weights symlink target missing: ${SYMLINK_TARGET}"
+    if [[ -L "${MODEL_WEIGHTS}" ]]; then
+        SYMLINK_TARGET="$(readlink -f "${MODEL_WEIGHTS}")"
+        if [[ ! -f "${SYMLINK_TARGET}" ]]; then
+            echo "ERROR: Model weights symlink target missing: ${SYMLINK_TARGET}"
+            echo "Run: bash scripts/download_model.sh"
+            exit 1
+        fi
+        # Save the symlink target so we can restore it after build
+        RESTORED_SYMLINK="${SYMLINK_TARGET}"
+        echo "  Temporarily resolving symlink for Docker build..."
+        echo "  Symlink: model.safetensors -> ${SYMLINK_TARGET}"
+        cp --remove-destination "${SYMLINK_TARGET}" "${MODEL_WEIGHTS}"
+        echo "  Copied $(du -h "${MODEL_WEIGHTS}" | cut -f1) model weights into build context."
+    elif [[ ! -f "${MODEL_WEIGHTS}" ]]; then
+        echo "ERROR: Model weights not found at ${MODEL_WEIGHTS}"
         echo "Run: bash scripts/download_model.sh"
         exit 1
+    else
+        echo "  Model weights already resolved ($(du -h "${MODEL_WEIGHTS}" | cut -f1))."
     fi
-    # Save the symlink target so we can restore it after build
-    RESTORED_SYMLINK="${SYMLINK_TARGET}"
-    echo "  Temporarily resolving symlink for Docker build..."
-    echo "  Symlink: model.safetensors -> ${SYMLINK_TARGET}"
-    cp --remove-destination "${SYMLINK_TARGET}" "${MODEL_WEIGHTS}"
-    echo "  Copied $(du -h "${MODEL_WEIGHTS}" | cut -f1) model weights into build context."
-elif [[ ! -f "${MODEL_WEIGHTS}" ]]; then
-    echo "ERROR: Model weights not found at ${MODEL_WEIGHTS}"
-    echo "Run: bash scripts/download_model.sh"
-    exit 1
-else
-    echo "  Model weights already resolved ($(du -h "${MODEL_WEIGHTS}" | cut -f1))."
+    echo
+
+    # Restore symlink on exit (even if build fails)
+    restore_symlink() {
+        if [[ -n "${RESTORED_SYMLINK}" && -f "${MODEL_WEIGHTS}" && ! -L "${MODEL_WEIGHTS}" ]]; then
+            rm -f "${MODEL_WEIGHTS}"
+            ln -s "${RESTORED_SYMLINK}" "${MODEL_WEIGHTS}"
+            echo "  Restored model.safetensors symlink."
+        fi
+    }
+    trap restore_symlink EXIT
+
+    # ---------------------------------------------------------------------------
+    # 2. Authenticate Docker with Artifact Registry
+    # ---------------------------------------------------------------------------
+    echo "[2/6] Configuring Docker authentication..."
+    gcloud auth configure-docker "${REPO_LOCATION}-docker.pkg.dev" --quiet
+    echo "  Docker configured for ${REPO_LOCATION}-docker.pkg.dev"
+    echo
+
+    # ---------------------------------------------------------------------------
+    # 3. Build container image
+    # ---------------------------------------------------------------------------
+    echo "[3/6] Building container image..."
+    echo "  Tag: ${IMAGE_URI}"
+    docker build \
+        -f "${PROJECT_DIR}/Dockerfile.gcp" \
+        -t "${IMAGE_URI}" \
+        "${PROJECT_DIR}"
+    echo "  Build complete."
+    echo
+
+    # ---------------------------------------------------------------------------
+    # 4. Push to Artifact Registry
+    # ---------------------------------------------------------------------------
+    echo "[4/6] Pushing to Artifact Registry..."
+    docker push "${IMAGE_URI}"
+    echo "  Push complete."
+    echo
 fi
-echo
-
-# Restore symlink on exit (even if build fails)
-restore_symlink() {
-    if [[ -n "${RESTORED_SYMLINK}" && -f "${MODEL_WEIGHTS}" && ! -L "${MODEL_WEIGHTS}" ]]; then
-        rm -f "${MODEL_WEIGHTS}"
-        ln -s "${RESTORED_SYMLINK}" "${MODEL_WEIGHTS}"
-        echo "  Restored model.safetensors symlink."
-    fi
-}
-trap restore_symlink EXIT
-
-# ---------------------------------------------------------------------------
-# 2. Authenticate Docker with Artifact Registry
-# ---------------------------------------------------------------------------
-echo "[2/6] Configuring Docker authentication..."
-gcloud auth configure-docker "${REPO_LOCATION}-docker.pkg.dev" --quiet
-echo "  Docker configured for ${REPO_LOCATION}-docker.pkg.dev"
-echo
-
-# ---------------------------------------------------------------------------
-# 3. Build container image
-# ---------------------------------------------------------------------------
-echo "[3/6] Building container image..."
-echo "  Tag: ${IMAGE_URI}"
-docker build \
-    -f "${PROJECT_DIR}/Dockerfile.gcp" \
-    -t "${IMAGE_URI}" \
-    "${PROJECT_DIR}"
-echo "  Build complete."
-echo
-
-# ---------------------------------------------------------------------------
-# 4. Push to Artifact Registry
-# ---------------------------------------------------------------------------
-echo "[4/6] Pushing to Artifact Registry..."
-docker push "${IMAGE_URI}"
-echo "  Push complete."
-echo
 
 # ---------------------------------------------------------------------------
 # 5. Launch Confidential Space CVM

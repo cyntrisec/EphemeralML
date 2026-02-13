@@ -1,0 +1,47 @@
+# .gcloudignore — Cloud Build context overrides .gitignore.
+# We MUST include test_assets/**/*.safetensors for model bundling.
+
+# Rust build artifacts (huge, never needed in context)
+/target/
+
+# IDE / OS noise
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Environment secrets
+.env
+.env.*
+
+# Private keys
+keys/*_private*
+
+# AWS Nitro artifacts (not needed for GCP build)
+*.eif
+enclave.dockerfile
+
+# Terraform state
+**/.terraform/
+**/*.tfstate
+**/*.tfstate.*
+
+# Python virtualenvs
+env/
+venv/
+__pycache__/
+
+# Large non-essential dirs
+benchmark_results/
+docs/papers/
+docs/papers_llm/
+docs/aws-reference/
+docs/investors/
+infra/
+AGENTS/
+investor/
+
+# Git metadata
+.git/

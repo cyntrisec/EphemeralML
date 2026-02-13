@@ -30,10 +30,14 @@ RUN cargo build --release \
     -p ephemeral-ml-enclave
 
 # --- Runtime stage ---
-# Use the Google-maintained Confidential Space base image.
-# It provides dm-verity, operator lockout, and the Launcher agent that
-# exposes the attestation token socket at /run/container_launcher/teeserver.sock.
-FROM us-docker.pkg.dev/confidential-space-images/cs-images/cs-base:latest
+# Use a minimal Debian base matching the builder's glibc. On Confidential Space,
+# the Launcher (in the VM image) provides dm-verity, operator lockout, and the
+# attestation token socket — not the container base image.
+FROM debian:bookworm-slim
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ca-certificates libssl3 \
+    && rm -rf /var/lib/apt/lists/*
 
 COPY --from=builder /build/target/release/ephemeral-ml-enclave /app/ephemeral-ml-enclave
 
@@ -50,12 +54,13 @@ ENV EPHEMERALML_GCP_WIF_PROVIDER="" \
     EPHEMERALML_GCS_BUCKET="" \
     EPHEMERALML_EXPECTED_MRTD=""
 
-EXPOSE 9000 9001 9002
+EXPOSE 9000
+# Pipeline mode also uses 9001/9002 (data_in/data_out), but direct mode only needs 9000.
 
-# Health check: TCP connect to control port.
+# Health check: TCP connect to server port.
 HEALTHCHECK --interval=15s --timeout=3s --start-period=60s --retries=3 \
     CMD timeout 2 bash -c 'echo > /dev/tcp/127.0.0.1/9000' 2>/dev/null || exit 1
 
 WORKDIR /app
 ENTRYPOINT ["/app/ephemeral-ml-enclave"]
-CMD ["--gcp", "--model-source", "local", "--model-dir", "/app/model"]
+CMD ["--gcp", "--model-source", "local", "--model-dir", "/app/model", "--direct"]

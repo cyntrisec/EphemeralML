@@ -139,6 +139,13 @@ impl TdxEnvelopeVerifierBridge {
                 .filter(|bytes| bytes.len() == 48)
         });
 
+        if mrtd.is_none() {
+            eprintln!(
+                "[client] WARNING: No expected MRTD configured. TDX peer measurements \
+                 are NOT pinned. Set EPHEMERALML_EXPECTED_MRTD for production use."
+            );
+        }
+
         Self {
             inner: confidential_ml_transport::attestation::tdx::TdxVerifier::new(mrtd),
         }

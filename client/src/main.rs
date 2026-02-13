@@ -35,16 +35,36 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     #[cfg(feature = "gcp")]
     {
         println!("EphemeralML Client (GCP Mode)");
-        println!("Use SecureEnclaveClient to connect to a GCP enclave.");
 
         let mut client = ephemeral_ml_client::SecureEnclaveClient::new("gcp-client".to_string());
 
         let addr = std::env::var("EPHEMERALML_ENCLAVE_ADDR")
-            .unwrap_or_else(|_| "127.0.0.1:9001".to_string());
+            .unwrap_or_else(|_| "127.0.0.1:9000".to_string());
 
         match client.establish_channel(&addr).await {
-            Ok(()) => println!("Secure channel established with GCP enclave"),
-            Err(e) => println!("Failed to establish channel: {}", e),
+            Ok(()) => {
+                println!("Secure channel established with GCP enclave");
+
+                // Run inference with dummy input matching MiniLM-L6-v2 (384-dim)
+                let input_tensor: Vec<f32> = vec![0.1; 384];
+                match client.execute_inference("stage-0", input_tensor).await {
+                    Ok(output) => {
+                        println!("Inference succeeded: {} floats returned", output.len());
+                        println!(
+                            "First 5 values: {:?}",
+                            &output[..output.len().min(5)]
+                        );
+                    }
+                    Err(e) => {
+                        eprintln!("Inference failed: {}", e);
+                        std::process::exit(1);
+                    }
+                }
+            }
+            Err(e) => {
+                eprintln!("Failed to establish channel: {}", e);
+                std::process::exit(1);
+            }
         }
     }
 
