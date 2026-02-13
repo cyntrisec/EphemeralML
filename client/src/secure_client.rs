@@ -260,10 +260,14 @@ mod tests {
             let mock_verifier = confidential_ml_transport::MockVerifier;
             let config = SessionConfig::builder().build().unwrap();
 
-            let mut channel =
-                SecureChannel::accept_with_attestation(stream, &mock_provider, &mock_verifier, config)
-                    .await
-                    .unwrap();
+            let mut channel = SecureChannel::accept_with_attestation(
+                stream,
+                &mock_provider,
+                &mock_verifier,
+                config,
+            )
+            .await
+            .unwrap();
 
             // Receive inference request
             let msg = channel.recv().await.unwrap();
@@ -304,9 +308,10 @@ mod tests {
         let client_provider = confidential_ml_transport::MockProvider;
         let stream = TcpStream::connect(&addr).await.unwrap();
         let config = SessionConfig::builder().build().unwrap();
-        let mut channel = SecureChannel::connect_with_attestation(stream, &client_provider, &verifier, config)
-            .await
-            .unwrap();
+        let mut channel =
+            SecureChannel::connect_with_attestation(stream, &client_provider, &verifier, config)
+                .await
+                .unwrap();
 
         // Send inference request
         let input = InferenceHandlerInput {
