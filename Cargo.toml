@@ -52,7 +52,7 @@ zeroize = { version = "1.7", features = ["zeroize_derive"] }
 
 # CBOR and COSE
 serde_cbor = "0.11"
-coset = "0.3"
+coset = "0.4"
 
 # RSA for KMS integration
 rsa = { version = "0.9", features = ["sha2"] }
