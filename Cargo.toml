@@ -68,4 +68,4 @@ bytes = "1.5"
 async-trait = "0.1"
 
 # Testing
-proptest = "1.0"
+proptest = "1.10"
