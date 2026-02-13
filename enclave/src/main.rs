@@ -171,9 +171,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             println!();
 
             // 0. Validate required --model-source
-            let model_source = args.model_source.as_deref().ok_or(
-                "--model-source is required in GCP mode (local, gcs, or gcs-kms)"
-            )?;
+            let model_source = args
+                .model_source
+                .as_deref()
+                .ok_or("--model-source is required in GCP mode (local, gcs, or gcs-kms)")?;
 
             // 1. Initialize TEE attestation provider (auto-detect CS vs configfs-tsm vs synthetic)
             let cs_mode = std::path::Path::new("/run/container_launcher/teeserver.sock").exists();
@@ -189,8 +190,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 println!("[gcp] Using synthetic TDX quotes (no hardware)");
                 TeeAttestationProvider::synthetic()
             } else {
-                return Err("No TDX attestation source available. Use --synthetic for local dev, \
-                    or deploy on a TDX CVM / Confidential Space.".into());
+                return Err(
+                    "No TDX attestation source available. Use --synthetic for local dev, \
+                    or deploy on a TDX CVM / Confidential Space."
+                        .into(),
+                );
             };
 
             let receipt_key = ReceiptSigningKey::generate()?;
@@ -209,7 +213,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         return Err(format!(
                             "--expected-model-hash must be 64 hex chars (32 bytes), got {}",
                             bytes.len()
-                        ).into());
+                        )
+                        .into());
                     }
                     let mut arr = [0u8; 32];
                     arr.copy_from_slice(&bytes);
@@ -227,7 +232,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         return Err(format!(
                             "--model-source=local but model directory does not exist: {}",
                             args.model_dir.display()
-                        ).into());
+                        )
+                        .into());
                     }
                     println!(
                         "[gcp] Loading model from local: {}",
@@ -248,8 +254,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                             if &actual != expected {
                                 return Err(format!(
                                     "Model hash mismatch (local): expected {}, got {}",
-                                    hex::encode(expected), hex::encode(actual)
-                                ).into());
+                                    hex::encode(expected),
+                                    hex::encode(actual)
+                                )
+                                .into());
                             }
                             println!("[gcp] Model hash verified: {}", hex::encode(expected));
                         }
@@ -271,12 +279,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     );
                 }
                 "gcs-kms" => {
-                    let kms_key = args.gcp_kms_key.as_ref().ok_or(
-                        "--model-source=gcs-kms requires --gcp-kms-key"
-                    )?;
-                    let wip_audience = args.gcp_wip_audience.as_ref().ok_or(
-                        "--model-source=gcs-kms requires --gcp-wip-audience"
-                    )?;
+                    let kms_key = args
+                        .gcp_kms_key
+                        .as_ref()
+                        .ok_or("--model-source=gcs-kms requires --gcp-kms-key")?;
+                    let wip_audience = args
+                        .gcp_wip_audience
+                        .as_ref()
+                        .ok_or("--model-source=gcs-kms requires --gcp-wip-audience")?;
 
                     use ephemeral_ml_enclave::crypto_util::decrypt_artifact;
                     use ephemeral_ml_enclave::gcp_kms_client::GcpKmsClient;
@@ -302,7 +312,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
                     let config_path = format!("{}/config.json", args.gcp_model_prefix);
                     let tokenizer_path = format!("{}/tokenizer.json", args.gcp_model_prefix);
-                    let weights_enc_path = format!("{}/model.safetensors.enc", args.gcp_model_prefix);
+                    let weights_enc_path =
+                        format!("{}/model.safetensors.enc", args.gcp_model_prefix);
                     let dek_path = format!("{}/wrapped_dek.bin", args.gcp_model_prefix);
 
                     let (config_art, tokenizer_art, weights_enc_art, dek_art) = tokio::join!(
@@ -342,8 +353,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                             if &actual != expected {
                                 return Err(format!(
                                     "Model hash mismatch (gcs-kms): expected {}, got {}",
-                                    hex::encode(expected), hex::encode(actual)
-                                ).into());
+                                    hex::encode(expected),
+                                    hex::encode(actual)
+                                )
+                                .into());
                             }
                             println!("[gcp] Model hash verified: {}", hex::encode(expected));
                         } else {
@@ -377,7 +390,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
                     let expected = expected_model_hash.as_ref().ok_or(
                         "--expected-model-hash is required for gcs source. \
-                         Cannot verify model integrity without a pinned hash."
+                         Cannot verify model integrity without a pinned hash.",
                     )?;
 
                     let config_path = format!("{}/config.json", args.gcp_model_prefix);
@@ -412,7 +425,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     return Err(format!(
                         "Unknown --model-source '{}'. Valid: local, gcs, gcs-kms",
                         other
-                    ).into());
+                    )
+                    .into());
                 }
             }
 
@@ -484,7 +498,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             // Use TDX verifier for peer verification with measurement pinning.
             // Fail-closed: require MRTD in non-synthetic mode.
             let env_mrtd = std::env::var("EPHEMERALML_EXPECTED_MRTD").ok();
-            let peer_mrtd: Option<Vec<u8>> = args.expected_mrtd.as_ref()
+            let peer_mrtd: Option<Vec<u8>> = args
+                .expected_mrtd
+                .as_ref()
                 .or(env_mrtd.as_ref())
                 .and_then(|hex_str| hex::decode(hex_str).ok())
                 .filter(|bytes| bytes.len() == 48);
@@ -636,9 +652,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 // Default to the policy root public key (same trust anchor)
                 "12740b4f2ff1f9dac52cac6db77f3a57950fb15134c8580295c98bd809673444".to_string()
             });
-            let key_bytes = hex::decode(&key_hex).map_err(|e| {
-                format!("EPHEMERALML_MODEL_SIGNING_KEY must be valid hex: {}", e)
-            })?;
+            let key_bytes = hex::decode(&key_hex)
+                .map_err(|e| format!("EPHEMERALML_MODEL_SIGNING_KEY must be valid hex: {}", e))?;
             if key_bytes.len() != 32 || key_bytes.iter().all(|&b| b == 0) {
                 return Err("Model signing key must be 32 non-zero bytes".into());
             }
@@ -693,7 +708,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         eprintln!("[boot] WARNING: EPHEMERALML_EXPECTED_PCR{} has wrong length ({} bytes, expected 48), ignoring", i, bytes.len());
                     }
                     Err(e) => {
-                        eprintln!("[boot] WARNING: EPHEMERALML_EXPECTED_PCR{} invalid hex: {}, ignoring", i, e);
+                        eprintln!(
+                            "[boot] WARNING: EPHEMERALML_EXPECTED_PCR{} invalid hex: {}, ignoring",
+                            i, e
+                        );
                     }
                 }
             }
@@ -701,8 +719,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         if expected_pcrs.is_empty() {
             eprintln!("[boot] WARNING: No EPHEMERALML_EXPECTED_PCR{{0,1,2}} set. Peer Nitro attestation measurements are NOT pinned.");
         }
-        let verifier = NitroVerifier::new(expected_pcrs)
-            .expect("Failed to initialize NitroVerifier");
+        let verifier =
+            NitroVerifier::new(expected_pcrs).expect("Failed to initialize NitroVerifier");
 
         println!("Production stage worker: control=127.0.0.1:5000, data_in=127.0.0.1:5001, data_out→127.0.0.1:5002");
 

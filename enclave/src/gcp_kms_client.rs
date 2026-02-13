@@ -242,7 +242,9 @@ impl GcpKmsClient {
         let nonce_hash: [u8; 32] = Sha256::digest(nonce).into();
 
         let receipt_key = [0u8; 32]; // Not used for KMS auth, placeholder
-        let doc = self.tee_provider.generate_attestation(&nonce_hash, receipt_key)?;
+        let doc = self
+            .tee_provider
+            .generate_attestation(&nonce_hash, receipt_key)?;
 
         // Extract raw quote from the CBOR envelope
         let envelope = crate::tee_provider::TeeAttestationEnvelope::from_cbor(&doc.signature)

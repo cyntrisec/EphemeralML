@@ -254,10 +254,7 @@ impl AttestationProvider for TeeAttestationProvider {
         // Nonce must be exactly 32 bytes for canonical session binding.
         if nonce.len() != 32 {
             return Err(EnclaveError::Enclave(EphemeralError::ValidationError(
-                format!(
-                    "TDX nonce must be exactly 32 bytes, got {}",
-                    nonce.len()
-                ),
+                format!("TDX nonce must be exactly 32 bytes, got {}", nonce.len()),
             )));
         }
         let mut report_data = [0u8; 64];

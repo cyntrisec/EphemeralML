@@ -50,10 +50,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 match client.execute_inference("stage-0", input_tensor).await {
                     Ok(output) => {
                         println!("Inference succeeded: {} floats returned", output.len());
-                        println!(
-                            "First 5 values: {:?}",
-                            &output[..output.len().min(5)]
-                        );
+                        println!("First 5 values: {:?}", &output[..output.len().min(5)]);
                     }
                     Err(e) => {
                         eprintln!("Inference failed: {}", e);

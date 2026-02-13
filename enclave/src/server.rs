@@ -120,17 +120,12 @@ pub async fn run_direct_tcp<A: crate::AttestationProvider + Send + Sync>(
 
         match msg {
             Message::Data(bytes) => {
-                match handle_direct_request(
-                    &bytes,
-                    &engine,
-                    &attestation_provider,
-                    &mut state,
-                ) {
-                    Ok((response_json, n_floats, exec_ms, seq)) => {
-                        channel.send(Bytes::from(response_json)).await?;
+                match handle_direct_request(&bytes, &engine, &attestation_provider, &mut state) {
+                    Ok(result) => {
+                        channel.send(Bytes::from(result.response_json)).await?;
                         println!(
                             "[direct] Response sent: {} floats, {}ms, seq={}",
-                            n_floats, exec_ms, seq,
+                            result.n_floats, result.exec_ms, result.sequence,
                         );
                     }
                     Err(e) => {
@@ -160,17 +155,23 @@ pub async fn run_direct_tcp<A: crate::AttestationProvider + Send + Sync>(
     Ok(())
 }
 
+/// Successful result from a direct-mode inference request.
+struct DirectResult {
+    response_json: Vec<u8>,
+    n_floats: usize,
+    exec_ms: u64,
+    sequence: u64,
+}
+
 /// Process a single direct-mode inference request.
-///
-/// Returns `(response_json, n_floats, exec_ms, sequence_number)` on success.
 fn handle_direct_request<A: crate::AttestationProvider>(
     bytes: &[u8],
     engine: &crate::CandleInferenceEngine,
     attestation_provider: &A,
     state: &mut ephemeral_ml_common::transport_types::ConnectionState,
-) -> std::result::Result<(Vec<u8>, usize, u64, u64), Box<dyn std::error::Error + Send + Sync>> {
-    let request: DirectInferenceRequest = serde_json::from_slice(bytes)
-        .map_err(|e| format!("Bad request JSON: {}", e))?;
+) -> std::result::Result<DirectResult, Box<dyn std::error::Error + Send + Sync>> {
+    let request: DirectInferenceRequest =
+        serde_json::from_slice(bytes).map_err(|e| format!("Bad request JSON: {}", e))?;
 
     println!(
         "[direct] Inference request: model_id={}, input_len={}",
@@ -206,7 +207,12 @@ fn handle_direct_request<A: crate::AttestationProvider>(
         receipt,
     };
     let response_json = serde_json::to_vec(&response)?;
-    Ok((response_json, n_floats, exec_ms, seq))
+    Ok(DirectResult {
+        response_json,
+        n_floats,
+        exec_ms,
+        sequence: seq,
+    })
 }
 
 /// Start a pipeline stage worker using TCP with accept-retry resilience.
@@ -243,10 +249,8 @@ pub async fn run_stage_tcp<E: StageExecutor + 'static>(
         let mut last_err = None;
         let mut result = None;
         for attempt in 0..MAX_ACCEPT_RETRIES {
-            let (ctrl_stream, ctrl_peer) = ctrl_listener
-                .accept()
-                .await
-                .map_err(PipelineError::Io)?;
+            let (ctrl_stream, ctrl_peer) =
+                ctrl_listener.accept().await.map_err(PipelineError::Io)?;
             ctrl_stream.set_nodelay(true).ok();
 
             match runtime
@@ -257,9 +261,7 @@ pub async fn run_stage_tcp<E: StageExecutor + 'static>(
                     result = Some(r);
                     break;
                 }
-                Err(
-                    e @ PipelineError::Transport(_) | e @ PipelineError::Io(_),
-                ) => {
+                Err(e @ PipelineError::Transport(_) | e @ PipelineError::Io(_)) => {
                     eprintln!(
                         "[server] Malformed connection from {} (attempt {}/{}): {}",
                         ctrl_peer,
@@ -276,9 +278,7 @@ pub async fn run_stage_tcp<E: StageExecutor + 'static>(
             Some(r) => r,
             None => {
                 return Err(last_err.unwrap_or_else(|| {
-                    PipelineError::Protocol(
-                        "max control-accept retries exhausted".to_string(),
-                    )
+                    PipelineError::Protocol("max control-accept retries exhausted".to_string())
                 }))
             }
         }
@@ -287,10 +287,7 @@ pub async fn run_stage_tcp<E: StageExecutor + 'static>(
     // Data phase: accept data_in and connect data_out concurrently.
     let (din_stream, dout_stream) = tokio::try_join!(
         async {
-            let (stream, _peer) = din_listener
-                .accept()
-                .await
-                .map_err(PipelineError::Io)?;
+            let (stream, _peer) = din_listener.accept().await.map_err(PipelineError::Io)?;
             stream.set_nodelay(true).ok();
             Ok(stream)
         },

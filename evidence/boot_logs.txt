@@ -1,0 +1,22 @@
+Feb 13 20:15:25 ephemeralml-cvm systemd[1]: Started container-runner.service.
+Feb 13 20:15:26 ephemeralml-cvm confidential_sp[1302]: ToolLogProto logjam_tag=tattler_initgoogle  build_timestamp:1756162185 host_name:"ephemeralml-cvm" language:"cpp" log_path:"//google/cloud/confidentialcomputing/phenotype:confidential_space_experiments" log_timestamp:1771013726 logger:"syslog_cpp" os:LINUX_OS tool_type:"cmdline" uid:0 version:""
+Feb 13 20:15:34 ephemeralml-cvm cs_container_launcher[1253]: EphemeralML Enclave v2.0 (GCP Confidential VM Mode)
+Feb 13 20:15:34 ephemeralml-cvm cs_container_launcher[1253]: [gcp] Using synthetic TDX quotes (no hardware)
+Feb 13 20:15:34 ephemeralml-cvm cs_container_launcher[1253]: [gcp] Loading model from local: /app/model
+Feb 13 20:15:34 ephemeralml-cvm cs_container_launcher[1253]: [gcp] Model 'stage-0' loaded in 238.5ms (local, 86.7 MB)
+Feb 13 20:15:35 ephemeralml-cvm cs_container_launcher[1253]: [gcp] CS token received but claims parse failed: Enclave error: Serialization error: JWT claims parse failed: invalid type: string "fa7c80894a6ea7dc871b3c7dfe21511f", expected a sequence at line 1 column 308
+Feb 13 20:15:35 ephemeralml-cvm cs_container_launcher[1253]: ========================================
+Feb 13 20:15:35 ephemeralml-cvm cs_container_launcher[1253]:   TRUST EVIDENCE BUNDLE
+Feb 13 20:15:35 ephemeralml-cvm cs_container_launcher[1253]: ========================================
+Feb 13 20:15:35 ephemeralml-cvm cs_container_launcher[1253]:   Platform:           tdx
+Feb 13 20:15:35 ephemeralml-cvm cs_container_launcher[1253]:   Model ID:           stage-0
+Feb 13 20:15:35 ephemeralml-cvm cs_container_launcher[1253]:   Quote Hash:         6167e32973d28d2b55c546a3fb8c428a825106dff09858956366a8600add6a94
+Feb 13 20:15:35 ephemeralml-cvm cs_container_launcher[1253]:   HPKE Public Key:    7b5e5b064bab0031e2d6ba945916d1cf
+Feb 13 20:15:35 ephemeralml-cvm cs_container_launcher[1253]:   Receipt Sign Key:   fa7c80894a6ea7dc871b3c7dfe21511f
+Feb 13 20:15:35 ephemeralml-cvm cs_container_launcher[1253]:   Model Hash:         53aa51172d142c89d9012cce15ae4d6cc0ca6895895114379cacb4fab128d9db
+Feb 13 20:15:35 ephemeralml-cvm cs_container_launcher[1253]: ========================================
+Feb 13 20:15:35 ephemeralml-cvm cs_container_launcher[1253]: [gcp] Stage worker: control=0.0.0.0:9000, data_in=0.0.0.0:9001, data_out=0.0.0.0:9002
+Feb 13 20:16:42 ephemeralml-cvm cs_container_launcher[1253]: Error: Transport(Session(Closed))
+Feb 13 20:16:42 ephemeralml-cvm systemd[1]: container-runner.service: Main process exited, code=exited, status=4/NOPERMISSION
+Feb 13 20:16:42 ephemeralml-cvm systemd[1]: container-runner.service: Failed with result 'exit-code'.
+Feb 13 20:16:42 ephemeralml-cvm systemd[1]: container-runner.service: Consumed 3.695s CPU time.

@@ -147,7 +147,10 @@ async fn direct_mode_happy_path() {
 
     // Verify receipt signature if we got the server's public key
     if let Some(pk_bytes) = server_pk {
-        assert_eq!(pk_bytes, receipt_pk, "Server should advertise its receipt key");
+        assert_eq!(
+            pk_bytes, receipt_pk,
+            "Server should advertise its receipt key"
+        );
         let vk = ed25519_dalek::VerifyingKey::from_bytes(&pk_bytes).unwrap();
         assert!(
             response.receipt.verify_signature(&vk).unwrap(),
