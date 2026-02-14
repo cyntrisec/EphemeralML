@@ -78,7 +78,7 @@ impl SecureEnclaveClient {
             server_receipt_signing_key: None,
             server_attestation_hash: None,
             last_sequence_number: u64::MAX, // sentinel: no receipts seen yet
-            max_receipt_age_secs: 300, // 5 minutes
+            max_receipt_age_secs: 300,      // 5 minutes
         }
     }
 

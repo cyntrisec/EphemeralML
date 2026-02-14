@@ -481,11 +481,7 @@ impl confidential_ml_transport::AttestationProvider for TeeAttestationBridge {
                 handshake_pk.copy_from_slice(pk);
             }
             self.inner
-                .generate_transport_attestation(
-                    nonce_bytes,
-                    &handshake_pk,
-                    self.receipt_public_key,
-                )
+                .generate_transport_attestation(nonce_bytes, &handshake_pk, self.receipt_public_key)
                 .map_err(|e| {
                     confidential_ml_transport::error::AttestError::GenerationFailed(format!(
                         "TEE attestation failed: {}",

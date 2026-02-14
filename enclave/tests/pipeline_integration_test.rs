@@ -364,7 +364,9 @@ async fn receipt_chain_tamper_detection() {
     // Re-sign so signature is valid on the tampered data
     tampered_receipt0.sign(&key0).unwrap();
     assert!(
-        tampered_receipt0.verify_signature(&key0.public_key).unwrap(),
+        tampered_receipt0
+            .verify_signature(&key0.public_key)
+            .unwrap(),
         "Tampered receipt has valid signature (re-signed)"
     );
 

@@ -19,7 +19,10 @@ use sha2::{Digest, Sha256};
 /// key-encryption-key (KEK) that only attested workloads can use. Here we use
 /// XOR with a "policy key" to simulate the wrap/unwrap without real KMS.
 fn kms_wrap_dek(dek: &[u8; 32], policy_key: &[u8; 32]) -> Vec<u8> {
-    dek.iter().zip(policy_key.iter()).map(|(a, b)| a ^ b).collect()
+    dek.iter()
+        .zip(policy_key.iter())
+        .map(|(a, b)| a ^ b)
+        .collect()
 }
 
 fn kms_unwrap_dek(wrapped: &[u8], policy_key: &[u8; 32]) -> Result<[u8; 32], String> {
@@ -137,10 +140,7 @@ fn kms_deny_tampered_model_weights_detected() {
     );
 
     println!("DENY: Model weight substitution detected via hash mismatch.");
-    println!(
-        "  Expected hash: {}",
-        hex::encode(expected_hash)
-    );
+    println!("  Expected hash: {}", hex::encode(expected_hash));
     println!(
         "  Tampered hash: {}",
         hex::encode(Sha256::digest(tampered_weights))
@@ -167,7 +167,10 @@ fn kms_deny_model_swap_with_valid_dek() {
 
     // Attacker cannot decrypt model A (wrong DEK)
     let result_b_key = decrypt_artifact(&model_a_enc, &attacker_dek);
-    assert!(result_b_key.is_err(), "Attacker DEK must not decrypt model A");
+    assert!(
+        result_b_key.is_err(),
+        "Attacker DEK must not decrypt model A"
+    );
 
     // If attacker somehow replaces encrypted blob, the hash check catches it
     let unwrapped = kms_unwrap_dek(&wrapped_dek, &policy_key).unwrap();
@@ -242,7 +245,10 @@ fn kms_full_pipeline_simulation() {
     println!("  Model size:    {} bytes", model_weights.len());
     println!("  Encrypted:     {} bytes", encrypted_model.len());
     println!("  Model hash:    {}...", &hex::encode(model_hash)[..16]);
-    println!("  DEK:           {}... (zeroed after use)", &hex::encode(dek)[..16]);
+    println!(
+        "  DEK:           {}... (zeroed after use)",
+        &hex::encode(dek)[..16]
+    );
 
     // === Deny: same pipeline, wrong identity ===
     let wrong_policy_key: [u8; 32] = [0xFF; 32];

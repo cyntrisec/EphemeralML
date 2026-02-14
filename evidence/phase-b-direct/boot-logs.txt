@@ -1,0 +1,1308 @@
+Feb 14 00:18:22 localhost kernel: tdx: Guest detected
+Feb 14 00:18:22 localhost kernel: Linux version 6.1.155+ (builder@fcc22949241e) (Chromium OS 16.0_pre484197_p20230405-r10 clang version 16.0.0 (/var/tmp/portage/sys-devel/llvm-16.0_pre484197_p20230405-r10/work/llvm-16.0_pre484197_p20230405/clang 2916b99182752b1aece8cc4479d8d6a20b5e02da), LLD 16.0.0) #1 SMP PREEMPT_DYNAMIC Tue Dec  2 17:15:18 UTC 2025
+Feb 14 00:18:22 localhost kernel: Command line: BOOT_IMAGE=/syslinux/vmlinuz.B init=/usr/lib/systemd/systemd rootwait ro noresume loglevel=7 console=tty1 console=ttyS0,115200 security=apparmor virtio_net.napi_tx=1 nmi_watchdog=0 csm.disabled=1 loadpin.exclude=kernel-module,firmware modules-load=loadpin_trigger firmware_class.path=/var/lib/nvidia/firmware module.sig_enforce=1 dm_verity.error_behavior=3 dm_verity.max_bios=-1 dm_verity.dev_wait=1 i915.modeset=1 cros_efi systemd.mask=update-engine.service confidential-space.hardened=false systemd.mask=konlet-startup.service systemd.default_timeout_start_sec=900s cos.protected_stateful_partition=m ds=nocloud;s=/usr/share/oem/ root=/dev/dm-0 "dm-mod.create=vroot,,,ro,0 4077568 verity 0 PARTUUID=DECE42F3-29F3-B049-9DB7-232E3762A6C5 PARTUUID=DECE42F3-29F3-B049-9DB7-232E3762A6C5 4096 4096 509696 509696 sha256 cac8c1e7e327360264c3a3de720dc916720a986916c8510fc756212820cdd639 306036ff0558da5f5550f4ba04f80c68333ee0c91c2dab85847e24615d0c97c5;oemroot,,,ro,0 1024000 verity 
+Feb 14 00:18:22 localhost kernel: x86/split lock detection: #DB: warning on user-space bus_locks
+Feb 14 00:18:22 localhost kernel: BIOS-provided physical RAM map:
+Feb 14 00:18:22 localhost kernel: BIOS-e820: [mem 0x0000000000000000-0x000000000080bfff] usable
+Feb 14 00:18:22 localhost kernel: BIOS-e820: [mem 0x000000000080c000-0x000000000080cfff] ACPI NVS
+Feb 14 00:18:22 localhost kernel: BIOS-e820: [mem 0x000000000080d000-0x00000000015fffff] usable
+Feb 14 00:18:22 localhost kernel: BIOS-e820: [mem 0x0000000001600000-0x000000000161ffff] reserved
+Feb 14 00:18:22 localhost kernel: BIOS-e820: [mem 0x0000000001620000-0x00000000bd31efff] usable
+Feb 14 00:18:22 localhost kernel: BIOS-e820: [mem 0x00000000bd31f000-0x00000000bd325fff] ACPI data
+Feb 14 00:18:22 localhost kernel: BIOS-e820: [mem 0x00000000bd326000-0x00000000bf2ecfff] usable
+Feb 14 00:18:22 localhost kernel: BIOS-e820: [mem 0x00000000bf2ed000-0x00000000bf4ecfff] reserved
+Feb 14 00:18:22 localhost kernel: BIOS-e820: [mem 0x00000000bf4ed000-0x00000000bf56ffff] usable
+Feb 14 00:18:22 localhost kernel: BIOS-e820: [mem 0x00000000bf570000-0x00000000bf57efff] ACPI data
+Feb 14 00:18:22 localhost kernel: BIOS-e820: [mem 0x00000000bf57f000-0x00000000bf5fefff] ACPI NVS
+Feb 14 00:18:22 localhost kernel: BIOS-e820: [mem 0x00000000bf5ff000-0x00000000bffdffff] usable
+Feb 14 00:18:22 localhost kernel: BIOS-e820: [mem 0x00000000bffe0000-0x00000000bfffffff] reserved
+Feb 14 00:18:22 localhost kernel: BIOS-e820: [mem 0x00000000ffe00000-0x000000043fffffff] usable
+Feb 14 00:18:22 localhost kernel: NX (Execute Disable) protection: active
+Feb 14 00:18:22 localhost kernel: efi: EFI v2.70 by EDK II
+Feb 14 00:18:22 localhost kernel: efi: ACPI=0xbf57e000 ACPI 2.0=0xbf57e014 TPMFinalLog=0xbf5af000 SMBIOS=0xbf3ca000 MEMATTR=0xbd319698 MOKvar=0xbf3c6000 TPMEventLog=0xbd31f018 
+Feb 14 00:18:22 localhost kernel: SMBIOS 2.4 present.
+Feb 14 00:18:22 localhost kernel: DMI: Google Google Compute Engine/Google Compute Engine, BIOS Google 09/24/2025
+Feb 14 00:18:22 localhost kernel: Hypervisor detected: KVM
+Feb 14 00:18:22 localhost kernel: tsc: Detected 2700.000 MHz processor
+Feb 14 00:18:22 localhost kernel: e820: update [mem 0x00000000-0x00000fff] usable ==> reserved
+Feb 14 00:18:22 localhost kernel: e820: remove [mem 0x000a0000-0x000fffff] usable
+Feb 14 00:18:22 localhost kernel: last_pfn = 0x440000 max_arch_pfn = 0x400000000
+Feb 14 00:18:22 localhost kernel: Disabled
+Feb 14 00:18:22 localhost kernel: x86/PAT: MTRRs disabled, skipping PAT initialization too.
+Feb 14 00:18:22 localhost kernel: x86/PAT: Configuration [0-7]: WB  WT  UC- UC  WB  WT  UC- UC  
+Feb 14 00:18:22 localhost kernel: x2apic: enabled by BIOS, switching to x2apic ops
+Feb 14 00:18:22 localhost kernel: last_pfn = 0x100000 max_arch_pfn = 0x400000000
+Feb 14 00:18:22 localhost kernel: software IO TLB: SWIOTLB bounce buffer size adjusted to 982MB
+Feb 14 00:18:22 localhost kernel: Using GB pages for direct mapping
+Feb 14 00:18:22 localhost kernel: Secure boot enabled
+Feb 14 00:18:22 localhost kernel: ACPI: Early table checksum verification disabled
+Feb 14 00:18:22 localhost kernel: ACPI: RSDP 0x00000000BF57E014 000024 (v02 Google)
+Feb 14 00:18:22 localhost kernel: ACPI: XSDT 0x00000000BF57D0E8 000064 (v01 Google GOOGFACP 00000001      01000013)
+Feb 14 00:18:22 localhost kernel: ACPI: FACP 0x00000000BF577000 0000F4 (v02 Google GOOGFACP 00000001 GOOG 00000001)
+Feb 14 00:18:22 localhost kernel: ACPI: DSDT 0x00000000BF578000 001A64 (v01 Google GOOGDSDT 00000001 GOOG 00000001)
+Feb 14 00:18:22 localhost kernel: ACPI: FACS 0x00000000BF5AA000 000040
+Feb 14 00:18:22 localhost kernel: ACPI: CCEL 0x00000000BF57C000 000038 (v01 INTEL  EDK2     00000002      01000013)
+Feb 14 00:18:22 localhost kernel: ACPI: SSDT 0x00000000BF57B000 000316 (v02 GOOGLE Tpm2Tabl 00001000 INTL 20250404)
+Feb 14 00:18:22 localhost kernel: ACPI: TPM2 0x00000000BF57A000 000034 (v04 GOOGLE          00000001 GOOG 00000001)
+Feb 14 00:18:22 localhost kernel: ACPI: SRAT 0x00000000BF576000 0000E8 (v03 Google GOOGSRAT 00000001 GOOG 00000001)
+Feb 14 00:18:22 localhost kernel: ACPI: SSDT 0x00000000BF574000 000A42 (v01 Google GOOGSSDT 00000001 GOOG 00000001)
+Feb 14 00:18:22 localhost kernel: ACPI: WAET 0x00000000BF573000 000028 (v01 Google GOOGWAET 00000001 GOOG 00000001)
+Feb 14 00:18:22 localhost kernel: ACPI: APIC 0x00000000BF572000 000096 (v05 Google GOOGAPIC 00000001 GOOG 00000001)
+Feb 14 00:18:22 localhost kernel: ACPI: Reserving FACP table memory at [mem 0xbf577000-0xbf5770f3]
+Feb 14 00:18:22 localhost kernel: ACPI: Reserving DSDT table memory at [mem 0xbf578000-0xbf579a63]
+Feb 14 00:18:22 localhost kernel: ACPI: Reserving FACS table memory at [mem 0xbf5aa000-0xbf5aa03f]
+Feb 14 00:18:22 localhost kernel: ACPI: Reserving CCEL table memory at [mem 0xbf57c000-0xbf57c037]
+Feb 14 00:18:22 localhost kernel: ACPI: Reserving SSDT table memory at [mem 0xbf57b000-0xbf57b315]
+Feb 14 00:18:22 localhost kernel: ACPI: Reserving TPM2 table memory at [mem 0xbf57a000-0xbf57a033]
+Feb 14 00:18:22 localhost kernel: ACPI: Reserving SRAT table memory at [mem 0xbf576000-0xbf5760e7]
+Feb 14 00:18:22 localhost kernel: ACPI: Reserving SSDT table memory at [mem 0xbf574000-0xbf574a41]
+Feb 14 00:18:22 localhost kernel: ACPI: Reserving WAET table memory at [mem 0xbf573000-0xbf573027]
+Feb 14 00:18:22 localhost kernel: ACPI: Reserving APIC table memory at [mem 0xbf572000-0xbf572095]
+Feb 14 00:18:22 localhost kernel: Setting APIC routing to cluster x2apic.
+Feb 14 00:18:22 localhost kernel: SRAT: PXM 0 -> APIC 0x00 -> Node 0
+Feb 14 00:18:22 localhost kernel: SRAT: PXM 0 -> APIC 0x01 -> Node 0
+Feb 14 00:18:22 localhost kernel: SRAT: PXM 0 -> APIC 0x02 -> Node 0
+Feb 14 00:18:22 localhost kernel: SRAT: PXM 0 -> APIC 0x03 -> Node 0
+Feb 14 00:18:22 localhost kernel: ACPI: SRAT: Node 0 PXM 0 [mem 0x00000000-0x0009ffff]
+Feb 14 00:18:22 localhost kernel: ACPI: SRAT: Node 0 PXM 0 [mem 0x00100000-0xbfffffff]
+Feb 14 00:18:22 localhost kernel: ACPI: SRAT: Node 0 PXM 0 [mem 0x100000000-0x43fffffff]
+Feb 14 00:18:22 localhost kernel: NUMA: Node 0 [mem 0x00000000-0x0009ffff] + [mem 0x00100000-0xbfffffff] -> [mem 0x00000000-0xbfffffff]
+Feb 14 00:18:22 localhost kernel: NUMA: Node 0 [mem 0x00000000-0xbfffffff] + [mem 0x100000000-0x43fffffff] -> [mem 0x00000000-0x43fffffff]
+Feb 14 00:18:22 localhost kernel: NODE_DATA(0) allocated [mem 0x43fff9000-0x43fffefff]
+Feb 14 00:18:22 localhost kernel: Zone ranges:
+Feb 14 00:18:22 localhost kernel:   DMA      [mem 0x0000000000001000-0x0000000000ffffff]
+Feb 14 00:18:22 localhost kernel:   DMA32    [mem 0x0000000001000000-0x00000000ffffffff]
+Feb 14 00:18:22 localhost kernel:   Normal   [mem 0x0000000100000000-0x000000043fffffff]
+Feb 14 00:18:22 localhost kernel:   Device   empty
+Feb 14 00:18:22 localhost kernel: Movable zone start for each node
+Feb 14 00:18:22 localhost kernel: Early memory node ranges
+Feb 14 00:18:22 localhost kernel:   node   0: [mem 0x0000000000001000-0x000000000009ffff]
+Feb 14 00:18:22 localhost kernel:   node   0: [mem 0x0000000000100000-0x000000000080bfff]
+Feb 14 00:18:22 localhost kernel:   node   0: [mem 0x000000000080d000-0x00000000015fffff]
+Feb 14 00:18:22 localhost kernel:   node   0: [mem 0x0000000001620000-0x00000000bd31efff]
+Feb 14 00:18:22 localhost kernel:   node   0: [mem 0x00000000bd326000-0x00000000bf2ecfff]
+Feb 14 00:18:22 localhost kernel:   node   0: [mem 0x00000000bf4ed000-0x00000000bf56ffff]
+Feb 14 00:18:22 localhost kernel:   node   0: [mem 0x00000000bf5ff000-0x00000000bffdffff]
+Feb 14 00:18:22 localhost kernel:   node   0: [mem 0x00000000ffe00000-0x000000043fffffff]
+Feb 14 00:18:22 localhost kernel: Initmem setup node 0 [mem 0x0000000000001000-0x000000043fffffff]
+Feb 14 00:18:22 localhost kernel: On node 0, zone DMA: 1 pages in unavailable ranges
+Feb 14 00:18:22 localhost kernel: On node 0, zone DMA: 96 pages in unavailable ranges
+Feb 14 00:18:22 localhost kernel: On node 0, zone DMA: 1 pages in unavailable ranges
+Feb 14 00:18:22 localhost kernel: On node 0, zone DMA32: 32 pages in unavailable ranges
+Feb 14 00:18:22 localhost kernel: On node 0, zone DMA32: 7 pages in unavailable ranges
+Feb 14 00:18:22 localhost kernel: On node 0, zone DMA32: 512 pages in unavailable ranges
+Feb 14 00:18:22 localhost kernel: On node 0, zone DMA32: 143 pages in unavailable ranges
+Feb 14 00:18:22 localhost kernel: On node 0, zone DMA32: 32288 pages in unavailable ranges
+Feb 14 00:18:22 localhost kernel: ACPI: LAPIC_NMI (acpi_id[0xff] dfl dfl lint[0x1])
+Feb 14 00:18:22 localhost kernel: IOAPIC[0]: apic_id 0, version 17, address 0xfec00000, GSI 0-23
+Feb 14 00:18:22 localhost kernel: ACPI: INT_SRC_OVR (bus 0 bus_irq 5 global_irq 5 high level)
+Feb 14 00:18:22 localhost kernel: ACPI: INT_SRC_OVR (bus 0 bus_irq 9 global_irq 9 high level)
+Feb 14 00:18:22 localhost kernel: ACPI: INT_SRC_OVR (bus 0 bus_irq 10 global_irq 10 high level)
+Feb 14 00:18:22 localhost kernel: ACPI: INT_SRC_OVR (bus 0 bus_irq 11 global_irq 11 high level)
+Feb 14 00:18:22 localhost kernel: ACPI: Found unsupported MADT entry (type = 0x10)
+Feb 14 00:18:22 localhost kernel: ACPI: Using ACPI (MADT) for SMP configuration information
+Feb 14 00:18:22 localhost kernel: smpboot: Allowing 4 CPUs, 0 hotplug CPUs
+Feb 14 00:18:22 localhost kernel: [mem 0xc0000000-0xffdfffff] available for PCI devices
+Feb 14 00:18:22 localhost kernel: Booting paravirtualized kernel on KVM
+Feb 14 00:18:22 localhost kernel: clocksource: refined-jiffies: mask: 0xffffffff max_cycles: 0xffffffff, max_idle_ns: 1910969940391419 ns
+Feb 14 00:18:22 localhost kernel: setup_percpu: NR_CPUS:512 nr_cpumask_bits:4 nr_cpu_ids:4 nr_node_ids:1
+Feb 14 00:18:22 localhost kernel: percpu: Embedded 62 pages/cpu s217088 r8192 d28672 u524288
+Feb 14 00:18:22 localhost kernel: pcpu-alloc: s217088 r8192 d28672 u524288 alloc=1*2097152
+Feb 14 00:18:22 localhost kernel: pcpu-alloc: [0] 0 1 2 3 
+Feb 14 00:18:22 localhost kernel: kvm-guest: PV spinlocks enabled
+Feb 14 00:18:22 localhost kernel: PV qspinlock hash table entries: 256 (order: 0, 4096 bytes, linear)
+Feb 14 00:18:22 localhost kernel: Fallback order for Node 0: 0 
+Feb 14 00:18:22 localhost kernel: Built 1 zonelists, mobility grouping on.  Total pages: 4126283
+Feb 14 00:18:22 localhost kernel: Policy zone: Normal
+Feb 14 00:18:22 localhost kernel: Kernel command line: BOOT_IMAGE=/syslinux/vmlinuz.B init=/usr/lib/systemd/systemd rootwait ro noresume loglevel=7 console=tty1 console=ttyS0,115200 security=apparmor virtio_net.napi_tx=1 nmi_watchdog=0 csm.disabled=1 loadpin.exclude=kernel-module,firmware modules-load=loadpin_trigger firmware_class.path=/var/lib/nvidia/firmware module.sig_enforce=1 dm_verity.error_behavior=3 dm_verity.max_bios=-1 dm_verity.dev_wait=1 i915.modeset=1 cros_efi systemd.mask=update-engine.service confidential-space.hardened=false systemd.mask=konlet-startup.service systemd.default_timeout_start_sec=900s cos.protected_stateful_partition=m ds=nocloud;s=/usr/share/oem/ root=/dev/dm-0 "dm-mod.create=vroot,,,ro,0 4077568 verity 0 PARTUUID=DECE42F3-29F3-B049-9DB7-232E3762A6C5 PARTUUID=DECE42F3-29F3-B049-9DB7-232E3762A6C5 4096 4096 509696 509696 sha256 cac8c1e7e327360264c3a3de720dc916720a986916c8510fc756212820cdd639 306036ff0558da5f5550f4ba04f80c68333ee0c91c2dab85847e24615d0c97c5;oemroot,,,ro,0 1024000 
+Feb 14 00:18:22 localhost kernel: Unknown kernel command line parameters "noresume cros_efi BOOT_IMAGE=/syslinux/vmlinuz.B modules-load=loadpin_trigger ds=nocloud;s=/usr/share/oem/", will be passed to user space.
+Feb 14 00:18:22 localhost kernel: random: crng init done
+Feb 14 00:18:22 localhost kernel: Dentry cache hash table entries: 2097152 (order: 12, 16777216 bytes, linear)
+Feb 14 00:18:22 localhost kernel: Inode-cache hash table entries: 1048576 (order: 11, 8388608 bytes, linear)
+Feb 14 00:18:22 localhost kernel: mem auto-init: stack:all(zero), heap alloc:off, heap free:off
+Feb 14 00:18:22 localhost kernel: software IO TLB: area num 4.
+Feb 14 00:18:22 localhost kernel: software IO TLB: SWIOTLB bounce buffer size roundup to 1024MB
+Feb 14 00:18:22 localhost kernel: Memory: 2170860K/16775968K available (16396K kernel code, 2574K rwdata, 8820K rodata, 2128K init, 4312K bss, 1447584K reserved, 0K cma-reserved)
+Feb 14 00:18:22 localhost kernel: SLUB: HWalign=64, Order=0-3, MinObjects=0, CPUs=4, Nodes=1
+Feb 14 00:18:22 localhost kernel: ftrace: allocating 43195 entries in 169 pages
+Feb 14 00:18:22 localhost kernel: ftrace: allocated 169 pages with 4 groups
+Feb 14 00:18:22 localhost kernel: Dynamic Preempt: none
+Feb 14 00:18:22 localhost kernel: rcu: Preemptible hierarchical RCU implementation.
+Feb 14 00:18:22 localhost kernel: rcu:         RCU restricting CPUs from NR_CPUS=512 to nr_cpu_ids=4.
+Feb 14 00:18:22 localhost kernel:         Trampoline variant of Tasks RCU enabled.
+Feb 14 00:18:22 localhost kernel:         Rude variant of Tasks RCU enabled.
+Feb 14 00:18:22 localhost kernel:         Tracing variant of Tasks RCU enabled.
+Feb 14 00:18:22 localhost kernel: rcu: RCU calculated value of scheduler-enlistment delay is 100 jiffies.
+Feb 14 00:18:22 localhost kernel: rcu: Adjusting geometry for rcu_fanout_leaf=16, nr_cpu_ids=4
+Feb 14 00:18:22 localhost kernel: NR_IRQS: 33024, nr_irqs: 456, preallocated irqs: 16
+Feb 14 00:18:22 localhost kernel: rcu: srcu_init: Setting srcu_struct sizes based on contention.
+Feb 14 00:18:22 localhost kernel: Console: colour dummy device 80x25
+Feb 14 00:18:22 localhost kernel: printk: console [tty1] enabled
+Feb 14 00:18:22 localhost kernel: printk: console [ttyS0] enabled
+Feb 14 00:18:22 localhost kernel: ACPI: Core revision 20220331
+Feb 14 00:18:22 localhost kernel: APIC: Switch to symmetric I/O mode setup
+Feb 14 00:18:22 localhost kernel: Switched APIC routing to physical x2apic.
+Feb 14 00:18:22 localhost kernel: clocksource: tsc-early: mask: 0xffffffffffffffff max_cycles: 0x26eb3e3cc63, max_idle_ns: 440795236593 ns
+Feb 14 00:18:22 localhost kernel: Calibrating delay loop (skipped), value calculated using timer frequency.. 5400.00 BogoMIPS (lpj=2700000)
+Feb 14 00:18:22 localhost kernel: x86/cpu: User Mode Instruction Prevention (UMIP) activated
+Feb 14 00:18:22 localhost kernel: process: using TDX aware idle routine
+Feb 14 00:18:22 localhost kernel: Last level iTLB entries: 4KB 0, 2MB 0, 4MB 0
+Feb 14 00:18:22 localhost kernel: Last level dTLB entries: 4KB 0, 2MB 0, 4MB 0, 1GB 0
+Feb 14 00:18:22 localhost kernel: Spectre V1 : Mitigation: usercopy/swapgs barriers and __user pointer sanitization
+Feb 14 00:18:22 localhost kernel: Spectre V2 : Mitigation: Enhanced / Automatic IBRS
+Feb 14 00:18:22 localhost kernel: Spectre V2 : Spectre v2 / PBRSB-eIBRS: Retire a single CALL on VMEXIT
+Feb 14 00:18:22 localhost kernel: Spectre V2 : mitigation: Enabling conditional Indirect Branch Prediction Barrier
+Feb 14 00:18:22 localhost kernel: Speculative Store Bypass: Mitigation: Speculative Store Bypass disabled via prctl
+Feb 14 00:18:22 localhost kernel: x86/fpu: Supporting XSAVE feature 0x001: 'x87 floating point registers'
+Feb 14 00:18:22 localhost kernel: x86/fpu: Supporting XSAVE feature 0x002: 'SSE registers'
+Feb 14 00:18:22 localhost kernel: x86/fpu: Supporting XSAVE feature 0x004: 'AVX registers'
+Feb 14 00:18:22 localhost kernel: x86/fpu: Supporting XSAVE feature 0x020: 'AVX-512 opmask'
+Feb 14 00:18:22 localhost kernel: x86/fpu: Supporting XSAVE feature 0x040: 'AVX-512 Hi256'
+Feb 14 00:18:22 localhost kernel: x86/fpu: Supporting XSAVE feature 0x080: 'AVX-512 ZMM_Hi256'
+Feb 14 00:18:22 localhost kernel: x86/fpu: Supporting XSAVE feature 0x20000: 'AMX Tile config'
+Feb 14 00:18:22 localhost kernel: x86/fpu: Supporting XSAVE feature 0x40000: 'AMX Tile data'
+Feb 14 00:18:22 localhost kernel: x86/fpu: xstate_offset[2]:  576, xstate_sizes[2]:  256
+Feb 14 00:18:22 localhost kernel: x86/fpu: xstate_offset[5]:  832, xstate_sizes[5]:   64
+Feb 14 00:18:22 localhost kernel: x86/fpu: xstate_offset[6]:  896, xstate_sizes[6]:  512
+Feb 14 00:18:22 localhost kernel: x86/fpu: xstate_offset[7]: 1408, xstate_sizes[7]: 1024
+Feb 14 00:18:22 localhost kernel: x86/fpu: xstate_offset[17]: 2432, xstate_sizes[17]:   64
+Feb 14 00:18:22 localhost kernel: x86/fpu: xstate_offset[18]: 2496, xstate_sizes[18]: 8192
+Feb 14 00:18:22 localhost kernel: x86/fpu: Enabled xstate features 0x600e7, context size is 10688 bytes, using 'compacted' format.
+Feb 14 00:18:22 localhost kernel: Freeing SMP alternatives memory: 48K
+Feb 14 00:18:22 localhost kernel: Memory Encryption Features active: Intel TDX
+Feb 14 00:18:22 localhost kernel: pid_max: default: 32768 minimum: 301
+Feb 14 00:18:22 localhost kernel: LSM: Security Framework initializing
+Feb 14 00:18:22 localhost kernel: Yama: becoming mindful.
+Feb 14 00:18:22 localhost kernel: LoadPin: ready to pin (currently enforcing)
+Feb 14 00:18:22 localhost kernel: LoadPin: excluding: kernel-module
+Feb 14 00:18:22 localhost kernel: LoadPin: excluding: firmware
+Feb 14 00:18:22 localhost kernel: AppArmor: AppArmor initialized
+Feb 14 00:18:22 localhost kernel: LSM support for eBPF active
+Feb 14 00:18:22 localhost kernel: Mount-cache hash table entries: 32768 (order: 6, 262144 bytes, linear)
+Feb 14 00:18:22 localhost kernel: Mountpoint-cache hash table entries: 32768 (order: 6, 262144 bytes, linear)
+Feb 14 00:18:22 localhost kernel: smpboot: CPU0: Intel InteTD X   l (family: 0x6, model: 0x8f, stepping: 0x8)
+Feb 14 00:18:22 localhost kernel: cblist_init_generic: Setting adjustable number of callback queues.
+Feb 14 00:18:22 localhost kernel: RCU Tasks: Setting shift to 2 and lim to 1 rcu_task_cb_adjust=1 rcu_task_cpu_ids=4.
+Feb 14 00:18:22 localhost kernel: cblist_init_generic: Setting adjustable number of callback queues.
+Feb 14 00:18:22 localhost kernel: RCU Tasks Rude: Setting shift to 2 and lim to 1 rcu_task_cb_adjust=1 rcu_task_cpu_ids=4.
+Feb 14 00:18:22 localhost kernel: cblist_init_generic: Setting adjustable number of callback queues.
+Feb 14 00:18:22 localhost kernel: RCU Tasks Trace: Setting shift to 2 and lim to 1 rcu_task_cb_adjust=1 rcu_task_cpu_ids=4.
+Feb 14 00:18:22 localhost kernel: Performance Events: unsupported p6 CPU model 143 no PMU driver, software events only.
+Feb 14 00:18:22 localhost kernel: signal: max sigframe size: 11952
+Feb 14 00:18:22 localhost kernel: rcu: Hierarchical SRCU implementation.
+Feb 14 00:18:22 localhost kernel: rcu:         Max phase no-delay instances is 400.
+Feb 14 00:18:22 localhost kernel: NMI watchdog: Perf NMI watchdog permanently disabled
+Feb 14 00:18:22 localhost kernel: smp: Bringing up secondary CPUs ...
+Feb 14 00:18:22 localhost kernel: x86: Booting SMP configuration:
+Feb 14 00:18:22 localhost kernel: .... node  #0, CPUs:      #1 #2 #3
+Feb 14 00:18:22 localhost kernel: smp: Brought up 1 node, 4 CPUs
+Feb 14 00:18:22 localhost kernel: smpboot: Max logical packages: 1
+Feb 14 00:18:22 localhost kernel: smpboot: Total of 4 processors activated (21600.00 BogoMIPS)
+Feb 14 00:18:22 localhost kernel: node 0 deferred pages initialised in 15ms
+Feb 14 00:18:22 localhost kernel: devtmpfs: initialized
+Feb 14 00:18:22 localhost kernel: x86/mm: Memory block size: 128MB
+Feb 14 00:18:22 localhost kernel: ACPI: PM: Registering ACPI NVS region [mem 0x0080c000-0x0080cfff] (4096 bytes)
+Feb 14 00:18:22 localhost kernel: ACPI: PM: Registering ACPI NVS region [mem 0xbf57f000-0xbf5fefff] (524288 bytes)
+Feb 14 00:18:22 localhost kernel: clocksource: jiffies: mask: 0xffffffff max_cycles: 0xffffffff, max_idle_ns: 1911260446275000 ns
+Feb 14 00:18:22 localhost kernel: futex hash table entries: 1024 (order: 4, 65536 bytes, linear)
+Feb 14 00:18:22 localhost kernel: PM: RTC time: 00:18:26, date: 2026-02-14
+Feb 14 00:18:22 localhost kernel: NET: Registered PF_NETLINK/PF_ROUTE protocol family
+Feb 14 00:18:22 localhost kernel: DMA: preallocated 2048 KiB GFP_KERNEL pool for atomic allocations
+Feb 14 00:18:22 localhost kernel: DMA: preallocated 2048 KiB GFP_KERNEL|GFP_DMA pool for atomic allocations
+Feb 14 00:18:22 localhost kernel: DMA: preallocated 2048 KiB GFP_KERNEL|GFP_DMA32 pool for atomic allocations
+Feb 14 00:18:22 localhost kernel: audit: initializing netlink subsys (disabled)
+Feb 14 00:18:22 localhost kernel: audit: type=2000 audit(1771028300.059:1): state=initialized audit_enabled=0 res=1
+Feb 14 00:18:22 localhost kernel: thermal_sys: Registered thermal governor 'step_wise'
+Feb 14 00:18:22 localhost kernel: thermal_sys: Registered thermal governor 'user_space'
+Feb 14 00:18:22 localhost kernel: cpuidle: using governor ladder
+Feb 14 00:18:22 localhost kernel: cpuidle: using governor menu
+Feb 14 00:18:22 localhost kernel: acpiphp: ACPI Hot Plug PCI Controller Driver version: 0.5
+Feb 14 00:18:22 localhost kernel: PCI: Using configuration type 1 for base access
+Feb 14 00:18:22 localhost kernel: kprobes: kprobe jump-optimization is enabled. All kprobes are optimized if possible.
+Feb 14 00:18:22 localhost kernel: HugeTLB: registered 1.00 GiB page size, pre-allocated 0 pages
+Feb 14 00:18:22 localhost kernel: HugeTLB: 16380 KiB vmemmap can be freed for a 1.00 GiB page
+Feb 14 00:18:22 localhost kernel: HugeTLB: registered 2.00 MiB page size, pre-allocated 0 pages
+Feb 14 00:18:22 localhost kernel: HugeTLB: 28 KiB vmemmap can be freed for a 2.00 MiB page
+Feb 14 00:18:22 localhost kernel: ACPI: Added _OSI(Module Device)
+Feb 14 00:18:22 localhost kernel: ACPI: Added _OSI(Processor Device)
+Feb 14 00:18:22 localhost kernel: ACPI: Added _OSI(Processor Aggregator Device)
+Feb 14 00:18:22 localhost kernel: ACPI: 3 ACPI AML tables successfully acquired and loaded
+Feb 14 00:18:22 localhost kernel: ACPI: Interpreter enabled
+Feb 14 00:18:22 localhost kernel: ACPI: PM: (supports S0 S3 S5)
+Feb 14 00:18:22 localhost kernel: ACPI: Using IOAPIC for interrupt routing
+Feb 14 00:18:22 localhost kernel: PCI: Using host bridge windows from ACPI; if necessary, use "pci=nocrs" and report a bug
+Feb 14 00:18:22 localhost kernel: PCI: Ignoring E820 reservations for host bridge windows
+Feb 14 00:18:22 localhost kernel: ACPI: Enabled 16 GPEs in block 00 to 0F
+Feb 14 00:18:22 localhost kernel: ACPI: PCI Root Bridge [PCI0] (domain 0000 [bus 00-ff])
+Feb 14 00:18:22 localhost kernel: acpi PNP0A03:00: _OSC: OS supports [ASPM ClockPM Segments MSI HPX-Type3]
+Feb 14 00:18:22 localhost kernel: acpi PNP0A03:00: _OSC: not requesting OS control; OS requires [ExtendedConfig ASPM ClockPM MSI]
+Feb 14 00:18:22 localhost kernel: acpi PNP0A03:00: fail to add MMCONFIG information, can't access extended PCI configuration space under this bridge.
+Feb 14 00:18:22 localhost kernel: PCI host bridge to bus 0000:00
+Feb 14 00:18:22 localhost kernel: pci_bus 0000:00: root bus resource [io  0x0000-0x0cf7 window]
+Feb 14 00:18:22 localhost kernel: pci_bus 0000:00: root bus resource [io  0x0d00-0xffff window]
+Feb 14 00:18:22 localhost kernel: pci_bus 0000:00: root bus resource [mem 0x000a0000-0x000bffff window]
+Feb 14 00:18:22 localhost kernel: pci_bus 0000:00: root bus resource [mem 0xc0000000-0xfebfefff window]
+Feb 14 00:18:22 localhost kernel: pci_bus 0000:00: root bus resource [bus 00-ff]
+Feb 14 00:18:22 localhost kernel: pci 0000:00:00.0: [8086:1237] type 00 class 0x060000
+Feb 14 00:18:22 localhost kernel: pci 0000:00:01.0: [8086:7110] type 00 class 0x060100
+Feb 14 00:18:22 localhost kernel: pci 0000:00:01.3: [8086:7113] type 00 class 0x068000
+Feb 14 00:18:22 localhost kernel: pci 0000:00:01.3: quirk: [io  0xb000-0xb03f] claimed by PIIX4 ACPI
+Feb 14 00:18:22 localhost kernel: pci 0000:00:03.0: [1ae0:0042] type 00 class 0x020000
+Feb 14 00:18:22 localhost kernel: pci 0000:00:03.0: reg 0x10: [mem 0xc0202000-0xc0202fff]
+Feb 14 00:18:22 localhost kernel: pci 0000:00:03.0: reg 0x14: [mem 0xc0200000-0xc02000ff]
+Feb 14 00:18:22 localhost kernel: pci 0000:00:03.0: reg 0x18: [mem 0xc0100000-0xc01fffff]
+Feb 14 00:18:22 localhost kernel: pci 0000:00:04.0: [1ae0:001f] type 00 class 0x010802
+Feb 14 00:18:22 localhost kernel: pci 0000:00:04.0: reg 0x10: [mem 0xc0000000-0xc0003fff 64bit]
+Feb 14 00:18:22 localhost kernel: pci 0000:00:04.0: reg 0x20: [mem 0xc0201000-0xc020103f]
+Feb 14 00:18:22 localhost kernel: ACPI: PCI: Interrupt link LNKA configured for IRQ 10
+Feb 14 00:18:22 localhost kernel: ACPI: PCI: Interrupt link LNKB configured for IRQ 10
+Feb 14 00:18:22 localhost kernel: ACPI: PCI: Interrupt link LNKC configured for IRQ 11
+Feb 14 00:18:22 localhost kernel: ACPI: PCI: Interrupt link LNKD configured for IRQ 11
+Feb 14 00:18:22 localhost kernel: ACPI: PCI: Interrupt link LNKS configured for IRQ 9
+Feb 14 00:18:22 localhost kernel: iommu: Default domain type: Translated 
+Feb 14 00:18:22 localhost kernel: iommu: DMA domain TLB invalidation policy: lazy mode 
+Feb 14 00:18:22 localhost kernel: SCSI subsystem initialized
+Feb 14 00:18:22 localhost kernel: libata version 3.00 loaded.
+Feb 14 00:18:22 localhost kernel: pps_core: LinuxPPS API ver. 1 registered
+Feb 14 00:18:22 localhost kernel: pps_core: Software ver. 5.3.6 - Copyright 2005-2007 Rodolfo Giometti <giometti@linux.it>
+Feb 14 00:18:22 localhost kernel: PTP clock support registered
+Feb 14 00:18:22 localhost kernel: Registered efivars operations
+Feb 14 00:18:22 localhost kernel: PCI: Using ACPI for IRQ routing
+Feb 14 00:18:22 localhost kernel: PCI: pci_cache_line_size set to 64 bytes
+Feb 14 00:18:22 localhost kernel: e820: reserve RAM buffer [mem 0x0080c000-0x008fffff]
+Feb 14 00:18:22 localhost kernel: e820: reserve RAM buffer [mem 0x01600000-0x03ffffff]
+Feb 14 00:18:22 localhost kernel: e820: reserve RAM buffer [mem 0xbd31f000-0xbfffffff]
+Feb 14 00:18:22 localhost kernel: e820: reserve RAM buffer [mem 0xbf2ed000-0xbfffffff]
+Feb 14 00:18:22 localhost kernel: e820: reserve RAM buffer [mem 0xbf570000-0xbfffffff]
+Feb 14 00:18:22 localhost kernel: e820: reserve RAM buffer [mem 0xbffe0000-0xbfffffff]
+Feb 14 00:18:22 localhost kernel: clocksource: Switched to clocksource tsc-early
+Feb 14 00:18:22 localhost kernel: VFS: Disk quotas dquot_6.6.0
+Feb 14 00:18:22 localhost kernel: VFS: Dquot-cache hash table entries: 512 (order 0, 4096 bytes)
+Feb 14 00:18:22 localhost kernel: AppArmor: AppArmor Filesystem Enabled
+Feb 14 00:18:22 localhost kernel: pnp: PnP ACPI init
+Feb 14 00:18:22 localhost kernel: pnp: PnP ACPI: found 7 devices
+Feb 14 00:18:22 localhost kernel: NET: Registered PF_INET protocol family
+Feb 14 00:18:22 localhost kernel: IP idents hash table entries: 262144 (order: 9, 2097152 bytes, linear)
+Feb 14 00:18:22 localhost kernel: tcp_listen_portaddr_hash hash table entries: 8192 (order: 5, 131072 bytes, linear)
+Feb 14 00:18:22 localhost kernel: Table-perturb hash table entries: 65536 (order: 6, 262144 bytes, linear)
+Feb 14 00:18:22 localhost kernel: TCP established hash table entries: 131072 (order: 8, 1048576 bytes, linear)
+Feb 14 00:18:22 localhost kernel: TCP bind hash table entries: 65536 (order: 9, 2097152 bytes, linear)
+Feb 14 00:18:22 localhost kernel: TCP: Hash tables configured (established 131072 bind 65536)
+Feb 14 00:18:22 localhost kernel: UDP hash table entries: 8192 (order: 6, 262144 bytes, linear)
+Feb 14 00:18:22 localhost kernel: UDP-Lite hash table entries: 8192 (order: 6, 262144 bytes, linear)
+Feb 14 00:18:22 localhost kernel: NET: Registered PF_UNIX/PF_LOCAL protocol family
+Feb 14 00:18:22 localhost kernel: NET: Registered PF_XDP protocol family
+Feb 14 00:18:22 localhost kernel: pci_bus 0000:00: resource 4 [io  0x0000-0x0cf7 window]
+Feb 14 00:18:22 localhost kernel: pci_bus 0000:00: resource 5 [io  0x0d00-0xffff window]
+Feb 14 00:18:22 localhost kernel: pci_bus 0000:00: resource 6 [mem 0x000a0000-0x000bffff window]
+Feb 14 00:18:22 localhost kernel: pci_bus 0000:00: resource 7 [mem 0xc0000000-0xfebfefff window]
+Feb 14 00:18:22 localhost kernel: pci 0000:00:00.0: Limiting direct PCI/PCI transfers
+Feb 14 00:18:22 localhost kernel: PCI: CLS 0 bytes, default 64
+Feb 14 00:18:22 localhost kernel: PCI-DMA: Using software bounce buffering for IO (SWIOTLB)
+Feb 14 00:18:22 localhost kernel: software IO TLB: mapped [mem 0x000000007bdff000-0x00000000bbdff000] (1024MB)
+Feb 14 00:18:22 localhost kernel: clocksource: tsc: mask: 0xffffffffffffffff max_cycles: 0x26eb3e3cc63, max_idle_ns: 440795236593 ns
+Feb 14 00:18:22 localhost kernel: clocksource: Switched to clocksource tsc
+Feb 14 00:18:22 localhost kernel: Initialise system trusted keyrings
+Feb 14 00:18:22 localhost kernel: Key type blacklist registered
+Feb 14 00:18:22 localhost kernel: workingset: timestamp_bits=40 max_order=22 bucket_order=0
+Feb 14 00:18:22 localhost kernel: SGI XFS with ACLs, security attributes, quota, no debug enabled
+Feb 14 00:18:22 localhost kernel: 9p: Installing v9fs 9p2000 file system support
+Feb 14 00:18:22 localhost kernel: integrity: Platform Keyring initialized
+Feb 14 00:18:22 localhost kernel: NET: Registered PF_ALG protocol family
+Feb 14 00:18:22 localhost kernel: xor: automatically using best checksumming function   avx       
+Feb 14 00:18:22 localhost kernel: Key type asymmetric registered
+Feb 14 00:18:22 localhost kernel: Asymmetric key parser 'x509' registered
+Feb 14 00:18:22 localhost kernel: Block layer SCSI generic (bsg) driver version 0.4 loaded (major 248)
+Feb 14 00:18:22 localhost kernel: io scheduler mq-deadline registered
+Feb 14 00:18:22 localhost kernel: input: Power Button as /devices/LNXSYSTM:00/LNXPWRBN:00/input/input0
+Feb 14 00:18:22 localhost kernel: ACPI: button: Power Button [PWRF]
+Feb 14 00:18:22 localhost kernel: input: Sleep Button as /devices/LNXSYSTM:00/LNXSLPBN:00/input/input1
+Feb 14 00:18:22 localhost kernel: ACPI: button: Sleep Button [SLPF]
+Feb 14 00:18:22 localhost kernel: Serial: 8250/16550 driver, 4 ports, IRQ sharing disabled
+Feb 14 00:18:22 localhost kernel: 00:03: ttyS0 at I/O 0x3f8 (irq = 4, base_baud = 115200) is a 16550A
+Feb 14 00:18:22 localhost kernel: 00:04: ttyS1 at I/O 0x2f8 (irq = 3, base_baud = 115200) is a 16550A
+Feb 14 00:18:22 localhost kernel: 00:05: ttyS2 at I/O 0x3e8 (irq = 6, base_baud = 115200) is a 16550A
+Feb 14 00:18:22 localhost kernel: 00:06: ttyS3 at I/O 0x2e8 (irq = 7, base_baud = 115200) is a 16550A
+Feb 14 00:18:22 localhost kernel: Non-volatile memory driver v1.3
+Feb 14 00:18:22 localhost kernel: tpm_tis MSFT0101:00: 2.0 TPM (device-id 0x9009, rev-id 0)
+Feb 14 00:18:22 localhost kernel: loop: module loaded
+Feb 14 00:18:22 localhost kernel: Guest personality initialized and is inactive
+Feb 14 00:18:22 localhost kernel: VMCI host device registered (name=vmci, major=10, minor=126)
+Feb 14 00:18:22 localhost kernel: Initialized host personality
+Feb 14 00:18:22 localhost kernel: VMware PVSCSI driver - version 1.0.7.0-k
+Feb 14 00:18:22 localhost kernel: hv_vmbus: registering driver hv_storvsc
+Feb 14 00:18:22 localhost kernel: nvme nvme0: pci function 0000:00:04.0
+Feb 14 00:18:22 localhost kernel: ixgbevf: Intel(R) 10 Gigabit PCI Express Virtual Function Network Driver
+Feb 14 00:18:22 localhost kernel: ACPI: \_SB_.LNKD: Enabled at IRQ 11
+Feb 14 00:18:22 localhost kernel: ixgbevf: Copyright (c) 2009 - 2018 Intel Corporation.
+Feb 14 00:18:22 localhost kernel: VMware vmxnet3 virtual NIC driver - version 1.7.0.0-k-NAPI
+Feb 14 00:18:22 localhost kernel: hv_vmbus: registering driver hv_netvsc
+Feb 14 00:18:22 localhost kernel: software IO TLB: Memory encryption is active and system is using DMA bounce buffers
+Feb 14 00:18:22 localhost kernel: i8042: PNP: PS/2 Controller [PNP0303:KBD,PNP0f13:MOU] at 0x60,0x64 irq 1,12
+Feb 14 00:18:22 localhost kernel: i8042: Warning: Keylock active
+Feb 14 00:18:22 localhost kernel: serio: i8042 KBD port at 0x60,0x64 irq 1
+Feb 14 00:18:22 localhost kernel: serio: i8042 AUX port at 0x60,0x64 irq 12
+Feb 14 00:18:22 localhost kernel: hv_vmbus: registering driver hyperv_keyboard
+Feb 14 00:18:22 localhost kernel: rtc_cmos 00:00: RTC can wake from S4
+Feb 14 00:18:22 localhost kernel: rtc_cmos 00:00: registered as rtc0
+Feb 14 00:18:22 localhost kernel: nvme nvme0: 2/0/0 default/read/poll queues
+Feb 14 00:18:22 localhost kernel: rtc_cmos 00:00: alarms up to one day, 114 bytes nvram
+Feb 14 00:18:22 localhost kernel: iTCO_vendor_support: vendor-support=0
+Feb 14 00:18:22 localhost kernel:  nvme0n1: p1 p2 p3 p4 p5 p6 p7 p8 p9 p10 p11 p12
+Feb 14 00:18:22 localhost kernel: device-mapper: core: CONFIG_IMA_DISABLE_HTABLE is disabled. Duplicate IMA measurements will not be recorded in the IMA log.
+Feb 14 00:18:22 localhost kernel: device-mapper: ioctl: 4.47.0-ioctl (2022-07-28) initialised: dm-devel@redhat.com
+Feb 14 00:18:22 localhost kernel: intel_pstate: CPU model not supported
+Feb 14 00:18:22 localhost kernel: pstore: Registered efi as persistent store backend
+Feb 14 00:18:22 localhost kernel: hv_utils: Registering HyperV Utility Driver
+Feb 14 00:18:22 localhost kernel: hv_vmbus: registering driver hv_utils
+Feb 14 00:18:22 localhost kernel: hv_vmbus: registering driver hv_balloon
+Feb 14 00:18:22 localhost kernel: Mirror/redirect action on
+Feb 14 00:18:22 localhost kernel: Initializing XFRM netlink socket
+Feb 14 00:18:22 localhost kernel: NET: Registered PF_INET6 protocol family
+Feb 14 00:18:22 localhost kernel: Segment Routing with IPv6
+Feb 14 00:18:22 localhost kernel: In-situ OAM (IOAM) with IPv6
+Feb 14 00:18:22 localhost kernel: NET: Registered PF_PACKET protocol family
+Feb 14 00:18:22 localhost kernel: bridge: filtering via arp/ip/ip6tables is no longer available by default. Update your scripts to load br_netfilter if you need this.
+Feb 14 00:18:22 localhost kernel: 9pnet: Installing 9P2000 support
+Feb 14 00:18:22 localhost kernel: NET: Registered PF_VSOCK protocol family
+Feb 14 00:18:22 localhost kernel: mce: Unable to init MCE device (rc: -5)
+Feb 14 00:18:22 localhost kernel: IPI shorthand broadcast: enabled
+Feb 14 00:18:22 localhost kernel: sched_clock: Marking stable (1408704295, 575037243)->(7536120211, -5552378673)
+Feb 14 00:18:22 localhost kernel: registered taskstats version 1
+Feb 14 00:18:22 localhost kernel: Loading compiled-in X.509 certificates
+Feb 14 00:18:22 localhost kernel: Loaded X.509 cert 'Google LLC: Container-Optimized OS kernel signing key: b9802c9fde817eb0fbe10db9f12ee1b76f3afa3f'
+Feb 14 00:18:22 localhost kernel: pstore: Using crash dump compression: deflate
+Feb 14 00:18:22 localhost kernel: AppArmor: AppArmor sha1 policy hashing enabled
+Feb 14 00:18:22 localhost kernel: input: AT Translated Set 2 keyboard as /devices/platform/i8042/serio0/input/input2
+Feb 14 00:18:22 localhost kernel: integrity: Loading X.509 certificate: UEFI:db
+Feb 14 00:18:22 localhost kernel: integrity: Loaded X.509 cert 'Google LLC.: UEFI DB Key v20250203: 6e9af9054d5eee9b4f51efe8dcd3ff74c3f28af124d15b397195c8dc52c10239'
+Feb 14 00:18:22 localhost kernel: ima: Allocated hash algorithm: sha256
+Feb 14 00:18:22 localhost kernel: ima: No architecture policies found
+Feb 14 00:18:22 localhost kernel: PM:   Magic number: 14:294:304
+Feb 14 00:18:22 localhost kernel: tty tty33: hash matches
+Feb 14 00:18:22 localhost kernel: device-mapper: init: waiting for all devices to be available before creating mapped devices
+Feb 14 00:18:22 localhost kernel: device-mapper: verity: sha256 using implementation "sha256-generic"
+Feb 14 00:18:22 localhost kernel: device-mapper: ioctl: dm-0 (vroot) is ready
+Feb 14 00:18:22 localhost kernel: device-mapper: verity: sha256 using implementation "sha256-generic"
+Feb 14 00:18:22 localhost kernel: device-mapper: ioctl: dm-1 (oemroot) is ready
+Feb 14 00:18:22 localhost kernel: clk: Disabling unused clocks
+Feb 14 00:18:22 localhost kernel: md: Waiting for all devices to be available before autodetect
+Feb 14 00:18:22 localhost kernel: md: If you don't use raid, use raid=noautodetect
+Feb 14 00:18:22 localhost kernel: md: Autodetecting RAID arrays.
+Feb 14 00:18:22 localhost kernel: md: autorun ...
+Feb 14 00:18:22 localhost kernel: md: ... autorun DONE.
+Feb 14 00:18:22 localhost kernel: EXT4-fs (dm-0): mounting ext2 file system using the ext4 subsystem
+Feb 14 00:18:22 localhost kernel: EXT4-fs (dm-0): mounted filesystem without journal. Quota mode: none.
+Feb 14 00:18:22 localhost kernel: VFS: Mounted root (ext2 filesystem) readonly on device 253:0.
+Feb 14 00:18:22 localhost kernel: devtmpfs: mounted
+Feb 14 00:18:22 localhost kernel: LoadPin: dm-0 (253:0): read-only
+Feb 14 00:18:22 localhost kernel: LoadPin: load pinning engaged.
+Feb 14 00:18:22 localhost kernel: LoadPin: x509-certificate pinned obj="/etc/ima/pubkey.x509" pid=1 cmdline=""
+Feb 14 00:18:22 localhost kernel: integrity: Loading X.509 certificate: /etc/ima/pubkey.x509
+Feb 14 00:18:22 localhost kernel: integrity: Loaded X.509 cert 'Google LLC: Container-Optimized OS kernel signing key: b9802c9fde817eb0fbe10db9f12ee1b76f3afa3f'
+Feb 14 00:18:22 localhost kernel: failed to free unused decrypted pages
+Feb 14 00:18:22 localhost kernel: Freeing unused kernel image (initmem) memory: 2128K
+Feb 14 00:18:22 localhost kernel: Write protecting the kernel read-only data: 28672k
+Feb 14 00:18:22 localhost kernel: Freeing unused kernel image (text/rodata gap) memory: 2032K
+Feb 14 00:18:22 localhost kernel: Freeing unused kernel image (rodata/data gap) memory: 1420K
+Feb 14 00:18:22 localhost kernel: Run /usr/lib/systemd/systemd as init process
+Feb 14 00:18:22 localhost kernel:   with arguments:
+Feb 14 00:18:22 localhost kernel:     /usr/lib/systemd/systemd
+Feb 14 00:18:22 localhost kernel:     noresume
+Feb 14 00:18:22 localhost kernel:     cros_efi
+Feb 14 00:18:22 localhost kernel:   with environment:
+Feb 14 00:18:22 localhost kernel:     HOME=/
+Feb 14 00:18:22 localhost kernel:     TERM=linux
+Feb 14 00:18:22 localhost kernel:     BOOT_IMAGE=/syslinux/vmlinuz.B
+Feb 14 00:18:22 localhost kernel:     modules-load=loadpin_trigger
+Feb 14 00:18:22 localhost kernel:     ds=nocloud;s=/usr/share/oem/
+Feb 14 00:18:22 localhost systemd[1]: systemd 254 running in system mode (+PAM +AUDIT -SELINUX +APPARMOR +IMA +SMACK +SECCOMP +GCRYPT -GNUTLS +OPENSSL -ACL +BLKID -CURL -ELFUTILS -FIDO2 +IDN2 -IDN -IPTC +KMOD -LIBCRYPTSETUP +LIBFDISK -PCRE2 -PWQUALITY -P11KIT -QRENCODE -TPM2 -BZIP2 +LZ4 -XZ -ZLIB -ZSTD -BPF_FRAMEWORK -XKBCOMMON +UTMP +SYSVINIT default-hierarchy=unified)
+Feb 14 00:18:22 localhost systemd[1]: Detected virtualization google.
+Feb 14 00:18:22 localhost systemd[1]: Detected confidential virtualization tdx.
+Feb 14 00:18:22 localhost systemd[1]: Detected architecture x86-64.
+Feb 14 00:18:22 localhost systemd[1]: Initializing machine ID from VM UUID.
+Feb 14 00:18:22 localhost systemd[1]: Installed transient /etc/machine-id file.
+Feb 14 00:18:22 localhost systemd[1]: Configuration file /usr/lib/systemd/system/systemd-tmpfiles-clean.timer is marked world-inaccessible. This has no effect as configuration data is accessible via APIs without restrictions. Proceeding anyway.
+Feb 14 00:18:22 localhost systemd[1]: Configuration file /usr/lib/systemd/system/crash-sender.timer is marked world-inaccessible. This has no effect as configuration data is accessible via APIs without restrictions. Proceeding anyway.
+Feb 14 00:18:22 localhost systemd[1]: Queued start job for default target multi-user.target.
+Feb 14 00:18:22 localhost systemd[1]: Created slice system-getty.slice.
+Feb 14 00:18:22 localhost systemd[1]: Created slice system-modprobe.slice.
+Feb 14 00:18:22 localhost systemd[1]: Created slice system-protected\x2dstateful\x2dpartition\x2dmemory.slice.
+Feb 14 00:18:22 localhost systemd[1]: Created slice system-serial\x2dgetty.slice.
+Feb 14 00:18:22 localhost systemd[1]: Created slice system-sysdaemons.slice.
+Feb 14 00:18:22 localhost systemd[1]: Created slice system-systemd\x2dfsck.slice.
+Feb 14 00:18:22 localhost systemd[1]: Created slice user.slice.
+Feb 14 00:18:22 localhost systemd[1]: Started systemd-ask-password-console.path.
+Feb 14 00:18:22 localhost systemd[1]: Started systemd-ask-password-wall.path.
+Feb 14 00:18:22 localhost systemd[1]: Set up automount proc-sys-fs-binfmt_misc.automount.
+Feb 14 00:18:22 localhost systemd[1]: Expecting device dev-dm\x2d1.device...
+Feb 14 00:18:22 localhost systemd[1]: Expecting device dev-stateful.device...
+Feb 14 00:18:22 localhost systemd[1]: Expecting device dev-ttyS0.device...
+Feb 14 00:18:22 localhost systemd[1]: Reached target paths.target.
+Feb 14 00:18:22 localhost systemd[1]: Reached target remote-fs.target.
+Feb 14 00:18:22 localhost systemd[1]: Reached target slices.target.
+Feb 14 00:18:22 localhost systemd[1]: Reached target swap.target.
+Feb 14 00:18:22 localhost systemd[1]: Listening on systemd-coredump.socket.
+Feb 14 00:18:22 localhost systemd[1]: Listening on systemd-initctl.socket.
+Feb 14 00:18:22 localhost systemd[1]: Listening on systemd-journald-audit.socket.
+Feb 14 00:18:22 localhost systemd[1]: Listening on systemd-journald-dev-log.socket.
+Feb 14 00:18:22 localhost systemd[1]: Listening on systemd-journald.socket.
+Feb 14 00:18:22 localhost systemd[1]: Listening on systemd-networkd.socket.
+Feb 14 00:18:22 localhost systemd[1]: Listening on systemd-udevd-control.socket.
+Feb 14 00:18:22 localhost systemd[1]: Listening on systemd-udevd-kernel.socket.
+Feb 14 00:18:22 localhost systemd[1]: Mounting dev-hugepages.mount...
+Feb 14 00:18:22 localhost systemd[1]: Mounting dev-mqueue.mount...
+Feb 14 00:18:22 localhost systemd[1]: Mounting mnt-disks.mount...
+Feb 14 00:18:22 localhost systemd[1]: Mounting sys-firmware-efi-efivars.mount...
+Feb 14 00:18:22 localhost systemd[1]: Mounting sys-kernel-debug.mount...
+Feb 14 00:18:22 localhost systemd[1]: Mounting sys-kernel-tracing.mount...
+Feb 14 00:18:22 localhost systemd[1]: Mounting tmp.mount...
+Feb 14 00:18:22 localhost systemd[1]: Starting dev-shm-remount.service...
+Feb 14 00:18:22 localhost systemd[1]: Starting kmod-static-nodes.service...
+Feb 14 00:18:22 localhost systemd[1]: Starting modprobe@configfs.service...
+Feb 14 00:18:22 localhost systemd[1]: Starting modprobe@dm_mod.service...
+Feb 14 00:18:22 localhost systemd[1]: Starting modprobe@drm.service...
+Feb 14 00:18:22 localhost systemd[1]: Starting modprobe@efi_pstore.service...
+Feb 14 00:18:22 localhost systemd[1]: Starting modprobe@fuse.service...
+Feb 14 00:18:22 localhost systemd[1]: Starting modprobe@loop.service...
+Feb 14 00:18:22 localhost kernel: LoadPin: kernel-module pinning-excluded obj="/lib/modules/6.1.155+/kernel/fs/fuse/fuse.ko" pid=186 cmdline="/sbin/modprobe -abq fuse"
+Feb 14 00:18:22 localhost systemd[1]: Starting setup-install-attributes.service...
+Feb 14 00:18:22 localhost systemd[1]: Starting systemd-journald.service...
+Feb 14 00:18:22 localhost kernel: fuse: init (API version 7.38)
+Feb 14 00:18:22 localhost systemd[1]: Starting systemd-modules-load.service...
+Feb 14 00:18:22 localhost systemd[1]: Starting systemd-remount-fs.service...
+Feb 14 00:18:22 localhost kernel: LoadPin: kernel-module pinning-excluded obj="/lib/modules/6.1.155+/misc/loadpin_trigger.ko" pid=190 cmdline="/usr/lib/systemd/systemd-modules-load"
+Feb 14 00:18:22 localhost systemd[1]: Starting systemd-udev-trigger.service...
+Feb 14 00:18:22 localhost kernel: loadpin_trigger: loading out-of-tree module taints kernel.
+Feb 14 00:18:22 localhost systemd[1]: Starting warm-up.service...
+Feb 14 00:18:22 localhost systemd-journald[189]: Collecting audit messages is enabled.
+Feb 14 00:18:22 localhost systemd[1]: Mounted dev-hugepages.mount.
+Feb 14 00:18:22 localhost systemd[1]: Mounted dev-mqueue.mount.
+Feb 14 00:18:22 localhost systemd[1]: Mounted mnt-disks.mount.
+Feb 14 00:18:22 localhost systemd[1]: Mounted sys-kernel-debug.mount.
+Feb 14 00:18:22 localhost systemd[1]: Mounted sys-kernel-tracing.mount.
+Feb 14 00:18:22 localhost systemd[1]: Mounted tmp.mount.
+Feb 14 00:18:22 localhost systemd-journald[189]: Journal started
+Feb 14 00:18:22 localhost systemd-journald[189]: Runtime Journal (/run/log/journal/298385b4ef18c86ecb44e4aac1502013) is 8.0M, max 300.5M, 292.5M free.
+Feb 14 00:18:22 localhost audit: CONFIG_CHANGE op=set audit_pid=189 old=0 auid=4294967295 ses=4294967295 subj=unconfined res=1
+Feb 14 00:18:22 localhost systemd[1]: Started systemd-journald.service.
+Feb 14 00:18:22 localhost systemd-modules-load[190]: Inserted module 'loadpin_trigger'
+Feb 14 00:18:22 localhost audit[1]: SERVICE_START pid=1 uid=0 auid=4294967295 ses=4294967295 subj=unconfined msg='unit=systemd-journald comm="systemd" exe="/usr/lib/systemd/systemd" hostname=? addr=? terminal=? res=success'
+Feb 14 00:18:22 localhost systemd[1]: dev-shm-remount.service: Deactivated successfully.
+Feb 14 00:18:22 localhost systemd[1]: Finished dev-shm-remount.service.
+Feb 14 00:18:22 localhost audit[1]: SERVICE_START pid=1 uid=0 auid=4294967295 ses=4294967295 subj=unconfined msg='unit=dev-shm-remount comm="systemd" exe="/usr/lib/systemd/systemd" hostname=? addr=? terminal=? res=success'
+Feb 14 00:18:22 localhost audit[1]: SERVICE_STOP pid=1 uid=0 auid=4294967295 ses=4294967295 subj=unconfined msg='unit=dev-shm-remount comm="systemd" exe="/usr/lib/systemd/systemd" hostname=? addr=? terminal=? res=success'
+Feb 14 00:18:22 localhost systemd[1]: Finished kmod-static-nodes.service.
+Feb 14 00:18:22 localhost audit[1]: SERVICE_START pid=1 uid=0 auid=4294967295 ses=4294967295 subj=unconfined msg='unit=kmod-static-nodes comm="systemd" exe="/usr/lib/systemd/systemd" hostname=? addr=? terminal=? res=success'
+Feb 14 00:18:22 localhost systemd[1]: modprobe@configfs.service: Deactivated successfully.
+Feb 14 00:18:22 localhost systemd[1]: Finished modprobe@configfs.service.
+Feb 14 00:18:22 localhost audit[1]: SERVICE_START pid=1 uid=0 auid=4294967295 ses=4294967295 subj=unconfined msg='unit=modprobe@configfs comm="systemd" exe="/usr/lib/systemd/systemd" hostname=? addr=? terminal=? res=success'
+Feb 14 00:18:22 localhost audit[1]: SERVICE_STOP pid=1 uid=0 auid=4294967295 ses=4294967295 subj=unconfined msg='unit=modprobe@configfs comm="systemd" exe="/usr/lib/systemd/systemd" hostname=? addr=? terminal=? res=success'
+Feb 14 00:18:22 localhost systemd[1]: modprobe@dm_mod.service: Deactivated successfully.
+Feb 14 00:18:22 localhost systemd[1]: Finished modprobe@dm_mod.service.
+Feb 14 00:18:22 localhost audit[1]: SERVICE_START pid=1 uid=0 auid=4294967295 ses=4294967295 subj=unconfined msg='unit=modprobe@dm_mod comm="systemd" exe="/usr/lib/systemd/systemd" hostname=? addr=? terminal=? res=success'
+Feb 14 00:18:22 localhost audit[1]: SERVICE_STOP pid=1 uid=0 auid=4294967295 ses=4294967295 subj=unconfined msg='unit=modprobe@dm_mod comm="systemd" exe="/usr/lib/systemd/systemd" hostname=? addr=? terminal=? res=success'
+Feb 14 00:18:22 localhost systemd[1]: modprobe@drm.service: Deactivated successfully.
+Feb 14 00:18:22 localhost systemd[1]: Finished modprobe@drm.service.
+Feb 14 00:18:22 localhost audit[1]: SERVICE_START pid=1 uid=0 auid=4294967295 ses=4294967295 subj=unconfined msg='unit=modprobe@drm comm="systemd" exe="/usr/lib/systemd/systemd" hostname=? addr=? terminal=? res=success'
+Feb 14 00:18:22 localhost audit[1]: SERVICE_STOP pid=1 uid=0 auid=4294967295 ses=4294967295 subj=unconfined msg='unit=modprobe@drm comm="systemd" exe="/usr/lib/systemd/systemd" hostname=? addr=? terminal=? res=success'
+Feb 14 00:18:22 localhost systemd[1]: modprobe@efi_pstore.service: Deactivated successfully.
+Feb 14 00:18:22 localhost systemd[1]: Finished modprobe@efi_pstore.service.
+Feb 14 00:18:22 localhost audit[1]: SERVICE_START pid=1 uid=0 auid=4294967295 ses=4294967295 subj=unconfined msg='unit=modprobe@efi_pstore comm="systemd" exe="/usr/lib/systemd/systemd" hostname=? addr=? terminal=? res=success'
+Feb 14 00:18:22 localhost audit[1]: SERVICE_STOP pid=1 uid=0 auid=4294967295 ses=4294967295 subj=unconfined msg='unit=modprobe@efi_pstore comm="systemd" exe="/usr/lib/systemd/systemd" hostname=? addr=? terminal=? res=success'
+Feb 14 00:18:22 localhost systemd[1]: modprobe@fuse.service: Deactivated successfully.
+Feb 14 00:18:22 localhost systemd[1]: Finished modprobe@fuse.service.
+Feb 14 00:18:22 localhost audit[1]: SERVICE_START pid=1 uid=0 auid=4294967295 ses=4294967295 subj=unconfined msg='unit=modprobe@fuse comm="systemd" exe="/usr/lib/systemd/systemd" hostname=? addr=? terminal=? res=success'
+Feb 14 00:18:22 localhost audit[1]: SERVICE_STOP pid=1 uid=0 auid=4294967295 ses=4294967295 subj=unconfined msg='unit=modprobe@fuse comm="systemd" exe="/usr/lib/systemd/systemd" hostname=? addr=? terminal=? res=success'
+Feb 14 00:18:22 localhost systemd[1]: modprobe@loop.service: Deactivated successfully.
+Feb 14 00:18:22 localhost systemd[1]: Finished modprobe@loop.service.
+Feb 14 00:18:22 localhost audit[1]: SERVICE_START pid=1 uid=0 auid=4294967295 ses=4294967295 subj=unconfined msg='unit=modprobe@loop comm="systemd" exe="/usr/lib/systemd/systemd" hostname=? addr=? terminal=? res=success'
+Feb 14 00:18:22 localhost audit[1]: SERVICE_STOP pid=1 uid=0 auid=4294967295 ses=4294967295 subj=unconfined msg='unit=modprobe@loop comm="systemd" exe="/usr/lib/systemd/systemd" hostname=? addr=? terminal=? res=success'
+Feb 14 00:18:22 localhost systemd[1]: Finished systemd-modules-load.service.
+Feb 14 00:18:22 localhost audit[1]: SERVICE_START pid=1 uid=0 auid=4294967295 ses=4294967295 subj=unconfined msg='unit=systemd-modules-load comm="systemd" exe="/usr/lib/systemd/systemd" hostname=? addr=? terminal=? res=success'
+Feb 14 00:18:22 localhost systemd[1]: Finished systemd-remount-fs.service.
+Feb 14 00:18:22 localhost audit[1]: SERVICE_START pid=1 uid=0 auid=4294967295 ses=4294967295 subj=unconfined msg='unit=systemd-remount-fs comm="systemd" exe="/usr/lib/systemd/systemd" hostname=? addr=? terminal=? res=success'
+Feb 14 00:18:22 localhost systemd[1]: Finished setup-install-attributes.service.
+Feb 14 00:18:22 localhost systemd[1]: Finished systemd-udev-trigger.service.
+Feb 14 00:18:22 localhost audit[1]: SERVICE_START pid=1 uid=0 auid=4294967295 ses=4294967295 subj=unconfined msg='unit=setup-install-attributes comm="systemd" exe="/usr/lib/systemd/systemd" hostname=? addr=? terminal=? res=success'
+Feb 14 00:18:22 localhost audit[1]: SERVICE_START pid=1 uid=0 auid=4294967295 ses=4294967295 subj=unconfined msg='unit=systemd-udev-trigger comm="systemd" exe="/usr/lib/systemd/systemd" hostname=? addr=? terminal=? res=success'
+Feb 14 00:18:22 localhost warm-up-elf[198]: /usr/bin/google_guest_agent -> 3
+Feb 14 00:18:22 localhost warm-up-elf[198]: /usr/bin/containerd -> 4
+Feb 14 00:18:22 localhost systemd[1]: Mounting sys-fs-fuse-connections.mount...
+Feb 14 00:18:22 localhost systemd[1]: Mounting sys-kernel-config.mount...
+Feb 14 00:18:22 localhost systemd[1]: Starting init-dm-devs.service...
+Feb 14 00:18:22 localhost systemd[1]: Starting mount-etc-overlay.service...
+Feb 14 00:18:22 localhost systemd[1]: Starting protected-stateful-partition-memory@dev-nvme0n1p1.service...
+Feb 14 00:18:22 localhost systemd[1]: systemd-repart.service was skipped because no trigger condition checks were met.
+Feb 14 00:18:22 localhost systemd[1]: Starting systemd-sysctl.service...
+Feb 14 00:18:22 localhost systemd[1]: Starting systemd-tmpfiles-setup-dev-early.service...
+Feb 14 00:18:22 localhost systemd[1]: Mounted sys-fs-fuse-connections.mount.
+Feb 14 00:18:22 localhost systemd[1]: Mounted sys-kernel-config.mount.
+Feb 14 00:18:22 localhost systemd[1]: Finished init-dm-devs.service.
+Feb 14 00:18:22 localhost audit[1]: SERVICE_START pid=1 uid=0 auid=4294967295 ses=4294967295 subj=unconfined msg='unit=init-dm-devs comm="systemd" exe="/usr/lib/systemd/systemd" hostname=? addr=? terminal=? res=success'
+Feb 14 00:18:22 localhost setup-integrity-fs.sh[224]: Old size of /dev/nvme0n1p1 is 16508895 in 512-byte sectors.
+Feb 14 00:18:22 localhost systemd[1]: tmp-etc_overlay.mount: Deactivated successfully.
+Feb 14 00:18:22 localhost audit[1]: SERVICE_START pid=1 uid=0 auid=4294967295 ses=4294967295 subj=unconfined msg='unit=systemd-sysctl comm="systemd" exe="/usr/lib/systemd/systemd" hostname=? addr=? terminal=? res=success'
+Feb 14 00:18:22 localhost systemd[1]: Finished systemd-sysctl.service.
+Feb 14 00:18:22 localhost systemd[1]: mount-etc-overlay.service: Deactivated successfully.
+Feb 14 00:18:22 localhost systemd[1]: Finished mount-etc-overlay.service.
+Feb 14 00:18:22 localhost audit[1]: SERVICE_START pid=1 uid=0 auid=4294967295 ses=4294967295 subj=unconfined msg='unit=mount-etc-overlay comm="systemd" exe="/usr/lib/systemd/systemd" hostname=? addr=? terminal=? res=success'
+Feb 14 00:18:22 localhost audit[1]: SERVICE_STOP pid=1 uid=0 auid=4294967295 ses=4294967295 subj=unconfined msg='unit=mount-etc-overlay comm="systemd" exe="/usr/lib/systemd/systemd" hostname=? addr=? terminal=? res=success'
+Feb 14 00:18:22 localhost setup-integrity-fs.sh[224]: New size of /dev/nvme0n1p1 is 16508895 in 512-byte sectors.
+Feb 14 00:18:22 localhost setup-integrity-fs.sh[224]: Creating integrity fs protected_stateful_partition on /dev/nvme0n1p1 with total metadata device size of 60018688 bytes.
+Feb 14 00:18:22 localhost setup-integrity-fs.sh[224]: Integrity metadata: 57921536B, Clone metadata: 2097152B.
+Feb 14 00:18:22 localhost kernel: loop0: detected capacity change from 0 to 113128
+Feb 14 00:18:22 localhost audit[253]: AUDIT1338 module=integrity op=ctr ppid=224 pid=253 auid=4294967295 uid=0 gid=0 euid=0 suid=0 fsuid=0 egid=0 sgid=0 fsgid=0 tty=(none) ses=4294967295 comm="dmsetup" exe="/sbin/dmsetup" subj=unconfined dev=253:2 error_msg='success' res=1
+Feb 14 00:18:22 localhost audit[253]: SYSCALL arch=c000003e syscall=16 success=yes exit=0 a0=3 a1=c138fd09 a2=598507712de0 a3=7ffda258bb90 items=6 ppid=224 pid=253 auid=4294967295 uid=0 gid=0 euid=0 suid=0 fsuid=0 egid=0 sgid=0 fsgid=0 tty=(none) ses=4294967295 comm="dmsetup" exe="/sbin/dmsetup" subj=unconfined key=(null)
+Feb 14 00:18:22 localhost audit: CWD cwd="/"
+Feb 14 00:18:22 localhost audit: PATH item=0 name=(null) inode=20 dev=00:07 mode=040755 ouid=0 ogid=0 rdev=00:00 nametype=PARENT cap_fp=0 cap_fi=0 cap_fe=0 cap_fver=0 cap_frootid=0
+Feb 14 00:18:22 localhost audit: PATH item=1 name=(null) inode=14469 dev=00:07 mode=040755 ouid=0 ogid=0 rdev=00:00 nametype=CREATE cap_fp=0 cap_fi=0 cap_fe=0 cap_fver=0 cap_frootid=0
+Feb 14 00:18:22 localhost audit: PATH item=2 name=(null) inode=12 dev=00:07 mode=040755 ouid=0 ogid=0 rdev=00:00 nametype=PARENT cap_fp=0 cap_fi=0 cap_fe=0 cap_fver=0 cap_frootid=0
+Feb 14 00:18:22 localhost audit: PATH item=3 name=(null) inode=14470 dev=00:07 mode=040755 ouid=0 ogid=0 rdev=00:00 nametype=CREATE cap_fp=0 cap_fi=0 cap_fe=0 cap_fver=0 cap_frootid=0
+Feb 14 00:18:22 localhost audit: PATH item=4 name=(null) inode=14470 dev=00:07 mode=040755 ouid=0 ogid=0 rdev=00:00 nametype=PARENT cap_fp=0 cap_fi=0 cap_fe=0 cap_fver=0 cap_frootid=0
+Feb 14 00:18:22 localhost audit: PATH item=5 name=(null) inode=14471 dev=00:07 mode=0100444 ouid=0 ogid=0 rdev=00:00 nametype=CREATE cap_fp=0 cap_fi=0 cap_fe=0 cap_fver=0 cap_frootid=0
+Feb 14 00:18:22 localhost audit: PROCTITLE proctitle=2F7362696E2F646D7365747570006372656174650070726F7465637465645F737461746566756C5F706172746974696F6E5F696E74656772697479002D2D7461626C65003020313635303838383820696E74656772697479202F6465762F6E766D65306E31703120302032382044203320626C6F636B5F73697A653A34303936
+Feb 14 00:18:22 localhost audit[1]: SERVICE_START pid=1 uid=0 auid=4294967295 ses=4294967295 subj=unconfined msg='unit=systemd-tmpfiles-setup-dev-early comm="systemd" exe="/usr/lib/systemd/systemd" hostname=? addr=? terminal=? res=success'
+Feb 14 00:18:22 localhost systemd[1]: Finished systemd-tmpfiles-setup-dev-early.service.
+Feb 14 00:18:22 localhost systemd[1]: Starting systemd-tmpfiles-setup-dev.service...
+Feb 14 00:18:22 localhost warm-up-elf[198]: fd 3 [14688256 bytes] -> 0x7c9618600000
+Feb 14 00:18:22 localhost systemd[1]: Finished systemd-tmpfiles-setup-dev.service.
+Feb 14 00:18:22 localhost audit[1]: SERVICE_START pid=1 uid=0 auid=4294967295 ses=4294967295 subj=unconfined msg='unit=systemd-tmpfiles-setup-dev comm="systemd" exe="/usr/lib/systemd/systemd" hostname=? addr=? terminal=? res=success'
+Feb 14 00:18:22 localhost systemd[1]: Reached target local-fs-pre.target.
+Feb 14 00:18:22 localhost systemd[1]: Started stateful-devices.path.
+Feb 14 00:18:22 localhost audit: BPF prog-id=6 op=LOAD
+Feb 14 00:18:22 localhost audit: BPF prog-id=7 op=LOAD
+Feb 14 00:18:22 localhost systemd[1]: Starting systemd-udevd.service...
+Feb 14 00:18:22 localhost systemd-udevd[263]: Using default interface naming scheme 'v253'.
+Feb 14 00:18:22 localhost systemd[1]: Started systemd-udevd.service.
+Feb 14 00:18:22 localhost audit[1]: SERVICE_START pid=1 uid=0 auid=4294967295 ses=4294967295 subj=unconfined msg='unit=systemd-udevd comm="systemd" exe="/usr/lib/systemd/systemd" hostname=? addr=? terminal=? res=success'
+Feb 14 00:18:22 localhost audit: BPF prog-id=8 op=LOAD
+Feb 14 00:18:22 localhost systemd[1]: Starting systemd-networkd.service...
+Feb 14 00:18:22 localhost systemd[1]: Found device dev-ttyS0.device.
+Feb 14 00:18:22 localhost kernel: LoadPin: kernel-module pinning-excluded obj="/lib/modules/6.1.155+/kernel/crypto/cryptd.ko" pid=270 cmdline="(udev-worker)"
+Feb 14 00:18:22 localhost kernel: LoadPin: kernel-module pinning-excluded obj="/lib/modules/6.1.155+/kernel/drivers/net/ethernet/google/gve/gve.ko" pid=275 cmdline="(udev-worker)"
+Feb 14 00:18:22 localhost kernel: LoadPin: kernel-module pinning-excluded obj="/lib/modules/6.1.155+/kernel/crypto/cryptd.ko" pid=268 cmdline="(udev-worker)"
+Feb 14 00:18:22 localhost kernel: LoadPin: kernel-module pinning-excluded obj="/lib/modules/6.1.155+/kernel/crypto/cryptd.ko" pid=280 cmdline="(udev-worker)"
+Feb 14 00:18:22 localhost kernel: LoadPin: kernel-module pinning-excluded obj="/lib/modules/6.1.155+/kernel/crypto/cryptd.ko" pid=281 cmdline="(udev-worker)"
+Feb 14 00:18:22 localhost kernel: cryptd: max_cpu_qlen set to 1000
+Feb 14 00:18:22 localhost kernel: LoadPin: kernel-module pinning-excluded obj="/lib/modules/6.1.155+/kernel/crypto/crypto_simd.ko" pid=270 cmdline="(udev-worker)"
+Feb 14 00:18:22 localhost kernel: LoadPin: kernel-module pinning-excluded obj="/lib/modules/6.1.155+/kernel/crypto/crypto_simd.ko" pid=268 cmdline="(udev-worker)"
+Feb 14 00:18:22 localhost kernel: LoadPin: kernel-module pinning-excluded obj="/lib/modules/6.1.155+/kernel/crypto/crypto_simd.ko" pid=281 cmdline="(udev-worker)"
+Feb 14 00:18:22 localhost kernel: ACPI: \_SB_.LNKC: Enabled at IRQ 10
+Feb 14 00:18:22 localhost kernel: LoadPin: kernel-module pinning-excluded obj="/lib/modules/6.1.155+/kernel/crypto/crypto_simd.ko" pid=280 cmdline="(udev-worker)"
+Feb 14 00:18:22 localhost kernel: gvnic 0000:00:03.0: Length of Flow Steering option larger than expected. Possible older version of guest driver.
+Feb 14 00:18:22 localhost kernel: gvnic 0000:00:03.0: Driver is running with DQO RDA queue format.
+Feb 14 00:18:22 localhost kernel: gvnic 0000:00:03.0: MAC addr: 42:01:0a:80:00:19
+Feb 14 00:18:22 localhost kernel: gvnic 0000:00:03.0: FLOW STEERING device option enabled.
+Feb 14 00:18:22 localhost kernel: LoadPin: kernel-module pinning-excluded obj="/lib/modules/6.1.155+/kernel/arch/x86/crypto/aesni-intel.ko" pid=281 cmdline="(udev-worker)"
+Feb 14 00:18:22 localhost kernel: LoadPin: kernel-module pinning-excluded obj="/lib/modules/6.1.155+/kernel/arch/x86/crypto/aesni-intel.ko" pid=270 cmdline="(udev-worker)"
+Feb 14 00:18:22 localhost kernel: LoadPin: kernel-module pinning-excluded obj="/lib/modules/6.1.155+/kernel/arch/x86/crypto/aesni-intel.ko" pid=268 cmdline="(udev-worker)"
+Feb 14 00:18:22 localhost kernel: gvnic 0000:00:03.0: TX queues 4, RX queues 4
+Feb 14 00:18:22 localhost kernel: gvnic 0000:00:03.0: Max TX queues 4, Max RX queues 4
+Feb 14 00:18:22 localhost kernel: gvnic 0000:00:03.0: GVE version 1.0.0
+Feb 14 00:18:22 localhost kernel: gvnic 0000:00:03.0: GVE queue format 3
+Feb 14 00:18:22 localhost systemd[1]: Found device dev-dm\x2d1.device.
+Feb 14 00:18:22 localhost kernel: LoadPin: kernel-module pinning-excluded obj="/lib/modules/6.1.155+/kernel/arch/x86/crypto/aesni-intel.ko" pid=280 cmdline="(udev-worker)"
+Feb 14 00:18:22 localhost systemd-networkd[269]: lo: Link UP
+Feb 14 00:18:22 localhost systemd-networkd[269]: lo: Gained carrier
+Feb 14 00:18:22 localhost systemd-networkd[269]: Enumeration completed
+Feb 14 00:18:22 localhost kernel: AVX2 version of gcm_enc/dec engaged.
+Feb 14 00:18:22 localhost kernel: AES CTR mode by8 optimization enabled
+Feb 14 00:18:22 localhost audit[1]: SERVICE_START pid=1 uid=0 auid=4294967295 ses=4294967295 subj=unconfined msg='unit=systemd-networkd comm="systemd" exe="/usr/lib/systemd/systemd" hostname=? addr=? terminal=? res=success'
+Feb 14 00:18:22 localhost systemd[1]: Started systemd-networkd.service.
+Feb 14 00:18:22 localhost setup-integrity-fs.sh[224]: Creating dm-crypt device.
+Feb 14 00:18:22 localhost systemd-networkd[269]: eth0: Configuring with /usr/lib/systemd/network/99-default.network.
+Feb 14 00:18:22 localhost kernel: LoadPin: kernel-module pinning-excluded obj="/lib/modules/6.1.155+/kernel/arch/x86/crypto/crc32c-intel.ko" pid=270 cmdline="(udev-worker)"
+Feb 14 00:18:22 localhost kernel: LoadPin: kernel-module pinning-excluded obj="/lib/modules/6.1.155+/kernel/arch/x86/crypto/crc32c-intel.ko" pid=280 cmdline="(udev-worker)"
+Feb 14 00:18:22 localhost systemd[1]: Starting systemd-networkd-wait-online.service...
+Feb 14 00:18:22 localhost kernel: LoadPin: kernel-module pinning-excluded obj="/lib/modules/6.1.155+/kernel/arch/x86/crypto/crc32c-intel.ko" pid=268 cmdline="(udev-worker)"
+Feb 14 00:18:22 localhost kernel: LoadPin: kernel-module pinning-excluded obj="/lib/modules/6.1.155+/kernel/arch/x86/crypto/crc32c-intel.ko" pid=281 cmdline="(udev-worker)"
+Feb 14 00:18:22 localhost systemd-networkd[269]: eth0: Link UP
+Feb 14 00:18:22 localhost kernel: gvnic 0000:00:03.0 eth0: Device link is up.
+Feb 14 00:18:22 localhost kernel: IPv6: ADDRCONF(NETDEV_CHANGE): eth0: link becomes ready
+Feb 14 00:18:22 localhost systemd-networkd[269]: eth0: Gained carrier
+Feb 14 00:18:22 localhost audit[337]: AUDIT1338 module=crypt op=ctr ppid=336 pid=337 auid=4294967295 uid=0 gid=0 euid=0 suid=0 fsuid=0 egid=0 sgid=0 fsgid=0 tty=(none) ses=4294967295 comm="dmsetup" exe="/sbin/dmsetup" subj=unconfined dev=253:3 error_msg='success' res=1
+Feb 14 00:18:22 localhost audit[337]: SYSCALL arch=c000003e syscall=16 success=yes exit=0 a0=3 a1=c138fd09 a2=59390830bf00 a3=7fffdf53d7e0 items=6 ppid=336 pid=337 auid=4294967295 uid=0 gid=0 euid=0 suid=0 fsuid=0 egid=0 sgid=0 fsgid=0 tty=(none) ses=4294967295 comm="dmsetup" exe="/sbin/dmsetup" subj=unconfined key=(null)
+Feb 14 00:18:22 localhost audit: CWD cwd="/"
+Feb 14 00:18:22 localhost audit: PATH item=0 name=(null) inode=20 dev=00:07 mode=040755 ouid=0 ogid=0 rdev=00:00 nametype=PARENT cap_fp=0 cap_fi=0 cap_fe=0 cap_fver=0 cap_frootid=0
+Feb 14 00:18:22 localhost audit: PATH item=1 name=(null) inode=456 dev=00:07 mode=040755 ouid=0 ogid=0 rdev=00:00 nametype=CREATE cap_fp=0 cap_fi=0 cap_fe=0 cap_fver=0 cap_frootid=0
+Feb 14 00:18:22 localhost audit: PATH item=2 name=(null) inode=12 dev=00:07 mode=040755 ouid=0 ogid=0 rdev=00:00 nametype=PARENT cap_fp=0 cap_fi=0 cap_fe=0 cap_fver=0 cap_frootid=0
+Feb 14 00:18:22 localhost audit: PATH item=3 name=(null) inode=457 dev=00:07 mode=040755 ouid=0 ogid=0 rdev=00:00 nametype=CREATE cap_fp=0 cap_fi=0 cap_fe=0 cap_fver=0 cap_frootid=0
+Feb 14 00:18:22 localhost audit: PATH item=4 name=(null) inode=457 dev=00:07 mode=040755 ouid=0 ogid=0 rdev=00:00 nametype=PARENT cap_fp=0 cap_fi=0 cap_fe=0 cap_fver=0 cap_frootid=0
+Feb 14 00:18:22 localhost audit: PATH item=5 name=(null) inode=458 dev=00:07 mode=0100444 ouid=0 ogid=0 rdev=00:00 nametype=CREATE cap_fp=0 cap_fi=0 cap_fe=0 cap_fver=0 cap_frootid=0
+Feb 14 00:18:22 localhost audit: PROCTITLE proctitle=2F7362696E2F646D7365747570006372656174650070726F7465637465645F737461746566756C5F706172746974696F6E5F6372797074002D2D7461626C65003020313635303838383820637279707420636170693A67636D28616573292D72616E646F6D202020202020202020653166623564363036316437393130333638
+Feb 14 00:18:22 localhost setup-integrity-fs.sh[224]: Creating dm-zero device.
+Feb 14 00:18:22 localhost systemd-networkd[269]: eth0: DHCPv4 address 10.128.0.25/32, gateway 10.128.0.1 acquired from 10.128.0.1
+Feb 14 00:18:22 localhost setup-integrity-fs.sh[224]: Creating dm-clone device.
+Feb 14 00:18:22 localhost kernel: loop1: detected capacity change from 0 to 4096
+Feb 14 00:18:23 localhost systemd[1]: Mounted sys-firmware-efi-efivars.mount.
+Feb 14 00:18:23 localhost systemd[1]: Mounting usr-share-oem.mount...
+Feb 14 00:18:23 localhost kernel: EXT4-fs (dm-1): mounted filesystem with ordered data mode. Quota mode: none.
+Feb 14 00:18:23 localhost systemd[1]: Mounted usr-share-oem.mount.
+Feb 14 00:18:23 localhost warm-up-elf[198]: fd 4 [78760552 bytes] -> 0x7c9613a00000
+Feb 14 00:18:23 localhost systemd[1]: Started warm-up.service.
+Feb 14 00:18:23 localhost audit[1]: SERVICE_START pid=1 uid=0 auid=4294967295 ses=4294967295 subj=unconfined msg='unit=warm-up comm="systemd" exe="/usr/lib/systemd/systemd" hostname=? addr=? terminal=? res=success'
+Feb 14 00:18:24 localhost systemd-networkd[269]: eth0: Gained IPv6LL
+Feb 14 00:18:24 localhost systemd[1]: Finished systemd-networkd-wait-online.service.
+Feb 14 00:18:24 localhost audit[1]: SERVICE_START pid=1 uid=0 auid=4294967295 ses=4294967295 subj=unconfined msg='unit=systemd-networkd-wait-online comm="systemd" exe="/usr/lib/systemd/systemd" hostname=? addr=? terminal=? res=success'
+Feb 14 00:18:35 localhost setup-integrity-fs.sh[517]: 32768+0 records in
+Feb 14 00:18:35 localhost setup-integrity-fs.sh[517]: 32768+0 records out
+Feb 14 00:18:35 localhost setup-integrity-fs.sh[517]: 134217728 bytes (134 MB, 128 MiB) copied, 12.7282 s, 10.5 MB/s
+Feb 14 00:18:35 localhost setup-integrity-fs.sh[224]: Creating ext4 fs.
+Feb 14 00:18:35 localhost setup-integrity-fs.sh[525]: mke2fs 1.47.0 (5-Feb-2023)
+Feb 14 00:18:35 localhost setup-integrity-fs.sh[525]: Creating filesystem with 2063611 4k blocks and 516096 inodes
+Feb 14 00:18:35 localhost setup-integrity-fs.sh[525]: Filesystem UUID: 22d1e25f-bf15-462a-bf71-aaf0c6a4dca3
+Feb 14 00:18:35 localhost setup-integrity-fs.sh[525]: Superblock backups stored on blocks:
+Feb 14 00:18:35 localhost setup-integrity-fs.sh[525]:         32768, 98304, 163840, 229376, 294912, 819200, 884736, 1605632
+Feb 14 00:18:35 localhost setup-integrity-fs.sh[525]: [49B blob data]
+Feb 14 00:18:35 localhost setup-integrity-fs.sh[525]: [46B blob data]
+Feb 14 00:18:36 localhost setup-integrity-fs.sh[525]: Creating journal (16384 blocks): done
+Feb 14 00:18:36 localhost setup-integrity-fs.sh[525]: [83B blob data]
+Feb 14 00:18:36 localhost systemd[1]: Finished protected-stateful-partition-memory@dev-nvme0n1p1.service.
+Feb 14 00:18:36 localhost audit[1]: SERVICE_START pid=1 uid=0 auid=4294967295 ses=4294967295 subj=unconfined msg='unit=protected-stateful-partition-memory@dev-nvme0n1p1 comm="systemd" exe="/usr/lib/systemd/systemd" hostname=? addr=? terminal=? res=success'
+Feb 14 00:18:36 localhost systemd[1]: Starting stateful-devices.service...
+Feb 14 00:18:36 localhost systemd[1]: Finished stateful-devices.service.
+Feb 14 00:18:36 localhost audit[1]: SERVICE_START pid=1 uid=0 auid=4294967295 ses=4294967295 subj=unconfined msg='unit=stateful-devices comm="systemd" exe="/usr/lib/systemd/systemd" hostname=? addr=? terminal=? res=success'
+Feb 14 00:18:36 localhost systemd[1]: Found device dev-stateful.device.
+Feb 14 00:18:36 localhost systemd[1]: Starting systemd-fsck@dev-stateful.service...
+Feb 14 00:18:36 localhost systemd-fsck[545]: /dev/mapper/protected_stateful_partition: clean, 11/516096 files, 57853/2063611 blocks
+Feb 14 00:18:36 localhost systemd[1]: Finished systemd-fsck@dev-stateful.service.
+Feb 14 00:18:36 localhost audit[1]: SERVICE_START pid=1 uid=0 auid=4294967295 ses=4294967295 subj=unconfined msg='unit=systemd-fsck@dev-stateful comm="systemd" exe="/usr/lib/systemd/systemd" hostname=? addr=? terminal=? res=success'
+Feb 14 00:18:36 localhost systemd[1]: Mounting mnt-stateful_partition.mount...
+Feb 14 00:18:36 localhost kernel: EXT4-fs (dm-5): mounted filesystem with ordered data mode. Quota mode: none.
+Feb 14 00:18:36 localhost systemd[1]: Mounted mnt-stateful_partition.mount.
+Feb 14 00:18:36 localhost systemd[1]: Starting mnt-stateful_partition-make-private.service...
+Feb 14 00:18:36 localhost systemd[1]: Starting resize-stateful-partition.service...
+Feb 14 00:18:36 localhost systemd[1]: mnt-stateful_partition-make-private.service: Deactivated successfully.
+Feb 14 00:18:36 localhost systemd[1]: Finished mnt-stateful_partition-make-private.service.
+Feb 14 00:18:36 localhost audit[1]: SERVICE_START pid=1 uid=0 auid=4294967295 ses=4294967295 subj=unconfined msg='unit=mnt-stateful_partition-make-private comm="systemd" exe="/usr/lib/systemd/systemd" hostname=? addr=? terminal=? res=success'
+Feb 14 00:18:36 localhost audit[1]: SERVICE_STOP pid=1 uid=0 auid=4294967295 ses=4294967295 subj=unconfined msg='unit=mnt-stateful_partition-make-private comm="systemd" exe="/usr/lib/systemd/systemd" hostname=? addr=? terminal=? res=success'
+Feb 14 00:18:36 localhost systemd[1]: Mounting home.mount...
+Feb 14 00:18:36 localhost systemd[1]: Mounting var.mount...
+Feb 14 00:18:36 localhost systemd[1]: Mounted home.mount.
+Feb 14 00:18:36 localhost systemd[1]: Mounted var.mount.
+Feb 14 00:18:36 localhost systemd[1]: Mounting var-lib-cloud.mount...
+Feb 14 00:18:36 localhost systemd[1]: Mounting var-lib-containerd.mount...
+Feb 14 00:18:36 localhost systemd[1]: Mounting var-lib-docker.mount...
+Feb 14 00:18:36 localhost systemd[1]: Mounting var-lib-google.mount...
+Feb 14 00:18:36 localhost systemd[1]: Mounting var-lib-toolbox.mount...
+Feb 14 00:18:36 localhost systemd[1]: Starting systemd-journal-flush.service...
+Feb 14 00:18:36 localhost systemd-journald[189]: Time spent on flushing to /var/log/journal/298385b4ef18c86ecb44e4aac1502013 is 5.609ms for 689 entries.
+Feb 14 00:18:36 localhost systemd-journald[189]: System Journal (/var/log/journal/298385b4ef18c86ecb44e4aac1502013) is 8.0M, max 1.0G, 1016.0M free.
+Feb 14 00:18:36 localhost systemd-journald[189]: Received client request to flush runtime journal.
+Feb 14 00:18:36 localhost audit[1]: SERVICE_START pid=1 uid=0 auid=4294967295 ses=4294967295 subj=unconfined msg='unit=resize-stateful-partition comm="systemd" exe="/usr/lib/systemd/systemd" hostname=? addr=? terminal=? res=success'
+Feb 14 00:18:36 localhost audit[1]: SERVICE_STOP pid=1 uid=0 auid=4294967295 ses=4294967295 subj=unconfined msg='unit=resize-stateful-partition comm="systemd" exe="/usr/lib/systemd/systemd" hostname=? addr=? terminal=? res=success'
+Feb 14 00:18:36 localhost systemd[1]: resize-stateful-partition.service: Deactivated successfully.
+Feb 14 00:18:36 localhost systemd[1]: Finished resize-stateful-partition.service.
+Feb 14 00:18:36 localhost systemd[1]: Mounted var-lib-cloud.mount.
+Feb 14 00:18:36 localhost systemd[1]: Mounted var-lib-containerd.mount.
+Feb 14 00:18:36 localhost systemd[1]: Mounted var-lib-docker.mount.
+Feb 14 00:18:36 localhost systemd[1]: Mounted var-lib-google.mount.
+Feb 14 00:18:36 localhost systemd[1]: Mounted var-lib-toolbox.mount.
+Feb 14 00:18:36 localhost systemd[1]: Finished systemd-journal-flush.service.
+Feb 14 00:18:36 localhost audit[1]: SERVICE_START pid=1 uid=0 auid=4294967295 ses=4294967295 subj=unconfined msg='unit=systemd-journal-flush comm="systemd" exe="/usr/lib/systemd/systemd" hostname=? addr=? terminal=? res=success'
+Feb 14 00:18:36 localhost systemd[1]: Starting var-lib-containerd-remount.service...
+Feb 14 00:18:36 localhost kernel: EXT4-fs (dm-5): re-mounted. Quota mode: none.
+Feb 14 00:18:36 localhost systemd[1]: Starting var-lib-docker-remount.service...
+Feb 14 00:18:36 localhost kernel: EXT4-fs (dm-5): re-mounted. Quota mode: none.
+Feb 14 00:18:36 localhost systemd[1]: Starting var-lib-google-remount.service...
+Feb 14 00:18:36 localhost kernel: EXT4-fs (dm-5): re-mounted. Quota mode: none.
+Feb 14 00:18:36 localhost systemd[1]: Starting var-lib-toolbox-remount.service...
+Feb 14 00:18:36 localhost kernel: EXT4-fs (dm-5): re-mounted. Quota mode: none.
+Feb 14 00:18:36 localhost systemd[1]: var-lib-containerd-remount.service: Deactivated successfully.
+Feb 14 00:18:36 localhost systemd[1]: Finished var-lib-containerd-remount.service.
+Feb 14 00:18:36 localhost audit[1]: SERVICE_START pid=1 uid=0 auid=4294967295 ses=4294967295 subj=unconfined msg='unit=var-lib-containerd-remount comm="systemd" exe="/usr/lib/systemd/systemd" hostname=? addr=? terminal=? res=success'
+Feb 14 00:18:36 localhost audit[1]: SERVICE_STOP pid=1 uid=0 auid=4294967295 ses=4294967295 subj=unconfined msg='unit=var-lib-containerd-remount comm="systemd" exe="/usr/lib/systemd/systemd" hostname=? addr=? terminal=? res=success'
+Feb 14 00:18:36 localhost systemd[1]: var-lib-docker-remount.service: Deactivated successfully.
+Feb 14 00:18:36 localhost systemd[1]: Finished var-lib-docker-remount.service.
+Feb 14 00:18:36 localhost audit[1]: SERVICE_START pid=1 uid=0 auid=4294967295 ses=4294967295 subj=unconfined msg='unit=var-lib-docker-remount comm="systemd" exe="/usr/lib/systemd/systemd" hostname=? addr=? terminal=? res=success'
+Feb 14 00:18:36 localhost audit[1]: SERVICE_STOP pid=1 uid=0 auid=4294967295 ses=4294967295 subj=unconfined msg='unit=var-lib-docker-remount comm="systemd" exe="/usr/lib/systemd/systemd" hostname=? addr=? terminal=? res=success'
+Feb 14 00:18:36 localhost systemd[1]: var-lib-google-remount.service: Deactivated successfully.
+Feb 14 00:18:36 localhost systemd[1]: Finished var-lib-google-remount.service.
+Feb 14 00:18:36 localhost audit[1]: SERVICE_START pid=1 uid=0 auid=4294967295 ses=4294967295 subj=unconfined msg='unit=var-lib-google-remount comm="systemd" exe="/usr/lib/systemd/systemd" hostname=? addr=? terminal=? res=success'
+Feb 14 00:18:36 localhost audit[1]: SERVICE_STOP pid=1 uid=0 auid=4294967295 ses=4294967295 subj=unconfined msg='unit=var-lib-google-remount comm="systemd" exe="/usr/lib/systemd/systemd" hostname=? addr=? terminal=? res=success'
+Feb 14 00:18:36 localhost systemd[1]: var-lib-toolbox-remount.service: Deactivated successfully.
+Feb 14 00:18:36 localhost systemd[1]: Finished var-lib-toolbox-remount.service.
+Feb 14 00:18:36 localhost audit[1]: SERVICE_START pid=1 uid=0 auid=4294967295 ses=4294967295 subj=unconfined msg='unit=var-lib-toolbox-remount comm="systemd" exe="/usr/lib/systemd/systemd" hostname=? addr=? terminal=? res=success'
+Feb 14 00:18:36 localhost audit[1]: SERVICE_STOP pid=1 uid=0 auid=4294967295 ses=4294967295 subj=unconfined msg='unit=var-lib-toolbox-remount comm="systemd" exe="/usr/lib/systemd/systemd" hostname=? addr=? terminal=? res=success'
+Feb 14 00:18:36 localhost systemd[1]: Reached target local-fs.target.
+Feb 14 00:18:36 localhost systemd[1]: kdump-load-kernel.service was skipped because of an unmet condition check (ConditionKernelCommandLine=crashkernel).
+Feb 14 00:18:36 localhost systemd[1]: systemd-binfmt.service was skipped because no trigger condition checks were met.
+Feb 14 00:18:36 localhost systemd[1]: systemd-machine-id-commit.service was skipped because of an unmet condition check (ConditionPathIsMountPoint=/etc/machine-id).
+Feb 14 00:18:36 localhost systemd[1]: Starting systemd-tmpfiles-setup.service...
+Feb 14 00:18:36 localhost systemd-tmpfiles[586]: /usr/lib/tmpfiles.d/legacy.conf:13: Duplicate line for path "/run/lock", ignoring.
+Feb 14 00:18:36 localhost systemd-tmpfiles[586]: /usr/lib/tmpfiles.d/legacy.conf:14: Duplicate line for path "/var/lock", ignoring.
+Feb 14 00:18:36 localhost systemd-tmpfiles[586]: /usr/lib/tmpfiles.d/var.conf:12: Duplicate line for path "/var/run", ignoring.
+Feb 14 00:18:36 localhost systemd-tmpfiles[586]: Failed to create directory or subvolume "/root/.ssh", ignoring: Read-only file system
+Feb 14 00:18:36 localhost systemd[1]: Finished systemd-tmpfiles-setup.service.
+Feb 14 00:18:36 localhost audit[1]: SERVICE_START pid=1 uid=0 auid=4294967295 ses=4294967295 subj=unconfined msg='unit=systemd-tmpfiles-setup comm="systemd" exe="/usr/lib/systemd/systemd" hostname=? addr=? terminal=? res=success'
+Feb 14 00:18:36 localhost systemd[1]: Starting audit-rules.service...
+Feb 14 00:18:36 localhost systemd[1]: Starting systemd-journal-catalog-update.service...
+Feb 14 00:18:36 localhost audit: BPF prog-id=9 op=LOAD
+Feb 14 00:18:36 localhost systemd[1]: Starting systemd-resolved.service...
+Feb 14 00:18:36 localhost audit: CONFIG_CHANGE op=set audit_backlog_limit=128 old=64 auid=4294967295 ses=4294967295 subj=unconfined res=1
+Feb 14 00:18:36 localhost audit[605]: SYSCALL arch=c000003e syscall=44 success=yes exit=56 a0=3 a1=7ffe723796b0 a2=38 a3=0 items=0 ppid=589 pid=605 auid=4294967295 uid=0 gid=0 euid=0 suid=0 fsuid=0 egid=0 sgid=0 fsgid=0 tty=(none) ses=4294967295 comm="auditctl" exe="/sbin/auditctl" subj=unconfined key=(null)
+Feb 14 00:18:36 localhost audit: PROCTITLE proctitle=2F7362696E2F617564697463746C002D52002F6574632F61756469742F61756469742E72756C6573
+Feb 14 00:18:36 localhost augenrules[605]: No rules
+Feb 14 00:18:36 localhost augenrules[605]: enabled 1
+Feb 14 00:18:36 localhost augenrules[605]: failure 1
+Feb 14 00:18:36 localhost augenrules[605]: pid 189
+Feb 14 00:18:36 localhost augenrules[605]: rate_limit 0
+Feb 14 00:18:36 localhost augenrules[605]: backlog_limit 128
+Feb 14 00:18:36 localhost augenrules[605]: lost 0
+Feb 14 00:18:36 localhost augenrules[605]: backlog 4
+Feb 14 00:18:36 localhost augenrules[605]: backlog_wait_time 60000
+Feb 14 00:18:36 localhost audit: CONFIG_CHANGE auid=4294967295 ses=4294967295 subj=unconfined op=add_rule key=(null) list=5 res=1
+Feb 14 00:18:36 localhost systemd[1]: Starting systemd-update-utmp.service...
+Feb 14 00:18:36 localhost systemd[1]: Finished audit-rules.service.
+Feb 14 00:18:36 localhost systemd[1]: Finished systemd-journal-catalog-update.service.
+Feb 14 00:18:36 localhost systemd[1]: Starting systemd-update-done.service...
+Feb 14 00:18:36 localhost systemd-resolved[603]: Positive Trust Anchors:
+Feb 14 00:18:36 localhost systemd-resolved[603]: . IN DS 20326 8 2 e06d44b80b8f1d39a95c0b0d7c65d08458e880409bbc683457104237c7f8ec8d
+Feb 14 00:18:36 localhost systemd-resolved[603]: . IN DS 38696 8 2 683d2d0acb8c9b712a1948b27f741219298d0a450d612c483af444a4c0fb2b16
+Feb 14 00:18:36 localhost systemd-resolved[603]: Negative trust anchors: home.arpa 10.in-addr.arpa 16.172.in-addr.arpa 17.172.in-addr.arpa 18.172.in-addr.arpa 19.172.in-addr.arpa 20.172.in-addr.arpa 21.172.in-addr.arpa 22.172.in-addr.arpa 23.172.in-addr.arpa 24.172.in-addr.arpa 25.172.in-addr.arpa 26.172.in-addr.arpa 27.172.in-addr.arpa 28.172.in-addr.arpa 29.172.in-addr.arpa 30.172.in-addr.arpa 31.172.in-addr.arpa 170.0.0.192.in-addr.arpa 171.0.0.192.in-addr.arpa 168.192.in-addr.arpa d.f.ip6.arpa ipv4only.arpa resolver.arpa corp home internal intranet lan local private test
+Feb 14 00:18:36 localhost systemd[1]: Finished systemd-update-done.service.
+Feb 14 00:18:36 localhost systemd-resolved[603]: Defaulting to hostname 'linux'.
+Feb 14 00:18:36 localhost systemd[1]: Started systemd-resolved.service.
+Feb 14 00:18:36 localhost systemd[1]: Finished systemd-update-utmp.service.
+Feb 14 00:18:37 localhost systemd[1]: Reached target nss-lookup.target.
+Feb 14 00:18:37 localhost systemd[1]: Reached target sysinit.target.
+Feb 14 00:18:37 localhost systemd[1]: Started crash-sender.timer.
+Feb 14 00:18:37 localhost systemd[1]: Started systemd-tmpfiles-clean.timer.
+Feb 14 00:18:37 localhost systemd[1]: Reached target timers.target.
+Feb 14 00:18:37 localhost systemd[1]: Listening on dbus.socket.
+Feb 14 00:18:37 localhost systemd[1]: Starting docker.socket...
+Feb 14 00:18:37 localhost systemd[1]: Listening on docker.socket.
+Feb 14 00:18:37 localhost systemd[1]: Reached target sockets.target.
+Feb 14 00:18:37 localhost systemd[1]: Reached target basic.target.
+Feb 14 00:18:37 localhost systemd[1]: System is tainted: unmerged-usr
+Feb 14 00:18:37 localhost systemd[1]: Starting check-secure-boot.service...
+Feb 14 00:18:37 localhost systemd[1]: Starting chronyd.service...
+Feb 14 00:18:37 localhost systemd[1]: Started dbus.service.
+Feb 14 00:18:37 localhost systemd[1]: Starting google-osconfig-init.service...
+Feb 14 00:18:37 localhost systemd[1]: Starting ip6tables-setup.service...
+Feb 14 00:18:37 localhost dbus-daemon[625]: dbus[625]: Unknown username "systemd-oom" in message bus configuration file
+Feb 14 00:18:37 localhost dbus-daemon[625]: dbus[625]: Unknown username "dlcservice" in message bus configuration file
+Feb 14 00:18:37 localhost dbus-daemon[625]: dbus[625]: Unknown username "crosvm" in message bus configuration file
+Feb 14 00:18:37 localhost dbus-daemon[625]: dbus[625]: Unknown username "power" in message bus configuration file
+Feb 14 00:18:37 localhost dbus-daemon[625]: dbus[625]: Unknown username "dlcservice" in message bus configuration file
+Feb 14 00:18:37 localhost systemd[1]: Starting iptables-setup.service...
+Feb 14 00:18:37 localhost kernel: LoadPin: kernel-module pinning-excluded obj="/lib/modules/6.1.155+/kernel/net/netfilter/nf_tables.ko" pid=630 cmdline="/sbin/modprobe -q -- nfnetlink-subsys-10"
+Feb 14 00:18:37 localhost dbus-daemon[625]: [system] Activating systemd to hand-off: service name='org.freedesktop.hostname1' unit='dbus-org.freedesktop.hostname1.service' requested by ':1.0' (uid=274 pid=269 comm="/usr/lib/systemd/systemd-networkd ")
+Feb 14 00:18:37 localhost systemd[1]: Starting report-system-info.service...
+Feb 14 00:18:37 localhost cat[633]: NAME="Container-Optimized OS"
+Feb 14 00:18:37 localhost cat[633]: ID=cos
+Feb 14 00:18:37 localhost cat[633]: PRETTY_NAME="Container-Optimized OS from Google"
+Feb 14 00:18:37 localhost cat[633]: HOME_URL="https://cloud.google.com/container-optimized-os/docs"
+Feb 14 00:18:37 localhost cat[633]: BUG_REPORT_URL="https://cloud.google.com/container-optimized-os/docs/resources/support-policy#contact_us"
+Feb 14 00:18:37 localhost cat[633]: GOOGLE_CRASH_ID=Lakitu
+Feb 14 00:18:37 localhost cat[633]: KERNEL_COMMIT_ID=2fccd796b687dd10fc40c794fafefdcc3af48570
+Feb 14 00:18:37 localhost cat[633]: GOOGLE_METRICS_PRODUCT_ID=26
+Feb 14 00:18:37 localhost cat[633]: VERSION=113
+Feb 14 00:18:37 localhost cat[633]: VERSION_ID=113
+Feb 14 00:18:37 localhost cat[633]: BUILD_ID=18244.521.41
+Feb 14 00:18:37 ephemeralml-cvm kernel: LoadPin: kernel-module pinning-excluded obj="/lib/modules/6.1.155+/kernel/net/netfilter/nf_tables.ko" pid=635 cmdline="/sbin/modprobe -q -- nfnetlink-subsys-10"
+Feb 14 00:18:37 ephemeralml-cvm kernel: LoadPin: kernel-module pinning-excluded obj="/lib/modules/6.1.155+/kernel/net/netfilter/nft_compat.ko" pid=663 cmdline="/sbin/modprobe -q -- nfnetlink-subsys-11"
+Feb 14 00:18:37 ephemeralml-cvm kernel: LoadPin: kernel-module pinning-excluded obj="/lib/modules/6.1.155+/kernel/net/netfilter/nft_compat.ko" pid=662 cmdline="/sbin/modprobe -q -- nfnetlink-subsys-11"
+Feb 14 00:18:37 ephemeralml-cvm dbus-daemon[625]: [system] Successfully activated service 'org.freedesktop.systemd1'
+Feb 14 00:18:37 ephemeralml-cvm systemd[1]: Starting systemd-logind.service...
+Feb 14 00:18:37 ephemeralml-cvm dbus-daemon[625]: [system] Successfully activated service 'org.freedesktop.hostname1'
+Feb 14 00:18:37 ephemeralml-cvm systemd[1]: Finished check-secure-boot.service.
+Feb 14 00:18:37 ephemeralml-cvm systemd[1]: Finished google-osconfig-init.service.
+Feb 14 00:18:37 ephemeralml-cvm systemd[1]: Starting systemd-hostnamed.service...
+Feb 14 00:18:37 ephemeralml-cvm systemd-logind[637]: Watching system buttons on /dev/input/event0 (Power Button)
+Feb 14 00:18:37 ephemeralml-cvm echo[642]: Showing disk capacity
+Feb 14 00:18:37 ephemeralml-cvm systemd-logind[637]: Watching system buttons on /dev/input/event1 (Sleep Button)
+Feb 14 00:18:37 ephemeralml-cvm systemd-logind[637]: Watching system buttons on /dev/input/event2 (AT Translated Set 2 keyboard)
+Feb 14 00:18:37 ephemeralml-cvm df[669]: Filesystem                                Size  Used Avail Use% Mounted on
+Feb 14 00:18:37 ephemeralml-cvm df[669]: /dev/root                                 2.0G  1.2G  770M  61% /
+Feb 14 00:18:37 ephemeralml-cvm df[669]: devtmpfs                                  7.4G     0  7.4G   0% /dev
+Feb 14 00:18:37 ephemeralml-cvm df[669]: tmpfs                                     7.4G     0  7.4G   0% /dev/shm
+Feb 14 00:18:37 ephemeralml-cvm df[669]: tmpfs                                     3.0G  352K  3.0G   1% /run
+Feb 14 00:18:37 ephemeralml-cvm df[669]: tmpfs                                     7.4G   20K  7.4G   1% /etc/machine-id
+Feb 14 00:18:37 ephemeralml-cvm df[669]: tmpfs                                     256K     0  256K   0% /mnt/disks
+Feb 14 00:18:37 ephemeralml-cvm df[669]: tmpfs                                     7.4G     0  7.4G   0% /tmp
+Feb 14 00:18:37 ephemeralml-cvm df[669]: overlayfs                                 7.4G   20K  7.4G   1% /etc
+Feb 14 00:18:37 ephemeralml-cvm df[669]: metadata_device_tmpfs                      58M   58M     0 100% /run/integrity_fs
+Feb 14 00:18:37 ephemeralml-cvm df[669]: /dev/mapper/oemroot                       492M   86M  396M  18% /usr/share/oem
+Feb 14 00:18:37 ephemeralml-cvm df[669]: /dev/mapper/protected_stateful_partition  7.7G  8.5M  7.3G   1% /mnt/stateful_partition
+Feb 14 00:18:37 ephemeralml-cvm df[669]: tmpfs                                     2.0M     0  2.0M   0% /var/lib/cloud
+Feb 14 00:18:37 ephemeralml-cvm systemd-logind[637]: New seat seat0.
+Feb 14 00:18:37 ephemeralml-cvm chronyd[674]: chronyd version 4.5 starting (+CMDMON +NTP +REFCLOCK +RTC +PRIVDROP +SCFILTER -SIGND +ASYNCDNS -NTS +SECHASH +IPV6 -DEBUG)
+Feb 14 00:18:37 ephemeralml-cvm systemd[1]: Started systemd-logind.service.
+Feb 14 00:18:37 ephemeralml-cvm chronyd[674]: Loaded seccomp filter (level 2)
+Feb 14 00:18:37 ephemeralml-cvm systemd[1]: Finished iptables-setup.service.
+Feb 14 00:18:37 ephemeralml-cvm google_guest_agent[676]: GCE Agent Started (version 20240314.00)
+Feb 14 00:18:37 ephemeralml-cvm google_guest_agent[676]: Failed to run "google_optimize_local_ssd" script: exec: "google_optimize_local_ssd": executable file not found in $PATH
+Feb 14 00:18:37 ephemeralml-cvm systemd[1]: Finished ip6tables-setup.service.
+Feb 14 00:18:37 ephemeralml-cvm systemd-hostnamed[647]: Hostname set to <ephemeralml-cvm> (transient)
+Feb 14 00:18:37 ephemeralml-cvm systemd-resolved[603]: System hostname changed to 'ephemeralml-cvm'.
+Feb 14 00:18:37 ephemeralml-cvm systemd[1]: Started systemd-hostnamed.service.
+Feb 14 00:18:37 ephemeralml-cvm systemd[1]: Reached target network.target.
+Feb 14 00:18:37 ephemeralml-cvm systemd[1]: Reached target network-online.target.
+Feb 14 00:18:37 ephemeralml-cvm (chronyd)[668]: chronyd.service: Referenced but unset environment variable evaluates to an empty string: OPTIONS
+Feb 14 00:18:37 ephemeralml-cvm systemd[1]: Starting containerd.service...
+Feb 14 00:18:37 ephemeralml-cvm systemd[1]: Starting google-guest-agent.service...
+Feb 14 00:18:37 ephemeralml-cvm systemd[1]: Started google-osconfig-agent.service.
+Feb 14 00:18:37 ephemeralml-cvm systemd[1]: Starting systemd-user-sessions.service...
+Feb 14 00:18:37 ephemeralml-cvm systemd[1]: Started chronyd.service.
+Feb 14 00:18:37 ephemeralml-cvm systemd[1]: Finished report-system-info.service.
+Feb 14 00:18:37 ephemeralml-cvm systemd[1]: Finished systemd-user-sessions.service.
+Feb 14 00:18:37 ephemeralml-cvm systemd[1]: Started getty@tty1.service.
+Feb 14 00:18:37 ephemeralml-cvm containerd[717]: time="2026-02-14T00:18:37.574991248Z" level=info msg="starting containerd" revision=88bf19b2105c8b17560993bee28a01ddc2f97182 version=1.7.27
+Feb 14 00:18:37 ephemeralml-cvm systemd[1]: Started serial-getty@ttyS0.service.
+Feb 14 00:18:37 ephemeralml-cvm systemd[1]: Reached target getty.target.
+Feb 14 00:18:37 ephemeralml-cvm containerd[717]: time="2026-02-14T00:18:37.603616573Z" level=info msg="loading plugin \"io.containerd.snapshotter.v1.aufs\"..." type=io.containerd.snapshotter.v1
+Feb 14 00:18:37 ephemeralml-cvm containerd[717]: time="2026-02-14T00:18:37.605819917Z" level=info msg="skip loading plugin \"io.containerd.snapshotter.v1.aufs\"..." error="aufs is not supported (modprobe aufs failed: exit status 1 \"modprobe: FATAL: Module aufs not found in directory /lib/modules/6.1.155+\\n\"): skip plugin" type=io.containerd.snapshotter.v1
+Feb 14 00:18:37 ephemeralml-cvm containerd[717]: time="2026-02-14T00:18:37.605864375Z" level=info msg="loading plugin \"io.containerd.event.v1.exchange\"..." type=io.containerd.event.v1
+Feb 14 00:18:37 ephemeralml-cvm containerd[717]: time="2026-02-14T00:18:37.605880279Z" level=info msg="loading plugin \"io.containerd.internal.v1.opt\"..." type=io.containerd.internal.v1
+Feb 14 00:18:37 ephemeralml-cvm containerd[717]: time="2026-02-14T00:18:37.609396898Z" level=info msg="loading plugin \"io.containerd.warning.v1.deprecations\"..." type=io.containerd.warning.v1
+Feb 14 00:18:37 ephemeralml-cvm containerd[717]: time="2026-02-14T00:18:37.609423609Z" level=info msg="loading plugin \"io.containerd.snapshotter.v1.blockfile\"..." type=io.containerd.snapshotter.v1
+Feb 14 00:18:37 ephemeralml-cvm containerd[717]: time="2026-02-14T00:18:37.609515642Z" level=info msg="skip loading plugin \"io.containerd.snapshotter.v1.blockfile\"..." error="no scratch file generator: skip plugin" type=io.containerd.snapshotter.v1
+Feb 14 00:18:37 ephemeralml-cvm containerd[717]: time="2026-02-14T00:18:37.609528448Z" level=info msg="loading plugin \"io.containerd.snapshotter.v1.native\"..." type=io.containerd.snapshotter.v1
+Feb 14 00:18:37 ephemeralml-cvm containerd[717]: time="2026-02-14T00:18:37.609573268Z" level=info msg="loading plugin \"io.containerd.snapshotter.v1.overlayfs\"..." type=io.containerd.snapshotter.v1
+Feb 14 00:18:37 ephemeralml-cvm containerd[717]: time="2026-02-14T00:18:37.609689535Z" level=info msg="loading plugin \"io.containerd.snapshotter.v1.zfs\"..." type=io.containerd.snapshotter.v1
+Feb 14 00:18:37 ephemeralml-cvm containerd[717]: time="2026-02-14T00:18:37.609819573Z" level=info msg="skip loading plugin \"io.containerd.snapshotter.v1.zfs\"..." error="path /var/lib/containerd/io.containerd.snapshotter.v1.zfs must be a zfs filesystem to be used with the zfs snapshotter: skip plugin" type=io.containerd.snapshotter.v1
+Feb 14 00:18:37 ephemeralml-cvm containerd[717]: time="2026-02-14T00:18:37.609829230Z" level=info msg="loading plugin \"io.containerd.content.v1.content\"..." type=io.containerd.content.v1
+Feb 14 00:18:37 ephemeralml-cvm containerd[717]: time="2026-02-14T00:18:37.609840605Z" level=info msg="loading plugin \"io.containerd.metadata.v1.bolt\"..." type=io.containerd.metadata.v1
+Feb 14 00:18:37 ephemeralml-cvm containerd[717]: time="2026-02-14T00:18:37.609868379Z" level=info msg="metadata content store policy set" policy=shared
+Feb 14 00:18:37 ephemeralml-cvm containerd[717]: time="2026-02-14T00:18:37.620413618Z" level=info msg="loading plugin \"io.containerd.gc.v1.scheduler\"..." type=io.containerd.gc.v1
+Feb 14 00:18:37 ephemeralml-cvm containerd[717]: time="2026-02-14T00:18:37.620489550Z" level=info msg="loading plugin \"io.containerd.differ.v1.walking\"..." type=io.containerd.differ.v1
+Feb 14 00:18:37 ephemeralml-cvm containerd[717]: time="2026-02-14T00:18:37.620511357Z" level=info msg="loading plugin \"io.containerd.lease.v1.manager\"..." type=io.containerd.lease.v1
+Feb 14 00:18:37 ephemeralml-cvm containerd[717]: time="2026-02-14T00:18:37.620533176Z" level=info msg="loading plugin \"io.containerd.streaming.v1.manager\"..." type=io.containerd.streaming.v1
+Feb 14 00:18:37 ephemeralml-cvm containerd[717]: time="2026-02-14T00:18:37.620566850Z" level=info msg="loading plugin \"io.containerd.runtime.v1.linux\"..." type=io.containerd.runtime.v1
+Feb 14 00:18:37 ephemeralml-cvm containerd[717]: time="2026-02-14T00:18:37.620676408Z" level=info msg="loading plugin \"io.containerd.monitor.v1.cgroups\"..." type=io.containerd.monitor.v1
+Feb 14 00:18:37 ephemeralml-cvm containerd[717]: time="2026-02-14T00:18:37.620981793Z" level=info msg="loading plugin \"io.containerd.runtime.v2.task\"..." type=io.containerd.runtime.v2
+Feb 14 00:18:37 ephemeralml-cvm containerd[717]: time="2026-02-14T00:18:37.621082543Z" level=info msg="loading plugin \"io.containerd.runtime.v2.shim\"..." type=io.containerd.runtime.v2
+Feb 14 00:18:37 ephemeralml-cvm containerd[717]: time="2026-02-14T00:18:37.621109637Z" level=info msg="loading plugin \"io.containerd.sandbox.store.v1.local\"..." type=io.containerd.sandbox.store.v1
+Feb 14 00:18:37 ephemeralml-cvm containerd[717]: time="2026-02-14T00:18:37.621123354Z" level=info msg="loading plugin \"io.containerd.sandbox.controller.v1.local\"..." type=io.containerd.sandbox.controller.v1
+Feb 14 00:18:37 ephemeralml-cvm containerd[717]: time="2026-02-14T00:18:37.621137558Z" level=info msg="loading plugin \"io.containerd.service.v1.containers-service\"..." type=io.containerd.service.v1
+Feb 14 00:18:37 ephemeralml-cvm containerd[717]: time="2026-02-14T00:18:37.621151358Z" level=info msg="loading plugin \"io.containerd.service.v1.content-service\"..." type=io.containerd.service.v1
+Feb 14 00:18:37 ephemeralml-cvm containerd[717]: time="2026-02-14T00:18:37.621166318Z" level=info msg="loading plugin \"io.containerd.service.v1.diff-service\"..." type=io.containerd.service.v1
+Feb 14 00:18:37 ephemeralml-cvm containerd[717]: time="2026-02-14T00:18:37.621182991Z" level=info msg="loading plugin \"io.containerd.service.v1.images-service\"..." type=io.containerd.service.v1
+Feb 14 00:18:37 ephemeralml-cvm containerd[717]: time="2026-02-14T00:18:37.621199858Z" level=info msg="loading plugin \"io.containerd.service.v1.introspection-service\"..." type=io.containerd.service.v1
+Feb 14 00:18:37 ephemeralml-cvm containerd[717]: time="2026-02-14T00:18:37.621214882Z" level=info msg="loading plugin \"io.containerd.service.v1.namespaces-service\"..." type=io.containerd.service.v1
+Feb 14 00:18:37 ephemeralml-cvm containerd[717]: time="2026-02-14T00:18:37.621233324Z" level=info msg="loading plugin \"io.containerd.service.v1.snapshots-service\"..." type=io.containerd.service.v1
+Feb 14 00:18:37 ephemeralml-cvm containerd[717]: time="2026-02-14T00:18:37.621245154Z" level=info msg="loading plugin \"io.containerd.service.v1.tasks-service\"..." type=io.containerd.service.v1
+Feb 14 00:18:37 ephemeralml-cvm containerd[717]: time="2026-02-14T00:18:37.621279658Z" level=info msg="loading plugin \"io.containerd.grpc.v1.containers\"..." type=io.containerd.grpc.v1
+Feb 14 00:18:37 ephemeralml-cvm containerd[717]: time="2026-02-14T00:18:37.621325629Z" level=info msg="loading plugin \"io.containerd.grpc.v1.content\"..." type=io.containerd.grpc.v1
+Feb 14 00:18:37 ephemeralml-cvm containerd[717]: time="2026-02-14T00:18:37.621339213Z" level=info msg="loading plugin \"io.containerd.grpc.v1.diff\"..." type=io.containerd.grpc.v1
+Feb 14 00:18:37 ephemeralml-cvm containerd[717]: time="2026-02-14T00:18:37.621351656Z" level=info msg="loading plugin \"io.containerd.grpc.v1.events\"..." type=io.containerd.grpc.v1
+Feb 14 00:18:37 ephemeralml-cvm containerd[717]: time="2026-02-14T00:18:37.621394510Z" level=info msg="loading plugin \"io.containerd.grpc.v1.images\"..." type=io.containerd.grpc.v1
+Feb 14 00:18:37 ephemeralml-cvm containerd[717]: time="2026-02-14T00:18:37.621408581Z" level=info msg="loading plugin \"io.containerd.grpc.v1.introspection\"..." type=io.containerd.grpc.v1
+Feb 14 00:18:37 ephemeralml-cvm containerd[717]: time="2026-02-14T00:18:37.621421173Z" level=info msg="loading plugin \"io.containerd.grpc.v1.leases\"..." type=io.containerd.grpc.v1
+Feb 14 00:18:37 ephemeralml-cvm containerd[717]: time="2026-02-14T00:18:37.621438138Z" level=info msg="loading plugin \"io.containerd.grpc.v1.namespaces\"..." type=io.containerd.grpc.v1
+Feb 14 00:18:37 ephemeralml-cvm containerd[717]: time="2026-02-14T00:18:37.621452240Z" level=info msg="loading plugin \"io.containerd.grpc.v1.sandbox-controllers\"..." type=io.containerd.grpc.v1
+Feb 14 00:18:37 ephemeralml-cvm containerd[717]: time="2026-02-14T00:18:37.621468136Z" level=info msg="loading plugin \"io.containerd.grpc.v1.sandboxes\"..." type=io.containerd.grpc.v1
+Feb 14 00:18:37 ephemeralml-cvm containerd[717]: time="2026-02-14T00:18:37.621498506Z" level=info msg="loading plugin \"io.containerd.grpc.v1.snapshots\"..." type=io.containerd.grpc.v1
+Feb 14 00:18:37 ephemeralml-cvm containerd[717]: time="2026-02-14T00:18:37.621528448Z" level=info msg="loading plugin \"io.containerd.grpc.v1.streaming\"..." type=io.containerd.grpc.v1
+Feb 14 00:18:37 ephemeralml-cvm containerd[717]: time="2026-02-14T00:18:37.621542422Z" level=info msg="loading plugin \"io.containerd.grpc.v1.tasks\"..." type=io.containerd.grpc.v1
+Feb 14 00:18:37 ephemeralml-cvm containerd[717]: time="2026-02-14T00:18:37.621558249Z" level=info msg="loading plugin \"io.containerd.transfer.v1.local\"..." type=io.containerd.transfer.v1
+Feb 14 00:18:37 ephemeralml-cvm containerd[717]: time="2026-02-14T00:18:37.621597948Z" level=info msg="loading plugin \"io.containerd.grpc.v1.transfer\"..." type=io.containerd.grpc.v1
+Feb 14 00:18:37 ephemeralml-cvm containerd[717]: time="2026-02-14T00:18:37.621633396Z" level=info msg="loading plugin \"io.containerd.grpc.v1.version\"..." type=io.containerd.grpc.v1
+Feb 14 00:18:37 ephemeralml-cvm containerd[717]: time="2026-02-14T00:18:37.621663840Z" level=info msg="loading plugin \"io.containerd.internal.v1.restart\"..." type=io.containerd.internal.v1
+Feb 14 00:18:37 ephemeralml-cvm containerd[717]: time="2026-02-14T00:18:37.621735114Z" level=info msg="loading plugin \"io.containerd.tracing.processor.v1.otlp\"..." type=io.containerd.tracing.processor.v1
+Feb 14 00:18:37 ephemeralml-cvm containerd[717]: time="2026-02-14T00:18:37.621755194Z" level=info msg="skip loading plugin \"io.containerd.tracing.processor.v1.otlp\"..." error="skip plugin: tracing endpoint not configured" type=io.containerd.tracing.processor.v1
+Feb 14 00:18:37 ephemeralml-cvm containerd[717]: time="2026-02-14T00:18:37.621767583Z" level=info msg="loading plugin \"io.containerd.internal.v1.tracing\"..." type=io.containerd.internal.v1
+Feb 14 00:18:37 ephemeralml-cvm containerd[717]: time="2026-02-14T00:18:37.621782305Z" level=info msg="skip loading plugin \"io.containerd.internal.v1.tracing\"..." error="skip plugin: tracing endpoint not configured" type=io.containerd.internal.v1
+Feb 14 00:18:37 ephemeralml-cvm containerd[717]: time="2026-02-14T00:18:37.621792746Z" level=info msg="loading plugin \"io.containerd.grpc.v1.healthcheck\"..." type=io.containerd.grpc.v1
+Feb 14 00:18:37 ephemeralml-cvm containerd[717]: time="2026-02-14T00:18:37.621809250Z" level=info msg="loading plugin \"io.containerd.nri.v1.nri\"..." type=io.containerd.nri.v1
+Feb 14 00:18:37 ephemeralml-cvm containerd[717]: time="2026-02-14T00:18:37.621820013Z" level=info msg="NRI interface is disabled by configuration."
+Feb 14 00:18:37 ephemeralml-cvm containerd[717]: time="2026-02-14T00:18:37.621830746Z" level=info msg="loading plugin \"io.containerd.grpc.v1.cri\"..." type=io.containerd.grpc.v1
+Feb 14 00:18:37 ephemeralml-cvm containerd[717]: time="2026-02-14T00:18:37.622128152Z" level=info msg="Start cri plugin with config {PluginConfig:{ContainerdConfig:{Snapshotter:overlayfs DefaultRuntimeName:runc DefaultRuntime:{Type: Path: Engine: PodAnnotations:[] ContainerAnnotations:[] Root: Options:map[] PrivilegedWithoutHostDevices:false PrivilegedWithoutHostDevicesAllDevicesAllowed:false BaseRuntimeSpec: NetworkPluginConfDir: NetworkPluginMaxConfNum:0 Snapshotter: SandboxMode:} UntrustedWorkloadRuntime:{Type: Path: Engine: PodAnnotations:[] ContainerAnnotations:[] Root: Options:map[] PrivilegedWithoutHostDevices:false PrivilegedWithoutHostDevicesAllDevicesAllowed:false BaseRuntimeSpec: NetworkPluginConfDir: NetworkPluginMaxConfNum:0 Snapshotter: SandboxMode:} Runtimes:map[runc:{Type:io.containerd.runc.v2 Path: Engine: PodAnnotations:[] ContainerAnnotations:[] Root: Options:map[SystemdCgroup:true] PrivilegedWithoutHostDevices:false PrivilegedWithoutHostDevicesAllDevicesAllowed:false BaseRuntimeSpec: NetworkPluginConfDir: NetworkPluginMaxConfNum:0 Snapshotter: SandboxMode:podsandbox}] NoPivot:false DisableSnapshotAnnotations:true DiscardUnpackedLayers:false IgnoreBlockIONotEnabledErrors:false IgnoreRdtNotEnabledErrors:false} CniConfig:{NetworkPluginBinDir:/opt/cni/bin NetworkPluginConfDir:/etc/cni/net.d NetworkPluginMaxConfNum:1 NetworkPluginSetupSerially:false NetworkPluginConfTemplate:/etc/kubernetes/cni.template IPPreference:} Registry:{ConfigPath: Mirrors:map[] Configs:map[] Auths:map[] Headers:map[]} ImageDecryption:{KeyModel:node} DisableTCPService:true StreamServerAddress:127.0.0.1 StreamServerPort:0 StreamIdleTimeout:4h0m0s EnableSelinux:false SelinuxCategoryRange:1024 SandboxImage:registry.k8s.io/pause:3.8 StatsCollectPeriod:10 SystemdCgroup:false EnableTLSStreaming:false X509KeyPairStreaming:{TLSCertFile: TLSKeyFile:} MaxContainerLogLineSize:16384 DisableCgroup:false DisableApparmor:false RestrictOOMScoreAdj:false MaxConcurrentDownloads:3 DisableProcMount:false UnsetSeccompProfile: TolerateMissingHugetlbController:true DisableHugetlbController:true DeviceOwnershipFromSecurityContext:false IgnoreImageDefinedVolumes:false NetNSMountsUnderStateDir:false EnableUnprivilegedPorts:false EnableUnprivilegedICMP:false EnableCDI:false CDISpecDirs:[/etc/cdi /var/run/cdi] ImagePullProgressTimeout:5m0s DrainExecSyncIOTimeout:0s ImagePullWithSyncFs:false IgnoreDeprecationWarnings:[]} ContainerdRootDir:/var/lib/containerd ContainerdEndpoint:/run/containerd/containerd.sock RootDir:/var/lib/containerd/io.containerd.grpc.v1.cri StateDir:/run/containerd/io.containerd.grpc.v1.cri}"
+Feb 14 00:18:37 ephemeralml-cvm containerd[717]: time="2026-02-14T00:18:37.622224685Z" level=info msg="Connect containerd service"
+Feb 14 00:18:37 ephemeralml-cvm containerd[717]: time="2026-02-14T00:18:37.622250788Z" level=info msg="using legacy CRI server"
+Feb 14 00:18:37 ephemeralml-cvm containerd[717]: time="2026-02-14T00:18:37.622270843Z" level=info msg="using experimental NRI integration - disable nri plugin to prevent this"
+Feb 14 00:18:37 ephemeralml-cvm containerd[717]: time="2026-02-14T00:18:37.622404981Z" level=info msg="Get image filesystem path \"/var/lib/containerd/io.containerd.snapshotter.v1.overlayfs\""
+Feb 14 00:18:37 ephemeralml-cvm containerd[717]: time="2026-02-14T00:18:37.622798078Z" level=error msg="failed to load cni during init, please check CRI plugin status before setting up network for pods" error="cni config load failed: no network config found in /etc/cni/net.d: cni plugin not initialized: failed to load cni config"
+Feb 14 00:18:37 ephemeralml-cvm containerd[717]: time="2026-02-14T00:18:37.623052893Z" level=info msg="Start subscribing containerd event"
+Feb 14 00:18:37 ephemeralml-cvm containerd[717]: time="2026-02-14T00:18:37.623717738Z" level=info msg="Start recovering state"
+Feb 14 00:18:37 ephemeralml-cvm containerd[717]: time="2026-02-14T00:18:37.623802375Z" level=info msg="Start event monitor"
+Feb 14 00:18:37 ephemeralml-cvm containerd[717]: time="2026-02-14T00:18:37.623820259Z" level=info msg="Start snapshots syncer"
+Feb 14 00:18:37 ephemeralml-cvm containerd[717]: time="2026-02-14T00:18:37.623831068Z" level=info msg="Start cni network conf syncer for default"
+Feb 14 00:18:37 ephemeralml-cvm containerd[717]: time="2026-02-14T00:18:37.623844302Z" level=info msg="Start streaming server"
+Feb 14 00:18:37 ephemeralml-cvm containerd[717]: time="2026-02-14T00:18:37.623661253Z" level=info msg=serving... address=/run/containerd/containerd.sock.ttrpc
+Feb 14 00:18:37 ephemeralml-cvm containerd[717]: time="2026-02-14T00:18:37.623966950Z" level=info msg=serving... address=/run/containerd/containerd.sock
+Feb 14 00:18:37 ephemeralml-cvm systemd[1]: Started containerd.service.
+Feb 14 00:18:37 ephemeralml-cvm containerd[717]: time="2026-02-14T00:18:37.624982313Z" level=info msg="containerd successfully booted in 0.051573s"
+Feb 14 00:18:37 ephemeralml-cvm systemd[1]: Starting docker.service...
+Feb 14 00:18:37 ephemeralml-cvm (dockerd)[814]: docker.service: Referenced but unset environment variable evaluates to an empty string: DOCKER_OPTS
+Feb 14 00:18:37 ephemeralml-cvm google_guest_agent[676]: Network interface setup disabled, skipping...
+Feb 14 00:18:37 ephemeralml-cvm google_guest_agent[676]: Instance ID changed, running first-boot actions
+Feb 14 00:18:37 ephemeralml-cvm OSConfigAgent[680]: 2026-02-14T00:18:37.7183Z OSConfigAgent Info: OSConfig Agent (version 20240927.00) started.
+Feb 14 00:18:38 ephemeralml-cvm dockerd[814]: time="2026-02-14T00:18:38.318635863Z" level=info msg="Starting up"
+Feb 14 00:18:38 ephemeralml-cvm audit[839]: AVC apparmor="STATUS" operation="profile_load" profile="unconfined" name="docker-default" pid=839 comm="apparmor_parser"
+Feb 14 00:18:38 ephemeralml-cvm dockerd[814]: time="2026-02-14T00:18:38.395629581Z" level=info msg="[graphdriver] trying configured driver: overlay2"
+Feb 14 00:18:38 ephemeralml-cvm dockerd[814]: time="2026-02-14T00:18:38.422913145Z" level=info msg="Loading containers: start."
+Feb 14 00:18:38 ephemeralml-cvm kernel: LoadPin: kernel-module pinning-excluded obj="/lib/modules/6.1.155+/kernel/net/bridge/br_netfilter.ko" pid=844 cmdline="modprobe -va bridge br_netfilter"
+Feb 14 00:18:38 ephemeralml-cvm kernel: Bridge firewalling registered
+Feb 14 00:18:38 ephemeralml-cvm kernel: LoadPin: kernel-module pinning-excluded obj="/lib/modules/6.1.155+/kernel/net/netfilter/xt_addrtype.ko" pid=848 cmdline="/sbin/modprobe -q -- ipt_addrtype"
+Feb 14 00:18:38 ephemeralml-cvm kernel: LoadPin: kernel-module pinning-excluded obj="/lib/modules/6.1.155+/kernel/net/netfilter/nf_nat.ko" pid=891 cmdline="/sbin/modprobe -q -- ipt_MASQUERADE"
+Feb 14 00:18:38 ephemeralml-cvm kernel: LoadPin: kernel-module pinning-excluded obj="/lib/modules/6.1.155+/kernel/net/netfilter/xt_MASQUERADE.ko" pid=891 cmdline="/sbin/modprobe -q -- ipt_MASQUERADE"
+Feb 14 00:18:38 ephemeralml-cvm kernel: LoadPin: kernel-module pinning-excluded obj="/lib/modules/6.1.155+/kernel/net/netfilter/nft_chain_nat.ko" pid=893 cmdline="/sbin/modprobe -q -- nft-chain-2-nat"
+Feb 14 00:18:38 ephemeralml-cvm google_guest_agent[676]: Starting the scheduler to run jobs
+Feb 14 00:18:38 ephemeralml-cvm google_guest_agent[676]: Scheduler - start: []
+Feb 14 00:18:38 ephemeralml-cvm google_guest_agent[676]: Skipping scheduling credential generation job, failed to reach client credentials endpoint(instance/credentials/certs) with error: giving up, retry policy returned false on error: request failed with status code: [404], error: [error connecting to metadata server, status code: 404]
+Feb 14 00:18:38 ephemeralml-cvm google_guest_agent[676]: ERROR scheduler.go:177 Failed to schedule job MTLS_MDS_Credential_Boostrapper with error: ShouldEnable() returned false, cannot schedule job MTLS_MDS_Credential_Boostrapper
+Feb 14 00:18:38 ephemeralml-cvm systemd[1]: Started google-guest-agent.service.
+Feb 14 00:18:38 ephemeralml-cvm google_guest_agent[676]: Starting the scheduler to run jobs
+Feb 14 00:18:38 ephemeralml-cvm systemd[1]: Starting sshd.service...
+Feb 14 00:18:38 ephemeralml-cvm google_guest_agent[676]: Scheduling job: telemetryJobID
+Feb 14 00:18:38 ephemeralml-cvm google_guest_agent[676]: Scheduling job "telemetryJobID" to run at 24.000000 hr interval
+Feb 14 00:18:38 ephemeralml-cvm google_guest_agent[676]: Successfully scheduled job telemetryJobID
+Feb 14 00:18:38 ephemeralml-cvm google_guest_agent[676]: Invoking job "telemetryJobID"
+Feb 14 00:18:38 ephemeralml-cvm google_guest_agent[676]: Scheduler - added: [now 2026-02-14 00:18:38.671330478 +0000 UTC entry 1 next 2026-02-15 00:18:38 +0000 UTC]
+Feb 14 00:18:38 ephemeralml-cvm google_guest_agent[676]: Network interface setup disabled, skipping...
+Feb 14 00:18:38 ephemeralml-cvm systemd-networkd[269]: docker0: Link UP
+Feb 14 00:18:38 ephemeralml-cvm groupadd[923]: group added to /etc/group: name=google-sudoers, GID=20165
+Feb 14 00:18:38 ephemeralml-cvm groupadd[923]: new group: name=google-sudoers, GID=20165
+Feb 14 00:18:38 ephemeralml-cvm google_guest_agent[676]: Created google sudoers file
+Feb 14 00:18:38 ephemeralml-cvm google_guest_agent[676]: Creating user tsyrulb.
+Feb 14 00:18:38 ephemeralml-cvm dockerd[814]: time="2026-02-14T00:18:38.700141417Z" level=info msg="Loading containers: done."
+Feb 14 00:18:38 ephemeralml-cvm useradd[935]: new group: name=tsyrulb, GID=20166
+Feb 14 00:18:38 ephemeralml-cvm systemd[1]: Started sshd.service.
+Feb 14 00:18:38 ephemeralml-cvm useradd[935]: new user: name=tsyrulb, UID=20162, GID=20166, home=/home/tsyrulb, shell=/bin/bash, from=none
+Feb 14 00:18:38 ephemeralml-cvm sshd[939]: Server listening on 0.0.0.0 port 22.
+Feb 14 00:18:38 ephemeralml-cvm sshd[939]: Server listening on :: port 22.
+Feb 14 00:18:38 ephemeralml-cvm systemd[1]: google-guest-agent.service: Got notification message from PID 926, but reception only permitted for main PID 676
+Feb 14 00:18:38 ephemeralml-cvm usermod[947]: add 'tsyrulb' to group 'adm'
+Feb 14 00:18:38 ephemeralml-cvm systemd[1]: google-guest-agent.service: Got notification message from PID 949, but reception only permitted for main PID 676
+Feb 14 00:18:38 ephemeralml-cvm usermod[957]: add 'tsyrulb' to group 'docker'
+Feb 14 00:18:38 ephemeralml-cvm systemd[1]: google-guest-agent.service: Got notification message from PID 958, but reception only permitted for main PID 676
+Feb 14 00:18:38 ephemeralml-cvm usermod[968]: add 'tsyrulb' to group 'video'
+Feb 14 00:18:38 ephemeralml-cvm usermod[975]: add 'tsyrulb' to group 'google-sudoers'
+Feb 14 00:18:38 ephemeralml-cvm systemd[1]: Stopping systemd-logind.service...
+Feb 14 00:18:38 ephemeralml-cvm google_guest_agent[676]: Updating keys for user tsyrulb.
+Feb 14 00:18:38 ephemeralml-cvm systemd[1]: google-guest-agent.service: Got notification message from PID 988, but reception only permitted for main PID 676
+Feb 14 00:18:38 ephemeralml-cvm systemd[1]: systemd-logind.service: Deactivated successfully.
+Feb 14 00:18:38 ephemeralml-cvm systemd[1]: Stopped systemd-logind.service.
+Feb 14 00:18:38 ephemeralml-cvm systemd[1]: Starting modprobe@drm.service...
+Feb 14 00:18:38 ephemeralml-cvm systemd[1]: modprobe@drm.service: Deactivated successfully.
+Feb 14 00:18:38 ephemeralml-cvm systemd[1]: Finished modprobe@drm.service.
+Feb 14 00:18:38 ephemeralml-cvm systemd[1]: google-guest-agent.service: Got notification message from PID 993, but reception only permitted for main PID 676
+Feb 14 00:18:38 ephemeralml-cvm systemd[1]: Starting systemd-logind.service...
+Feb 14 00:18:38 ephemeralml-cvm systemd[1]: google-guest-agent.service: Got notification message from PID 1001, but reception only permitted for main PID 676
+Feb 14 00:18:38 ephemeralml-cvm systemd-logind[1002]: Watching system buttons on /dev/input/event0 (Power Button)
+Feb 14 00:18:38 ephemeralml-cvm systemd-logind[1002]: Watching system buttons on /dev/input/event1 (Sleep Button)
+Feb 14 00:18:38 ephemeralml-cvm systemd-logind[1002]: Watching system buttons on /dev/input/event2 (AT Translated Set 2 keyboard)
+Feb 14 00:18:38 ephemeralml-cvm systemd-logind[1002]: New seat seat0.
+Feb 14 00:18:38 ephemeralml-cvm systemd[1]: Started systemd-logind.service.
+Feb 14 00:18:38 ephemeralml-cvm dockerd[814]: time="2026-02-14T00:18:38.847509954Z" level=info msg="Docker daemon" commit=4ffc61430bbe6d3d405bdf357b766bf303ff3cc5 graphdriver=overlay2 version=24.0.4
+Feb 14 00:18:38 ephemeralml-cvm systemd[1]: google-guest-agent.service: Got notification message from PID 965, but reception only permitted for main PID 676
+Feb 14 00:18:38 ephemeralml-cvm dockerd[814]: time="2026-02-14T00:18:38.849152163Z" level=info msg="Daemon has completed initialization"
+Feb 14 00:18:38 ephemeralml-cvm systemd[1]: google-guest-agent.service: Got notification message from PID 1004, but reception only permitted for main PID 676
+Feb 14 00:18:38 ephemeralml-cvm systemd[1]: google-guest-agent.service: Got notification message from PID 1005, but reception only permitted for main PID 676
+Feb 14 00:18:38 ephemeralml-cvm systemd[1]: google-guest-agent.service: Got notification message from PID 1006, but reception only permitted for main PID 676
+Feb 14 00:18:38 ephemeralml-cvm systemd[1]: google-guest-agent.service: Got notification message from PID 1007, but reception only permitted for main PID 676
+Feb 14 00:18:38 ephemeralml-cvm systemd[1]: Reloading sshd.service...
+Feb 14 00:18:38 ephemeralml-cvm systemd[1]: Reloaded sshd.service.
+Feb 14 00:18:38 ephemeralml-cvm systemd[1]: google-guest-agent.service: Got notification message from PID 1008, but reception only permitted for main PID 676
+Feb 14 00:18:38 ephemeralml-cvm sshd[939]: Received SIGHUP; restarting.
+Feb 14 00:18:38 ephemeralml-cvm sshd[939]: Server listening on 0.0.0.0 port 22.
+Feb 14 00:18:38 ephemeralml-cvm sshd[939]: Server listening on :: port 22.
+Feb 14 00:18:38 ephemeralml-cvm dockerd[814]: time="2026-02-14T00:18:38.897014399Z" level=info msg="API listen on /run/docker.sock"
+Feb 14 00:18:38 ephemeralml-cvm systemd[1]: Started docker.service.
+Feb 14 00:18:38 ephemeralml-cvm systemd[1]: Reached target cos-critical.target.
+Feb 14 00:18:38 ephemeralml-cvm systemd[1]: Starting cis-level1.service...
+Feb 14 00:18:38 ephemeralml-cvm systemd[1]: Starting cloud-init-local.service...
+Feb 14 00:18:38 ephemeralml-cvm systemd[1]: Starting device_policy_manager.service...
+Feb 14 00:18:38 ephemeralml-cvm (_manager)[1030]: device_policy_manager.service: Referenced but unset environment variable evaluates to an empty string: GLOBAL_ARGS
+Feb 14 00:18:38 ephemeralml-cvm systemd[1]: Starting google-shutdown-scripts.service...
+Feb 14 00:18:38 ephemeralml-cvm systemd[1]: Starting google-startup-scripts.service...
+Feb 14 00:18:38 ephemeralml-cvm systemd[1]: Finished google-shutdown-scripts.service.
+Feb 14 00:18:38 ephemeralml-cvm cis_scanner[1028]: 2026/02/14 00:18:38 Reading scan config from /usr/share/google/security/cis-compliance/cis_config.textproto
+Feb 14 00:18:38 ephemeralml-cvm cis_scanner[1028]: 2026/02/14 00:18:38 Running scan of 64 benchmarks
+Feb 14 00:18:39 ephemeralml-cvm device_policy_manager[1030]: I0214 00:18:39.048988    1030 monitor.go:148] Starting device policy initialization...
+Feb 14 00:18:39 ephemeralml-cvm cis_scanner[1028]: 2026/02/14 00:18:39 Scan status: SUCCEEDED
+Feb 14 00:18:39 ephemeralml-cvm cis_scanner[1028]: 2026/02/14 00:18:39 Found 0 non-compliant benchmarks
+Feb 14 00:18:39 ephemeralml-cvm cis_scanner[1028]: 2026/02/14 00:18:39 Writing scan results to /var/lib/google/cis_scanner_scan_result.textproto
+Feb 14 00:18:39 ephemeralml-cvm systemd[1]: Starting crash-boot-collect.service...
+Feb 14 00:18:39 ephemeralml-cvm systemd[1]: Finished cis-level1.service.
+Feb 14 00:18:39 ephemeralml-cvm systemd[1]: device_policy_manager.service: Got notification message from PID 1048, but reception only permitted for main PID 1030
+Feb 14 00:18:39 ephemeralml-cvm device_policy_manager[1030]: I0214 00:18:39.093541    1030 manager.go:234] Updating cos device policy. Instance config changed from {} to {update_strategy:""  metrics_enabled:false  health_monitor_config:{enforced:false  logging_enabled:false  monitoring_enabled:false}}
+Feb 14 00:18:39 ephemeralml-cvm device_policy_manager[1030]: I0214 00:18:39.094900    1030 monitor.go:154] Device policy initialized successfully!
+Feb 14 00:18:39 ephemeralml-cvm device_policy_manager[1030]: I0214 00:18:39.096619    1030 monitor.go:161] Started in monitor mode
+Feb 14 00:18:39 ephemeralml-cvm systemd[1]: Started device_policy_manager.service.
+Feb 14 00:18:39 ephemeralml-cvm device_policy_manager[1030]: I0214 00:18:39.115254    1030 monitor.go:179] Detected instance ID is: 377056053866660979
+Feb 14 00:18:39 ephemeralml-cvm systemd[1]: device_policy_manager.service: Got notification message from PID 1053, but reception only permitted for main PID 1030
+Feb 14 00:18:39 ephemeralml-cvm device_policy_manager[1030]: I0214 00:18:39.123588    1030 manager.go:229] Skipping device policy update. Current: {update_strategy:""  metrics_enabled:false  health_monitor_config:{enforced:false  logging_enabled:false  monitoring_enabled:false}}
+Feb 14 00:18:39 ephemeralml-cvm device_policy_manager[1030]: I0214 00:18:39.125932    1030 monitor.go:191] Using InstanceConfig: health_monitor_config:{}
+Feb 14 00:18:39 ephemeralml-cvm device_policy_manager[1030]: I0214 00:18:39.126179    1030 manager.go:229] Skipping device policy update. Current: {update_strategy:""  metrics_enabled:false  health_monitor_config:{enforced:false  logging_enabled:false  monitoring_enabled:false}}
+Feb 14 00:18:39 ephemeralml-cvm systemd[1]: device_policy_manager.service: Got notification message from PID 1054, but reception only permitted for main PID 1030
+Feb 14 00:18:39 ephemeralml-cvm systemd[1]: device_policy_manager.service: Got notification message from PID 1055, but reception only permitted for main PID 1030
+Feb 14 00:18:39 ephemeralml-cvm systemd[1]: device_policy_manager.service: Got notification message from PID 1056, but reception only permitted for main PID 1030
+Feb 14 00:18:39 ephemeralml-cvm systemd[1]: device_policy_manager.service: Got notification message from PID 1057, but reception only permitted for main PID 1030
+Feb 14 00:18:39 ephemeralml-cvm device_policy_manager[1030]: I0214 00:18:39.165165    1030 policy_enforcer.go:39] Starting service: update-engine.service
+Feb 14 00:18:39 ephemeralml-cvm systemd[1]: device_policy_manager.service: Got notification message from PID 1058, but reception only permitted for main PID 1030
+Feb 14 00:18:39 ephemeralml-cvm systemd[1]: device_policy_manager.service: Got notification message from PID 1058, but reception only permitted for main PID 1030
+Feb 14 00:18:39 ephemeralml-cvm device_policy_manager[1030]: E0214 00:18:39.176610    1030 policy_enforcer.go:90] exit status 1
+Feb 14 00:18:39 ephemeralml-cvm device_policy_manager[1030]: E0214 00:18:39.176725    1030 monitor.go:197] error while updating instance: unable to apply health monitor policy
+Feb 14 00:18:39 ephemeralml-cvm google_metadata_script_runner[1036]: Starting startup scripts (version 20240314.00).
+Feb 14 00:18:39 ephemeralml-cvm google_metadata_script_runner[1036]: No startup scripts to run.
+Feb 14 00:18:39 ephemeralml-cvm crash_reporter[1050]: OOBE path doesn't exist. Integration tests running? false Mock consent? false
+Feb 14 00:18:39 ephemeralml-cvm crash_reporter[1050]: Running boot collector
+Feb 14 00:18:39 ephemeralml-cvm crash_reporter[1050]: No consent. Not handling invocation: /sbin/crash_reporter --boot_collect
+Feb 14 00:18:39 ephemeralml-cvm crash_reporter[1050]: Examining /run/crash_reporter/crash for crashes
+Feb 14 00:18:39 ephemeralml-cvm crash_reporter[1050]: Examining /mnt/stateful_partition/reboot_vault/crash for crashes
+Feb 14 00:18:39 ephemeralml-cvm systemd[1]: crash-boot-collect.service: Deactivated successfully.
+Feb 14 00:18:39 ephemeralml-cvm systemd[1]: Finished crash-boot-collect.service.
+Feb 14 00:18:39 ephemeralml-cvm systemd[1]: Starting crash-sender.service...
+Feb 14 00:18:39 ephemeralml-cvm systemd[1]: systemd-pstore.service was skipped because of an unmet condition check (ConditionDirectoryNotEmpty=/sys/fs/pstore).
+Feb 14 00:18:39 ephemeralml-cvm crash_sender[1063]: Failed to call method: org.chromium.SessionManagerInterface.RetrieveActiveSessions: object_path= /org/chromium/SessionManager: org.freedesktop.DBus.Error.ServiceUnknown: The name org.chromium.SessionManager was not provided by any .service files
+Feb 14 00:18:39 ephemeralml-cvm crash_sender[1063]: CallMethodAndBlockWithTimeout(...): Domain=dbus, Code=org.freedesktop.DBus.Error.ServiceUnknown, Message=Error calling D-Bus method: org.chromium.SessionManagerInterface.RetrieveActiveSessions: The name org.chromium.SessionManager was not provided by any .service files
+Feb 14 00:18:39 ephemeralml-cvm crash_sender[1063]: Error calling D-Bus proxy call to interface '/org/chromium/SessionManager': Error calling D-Bus method: org.chromium.SessionManagerInterface.RetrieveActiveSessions: The name org.chromium.SessionManager was not provided by any .service files
+Feb 14 00:18:39 ephemeralml-cvm crash_sender[1063]: Failed to call method: org.chromium.SessionManagerInterface.RetrieveActiveSessions: object_path= /org/chromium/SessionManager: org.freedesktop.DBus.Error.ServiceUnknown: The name org.chromium.SessionManager was not provided by any .service files
+Feb 14 00:18:39 ephemeralml-cvm crash_sender[1063]: CallMethodAndBlockWithTimeout(...): Domain=dbus, Code=org.freedesktop.DBus.Error.ServiceUnknown, Message=Error calling D-Bus method: org.chromium.SessionManagerInterface.RetrieveActiveSessions: The name org.chromium.SessionManager was not provided by any .service files
+Feb 14 00:18:39 ephemeralml-cvm crash_sender[1063]: Error calling D-Bus proxy call to interface '/org/chromium/SessionManager': Error calling D-Bus method: org.chromium.SessionManagerInterface.RetrieveActiveSessions: The name org.chromium.SessionManager was not provided by any .service files
+Feb 14 00:18:39 ephemeralml-cvm systemd[1]: crash-sender.service: Deactivated successfully.
+Feb 14 00:18:39 ephemeralml-cvm systemd[1]: Finished crash-sender.service.
+Feb 14 00:18:39 ephemeralml-cvm systemd[1]: google-startup-scripts.service: Deactivated successfully.
+Feb 14 00:18:39 ephemeralml-cvm systemd[1]: Finished google-startup-scripts.service.
+Feb 14 00:18:39 ephemeralml-cvm cloud-init[1068]: Cloud-init v. 23.4.4 running 'init-local' at Sat, 14 Feb 2026 00:18:39 +0000. Up 20.27 seconds.
+Feb 14 00:18:39 ephemeralml-cvm cloud-init[1068]: 2026-02-14 00:18:39,764 - dhcp.py[WARNING]: DHCP client not found: dhclient
+Feb 14 00:18:39 ephemeralml-cvm cloud-init[1068]: 2026-02-14 00:18:39,764 - dhcp.py[WARNING]: DHCP client not found: dhcpcd
+Feb 14 00:18:39 ephemeralml-cvm cloud-init[1068]: 2026-02-14 00:18:39,765 - dhcp.py[WARNING]: DHCP client not found: udhcpc
+Feb 14 00:18:39 ephemeralml-cvm cloud-init[1068]: 2026-02-14 00:18:39,765 - DataSourceGCE.py[WARNING]: Did not find a fallback interface on gce.
+Feb 14 00:18:39 ephemeralml-cvm cloud-init[1068]: 2026-02-14 00:18:39,765 - util.py[WARNING]: Getting data from <class 'cloudinit.sources.DataSourceGCE.DataSourceGCELocal'> failed
+Feb 14 00:18:40 ephemeralml-cvm cloud-init[1068]: Generating public/private rsa key pair.
+Feb 14 00:18:40 ephemeralml-cvm cloud-init[1068]: Your identification has been saved in /etc/ssh/ssh_host_rsa_key
+Feb 14 00:18:40 ephemeralml-cvm cloud-init[1068]: Your public key has been saved in /etc/ssh/ssh_host_rsa_key.pub
+Feb 14 00:18:40 ephemeralml-cvm cloud-init[1068]: The key fingerprint is:
+Feb 14 00:18:40 ephemeralml-cvm cloud-init[1068]: SHA256:fdu+6XrnPZ3kPETM5GJ5Nkb+CDB2Fp0Sjxqk/9tbbsw root@ephemeralml-cvm
+Feb 14 00:18:40 ephemeralml-cvm cloud-init[1068]: The key's randomart image is:
+Feb 14 00:18:40 ephemeralml-cvm cloud-init[1068]: +---[RSA 3072]----+
+Feb 14 00:18:40 ephemeralml-cvm cloud-init[1068]: |          . o+ . |
+Feb 14 00:18:40 ephemeralml-cvm cloud-init[1068]: |         o+ +ooo |
+Feb 14 00:18:40 ephemeralml-cvm cloud-init[1068]: |        ...=..X  |
+Feb 14 00:18:40 ephemeralml-cvm cloud-init[1068]: |         o o.+ @ |
+Feb 14 00:18:40 ephemeralml-cvm cloud-init[1068]: |        S + o.*.o|
+Feb 14 00:18:40 ephemeralml-cvm cloud-init[1068]: |           o o.o.|
+Feb 14 00:18:40 ephemeralml-cvm cloud-init[1068]: |            o *o+|
+Feb 14 00:18:40 ephemeralml-cvm cloud-init[1068]: |             +.XE|
+Feb 14 00:18:40 ephemeralml-cvm cloud-init[1068]: |            o+B**|
+Feb 14 00:18:40 ephemeralml-cvm cloud-init[1068]: +----[SHA256]-----+
+Feb 14 00:18:40 ephemeralml-cvm cloud-init[1068]: Generating public/private dsa key pair.
+Feb 14 00:18:40 ephemeralml-cvm cloud-init[1068]: Your identification has been saved in /etc/ssh/ssh_host_dsa_key
+Feb 14 00:18:40 ephemeralml-cvm cloud-init[1068]: Your public key has been saved in /etc/ssh/ssh_host_dsa_key.pub
+Feb 14 00:18:40 ephemeralml-cvm cloud-init[1068]: The key fingerprint is:
+Feb 14 00:18:40 ephemeralml-cvm cloud-init[1068]: SHA256:umMHgK1SWZql57b0hDgzyV38PPNW0d+q+tq9mWtdJW4 root@ephemeralml-cvm
+Feb 14 00:18:40 ephemeralml-cvm cloud-init[1068]: The key's randomart image is:
+Feb 14 00:18:40 ephemeralml-cvm cloud-init[1068]: +---[DSA 1024]----+
+Feb 14 00:18:40 ephemeralml-cvm cloud-init[1068]: |                 |
+Feb 14 00:18:40 ephemeralml-cvm cloud-init[1068]: |    o            |
+Feb 14 00:18:40 ephemeralml-cvm cloud-init[1068]: |   X .       .   |
+Feb 14 00:18:40 ephemeralml-cvm cloud-init[1068]: |  B + o     . o .|
+Feb 14 00:18:40 ephemeralml-cvm cloud-init[1068]: | o B + oS    o oo|
+Feb 14 00:18:40 ephemeralml-cvm cloud-init[1068]: |. O * o.=   . E +|
+Feb 14 00:18:40 ephemeralml-cvm cloud-init[1068]: | . * +.. + . . o.|
+Feb 14 00:18:40 ephemeralml-cvm cloud-init[1068]: |    . +.. o. .oo.|
+Feb 14 00:18:40 ephemeralml-cvm cloud-init[1068]: |     ..o .o++o*o |
+Feb 14 00:18:40 ephemeralml-cvm cloud-init[1068]: +----[SHA256]-----+
+Feb 14 00:18:40 ephemeralml-cvm cloud-init[1068]: Generating public/private ecdsa key pair.
+Feb 14 00:18:40 ephemeralml-cvm cloud-init[1068]: Your identification has been saved in /etc/ssh/ssh_host_ecdsa_key
+Feb 14 00:18:40 ephemeralml-cvm cloud-init[1068]: Your public key has been saved in /etc/ssh/ssh_host_ecdsa_key.pub
+Feb 14 00:18:40 ephemeralml-cvm cloud-init[1068]: The key fingerprint is:
+Feb 14 00:18:40 ephemeralml-cvm cloud-init[1068]: SHA256:TvRYt/rNPiUReeIHI/OtbVzAz5pch6tUGzdmRtsr1LQ root@ephemeralml-cvm
+Feb 14 00:18:40 ephemeralml-cvm cloud-init[1068]: The key's randomart image is:
+Feb 14 00:18:40 ephemeralml-cvm cloud-init[1068]: +---[ECDSA 256]---+
+Feb 14 00:18:40 ephemeralml-cvm cloud-init[1068]: |             . . |
+Feb 14 00:18:40 ephemeralml-cvm cloud-init[1068]: |            o Oo.|
+Feb 14 00:18:40 ephemeralml-cvm cloud-init[1068]: |        . . .=+%+|
+Feb 14 00:18:40 ephemeralml-cvm cloud-init[1068]: |       . + . oBE@|
+Feb 14 00:18:40 ephemeralml-cvm cloud-init[1068]: |        S . oo+#=|
+Feb 14 00:18:40 ephemeralml-cvm cloud-init[1068]: |       o   ...O.=|
+Feb 14 00:18:40 ephemeralml-cvm cloud-init[1068]: |        . .. ..+ |
+Feb 14 00:18:40 ephemeralml-cvm cloud-init[1068]: |           ..o.  |
+Feb 14 00:18:40 ephemeralml-cvm cloud-init[1068]: |            ..+. |
+Feb 14 00:18:40 ephemeralml-cvm cloud-init[1068]: +----[SHA256]-----+
+Feb 14 00:18:40 ephemeralml-cvm cloud-init[1068]: Generating public/private ed25519 key pair.
+Feb 14 00:18:40 ephemeralml-cvm cloud-init[1068]: Your identification has been saved in /etc/ssh/ssh_host_ed25519_key
+Feb 14 00:18:40 ephemeralml-cvm cloud-init[1068]: Your public key has been saved in /etc/ssh/ssh_host_ed25519_key.pub
+Feb 14 00:18:40 ephemeralml-cvm cloud-init[1068]: The key fingerprint is:
+Feb 14 00:18:40 ephemeralml-cvm cloud-init[1068]: SHA256:LU0Zk6X+G69jWI0f/pT7PIb2n7XdihfMtyhEF7ZE3+Q root@ephemeralml-cvm
+Feb 14 00:18:40 ephemeralml-cvm cloud-init[1068]: The key's randomart image is:
+Feb 14 00:18:40 ephemeralml-cvm cloud-init[1068]: +--[ED25519 256]--+
+Feb 14 00:18:40 ephemeralml-cvm cloud-init[1068]: |          ooo.  .|
+Feb 14 00:18:40 ephemeralml-cvm cloud-init[1068]: |          .= +.o.|
+Feb 14 00:18:40 ephemeralml-cvm cloud-init[1068]: |          + o o.E|
+Feb 14 00:18:40 ephemeralml-cvm cloud-init[1068]: |         = . o   |
+Feb 14 00:18:40 ephemeralml-cvm cloud-init[1068]: |        S = .=   |
+Feb 14 00:18:40 ephemeralml-cvm cloud-init[1068]: |         . oo * o|
+Feb 14 00:18:40 ephemeralml-cvm cloud-init[1068]: |          .oooo=+|
+Feb 14 00:18:40 ephemeralml-cvm cloud-init[1068]: |          ..oO+*B|
+Feb 14 00:18:40 ephemeralml-cvm cloud-init[1068]: |           .*+=B@|
+Feb 14 00:18:40 ephemeralml-cvm systemd[1]: Finished cloud-init-local.service.
+Feb 14 00:18:40 ephemeralml-cvm cloud-init[1068]: +----[SHA256]-----+
+Feb 14 00:18:40 ephemeralml-cvm systemd[1]: Starting cloud-init.service...
+Feb 14 00:18:40 ephemeralml-cvm systemd[1]: Finished cloud-init.service.
+Feb 14 00:18:40 ephemeralml-cvm cloud-init[1083]: Cloud-init v. 23.4.4 running 'init' at Sat, 14 Feb 2026 00:18:40 +0000. Up 21.28 seconds.
+Feb 14 00:18:40 ephemeralml-cvm cloud-init[1083]: ci-info: +++++++++++++++++++++++++++++++++++++++Net device info++++++++++++++++++++++++++++++++++++++++
+Feb 14 00:18:40 ephemeralml-cvm cloud-init[1083]: ci-info: +---------+-------+---------------------------+-----------------+--------+-------------------+
+Feb 14 00:18:40 ephemeralml-cvm cloud-init[1083]: ci-info: |  Device |   Up  |          Address          |       Mask      | Scope  |     Hw-Address    |
+Feb 14 00:18:40 ephemeralml-cvm cloud-init[1083]: ci-info: +---------+-------+---------------------------+-----------------+--------+-------------------+
+Feb 14 00:18:40 ephemeralml-cvm cloud-init[1083]: ci-info: | docker0 | False |         172.17.0.1        |   255.255.0.0   | global | 02:42:e0:08:ef:e0 |
+Feb 14 00:18:40 ephemeralml-cvm cloud-init[1083]: ci-info: |   eth0  |  True |        10.128.0.25        | 255.255.255.255 | global | 42:01:0a:80:00:19 |
+Feb 14 00:18:40 ephemeralml-cvm cloud-init[1083]: ci-info: |   eth0  |  True | fe80::4001:aff:fe80:19/64 |        .        |  link  | 42:01:0a:80:00:19 |
+Feb 14 00:18:40 ephemeralml-cvm cloud-init[1083]: ci-info: |    lo   |  True |         127.0.0.1         |    255.0.0.0    |  host  |         .         |
+Feb 14 00:18:40 ephemeralml-cvm cloud-init[1083]: ci-info: |    lo   |  True |          ::1/128          |        .        |  host  |         .         |
+Feb 14 00:18:40 ephemeralml-cvm cloud-init[1083]: ci-info: +---------+-------+---------------------------+-----------------+--------+-------------------+
+Feb 14 00:18:40 ephemeralml-cvm cloud-init[1083]: ci-info: +++++++++++++++++++++++++++++++Route IPv4 info++++++++++++++++++++++++++++++++
+Feb 14 00:18:40 ephemeralml-cvm cloud-init[1083]: ci-info: +-------+-----------------+------------+-----------------+-----------+-------+
+Feb 14 00:18:40 ephemeralml-cvm cloud-init[1083]: ci-info: | Route |   Destination   |  Gateway   |     Genmask     | Interface | Flags |
+Feb 14 00:18:40 ephemeralml-cvm cloud-init[1083]: ci-info: +-------+-----------------+------------+-----------------+-----------+-------+
+Feb 14 00:18:40 ephemeralml-cvm cloud-init[1083]: ci-info: |   0   |     0.0.0.0     | 10.128.0.1 |     0.0.0.0     |    eth0   |   UG  |
+Feb 14 00:18:40 ephemeralml-cvm cloud-init[1083]: ci-info: |   1   |    10.128.0.1   |  0.0.0.0   | 255.255.255.255 |    eth0   |   UH  |
+Feb 14 00:18:40 ephemeralml-cvm cloud-init[1083]: ci-info: |   2   | 169.254.169.254 | 10.128.0.1 | 255.255.255.255 |    eth0   |  UGH  |
+Feb 14 00:18:40 ephemeralml-cvm cloud-init[1083]: ci-info: |   3   |    172.17.0.0   |  0.0.0.0   |   255.255.0.0   |  docker0  |   U   |
+Feb 14 00:18:40 ephemeralml-cvm cloud-init[1083]: ci-info: +-------+-----------------+------------+-----------------+-----------+-------+
+Feb 14 00:18:40 ephemeralml-cvm cloud-init[1083]: ci-info: +++++++++++++++++++Route IPv6 info+++++++++++++++++++
+Feb 14 00:18:40 ephemeralml-cvm cloud-init[1083]: ci-info: +-------+-------------+---------+-----------+-------+
+Feb 14 00:18:40 ephemeralml-cvm systemd[1]: Reached target cloud-config.target.
+Feb 14 00:18:41 ephemeralml-cvm cloud-init[1083]: ci-info: | Route | Destination | Gateway | Interface | Flags |
+Feb 14 00:18:41 ephemeralml-cvm cloud-init[1083]: ci-info: +-------+-------------+---------+-----------+-------+
+Feb 14 00:18:41 ephemeralml-cvm cloud-init[1083]: ci-info: |   0   |  fe80::/64  |    ::   |    eth0   |   U   |
+Feb 14 00:18:41 ephemeralml-cvm cloud-init[1083]: ci-info: |   2   |    local    |    ::   |    eth0   |   U   |
+Feb 14 00:18:41 ephemeralml-cvm cloud-init[1083]: ci-info: |   3   |  multicast  |    ::   |    eth0   |   U   |
+Feb 14 00:18:41 ephemeralml-cvm cloud-init[1083]: ci-info: +-------+-------------+---------+-----------+-------+
+Feb 14 00:18:40 ephemeralml-cvm systemd[1]: Starting cloud-config.service...
+Feb 14 00:18:41 ephemeralml-cvm cloud-init[1091]: Cloud-init v. 23.4.4 running 'modules:config' at Sat, 14 Feb 2026 00:18:41 +0000. Up 21.76 seconds.
+Feb 14 00:18:41 ephemeralml-cvm systemd[1]: Finished cloud-config.service.
+Feb 14 00:18:41 ephemeralml-cvm systemd[1]: Starting cloud-final.service...
+Feb 14 00:18:41 ephemeralml-cvm chronyd[674]: Selected source 169.254.169.254 (metadata.google.internal)
+Feb 14 00:18:41 ephemeralml-cvm chronyd[674]: System clock wrong by 6.412967 seconds
+Feb 14 00:18:48 ephemeralml-cvm systemd-resolved[603]: Clock change detected. Flushing caches.
+Feb 14 00:18:48 ephemeralml-cvm chronyd[674]: System clock was stepped by 6.412967 seconds
+Feb 14 00:18:48 ephemeralml-cvm systemd[1]: Reloading requested from client PID 1104 ('systemctl') (unit cloud-final.service)...
+Feb 14 00:18:48 ephemeralml-cvm systemd[1]: Reloading...
+Feb 14 00:18:48 ephemeralml-cvm systemd[1]: Configuration file /usr/lib/systemd/system/systemd-tmpfiles-clean.timer is marked world-inaccessible. This has no effect as configuration data is accessible via APIs without restrictions. Proceeding anyway.
+Feb 14 00:18:48 ephemeralml-cvm systemd[1]: Configuration file /usr/lib/systemd/system/crash-sender.timer is marked world-inaccessible. This has no effect as configuration data is accessible via APIs without restrictions. Proceeding anyway.
+Feb 14 00:18:48 ephemeralml-cvm systemd[1]: Reloading finished in 197 ms.
+Feb 14 00:18:48 ephemeralml-cvm cloud-init[1096]: Created symlink /etc/systemd/system/multi-user.target.wants/container-runner.service → /etc/systemd/system/container-runner.service.
+Feb 14 00:18:48 ephemeralml-cvm systemd[1]: Reloading requested from client PID 1158 ('systemctl') (unit cloud-final.service)...
+Feb 14 00:18:48 ephemeralml-cvm systemd[1]: Reloading...
+Feb 14 00:18:48 ephemeralml-cvm systemd[1]: Configuration file /usr/lib/systemd/system/systemd-tmpfiles-clean.timer is marked world-inaccessible. This has no effect as configuration data is accessible via APIs without restrictions. Proceeding anyway.
+Feb 14 00:18:48 ephemeralml-cvm systemd[1]: Configuration file /usr/lib/systemd/system/crash-sender.timer is marked world-inaccessible. This has no effect as configuration data is accessible via APIs without restrictions. Proceeding anyway.
+Feb 14 00:18:48 ephemeralml-cvm systemd[1]: Reloading finished in 194 ms.
+Feb 14 00:18:48 ephemeralml-cvm systemd[1]: Starting gcr-wait-online.service...
+Feb 14 00:18:48 ephemeralml-cvm systemd[1]: Finished gcr-wait-online.service.
+Feb 14 00:18:48 ephemeralml-cvm systemd[1]: Reached target gcr-online.target.
+Feb 14 00:18:48 ephemeralml-cvm systemd[1]: Started container-runner.service.
+Feb 14 00:18:48 ephemeralml-cvm systemd[1]: Started docker-events-collector-fluent-bit.service.
+Feb 14 00:18:48 ephemeralml-cvm systemd[1]: Starting fluent-bit.service...
+Feb 14 00:18:48 ephemeralml-cvm systemd[1]: Started fluent-bit.service.
+Feb 14 00:18:48 ephemeralml-cvm cloud-init[1224]: #############################################################
+Feb 14 00:18:48 ephemeralml-cvm cloud-init[1228]: -----BEGIN SSH HOST KEY FINGERPRINTS-----
+Feb 14 00:18:48 ephemeralml-cvm cloud-init[1230]: 1024 SHA256:umMHgK1SWZql57b0hDgzyV38PPNW0d+q+tq9mWtdJW4 root@ephemeralml-cvm (DSA)
+Feb 14 00:18:48 ephemeralml-cvm fluent-bit[1220]: Fluent Bit v1.9.10
+Feb 14 00:18:48 ephemeralml-cvm fluent-bit[1220]: * Copyright (C) 2015-2022 The Fluent Bit Authors
+Feb 14 00:18:48 ephemeralml-cvm fluent-bit[1220]: * Fluent Bit is a CNCF sub-project under the umbrella of Fluentd
+Feb 14 00:18:48 ephemeralml-cvm fluent-bit[1220]: * https://fluentbit.io
+Feb 14 00:18:48 ephemeralml-cvm cloud-init[1232]: 256 SHA256:TvRYt/rNPiUReeIHI/OtbVzAz5pch6tUGzdmRtsr1LQ root@ephemeralml-cvm (ECDSA)
+Feb 14 00:18:48 ephemeralml-cvm fluent-bit[1220]: [2026/02/14 00:18:48] [ info] [fluent bit] version=1.9.10, commit=, pid=1220
+Feb 14 00:18:48 ephemeralml-cvm fluent-bit[1220]: [2026/02/14 00:18:48] [ info] [storage] version=1.3.0, type=memory-only, sync=normal, checksum=disabled, max_chunks_up=128
+Feb 14 00:18:48 ephemeralml-cvm fluent-bit[1220]: [2026/02/14 00:18:48] [ info] [cmetrics] version=0.3.7
+Feb 14 00:18:48 ephemeralml-cvm cloud-init[1240]: 256 SHA256:LU0Zk6X+G69jWI0f/pT7PIb2n7XdihfMtyhEF7ZE3+Q root@ephemeralml-cvm (ED25519)
+Feb 14 00:18:48 ephemeralml-cvm cloud-init[1243]: 3072 SHA256:fdu+6XrnPZ3kPETM5GJ5Nkb+CDB2Fp0Sjxqk/9tbbsw root@ephemeralml-cvm (RSA)
+Feb 14 00:18:48 ephemeralml-cvm cloud-init[1244]: -----END SSH HOST KEY FINGERPRINTS-----
+Feb 14 00:18:48 ephemeralml-cvm cloud-init[1245]: #############################################################
+Feb 14 00:18:48 ephemeralml-cvm fluent-bit[1220]: [2026/02/14 00:18:48] [ info] [output:stackdriver:stackdriver.0] metadata_server set to http://metadata.google.internal
+Feb 14 00:18:48 ephemeralml-cvm fluent-bit[1220]: [2026/02/14 00:18:48] [ warn] [output:stackdriver:stackdriver.0] client_email is not defined, using a default one
+Feb 14 00:18:48 ephemeralml-cvm fluent-bit[1220]: [2026/02/14 00:18:48] [ warn] [output:stackdriver:stackdriver.0] private_key is not defined, fetching it from metadata server
+Feb 14 00:18:48 ephemeralml-cvm fluent-bit[1220]: [2026/02/14 00:18:48] [ info] [sp] stream processor started
+Feb 14 00:18:48 ephemeralml-cvm fluent-bit[1220]: [2026/02/14 00:18:48] [ info] [output:stackdriver:stackdriver.0] worker #0 started
+Feb 14 00:18:48 ephemeralml-cvm cloud-init[1096]: Cloud-init v. 23.4.4 running 'modules:final' at Sat, 14 Feb 2026 00:18:41 +0000. Up 22.17 seconds.
+Feb 14 00:18:48 ephemeralml-cvm cloud-init[1096]: Cloud-init v. 23.4.4 finished at Sat, 14 Feb 2026 00:18:48 +0000. Datasource DataSourceNoCloud [seed=cmdline,/usr/share/oem/][dsmode=local].  Up 23.02 seconds
+Feb 14 00:18:48 ephemeralml-cvm systemd[1]: Finished cloud-final.service.
+Feb 14 00:18:48 ephemeralml-cvm systemd[1]: Reached target multi-user.target.
+Feb 14 00:18:48 ephemeralml-cvm systemd[1]: Reached target cloud-init.target.
+Feb 14 00:18:48 ephemeralml-cvm systemd[1]: Starting systemd-update-utmp-runlevel.service...
+Feb 14 00:18:48 ephemeralml-cvm systemd[1]: systemd-update-utmp-runlevel.service: Deactivated successfully.
+Feb 14 00:18:48 ephemeralml-cvm systemd[1]: Finished systemd-update-utmp-runlevel.service.
+Feb 14 00:18:48 ephemeralml-cvm systemd[1]: Startup finished in 1.827s (kernel) + 21.269s (userspace) = 23.097s.
+Feb 14 00:18:49 ephemeralml-cvm confidential_sp[1266]: ToolLogProto logjam_tag=tattler_initgoogle  build_timestamp:1756162185 host_name:"ephemeralml-cvm" language:"cpp" log_path:"//google/cloud/confidentialcomputing/phenotype:confidential_space_experiments" log_timestamp:1771028329 logger:"syslog_cpp" os:LINUX_OS tool_type:"cmdline" uid:0 version:""
+Feb 14 00:18:52 ephemeralml-cvm systemd[1]: var-lib-containerd-tmpmounts-containerd\x2dmount3950178103.mount: Deactivated successfully.
+Feb 14 00:18:57 ephemeralml-cvm cs_container_launcher[1216]: EphemeralML Enclave v2.0 (GCP Confidential VM Mode)
+Feb 14 00:18:57 ephemeralml-cvm cs_container_launcher[1216]: [gcp] Confidential Space detected (no configfs-tsm) — using Launcher JWT attestation
+Feb 14 00:18:57 ephemeralml-cvm cs_container_launcher[1216]: [gcp] Loading model from local: /app/model
+Feb 14 00:18:58 ephemeralml-cvm cs_container_launcher[1216]: [gcp] Model 'stage-0' loaded in 251.3ms (local, 86.7 MB)
+Feb 14 00:18:58 ephemeralml-cvm cs_container_launcher[1216]: [gcp] Confidential Space identity:
+Feb 14 00:18:58 ephemeralml-cvm cs_container_launcher[1216]:   issuer:  https://confidentialcomputing.googleapis.com
+Feb 14 00:18:58 ephemeralml-cvm cs_container_launcher[1216]:   subject: https://www.googleapis.com/compute/v1/projects/project-d3c20737-eec2-453d-8e5/zones/us-central1-a/instances/ephemeralml-cvm
+Feb 14 00:18:58 ephemeralml-cvm cs_container_launcher[1216]:   swname:  CONFIDENTIAL_SPACE
+Feb 14 00:18:58 ephemeralml-cvm cs_container_launcher[1216]:   eat_nonce[0]: 310fe01e914189f2d7459b07db6232cd
+Feb 14 00:18:58 ephemeralml-cvm cs_container_launcher[1216]: ========================================
+Feb 14 00:18:58 ephemeralml-cvm cs_container_launcher[1216]:   TRUST EVIDENCE BUNDLE
+Feb 14 00:18:58 ephemeralml-cvm cs_container_launcher[1216]: ========================================
+Feb 14 00:18:58 ephemeralml-cvm cs_container_launcher[1216]:   Platform:           tdx
+Feb 14 00:18:58 ephemeralml-cvm cs_container_launcher[1216]:   Model ID:           stage-0
+Feb 14 00:18:58 ephemeralml-cvm cs_container_launcher[1216]:   Quote Hash:         a8927a1295de5f7e31477b4f1949d374815d561fbe6e9a59c7a4e0632330ac48
+Feb 14 00:18:58 ephemeralml-cvm cs_container_launcher[1216]:   HPKE Public Key:    249d781330aa1a209abc1fde5898fdcc
+Feb 14 00:18:58 ephemeralml-cvm cs_container_launcher[1216]:   Receipt Sign Key:   310fe01e914189f2d7459b07db6232cd
+Feb 14 00:18:58 ephemeralml-cvm cs_container_launcher[1216]:   Model Hash:         53aa51172d142c89d9012cce15ae4d6cc0ca6895895114379cacb4fab128d9db
+Feb 14 00:18:58 ephemeralml-cvm cs_container_launcher[1216]: ========================================
+Feb 14 00:18:58 ephemeralml-cvm cs_container_launcher[1216]: [gcp] Direct mode: accepting client connections on 0.0.0.0:9000
+Feb 14 00:18:58 ephemeralml-cvm cs_container_launcher[1216]: [direct] Listening on 0.0.0.0:9000
+Feb 14 00:19:13 ephemeralml-cvm systemd[1]: systemd-hostnamed.service: Deactivated successfully.
+Feb 14 00:19:20 ephemeralml-cvm sshd[1397]: Connection closed by 77.137.64.85 port 34057 [preauth]
+Feb 14 00:19:29 ephemeralml-cvm warm-up-elf[198]: unmap 0x7c9618600000/14688256
+Feb 14 00:19:29 ephemeralml-cvm systemd[1]: warm-up.service: Deactivated successfully.
+Feb 14 00:19:37 ephemeralml-cvm sshd[1400]: Accepted publickey for tsyrulb from 77.137.64.85 port 34057 ssh2: RSA SHA256:Lhh9Tg8AV6yOKZPEk0kMWY9yjvJvBp1EohBYlMy0FtY
+Feb 14 00:19:37 ephemeralml-cvm sshd[1400]: pam_unix(sshd:session): session opened for user tsyrulb(uid=20162) by (uid=0)
+Feb 14 00:19:37 ephemeralml-cvm audit[1400]: CONFIG_CHANGE pid=1400 uid=0 auid=20162 ses=1 subj=unconfined op=tty_set old-enabled=0 new-enabled=1 old-log_passwd=0 new-log_passwd=0 res=1
+Feb 14 00:19:37 ephemeralml-cvm sshd[1400]: pam_tty_audit(sshd:session): changed status from 0 to 1
+Feb 14 00:19:38 ephemeralml-cvm sudo[1404]:  tsyrulb : PWD=/home/tsyrulb ; USER=root ; COMMAND=/usr/bin/journalctl --no-pager -n 50
+Feb 14 00:19:38 ephemeralml-cvm sudo[1404]: pam_unix(sudo:session): session opened for user root(uid=0) by (uid=20162)
+Feb 14 00:19:38 ephemeralml-cvm sudo[1404]: pam_tty_audit(sudo:session): changed status from 1 to 1
+Feb 14 00:19:38 ephemeralml-cvm sudo[1404]: pam_unix(sudo:session): session closed for user root
+Feb 14 00:19:38 ephemeralml-cvm sshd[1403]: Received disconnect from 77.137.64.85 port 34057:11: disconnected by user
+Feb 14 00:19:38 ephemeralml-cvm sshd[1403]: Disconnected from user tsyrulb 77.137.64.85 port 34057
+Feb 14 00:19:38 ephemeralml-cvm sshd[1400]: pam_unix(sshd:session): session closed for user tsyrulb
+Feb 14 00:19:38 ephemeralml-cvm audit[1400]: CONFIG_CHANGE pid=1400 uid=0 auid=20162 ses=1 subj=unconfined op=tty_set old-enabled=1 new-enabled=0 old-log_passwd=0 new-log_passwd=0 res=1
+Feb 14 00:19:38 ephemeralml-cvm sshd[1400]: pam_tty_audit(sshd:session): restored status to 0
+Feb 14 00:19:45 ephemeralml-cvm google_guest_agent[676]: Network interface setup disabled, skipping...
+Feb 14 00:20:02 ephemeralml-cvm cs_container_launcher[1216]: [direct] Secure channel established with 77.137.64.85:34059
+Feb 14 00:20:02 ephemeralml-cvm cs_container_launcher[1216]: [direct] Ready for inference requests
+Feb 14 00:20:02 ephemeralml-cvm cs_container_launcher[1216]: [direct] Inference request: model_id=stage-0, input_len=384
+Feb 14 00:20:02 ephemeralml-cvm cs_container_launcher[1216]: [direct] Response sent: 384 floats, 71ms, seq=0
+Feb 14 00:20:02 ephemeralml-cvm cs_container_launcher[1216]: [direct] Channel closed: session closed
+Feb 14 00:20:02 ephemeralml-cvm systemd[1]: run-containerd-io.containerd.runtime.v2.task-default-tee\x2dcontainer-rootfs.mount: Deactivated successfully.
+Feb 14 00:20:02 ephemeralml-cvm containerd[717]: time="2026-02-14T00:20:02.943703621Z" level=info msg="shim disconnected" id=tee-container namespace=default
+Feb 14 00:20:02 ephemeralml-cvm containerd[717]: time="2026-02-14T00:20:02.943780426Z" level=warning msg="cleaning up after shim disconnected" id=tee-container namespace=default
+Feb 14 00:20:02 ephemeralml-cvm containerd[717]: time="2026-02-14T00:20:02.943790944Z" level=info msg="cleaning up dead shim" namespace=default
+Feb 14 00:20:03 ephemeralml-cvm systemd[1]: container-runner.service: Main process exited, code=exited, status=4/NOPERMISSION
+Feb 14 00:20:03 ephemeralml-cvm systemd[1]: container-runner.service: Failed with result 'exit-code'.
+Feb 14 00:20:03 ephemeralml-cvm systemd[1]: container-runner.service: Consumed 3.629s CPU time.
+Feb 14 00:20:13 ephemeralml-cvm sshd[1434]: Accepted publickey for tsyrulb from 77.137.64.85 port 34059 ssh2: RSA SHA256:Lhh9Tg8AV6yOKZPEk0kMWY9yjvJvBp1EohBYlMy0FtY
+Feb 14 00:20:13 ephemeralml-cvm sshd[1434]: pam_unix(sshd:session): session opened for user tsyrulb(uid=20162) by (uid=0)
+Feb 14 00:20:13 ephemeralml-cvm audit[1434]: CONFIG_CHANGE pid=1434 uid=0 auid=20162 ses=2 subj=unconfined op=tty_set old-enabled=0 new-enabled=1 old-log_passwd=0 new-log_passwd=0 res=1
+Feb 14 00:20:13 ephemeralml-cvm sshd[1434]: pam_tty_audit(sshd:session): changed status from 0 to 1
+Feb 14 00:20:13 ephemeralml-cvm sudo[1439]:  tsyrulb : PWD=/home/tsyrulb ; USER=root ; COMMAND=/usr/bin/journalctl --no-pager -n 10
+Feb 14 00:20:13 ephemeralml-cvm sudo[1439]: pam_unix(sudo:session): session opened for user root(uid=0) by (uid=20162)
+Feb 14 00:20:13 ephemeralml-cvm sudo[1439]: pam_tty_audit(sudo:session): changed status from 1 to 1
+Feb 14 00:20:13 ephemeralml-cvm sudo[1439]: pam_unix(sudo:session): session closed for user root
+Feb 14 00:20:14 ephemeralml-cvm sshd[1437]: Received disconnect from 77.137.64.85 port 34059:11: disconnected by user
+Feb 14 00:20:14 ephemeralml-cvm sshd[1437]: Disconnected from user tsyrulb 77.137.64.85 port 34059
+Feb 14 00:20:14 ephemeralml-cvm sshd[1434]: pam_unix(sshd:session): session closed for user tsyrulb
+Feb 14 00:20:14 ephemeralml-cvm audit[1434]: CONFIG_CHANGE pid=1434 uid=0 auid=20162 ses=2 subj=unconfined op=tty_set old-enabled=1 new-enabled=0 old-log_passwd=0 new-log_passwd=0 res=1
+Feb 14 00:20:14 ephemeralml-cvm sshd[1434]: pam_tty_audit(sshd:session): restored status to 0
+Feb 14 00:20:21 ephemeralml-cvm sshd[1443]: Accepted publickey for tsyrulb from 77.137.64.85 port 34059 ssh2: RSA SHA256:Lhh9Tg8AV6yOKZPEk0kMWY9yjvJvBp1EohBYlMy0FtY
+Feb 14 00:20:21 ephemeralml-cvm sshd[1443]: pam_unix(sshd:session): session opened for user tsyrulb(uid=20162) by (uid=0)
+Feb 14 00:20:21 ephemeralml-cvm audit[1443]: CONFIG_CHANGE pid=1443 uid=0 auid=20162 ses=3 subj=unconfined op=tty_set old-enabled=0 new-enabled=1 old-log_passwd=0 new-log_passwd=0 res=1
+Feb 14 00:20:21 ephemeralml-cvm sshd[1443]: pam_tty_audit(sshd:session): changed status from 0 to 1
+Feb 14 00:20:22 ephemeralml-cvm sudo[1448]:  tsyrulb : PWD=/home/tsyrulb ; USER=root ; COMMAND=/usr/bin/journalctl --no-pager
+Feb 14 00:20:22 ephemeralml-cvm sudo[1448]: pam_unix(sudo:session): session opened for user root(uid=0) by (uid=20162)
+Feb 14 00:20:22 ephemeralml-cvm sudo[1448]: pam_tty_audit(sudo:session): changed status from 1 to 1
+Feb 14 00:20:22 ephemeralml-cvm sudo[1448]: pam_unix(sudo:session): session closed for user root
+Feb 14 00:20:22 ephemeralml-cvm sshd[1446]: Received disconnect from 77.137.64.85 port 34059:11: disconnected by user
+Feb 14 00:20:22 ephemeralml-cvm sshd[1446]: Disconnected from user tsyrulb 77.137.64.85 port 34059
+Feb 14 00:20:22 ephemeralml-cvm sshd[1443]: pam_unix(sshd:session): session closed for user tsyrulb
+Feb 14 00:20:22 ephemeralml-cvm audit[1443]: CONFIG_CHANGE pid=1443 uid=0 auid=20162 ses=3 subj=unconfined op=tty_set old-enabled=1 new-enabled=0 old-log_passwd=0 new-log_passwd=0 res=1
+Feb 14 00:20:22 ephemeralml-cvm sshd[1443]: pam_tty_audit(sshd:session): restored status to 0
+Feb 14 00:20:45 ephemeralml-cvm google_guest_agent[676]: Network interface setup disabled, skipping...
+Feb 14 00:20:51 ephemeralml-cvm sshd[1454]: Accepted publickey for tsyrulb from 77.137.64.85 port 34056 ssh2: RSA SHA256:Lhh9Tg8AV6yOKZPEk0kMWY9yjvJvBp1EohBYlMy0FtY
+Feb 14 00:20:51 ephemeralml-cvm sshd[1454]: pam_unix(sshd:session): session opened for user tsyrulb(uid=20162) by (uid=0)
+Feb 14 00:20:51 ephemeralml-cvm audit[1454]: CONFIG_CHANGE pid=1454 uid=0 auid=20162 ses=4 subj=unconfined op=tty_set old-enabled=0 new-enabled=1 old-log_passwd=0 new-log_passwd=0 res=1
+Feb 14 00:20:51 ephemeralml-cvm sshd[1454]: pam_tty_audit(sshd:session): changed status from 0 to 1
+Feb 14 00:20:52 ephemeralml-cvm sudo[1458]:  tsyrulb : PWD=/home/tsyrulb ; USER=root ; COMMAND=/usr/bin/journalctl --no-pager
+Feb 14 00:20:52 ephemeralml-cvm sudo[1458]: pam_unix(sudo:session): session opened for user root(uid=0) by (uid=20162)
+Feb 14 00:20:52 ephemeralml-cvm sudo[1458]: pam_tty_audit(sudo:session): changed status from 1 to 1

@@ -172,9 +172,7 @@ impl SecureClient for MockSecureClient {
         // Mock: generate a fake 384-dim embedding from text length
         let dim = 384;
         let seed = text.len() as f32;
-        let output_tensor: Vec<f32> = (0..dim)
-            .map(|i| ((i as f32 + seed) * 0.01).sin())
-            .collect();
+        let output_tensor: Vec<f32> = (0..dim).map(|i| ((i as f32 + seed) * 0.01).sin()).collect();
         let now = current_timestamp();
         let receipt = AttestationReceipt::new(
             model_id.to_string(),

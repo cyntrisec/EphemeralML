@@ -65,8 +65,8 @@ async fn main() -> Result<()> {
     // 1. Load manifest
     let manifest_bytes = fs::read(&args.manifest)
         .with_context(|| format!("Failed to read manifest: {}", args.manifest.display()))?;
-    let manifest: ShardManifest = serde_json::from_slice(&manifest_bytes)
-        .context("Failed to parse manifest JSON")?;
+    let manifest: ShardManifest =
+        serde_json::from_slice(&manifest_bytes).context("Failed to parse manifest JSON")?;
 
     let num_stages = manifest.stages.len();
     println!("EphemeralML Pipeline Orchestrator");
@@ -111,10 +111,18 @@ async fn main() -> Result<()> {
 
     println!();
     println!("Running inference...");
-    println!("  Input: \"{}\"", if args.text.len() > 80 { &args.text[..80] } else { &args.text });
+    println!(
+        "  Input: \"{}\"",
+        if args.text.len() > 80 {
+            &args.text[..80]
+        } else {
+            &args.text
+        }
+    );
 
     let start = std::time::Instant::now();
-    let result = orch.infer(vec![vec![input_tensor]], args.seq_len)
+    let result = orch
+        .infer(vec![vec![input_tensor]], args.seq_len)
         .await
         .context("Pipeline inference failed")?;
     let elapsed = start.elapsed();
@@ -130,7 +138,9 @@ async fn main() -> Result<()> {
             // Try to parse as CBOR first (canonical), then JSON (legacy)
             let receipt: AttestationReceipt = serde_cbor::from_slice(&tensor.data)
                 .or_else(|_| serde_json::from_slice(&tensor.data))
-                .with_context(|| format!("Failed to parse receipt from tensor '{}'", tensor.name))?;
+                .with_context(|| {
+                    format!("Failed to parse receipt from tensor '{}'", tensor.name)
+                })?;
 
             let cbor_hash = {
                 use sha2::{Digest, Sha256};
@@ -214,7 +224,11 @@ async fn main() -> Result<()> {
     println!("  Receipts:   {}", bundle.stage_receipts.len());
     println!(
         "  Chain:      {}",
-        if bundle.chain_valid { "VALID" } else { "BROKEN" }
+        if bundle.chain_valid {
+            "VALID"
+        } else {
+            "BROKEN"
+        }
     );
     println!("  Saved to:   {}", args.output.display());
     println!();

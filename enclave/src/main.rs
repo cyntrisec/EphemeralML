@@ -566,7 +566,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 println!(
                     "[gcp] Boot attestation hash: {} ({})",
                     hex::encode(boot_attestation_hash),
-                    if args.synthetic { "synthetic" } else { "hardware" }
+                    if args.synthetic {
+                        "synthetic"
+                    } else {
+                        "hardware"
+                    }
                 );
                 let client_verifier = confidential_ml_transport::MockVerifier::new();
                 run_direct_tcp(

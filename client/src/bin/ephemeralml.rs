@@ -121,9 +121,8 @@ async fn run_infer(args: InferArgs) -> Result<()> {
     // Resolve input text
     let text = match (&args.text, &args.file) {
         (Some(t), _) => t.clone(),
-        (_, Some(path)) => {
-            fs::read_to_string(path).with_context(|| format!("Failed to read {}", path.display()))?
-        }
+        (_, Some(path)) => fs::read_to_string(path)
+            .with_context(|| format!("Failed to read {}", path.display()))?,
         _ => bail!("Provide either --text or --file"),
     };
 
@@ -186,7 +185,10 @@ async fn run_infer(args: InferArgs) -> Result<()> {
 
     println!("  Model:          {}", args.model);
     println!("  Time:           {}ms", elapsed.as_millis());
-    println!("  Output:         {}-dim embedding", result.output_tensor.len());
+    println!(
+        "  Output:         {}-dim embedding",
+        result.output_tensor.len()
+    );
 
     // Show first 5 values
     let first_n: Vec<String> = result
@@ -232,8 +234,8 @@ async fn run_infer(args: InferArgs) -> Result<()> {
     println!("  Signature:      {}", sig_status);
 
     // Save receipt as JSON
-    let receipt_json = serde_json::to_string_pretty(&result.receipt)
-        .context("Failed to serialize receipt")?;
+    let receipt_json =
+        serde_json::to_string_pretty(&result.receipt).context("Failed to serialize receipt")?;
     fs::write(&args.receipt, &receipt_json)
         .with_context(|| format!("Failed to write {}", args.receipt.display()))?;
     println!("  Saved to:       {}", args.receipt.display());
@@ -478,7 +480,10 @@ fn run_verify_pipeline(args: VerifyPipelineArgs) -> Result<()> {
 
     println!();
     if overall {
-        println!("  --> PIPELINE VERIFIED ({} stages, chain intact)", bundle.num_stages);
+        println!(
+            "  --> PIPELINE VERIFIED ({} stages, chain intact)",
+            bundle.num_stages
+        );
     } else {
         println!("  --> PIPELINE INVALID");
         if !all_sigs_ok {
