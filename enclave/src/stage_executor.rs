@@ -69,8 +69,26 @@ impl<A: AttestationProvider + Send + Sync> StageExecutor for EphemeralStageExecu
             });
         }
 
-        let input_tensor = &inputs[0];
-        let input_bytes = input_tensor.data.as_ref();
+        // Separate receipt tensors (from previous stages) from data tensors
+        let mut prev_receipt_tensors: Vec<OwnedTensor> = Vec::new();
+        let mut data_tensors: Vec<&OwnedTensor> = Vec::new();
+        for tensor in &inputs {
+            if tensor.name.starts_with("__receipt__") {
+                prev_receipt_tensors.push(tensor.clone());
+            } else {
+                data_tensors.push(tensor);
+            }
+        }
+
+        if data_tensors.is_empty() {
+            return Err(StageError::ForwardFailed {
+                request_id,
+                micro_batch,
+                reason: "No data input tensors (only receipts)".to_string(),
+            });
+        }
+
+        let input_bytes = data_tensors[0].data.as_ref();
 
         // Execute inference via CandleInferenceEngine
         let infer_start = std::time::Instant::now();
@@ -92,6 +110,17 @@ impl<A: AttestationProvider + Send + Sync> StageExecutor for EphemeralStageExecu
             dtype: confidential_ml_transport::DType::F32,
             shape: vec![output.len() as u32],
             data: bytes::Bytes::from(output_bytes.clone()),
+        };
+
+        // Compute previous_receipt_hash for receipt chaining.
+        // Hash the most recent previous receipt's CBOR to chain stages.
+        let previous_receipt_hash: Option<[u8; 32]> = if !prev_receipt_tensors.is_empty() {
+            use sha2::{Digest, Sha256};
+            // Use the last receipt tensor (highest stage index)
+            let last_receipt = &prev_receipt_tensors[prev_receipt_tensors.len() - 1];
+            Some(Sha256::digest(&last_receipt.data).into())
+        } else {
+            None
         };
 
         // Build and sign receipt (needs mutable access to state for sequence counter)
@@ -117,6 +146,9 @@ impl<A: AttestationProvider + Send + Sync> StageExecutor for EphemeralStageExecu
                 micro_batch,
                 reason: format!("Receipt build failed: {}", e),
             })?;
+
+            // Set chain hash linking to previous stage's receipt
+            receipt.previous_receipt_hash = previous_receipt_hash;
 
             receipt
                 .sign(&state.receipt_signing_key)
@@ -157,8 +189,19 @@ impl<A: AttestationProvider + Send + Sync> StageExecutor for EphemeralStageExecu
             data: bytes::Bytes::from(receipt_bytes),
         };
 
+        // Build output: [output_tensor, ...forwarded_prev_receipts_renamed, this_receipt]
+        let mut out_tensors = vec![output_tensor];
+
+        // Forward previous receipts with stage-indexed names
+        for (i, mut prev) in prev_receipt_tensors.into_iter().enumerate() {
+            prev.name = format!("__receipt__stage{}", i);
+            out_tensors.push(prev);
+        }
+
+        out_tensors.push(receipt_tensor);
+
         Ok(ForwardOutput {
-            tensors: vec![output_tensor, receipt_tensor],
+            tensors: out_tensors,
         })
     }
 }

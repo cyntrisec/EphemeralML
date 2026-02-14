@@ -251,15 +251,26 @@ impl SecureClient for SecureEnclaveClient {
         }
 
         // 6. Verify binding to attestation
-        // Skip when receipt has [0; 32] sentinel (direct mode: server's own
-        // attestation hash is unavailable; identity proven by receipt signature).
+        // GCP mode: strict check — receipt must always bind to attestation.
+        // Mock mode: skip when receipt has [0; 32] sentinel (backward compat).
         if let Some(attestation_hash) = self.server_attestation_hash {
-            if output.receipt.attestation_doc_hash != [0u8; 32]
-                && output.receipt.attestation_doc_hash != attestation_hash
+            #[cfg(feature = "gcp")]
             {
-                return Err(ClientError::Client(EphemeralError::ValidationError(
-                    "Receipt not bound to current attestation".to_string(),
-                )));
+                if output.receipt.attestation_doc_hash != attestation_hash {
+                    return Err(ClientError::Client(EphemeralError::ValidationError(
+                        "Receipt not bound to current attestation".to_string(),
+                    )));
+                }
+            }
+            #[cfg(not(feature = "gcp"))]
+            {
+                if output.receipt.attestation_doc_hash != [0u8; 32]
+                    && output.receipt.attestation_doc_hash != attestation_hash
+                {
+                    return Err(ClientError::Client(EphemeralError::ValidationError(
+                        "Receipt not bound to current attestation".to_string(),
+                    )));
+                }
             }
         }
 
@@ -405,12 +416,23 @@ impl SecureClient for SecureEnclaveClient {
         }
 
         if let Some(attestation_hash) = self.server_attestation_hash {
-            if output.receipt.attestation_doc_hash != [0u8; 32]
-                && output.receipt.attestation_doc_hash != attestation_hash
+            #[cfg(feature = "gcp")]
             {
-                return Err(ClientError::Client(EphemeralError::ValidationError(
-                    "Receipt not bound to current attestation".to_string(),
-                )));
+                if output.receipt.attestation_doc_hash != attestation_hash {
+                    return Err(ClientError::Client(EphemeralError::ValidationError(
+                        "Receipt not bound to current attestation".to_string(),
+                    )));
+                }
+            }
+            #[cfg(not(feature = "gcp"))]
+            {
+                if output.receipt.attestation_doc_hash != [0u8; 32]
+                    && output.receipt.attestation_doc_hash != attestation_hash
+                {
+                    return Err(ClientError::Client(EphemeralError::ValidationError(
+                        "Receipt not bound to current attestation".to_string(),
+                    )));
+                }
             }
         }
 

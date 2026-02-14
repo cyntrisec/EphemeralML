@@ -9,6 +9,32 @@ use chacha20poly1305::aead::Aead;
 use chacha20poly1305::{ChaCha20Poly1305, Key, KeyInit, Nonce};
 use sha2::{Digest, Sha256};
 
+/// Encrypt a plaintext artifact with ChaCha20-Poly1305.
+///
+/// Output format: `nonce (12 bytes) || ciphertext+tag`.
+/// This is the inverse of `decrypt_artifact()`.
+pub fn encrypt_artifact(plaintext: &[u8], dek: &[u8; 32]) -> Result<Vec<u8>> {
+    use rand::RngCore;
+
+    let key: &Key = dek.into();
+    let cipher = ChaCha20Poly1305::new(key);
+
+    let mut nonce_bytes = [0u8; 12];
+    rand::rngs::OsRng.fill_bytes(&mut nonce_bytes);
+    let nonce = Nonce::from_slice(&nonce_bytes);
+
+    let ciphertext = cipher.encrypt(nonce, plaintext).map_err(|e| {
+        EnclaveError::Enclave(EphemeralError::EncryptionError(format!(
+            "ChaCha20-Poly1305 encryption failed: {}",
+            e
+        )))
+    })?;
+
+    let mut result = nonce_bytes.to_vec();
+    result.extend_from_slice(&ciphertext);
+    Ok(result)
+}
+
 /// Decrypt a ChaCha20-Poly1305 encrypted artifact.
 ///
 /// The artifact format is: `nonce (12 bytes) || ciphertext+tag`.
@@ -208,6 +234,62 @@ mod tests {
         assert!(result.is_err());
         let err = format!("{:?}", result.unwrap_err());
         assert!(err.contains("Hash mismatch"), "Error: {}", err);
+    }
+
+    #[test]
+    fn encrypt_artifact_roundtrip() {
+        let dek = [0x42u8; 32];
+        let plaintext = b"model weights to encrypt";
+        let encrypted = super::encrypt_artifact(plaintext, &dek).unwrap();
+
+        // Should be nonce (12) + plaintext + tag (16)
+        assert_eq!(encrypted.len(), 12 + plaintext.len() + 16);
+
+        let decrypted = decrypt_artifact(&encrypted, &dek).unwrap();
+        assert_eq!(decrypted, plaintext);
+    }
+
+    #[test]
+    fn encrypt_artifact_empty_plaintext() {
+        let dek = [0x42u8; 32];
+        let encrypted = super::encrypt_artifact(b"", &dek).unwrap();
+        assert_eq!(encrypted.len(), 12 + 16); // nonce + tag only
+        let decrypted = decrypt_artifact(&encrypted, &dek).unwrap();
+        assert!(decrypted.is_empty());
+    }
+
+    /// Simulates the KMS deny case: model encrypted with real DEK,
+    /// attacker tries to decrypt with wrong DEK — AEAD rejects.
+    #[test]
+    fn encrypt_artifact_wrong_key_denied() {
+        let real_dek = [0x42u8; 32];
+        let wrong_dek = [0x99u8; 32];
+        let model_weights = b"sensitive model weights that must be protected";
+
+        let encrypted = super::encrypt_artifact(model_weights, &real_dek).unwrap();
+
+        // Correct key succeeds
+        let decrypted = decrypt_artifact(&encrypted, &real_dek).unwrap();
+        assert_eq!(decrypted, model_weights);
+
+        // Wrong key fails — AEAD authentication rejects
+        let result = decrypt_artifact(&encrypted, &wrong_dek);
+        assert!(result.is_err(), "Decryption with wrong DEK must fail");
+    }
+
+    #[test]
+    fn encrypt_artifact_different_calls_produce_different_nonces() {
+        let dek = [0x42u8; 32];
+        let plaintext = b"same data";
+        let enc1 = super::encrypt_artifact(plaintext, &dek).unwrap();
+        let enc2 = super::encrypt_artifact(plaintext, &dek).unwrap();
+
+        // Nonces (first 12 bytes) should differ
+        assert_ne!(&enc1[..12], &enc2[..12]);
+
+        // Both should decrypt to the same plaintext
+        assert_eq!(decrypt_artifact(&enc1, &dek).unwrap(), plaintext);
+        assert_eq!(decrypt_artifact(&enc2, &dek).unwrap(), plaintext);
     }
 
     #[test]

@@ -1,0 +1,105 @@
+#!/usr/bin/env bash
+# setup_kms.sh — Create GCP infrastructure for attestation-bound model release.
+#
+# Creates:
+#   - KMS keyring + symmetric key for model DEK wrapping
+#   - Workload Identity Pool + OIDC provider for TDX attestation
+#   - IAM binding: WIP principals → cloudkms.cryptoKeyDecrypter
+#   - GCS bucket for encrypted models
+#
+# Usage:
+#   bash scripts/gcp/setup_kms.sh [PROJECT_ID] [REGION]
+#
+# Defaults: PROJECT_ID=$GOOGLE_CLOUD_PROJECT or "ephemeralml", REGION="us-central1"
+
+set -euo pipefail
+
+PROJECT="${1:-${GOOGLE_CLOUD_PROJECT:-ephemeralml}}"
+REGION="${2:-us-central1}"
+
+KEYRING="ephemeralml"
+KEY="model-dek"
+POOL="ephemeralml-pool"
+PROVIDER="ephemeralml-tdx"
+BUCKET="ephemeralml-models-${PROJECT}"
+ISSUER="https://confidentialcomputing.googleapis.com"
+
+echo "=== EphemeralML KMS + WIP Setup ==="
+echo "  Project:  ${PROJECT}"
+echo "  Region:   ${REGION}"
+echo "  Keyring:  ${KEYRING}"
+echo "  Key:      ${KEY}"
+echo "  Pool:     ${POOL}"
+echo "  Provider: ${PROVIDER}"
+echo "  Bucket:   ${BUCKET}"
+echo ""
+
+# 1. KMS keyring + symmetric key
+echo "[1/5] Creating KMS keyring and key..."
+gcloud kms keyrings create "${KEYRING}" \
+    --project="${PROJECT}" \
+    --location="${REGION}" \
+    2>/dev/null || echo "  Keyring already exists"
+
+gcloud kms keys create "${KEY}" \
+    --project="${PROJECT}" \
+    --location="${REGION}" \
+    --keyring="${KEYRING}" \
+    --purpose=encryption \
+    2>/dev/null || echo "  Key already exists"
+
+KMS_KEY_RESOURCE="projects/${PROJECT}/locations/${REGION}/keyRings/${KEYRING}/cryptoKeys/${KEY}"
+echo "  KMS key: ${KMS_KEY_RESOURCE}"
+
+# 2. Workload Identity Pool
+echo "[2/5] Creating Workload Identity Pool..."
+gcloud iam workload-identity-pools create "${POOL}" \
+    --project="${PROJECT}" \
+    --location="global" \
+    --display-name="EphemeralML TDX Attestation Pool" \
+    2>/dev/null || echo "  Pool already exists"
+
+# 3. OIDC Provider (Confidential Computing attestation)
+echo "[3/5] Creating OIDC provider for TDX attestation..."
+PROJECT_NUMBER=$(gcloud projects describe "${PROJECT}" --format='value(projectNumber)')
+
+gcloud iam workload-identity-pools providers create-oidc "${PROVIDER}" \
+    --project="${PROJECT}" \
+    --location="global" \
+    --workload-identity-pool="${POOL}" \
+    --issuer-uri="${ISSUER}" \
+    --allowed-audiences="${ISSUER}" \
+    --attribute-mapping="google.subject=assertion.sub,attribute.image_digest=assertion.submods.container.image_digest" \
+    2>/dev/null || echo "  Provider already exists"
+
+WIP_AUDIENCE="//iam.googleapis.com/projects/${PROJECT_NUMBER}/locations/global/workloadIdentityPools/${POOL}/providers/${PROVIDER}"
+echo "  WIP audience: ${WIP_AUDIENCE}"
+
+# 4. IAM: WIP principals → KMS decrypter
+echo "[4/5] Granting KMS decrypt permission to WIP principals..."
+gcloud kms keys add-iam-policy-binding "${KEY}" \
+    --project="${PROJECT}" \
+    --location="${REGION}" \
+    --keyring="${KEYRING}" \
+    --member="principalSet://iam.googleapis.com/projects/${PROJECT_NUMBER}/locations/global/workloadIdentityPools/${POOL}/*" \
+    --role="roles/cloudkms.cryptoKeyDecrypter" \
+    2>/dev/null || echo "  Binding already exists"
+
+# 5. GCS bucket
+echo "[5/5] Creating GCS bucket..."
+gcloud storage buckets create "gs://${BUCKET}" \
+    --project="${PROJECT}" \
+    --location="${REGION}" \
+    --uniform-bucket-level-access \
+    2>/dev/null || echo "  Bucket already exists"
+
+echo ""
+echo "=== Setup Complete ==="
+echo ""
+echo "Export these for server invocation:"
+echo "  export GCP_KMS_KEY=${KMS_KEY_RESOURCE}"
+echo "  export GCP_WIP_AUDIENCE=${WIP_AUDIENCE}"
+echo "  export GCP_BUCKET=${BUCKET}"
+echo ""
+echo "Next: encrypt and upload a model with:"
+echo "  bash scripts/gcp/encrypt_model.sh <model_dir> <gcs_prefix>"

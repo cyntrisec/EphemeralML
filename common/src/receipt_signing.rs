@@ -178,6 +178,10 @@ pub struct AttestationReceipt {
     pub memory_peak_mb: u64,
     /// Ed25519 signature (set after signing)
     pub signature: Option<Vec<u8>>,
+    /// SHA-256 hash of the previous stage's receipt (CBOR-encoded).
+    /// Present only in pipeline mode for receipt chaining (stage > 0).
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub previous_receipt_hash: Option<[u8; 32]>,
 }
 
 /// Security mode for the inference execution
@@ -281,6 +285,7 @@ impl AttestationReceipt {
             execution_time_ms,
             memory_peak_mb,
             signature: None,
+            previous_receipt_hash: None,
         }
     }
 
@@ -684,6 +689,56 @@ mod tests {
 
         // Totally invalid CBOR
         assert!(verifier.extract_user_data(&[0xff, 0xff]).is_err());
+    }
+
+    /// Backward compatibility: receipts without `previous_receipt_hash` still
+    /// round-trip through JSON/CBOR and pass signature verification.
+    #[test]
+    fn test_backward_compat_receipt_without_previous_hash() {
+        let signing_key = ReceiptSigningKey::generate().unwrap();
+        let measurements = EnclaveMeasurements::new(vec![1u8; 48], vec![2u8; 48], vec![3u8; 48]);
+
+        let mut receipt = AttestationReceipt::new(
+            "legacy-receipt".to_string(),
+            1,
+            SecurityMode::GatewayOnly,
+            measurements,
+            [4u8; 32],
+            [5u8; 32],
+            [6u8; 32],
+            "policy-v1".to_string(),
+            0,
+            "test-model".to_string(),
+            "v1.0".to_string(),
+            100,
+            0,
+        );
+        assert!(receipt.previous_receipt_hash.is_none());
+        receipt.sign(&signing_key).unwrap();
+
+        // JSON round-trip: field should be absent (skip_serializing_if)
+        let json = serde_json::to_string(&receipt).unwrap();
+        assert!(
+            !json.contains("previous_receipt_hash"),
+            "None field should be omitted from JSON"
+        );
+        let from_json: AttestationReceipt = serde_json::from_str(&json).unwrap();
+        assert!(from_json.previous_receipt_hash.is_none());
+        assert!(from_json.verify_signature(&signing_key.public_key).unwrap());
+
+        // CBOR round-trip
+        let cbor = serde_cbor::to_vec(&receipt).unwrap();
+        let from_cbor: AttestationReceipt = serde_cbor::from_slice(&cbor).unwrap();
+        assert!(from_cbor.previous_receipt_hash.is_none());
+        assert!(from_cbor.verify_signature(&signing_key.public_key).unwrap());
+
+        // Simulate old-format JSON (field completely missing)
+        let map: serde_json::Value = serde_json::from_str(&json).unwrap();
+        // Confirm field isn't there, then deserialize
+        assert!(map.get("previous_receipt_hash").is_none());
+        let from_old: AttestationReceipt = serde_json::from_value(map).unwrap();
+        assert!(from_old.previous_receipt_hash.is_none());
+        assert!(from_old.verify_signature(&signing_key.public_key).unwrap());
     }
 
     mod prop_tests {

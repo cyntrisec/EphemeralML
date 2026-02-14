@@ -33,6 +33,7 @@ pub async fn run_direct_tcp<A: crate::AttestationProvider + Send + Sync>(
     listen_addr: &str,
     transport_provider: &(dyn confidential_ml_transport::AttestationProvider + Sync),
     transport_verifier: &(dyn confidential_ml_transport::AttestationVerifier + Sync),
+    boot_attestation_hash: [u8; 32],
 ) -> std::result::Result<(), Box<dyn std::error::Error + Send + Sync>> {
     use bytes::Bytes;
     use confidential_ml_transport::session::channel::Message;
@@ -90,11 +91,12 @@ pub async fn run_direct_tcp<A: crate::AttestationProvider + Send + Sync>(
     };
 
     // Build ConnectionState for receipt generation.
-    // In direct mode, the handshake result only exposes the peer (client)
-    // attestation — not the server's own. Use [0; 32] sentinel to indicate
-    // "no attestation binding in direct mode". Server identity is proven
-    // by the ed25519 receipt signature (signing key verified via handshake).
-    let attestation_hash = [0u8; 32];
+    // boot_attestation_hash binds receipts to hardware attestation evidence.
+    // In GCP mode: SHA-256 of the raw TDX quote generated at boot.
+    // In mock mode: SHA-256 of the mock attestation document (pre-computed
+    // at boot to match what the transport layer will produce).
+    // In production (Nitro): set during NSM attestation.
+    let attestation_hash = boot_attestation_hash;
     let receipt_pk = receipt_key.public_key_bytes();
     let session_id = hex::encode(Sha256::digest(receipt_pk));
     let mut state = ConnectionState::new(

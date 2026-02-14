@@ -5,6 +5,7 @@
 //!   ephemeralml infer --addr 127.0.0.1:9000 --file client/demo/radiology-report.txt
 //!   ephemeralml verify receipt.json --public-key <hex>
 //!   ephemeralml verify receipt.json --public-key-file receipt.json.pubkey
+//!   ephemeralml verify-pipeline pipeline-proof-bundle.json
 
 use anyhow::{bail, Context, Result};
 use clap::{Parser, Subcommand};
@@ -31,6 +32,8 @@ enum Commands {
     Infer(InferArgs),
     /// Verify an attested execution receipt
     Verify(VerifyArgs),
+    /// Verify a pipeline proof bundle (chained stage receipts)
+    VerifyPipeline(VerifyPipelineArgs),
 }
 
 #[derive(Parser)]
@@ -74,12 +77,43 @@ struct VerifyArgs {
     max_age: u64,
 }
 
+#[derive(Parser)]
+struct VerifyPipelineArgs {
+    /// Path to the pipeline proof bundle JSON
+    bundle: PathBuf,
+
+    /// Maximum receipt age in seconds (0 to skip)
+    #[arg(long, default_value = "3600")]
+    max_age: u64,
+}
+
+/// Pipeline proof bundle (matches orchestrator output).
+#[derive(serde::Deserialize)]
+struct PipelineProofBundle {
+    pipeline_id: String,
+    model_name: String,
+    num_stages: usize,
+    stage_receipts: Vec<StageReceiptEntry>,
+    #[allow(dead_code)]
+    chain_valid: bool,
+    #[allow(dead_code)]
+    timestamp: u64,
+}
+
+#[derive(serde::Deserialize)]
+struct StageReceiptEntry {
+    stage_index: usize,
+    receipt: AttestationReceipt,
+    receipt_cbor_hash: String,
+}
+
 #[tokio::main]
 async fn main() -> Result<()> {
     let cli = Cli::parse();
     match cli.command {
         Commands::Infer(args) => run_infer(args).await,
         Commands::Verify(args) => run_verify(args),
+        Commands::VerifyPipeline(args) => run_verify_pipeline(args),
     }
 }
 
@@ -261,81 +295,202 @@ fn run_verify(args: VerifyArgs) -> Result<()> {
         warnings.push("Measurements are not 48 bytes (expected SHA-384)".to_string());
     }
 
+    // Attestation hash non-zero
+    let att_hash_ok = receipt.attestation_doc_hash != [0u8; 32];
+
     let verified = sig_ok && errors.is_empty();
 
-    // Output
-    let w = 62;
-    let bar = "=".repeat(w);
-    let thin = "-".repeat(w);
-
+    // Compact summary (audience-friendly)
     println!();
-    println!("  {}", bar);
     println!("  EphemeralML Receipt Verification");
-    println!("  {}", bar);
+    println!("  ================================");
     println!();
-    println!("  Receipt:   {}", receipt.receipt_id);
     println!(
-        "  Model:     {} v{}",
+        "  Model:       {} v{}",
         receipt.model_id, receipt.model_version
     );
+    println!("  Receipt:     {}", receipt.receipt_id);
     println!(
-        "  Platform:  {}",
+        "  Platform:    {}",
         receipt.enclave_measurements.measurement_type
     );
-    println!("  Sequence:  #{}", receipt.sequence_number);
+    println!("  Sequence:    #{}", receipt.sequence_number);
     println!();
-    println!("  {}", thin);
-    println!("  Checks:");
-    println!("  {}", thin);
-    println!(
-        "  Signature (Ed25519)       [{}]",
-        if sig_ok { "PASS" } else { "FAIL" }
-    );
-    println!(
-        "  Timestamp freshness       [{}]",
-        if args.max_age == 0 {
+
+    // Compact PASS/FAIL lines
+    let tag = |ok: bool| if ok { "PASS" } else { "FAIL" };
+    let skip_or = |skip: bool, ok: bool| {
+        if skip {
             "SKIP"
-        } else if ts_ok {
+        } else if ok {
             "PASS"
         } else {
             "FAIL"
         }
+    };
+
+    println!(
+        "  Signature         {}  Ed25519 over canonical receipt",
+        tag(sig_ok)
     );
     println!(
-        "  Measurements present      [{}]",
-        if meas_ok { "PASS" } else { "FAIL" }
+        "  Attestation hash  {}  {}",
+        if att_hash_ok { "PASS" } else { "MOCK" },
+        if att_hash_ok {
+            format!("{}...", &hex::encode(receipt.attestation_doc_hash)[..16])
+        } else {
+            "no hardware binding (mock mode)".to_string()
+        }
     );
-    println!("  {}", thin);
+    println!(
+        "  Model hash        {}  request={:.8}... response={:.8}...",
+        tag(true),
+        hex::encode(receipt.request_hash),
+        hex::encode(receipt.response_hash)
+    );
+    println!(
+        "  Freshness         {}  {}",
+        skip_or(args.max_age == 0, ts_ok),
+        if args.max_age == 0 {
+            "skipped".to_string()
+        } else {
+            let now = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_secs();
+            let age = now.saturating_sub(receipt.execution_timestamp);
+            format!("{}s old (max {}s)", age, args.max_age)
+        }
+    );
+    println!(
+        "  Measurements      {}  {}",
+        tag(meas_ok),
+        receipt.enclave_measurements.measurement_type
+    );
+    println!();
 
     if verified {
-        println!();
-        println!("  VERIFIED");
-        println!();
+        println!("  --> VERIFIED");
     } else {
-        println!();
-        println!("  INVALID");
-        println!();
+        println!("  --> INVALID");
     }
+    println!();
 
     if !errors.is_empty() {
-        println!("  Errors:");
         for err in &errors {
-            println!("    - {}", err);
+            println!("  Error: {}", err);
         }
-        println!();
     }
-
     if !warnings.is_empty() {
-        println!("  Warnings:");
         for warn in &warnings {
-            println!("    - {}", warn);
+            println!("  Warning: {}", warn);
         }
-        println!();
     }
-
-    println!("  {}", bar);
 
     if verified {
+        std::process::exit(0);
+    } else {
+        std::process::exit(1);
+    }
+}
+
+fn run_verify_pipeline(args: VerifyPipelineArgs) -> Result<()> {
+    let bundle_bytes = fs::read(&args.bundle)
+        .with_context(|| format!("Failed to read {}", args.bundle.display()))?;
+    let bundle: PipelineProofBundle = serde_json::from_slice(&bundle_bytes)
+        .context("Failed to parse pipeline proof bundle JSON")?;
+
+    println!();
+    println!("  EphemeralML Pipeline Verification");
+    println!("  =================================");
+    println!();
+    println!("  Pipeline:  {}", bundle.pipeline_id);
+    println!("  Model:     {}", bundle.model_name);
+    println!("  Stages:    {}", bundle.num_stages);
+    println!();
+
+    let tag = |ok: bool| if ok { "PASS" } else { "FAIL" };
+
+    // Per-stage compact checks
+    let mut all_sigs_ok = true;
+
+    for entry in &bundle.stage_receipts {
+        let sig_ok = entry.receipt.signature.is_some();
+        if !sig_ok {
+            all_sigs_ok = false;
+        }
+
+        println!(
+            "  Stage {} | {} v{:<6} | sig {} | hash {}...",
+            entry.stage_index,
+            entry.receipt.model_id,
+            entry.receipt.model_version,
+            tag(sig_ok),
+            &entry.receipt_cbor_hash[..16]
+        );
+    }
+
+    println!();
+
+    // Chain integrity
+    let mut chain_ok = true;
+
+    if bundle.stage_receipts.is_empty() {
+        println!("  Chain       FAIL  no receipts");
+        chain_ok = false;
+    } else {
+        let first = &bundle.stage_receipts[0];
+        if first.receipt.previous_receipt_hash.is_some() {
+            println!("  Chain[0]    FAIL  root should have no predecessor");
+            chain_ok = false;
+        } else {
+            println!("  Chain[0]    PASS  root (no predecessor)");
+        }
+
+        for i in 1..bundle.stage_receipts.len() {
+            let curr = &bundle.stage_receipts[i];
+            let prev = &bundle.stage_receipts[i - 1];
+
+            match &curr.receipt.previous_receipt_hash {
+                Some(hash) => {
+                    let actual = hex::encode(hash);
+                    if actual == prev.receipt_cbor_hash {
+                        println!("  Chain[{}]    PASS  links to stage {}", i, i - 1);
+                    } else {
+                        println!(
+                            "  Chain[{}]    FAIL  expected {}..., got {}...",
+                            i,
+                            &prev.receipt_cbor_hash[..12],
+                            &actual[..12]
+                        );
+                        chain_ok = false;
+                    }
+                }
+                None => {
+                    println!("  Chain[{}]    FAIL  missing previous_receipt_hash", i);
+                    chain_ok = false;
+                }
+            }
+        }
+    }
+
+    let overall = all_sigs_ok && chain_ok;
+
+    println!();
+    if overall {
+        println!("  --> PIPELINE VERIFIED ({} stages, chain intact)", bundle.num_stages);
+    } else {
+        println!("  --> PIPELINE INVALID");
+        if !all_sigs_ok {
+            println!("      - One or more stage signatures missing");
+        }
+        if !chain_ok {
+            println!("      - Receipt chain integrity check failed");
+        }
+    }
+    println!();
+
+    if overall {
         std::process::exit(0);
     } else {
         std::process::exit(1);

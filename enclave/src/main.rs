@@ -117,6 +117,18 @@ struct Args {
     /// inference immediately. No orchestrator needed. For GCP smoke/E2E testing.
     #[arg(long)]
     direct: bool,
+
+    /// Control channel listen address for pipeline mode.
+    #[arg(long, default_value = "127.0.0.1:9000")]
+    control_addr: String,
+
+    /// Data-in channel listen address for pipeline mode.
+    #[arg(long, default_value = "127.0.0.1:9001")]
+    data_in_addr: String,
+
+    /// Data-out target address for pipeline mode (connect to next stage or orchestrator).
+    #[arg(long, default_value = "127.0.0.1:9002")]
+    data_out_target: String,
 }
 
 #[tokio::main]
@@ -486,7 +498,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 }
             }
 
-            // 4. Emit trust evidence bundle
+            // 4. Emit trust evidence bundle and capture boot attestation hash
+            let boot_attestation_hash: [u8; 32];
             {
                 use ephemeral_ml_enclave::tee_provider::TeeAttestationEnvelope;
                 use ephemeral_ml_enclave::trust_evidence::TrustEvidenceBundle;
@@ -509,6 +522,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 );
                 bundle.model_hash = loaded_model_hash;
                 bundle.print();
+
+                // Capture quote hash for binding receipts to TDX attestation
+                boot_attestation_hash = bundle.quote_hash;
             }
 
             // 5. Create transport attestation bridge (for SecureChannel handshake)
@@ -546,6 +562,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             // via the bridge — one-way attestation model.
             if args.direct {
                 println!("[gcp] Direct mode: accepting client connections on 0.0.0.0:9000");
+                println!(
+                    "[gcp] Boot attestation hash: {} ({})",
+                    hex::encode(boot_attestation_hash),
+                    if args.synthetic { "synthetic" } else { "hardware" }
+                );
                 let client_verifier = confidential_ml_transport::MockVerifier::new();
                 run_direct_tcp(
                     engine,
@@ -554,6 +575,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     "0.0.0.0:9000",
                     &bridge,
                     &client_verifier,
+                    boot_attestation_hash,
                 )
                 .await
                 .map_err(|e| -> Box<dyn std::error::Error> { e })?;
@@ -563,16 +585,34 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             // Pipeline mode: orchestrator connects to control, then data channels.
             let executor = EphemeralStageExecutor::new(engine, tee_provider, receipt_key);
 
+            // Use configurable addresses (default: 0.0.0.0:9000/9001/9002 for GCP)
+            let gcp_control = if args.control_addr == "127.0.0.1:9000" {
+                "0.0.0.0:9000".to_string()
+            } else {
+                args.control_addr.clone()
+            };
+            let gcp_data_in = if args.data_in_addr == "127.0.0.1:9001" {
+                "0.0.0.0:9001".to_string()
+            } else {
+                args.data_in_addr.clone()
+            };
+            let gcp_data_out = if args.data_out_target == "127.0.0.1:9002" {
+                "0.0.0.0:9002".to_string()
+            } else {
+                args.data_out_target.clone()
+            };
+
             println!(
-                "[gcp] Stage worker: control=0.0.0.0:9000, data_in=0.0.0.0:9001, data_out=0.0.0.0:9002"
+                "[gcp] Stage worker: control={}, data_in={}, data_out={}",
+                gcp_control, gcp_data_in, gcp_data_out
             );
 
             run_stage_tcp(
                 executor,
                 StageConfig::default(),
-                "0.0.0.0:9000",
-                "0.0.0.0:9001",
-                "0.0.0.0:9002".parse()?,
+                &gcp_control,
+                &gcp_data_in,
+                gcp_data_out.parse()?,
                 &bridge,
                 &verifier,
             )
@@ -644,6 +684,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         if args.direct {
             let receipt_pk = receipt_key.public_key_bytes();
 
+            // Mock mode has no hardware attestation. Use [0; 32] sentinel.
+            // The client check skips when receipt has zero attestation hash.
+            // Real attestation binding happens in GCP mode via boot_attestation_hash.
+            let mock_attestation_hash: [u8; 32] = [0u8; 32];
+
             // Wrap MockProvider to embed receipt signing key as user_data.
             // This preserves the MOCK_ATT_V1 format (so MockVerifier works) while
             // passing EphemeralUserData so the client can extract the signing key.
@@ -665,6 +710,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 "127.0.0.1:9000",
                 &mock_transport,
                 &client_verifier,
+                mock_attestation_hash,
             )
             .await
             .map_err(|e| -> Box<dyn std::error::Error> { e })?;
@@ -672,15 +718,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             let executor = EphemeralStageExecutor::new(engine, mock_provider, receipt_key);
 
             println!(
-                "Stage worker: control=127.0.0.1:9000, data_in=127.0.0.1:9001, data_out→127.0.0.1:9002"
+                "Stage worker: control={}, data_in={}, data_out→{}",
+                args.control_addr, args.data_in_addr, args.data_out_target
             );
 
             run_stage_tcp(
                 executor,
                 StageConfig::default(),
-                "127.0.0.1:9000",
-                "127.0.0.1:9001",
-                "127.0.0.1:9002".parse()?,
+                &args.control_addr,
+                &args.data_in_addr,
+                args.data_out_target.parse()?,
                 &transport_provider,
                 &verifier,
             )

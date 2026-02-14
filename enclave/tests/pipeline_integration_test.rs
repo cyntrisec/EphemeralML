@@ -279,3 +279,114 @@ async fn single_stage_pipeline_with_receipts() {
     orch.shutdown().await.expect("shutdown failed");
     s0_handle.await.unwrap();
 }
+
+/// Test receipt chaining: valid chain passes, tampered chain fails.
+///
+/// Creates two receipts where receipt[1].previous_receipt_hash = SHA256(CBOR(receipt[0])).
+/// Verifies: valid chain is detected, tampered hash is detected.
+#[tokio::test]
+async fn receipt_chain_tamper_detection() {
+    use sha2::{Digest, Sha256};
+
+    let key0 = ReceiptSigningKey::generate().unwrap();
+    let key1 = ReceiptSigningKey::generate().unwrap();
+
+    // Build stage 0 receipt (root — no previous_receipt_hash)
+    let mut receipt0 = ephemeral_ml_common::AttestationReceipt::new(
+        "stage-0-receipt".to_string(),
+        1,
+        ephemeral_ml_common::SecurityMode::GatewayOnly,
+        ephemeral_ml_common::EnclaveMeasurements::new(
+            vec![0x01; 48],
+            vec![0x02; 48],
+            vec![0x03; 48],
+        ),
+        [0xAA; 32],
+        [0xBB; 32],
+        [0xCC; 32],
+        "v1".to_string(),
+        0,
+        "test-stage-0".to_string(),
+        "v1.0".to_string(),
+        100,
+        0,
+    );
+    assert!(receipt0.previous_receipt_hash.is_none());
+    receipt0.sign(&key0).unwrap();
+
+    // Serialize receipt0 as CBOR (canonical encoding for hash chain)
+    let receipt0_cbor = serde_cbor::to_vec(&receipt0).unwrap();
+    let receipt0_hash: [u8; 32] = Sha256::digest(&receipt0_cbor).into();
+
+    // Build stage 1 receipt with correct previous_receipt_hash
+    let mut receipt1 = ephemeral_ml_common::AttestationReceipt::new(
+        "stage-1-receipt".to_string(),
+        1,
+        ephemeral_ml_common::SecurityMode::GatewayOnly,
+        ephemeral_ml_common::EnclaveMeasurements::new(
+            vec![0x04; 48],
+            vec![0x05; 48],
+            vec![0x06; 48],
+        ),
+        [0xDD; 32],
+        [0xEE; 32],
+        [0xFF; 32],
+        "v1".to_string(),
+        0,
+        "test-stage-1".to_string(),
+        "v1.0".to_string(),
+        100,
+        0,
+    );
+    receipt1.previous_receipt_hash = Some(receipt0_hash);
+    receipt1.sign(&key1).unwrap();
+
+    // --- Valid chain check ---
+    assert_eq!(
+        receipt1.previous_receipt_hash.unwrap(),
+        receipt0_hash,
+        "Valid chain: stage 1 links to stage 0"
+    );
+
+    // Verify signatures are intact
+    assert!(
+        receipt0.verify_signature(&key0.public_key).unwrap(),
+        "Stage 0 signature must verify"
+    );
+    assert!(
+        receipt1.verify_signature(&key1.public_key).unwrap(),
+        "Stage 1 signature must verify"
+    );
+
+    // --- Tamper test: modify receipt0 after chain was built ---
+    let mut tampered_receipt0 = receipt0.clone();
+    tampered_receipt0.model_id = "TAMPERED".to_string();
+    // Re-sign so signature is valid on the tampered data
+    tampered_receipt0.sign(&key0).unwrap();
+    assert!(
+        tampered_receipt0.verify_signature(&key0.public_key).unwrap(),
+        "Tampered receipt has valid signature (re-signed)"
+    );
+
+    // Re-serialize the tampered receipt
+    let tampered_cbor = serde_cbor::to_vec(&tampered_receipt0).unwrap();
+    let tampered_hash: [u8; 32] = Sha256::digest(&tampered_cbor).into();
+
+    // Chain breaks: stage 1 still points to original receipt0, not tampered
+    assert_ne!(
+        receipt1.previous_receipt_hash.unwrap(),
+        tampered_hash,
+        "Chain must break when stage 0 receipt is tampered"
+    );
+
+    // --- Tamper test: directly corrupt previous_receipt_hash ---
+    let mut receipt1_corrupted = receipt1.clone();
+    receipt1_corrupted.previous_receipt_hash = Some([0x00; 32]);
+    // Signature is now invalid because canonical encoding changed
+    assert!(
+        !receipt1_corrupted
+            .verify_signature(&key1.public_key)
+            .unwrap(),
+        "Corrupted previous_receipt_hash must invalidate signature"
+    );
+}

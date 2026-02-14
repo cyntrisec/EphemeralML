@@ -58,3 +58,7 @@ production = ["aws-nitro-enclaves-nsm-api", "tokio-vsock", "confidential-ml-tran
 tdx = ["openssl", "confidential-ml-transport/tdx"]
 gcp = ["tdx", "reqwest", "base64", "confidential-ml-transport/tcp", "confidential-ml-transport/mock", "confidential-ml-pipeline/tcp"]
 cuda = ["candle-core/cuda", "candle-nn/cuda", "candle-transformers/cuda"]
+
+[[bin]]
+name = "ephemeralml-orchestrator"
+path = "src/bin/orchestrator.rs"
