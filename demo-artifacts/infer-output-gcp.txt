@@ -1,0 +1,30 @@
+$ cargo run --release --no-default-features --features gcp --bin ephemeralml -- infer \
+    --addr 127.0.0.1:9000 \
+    --file client/demo/radiology-report.txt
+
+EphemeralML Confidential Inference
+==================================
+
+Connecting to 127.0.0.1:9000...
+[client] WARNING: No expected MRTD configured. TDX peer measurements are NOT pinned. Set EPHEMERALML_EXPECTED_MRTD for production use.
+  Attestation:    TDX verified (Confidential Space)
+  Encryption:     HPKE-X25519-ChaCha20Poly1305
+  Channel:        established
+
+Input (806 bytes):
+  "RADIOLOGY REPORT Examination: Chest X-ray, PA and lateral views Clinical indication: Cough and shortness of breath for ..."
+
+Inference
+---------
+  Model:          stage-0
+  Time:           112ms
+  Output:         384-dim embedding
+  Values[0..5]:   [0.1864, 0.1327, -0.0777, -0.0101, -0.0173]
+  L2 norm:        2.0949
+
+Receipt
+-------
+  ID:             8e18f4ed-3cc7-4273-aa01-94df08bf8573
+  Platform:       tdx-mrtd-rtmr
+  Signature:      VERIFIED (Ed25519)
+  Saved to:       receipt.json

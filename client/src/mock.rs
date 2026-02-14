@@ -1,6 +1,6 @@
 use crate::{
-    current_timestamp, AttestationDocument, ClientError, EphemeralError, PcrMeasurements, Result,
-    SecureClient,
+    current_timestamp, AttestationDocument, ClientError, EphemeralError, InferenceResult,
+    PcrMeasurements, Result, SecureClient,
 };
 
 /// Mock secure client for local development and testing
@@ -136,9 +136,64 @@ impl SecureClient for MockSecureClient {
 
     async fn execute_inference(
         &mut self,
-        _model_id: &str,
+        model_id: &str,
         input_tensor: Vec<f32>,
-    ) -> Result<Vec<f32>> {
-        Ok(input_tensor.iter().map(|x| x + 0.1).collect())
+    ) -> Result<InferenceResult> {
+        use crate::{AttestationReceipt, EnclaveMeasurements, SecurityMode};
+        let output_tensor: Vec<f32> = input_tensor.iter().map(|x| x + 0.1).collect();
+        let now = current_timestamp();
+        let receipt = AttestationReceipt::new(
+            model_id.to_string(),
+            1,
+            SecurityMode::GatewayOnly,
+            EnclaveMeasurements::new(vec![0u8; 48], vec![0u8; 48], vec![0u8; 48]),
+            [0u8; 32],
+            [0u8; 32],
+            [0u8; 32],
+            "mock".to_string(),
+            now,
+            model_id.to_string(),
+            "mock".to_string(),
+            0,
+            0,
+        );
+        Ok(InferenceResult {
+            output_tensor,
+            receipt,
+        })
+    }
+
+    async fn execute_inference_text(
+        &mut self,
+        model_id: &str,
+        text: &str,
+    ) -> Result<InferenceResult> {
+        use crate::{AttestationReceipt, EnclaveMeasurements, SecurityMode};
+        // Mock: generate a fake 384-dim embedding from text length
+        let dim = 384;
+        let seed = text.len() as f32;
+        let output_tensor: Vec<f32> = (0..dim)
+            .map(|i| ((i as f32 + seed) * 0.01).sin())
+            .collect();
+        let now = current_timestamp();
+        let receipt = AttestationReceipt::new(
+            model_id.to_string(),
+            1,
+            SecurityMode::GatewayOnly,
+            EnclaveMeasurements::new(vec![0u8; 48], vec![0u8; 48], vec![0u8; 48]),
+            [0u8; 32],
+            [0u8; 32],
+            [0u8; 32],
+            "mock".to_string(),
+            now,
+            model_id.to_string(),
+            "mock".to_string(),
+            0,
+            0,
+        );
+        Ok(InferenceResult {
+            output_tensor,
+            receipt,
+        })
     }
 }

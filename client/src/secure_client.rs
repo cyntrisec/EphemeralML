@@ -20,6 +20,12 @@ pub struct InferenceHandlerOutput {
     pub receipt: AttestationReceipt,
 }
 
+/// Result of an inference request, including the output tensor and the signed receipt.
+pub struct InferenceResult {
+    pub output_tensor: Vec<f32>,
+    pub receipt: AttestationReceipt,
+}
+
 /// Trait for secure client communication
 #[async_trait::async_trait]
 pub trait SecureClient {
@@ -31,7 +37,17 @@ pub trait SecureClient {
         &mut self,
         model_id: &str,
         input_tensor: Vec<f32>,
-    ) -> Result<Vec<f32>>;
+    ) -> Result<InferenceResult>;
+
+    /// Execute inference by sending raw text (UTF-8 bytes).
+    ///
+    /// The server tokenizes internally — this avoids the lossy `(f32 * 255) as u8`
+    /// conversion used by `execute_inference`.
+    async fn execute_inference_text(
+        &mut self,
+        model_id: &str,
+        text: &str,
+    ) -> Result<InferenceResult>;
 }
 
 /// Default implementation of secure enclave client using SecureChannel.
@@ -61,7 +77,7 @@ impl SecureEnclaveClient {
             receipt_verifier: ReceiptVerifier::new(vec![]),
             server_receipt_signing_key: None,
             server_attestation_hash: None,
-            last_sequence_number: 0,
+            last_sequence_number: u64::MAX, // sentinel: no receipts seen yet
             max_receipt_age_secs: 300, // 5 minutes
         }
     }
@@ -78,7 +94,7 @@ impl SecureEnclaveClient {
             receipt_verifier: ReceiptVerifier::new(vec![]),
             server_receipt_signing_key: None,
             server_attestation_hash: None,
-            last_sequence_number: 0,
+            last_sequence_number: u64::MAX, // sentinel: no receipts seen yet
             max_receipt_age_secs: 300,
         }
     }
@@ -86,6 +102,11 @@ impl SecureEnclaveClient {
     /// Check whether a policy is loaded.
     pub fn has_policy(&self) -> bool {
         self.policy_manager.current_policy().is_some()
+    }
+
+    /// Returns the server's Ed25519 receipt signing public key, if available.
+    pub fn server_receipt_signing_key(&self) -> Option<[u8; 32]> {
+        self.server_receipt_signing_key
     }
 }
 
@@ -150,7 +171,7 @@ impl SecureClient for SecureEnclaveClient {
         &mut self,
         model_id: &str,
         input_tensor: Vec<f32>,
-    ) -> Result<Vec<f32>> {
+    ) -> Result<InferenceResult> {
         let channel = self.channel.as_mut().ok_or_else(|| {
             ClientError::Client(EphemeralError::InvalidInput(
                 "Channel not established".to_string(),
@@ -230,8 +251,12 @@ impl SecureClient for SecureEnclaveClient {
         }
 
         // 6. Verify binding to attestation
+        // Skip when receipt has [0; 32] sentinel (direct mode: server's own
+        // attestation hash is unavailable; identity proven by receipt signature).
         if let Some(attestation_hash) = self.server_attestation_hash {
-            if output.receipt.attestation_doc_hash != attestation_hash {
+            if output.receipt.attestation_doc_hash != [0u8; 32]
+                && output.receipt.attestation_doc_hash != attestation_hash
+            {
                 return Err(ClientError::Client(EphemeralError::ValidationError(
                     "Receipt not bound to current attestation".to_string(),
                 )));
@@ -264,7 +289,9 @@ impl SecureClient for SecureEnclaveClient {
         }
 
         // 9. Verify sequence number is monotonically increasing (replay detection)
-        if output.receipt.sequence_number <= self.last_sequence_number {
+        // First receipt (when no_receipts_seen) is always accepted.
+        let no_receipts_seen = self.last_sequence_number == u64::MAX;
+        if !no_receipts_seen && output.receipt.sequence_number <= self.last_sequence_number {
             return Err(ClientError::Client(EphemeralError::ValidationError(
                 format!(
                     "Receipt sequence replay: got {}, last seen {}",
@@ -292,7 +319,156 @@ impl SecureClient for SecureEnclaveClient {
             }
         }
 
-        Ok(output.output_tensor)
+        Ok(InferenceResult {
+            output_tensor: output.output_tensor,
+            receipt: output.receipt,
+        })
+    }
+
+    async fn execute_inference_text(
+        &mut self,
+        model_id: &str,
+        text: &str,
+    ) -> Result<InferenceResult> {
+        let channel = self.channel.as_mut().ok_or_else(|| {
+            ClientError::Client(EphemeralError::InvalidInput(
+                "Channel not established".to_string(),
+            ))
+        })?;
+
+        // Send raw UTF-8 bytes — the server tokenizes internally
+        let input = InferenceHandlerInput {
+            model_id: model_id.to_string(),
+            input_data: text.as_bytes().to_vec(),
+            input_shape: None,
+        };
+        let plaintext = serde_json::to_vec(&input)
+            .map_err(|e| ClientError::Client(EphemeralError::SerializationError(e.to_string())))?;
+
+        channel
+            .send(bytes::Bytes::from(plaintext))
+            .await
+            .map_err(|e| {
+                ClientError::Client(EphemeralError::TransportError(format!(
+                    "Send failed: {}",
+                    e
+                )))
+            })?;
+
+        let msg = channel.recv().await.map_err(|e| {
+            ClientError::Client(EphemeralError::TransportError(format!(
+                "Recv failed: {}",
+                e
+            )))
+        })?;
+
+        let response_bytes = match msg {
+            Message::Data(data) => data,
+            Message::Error(err) => {
+                return Err(ClientError::Client(EphemeralError::InferenceError(
+                    format!("Server error: {}", err),
+                )));
+            }
+            other => {
+                return Err(ClientError::Client(EphemeralError::ProtocolError(format!(
+                    "Expected Data response, got {:?}",
+                    other
+                ))));
+            }
+        };
+
+        let output: InferenceHandlerOutput = serde_json::from_slice(&response_bytes)
+            .map_err(|e| ClientError::Client(EphemeralError::SerializationError(e.to_string())))?;
+
+        // Verify receipt (same checks as execute_inference)
+        let signing_pk = self.server_receipt_signing_key.ok_or_else(|| {
+            ClientError::Client(EphemeralError::ValidationError(
+                "Missing receipt signing key".to_string(),
+            ))
+        })?;
+
+        let public_key = ed25519_dalek::VerifyingKey::from_bytes(&signing_pk).map_err(|e| {
+            ClientError::Client(EphemeralError::ValidationError(format!(
+                "Invalid receipt public key: {}",
+                e
+            )))
+        })?;
+
+        if !output
+            .receipt
+            .verify_signature(&public_key)
+            .map_err(ClientError::Client)?
+        {
+            return Err(ClientError::Client(EphemeralError::ValidationError(
+                "Invalid receipt signature".to_string(),
+            )));
+        }
+
+        if let Some(attestation_hash) = self.server_attestation_hash {
+            if output.receipt.attestation_doc_hash != [0u8; 32]
+                && output.receipt.attestation_doc_hash != attestation_hash
+            {
+                return Err(ClientError::Client(EphemeralError::ValidationError(
+                    "Receipt not bound to current attestation".to_string(),
+                )));
+            }
+        }
+
+        if output.receipt.model_id != model_id {
+            return Err(ClientError::Client(EphemeralError::ValidationError(
+                format!(
+                    "Receipt model_id mismatch: expected '{}', got '{}'",
+                    model_id, output.receipt.model_id
+                ),
+            )));
+        }
+
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs();
+        let receipt_age = now.saturating_sub(output.receipt.execution_timestamp);
+        if receipt_age > self.max_receipt_age_secs {
+            return Err(ClientError::Client(EphemeralError::ValidationError(
+                format!(
+                    "Receipt too old: {}s (max {}s)",
+                    receipt_age, self.max_receipt_age_secs
+                ),
+            )));
+        }
+
+        let no_receipts_seen = self.last_sequence_number == u64::MAX;
+        if !no_receipts_seen && output.receipt.sequence_number <= self.last_sequence_number {
+            return Err(ClientError::Client(EphemeralError::ValidationError(
+                format!(
+                    "Receipt sequence replay: got {}, last seen {}",
+                    output.receipt.sequence_number, self.last_sequence_number
+                ),
+            )));
+        }
+        self.last_sequence_number = output.receipt.sequence_number;
+
+        {
+            use sha2::{Digest, Sha256};
+            let expected_response_hash: [u8; 32] = {
+                let output_bytes: Vec<u8> = output
+                    .output_tensor
+                    .iter()
+                    .flat_map(|f| f.to_le_bytes())
+                    .collect();
+                Sha256::digest(&output_bytes).into()
+            };
+            if output.receipt.response_hash != expected_response_hash {
+                return Err(ClientError::Client(EphemeralError::ValidationError(
+                    "Receipt response_hash does not match output data".to_string(),
+                )));
+            }
+        }
+
+        Ok(InferenceResult {
+            output_tensor: output.output_tensor,
+            receipt: output.receipt,
+        })
     }
 }
 

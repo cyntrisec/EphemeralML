@@ -51,7 +51,7 @@ rand = { workspace = true }
 default = ["mock"]
 mock = ["confidential-ml-transport/mock", "confidential-ml-transport/tcp"]
 production = ["confidential-ml-transport/tcp"]
-gcp = ["confidential-ml-transport/tdx", "confidential-ml-transport/tcp"]
+gcp = ["confidential-ml-transport/tdx", "confidential-ml-transport/tcp", "confidential-ml-transport/mock"]
 benchmark = [
     "candle-nn",
     "candle-transformers",
@@ -63,4 +63,8 @@ benchmark = [
 [[bin]]
 name = "ephemeralml-verify"
 path = "src/bin/ephemeralml_verify.rs"
+
+[[bin]]
+name = "ephemeralml"
+path = "src/bin/ephemeralml.rs"
 

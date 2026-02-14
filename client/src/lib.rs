@@ -41,4 +41,4 @@ pub use policy::{
     KeyReleasePolicy, MeasurementAllowlist, PolicyBundle, PolicyError, PolicyManager,
     PolicyUpdateManager, PolicyVersionHistory,
 };
-pub use secure_client::{SecureClient, SecureEnclaveClient};
+pub use secure_client::{InferenceResult, SecureClient, SecureEnclaveClient};

@@ -166,6 +166,15 @@ impl CmlAttestationVerifier for TdxEnvelopeVerifierBridge {
                 let tdx_doc = CmlAttestationDocument::new(envelope.tdx_wire);
                 let mut verified = self.inner.verify(&tdx_doc).await?;
 
+                // Override document_hash to match the full envelope bytes (doc.raw),
+                // not just the inner tdx_wire. The handshake transcript must hash
+                // the same bytes on both sides — the server hashes doc.raw (the
+                // full CBOR envelope it sent).
+                verified.document_hash = {
+                    use sha2::{Digest, Sha256};
+                    Sha256::digest(&doc.raw).into()
+                };
+
                 // Attach the user_data from the envelope (fail-closed: reject if missing/invalid)
                 if envelope.user_data.is_empty() {
                     return Err(AttestError::VerificationFailed(

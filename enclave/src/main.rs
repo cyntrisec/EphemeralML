@@ -1,5 +1,4 @@
 use ephemeral_ml_enclave::candle_engine::CandleInferenceEngine;
-#[cfg(feature = "gcp")]
 use ephemeral_ml_enclave::server::run_direct_tcp;
 use ephemeral_ml_enclave::server::run_stage_tcp;
 use ephemeral_ml_enclave::stage_executor::EphemeralStageExecutor;
@@ -18,6 +17,29 @@ use std::path::PathBuf;
 use ephemeral_ml_enclave::attestation_bridge::AttestationBridge;
 #[cfg(feature = "production")]
 use ephemeral_ml_enclave::DefaultAttestationProvider;
+
+/// MockProvider wrapper that injects fixed user_data (EphemeralUserData CBOR)
+/// into every attestation while preserving the MOCK_ATT_V1 wire format.
+#[cfg(feature = "mock")]
+struct MockProviderWithUserData(Vec<u8>);
+
+#[cfg(feature = "mock")]
+#[async_trait::async_trait]
+impl confidential_ml_transport::AttestationProvider for MockProviderWithUserData {
+    async fn attest(
+        &self,
+        _user_data: Option<&[u8]>,
+        nonce: Option<&[u8]>,
+        public_key: Option<&[u8]>,
+    ) -> std::result::Result<
+        confidential_ml_transport::attestation::types::AttestationDocument,
+        confidential_ml_transport::error::AttestError,
+    > {
+        confidential_ml_transport::MockProvider
+            .attest(Some(&self.0), nonce, public_key)
+            .await
+    }
+}
 
 #[derive(Parser, Debug)]
 #[command(
@@ -180,14 +202,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             let cs_mode = std::path::Path::new("/run/container_launcher/teeserver.sock").exists();
             let has_tsm = std::path::Path::new("/sys/kernel/config/tsm/report").exists();
 
-            let tee_provider = if has_tsm {
+            let tee_provider = if args.synthetic {
+                println!("[gcp] Using synthetic TDX quotes (--synthetic flag)");
+                TeeAttestationProvider::synthetic()
+            } else if has_tsm {
                 println!("[gcp] Using real configfs-tsm TDX attestation");
                 TeeAttestationProvider::new()?
             } else if cs_mode {
                 println!("[gcp] Confidential Space detected (no configfs-tsm) — using Launcher JWT attestation");
-                TeeAttestationProvider::synthetic()
-            } else if args.synthetic {
-                println!("[gcp] Using synthetic TDX quotes (no hardware)");
                 TeeAttestationProvider::synthetic()
             } else {
                 return Err(
@@ -490,7 +512,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
 
             // 5. Create transport attestation bridge (for SecureChannel handshake)
-            let bridge_provider = if has_tsm {
+            let bridge_provider = if args.synthetic {
+                TeeAttestationProvider::synthetic()
+            } else if has_tsm {
                 TeeAttestationProvider::new()?
             } else {
                 TeeAttestationProvider::synthetic()
@@ -517,15 +541,19 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             let verifier = confidential_ml_transport::attestation::tdx::TdxVerifier::new(peer_mrtd);
 
             // Direct mode: single-port SecureChannel server, no pipeline orchestrator.
+            // Clients are external (not in TEEs), so use MockVerifier to accept
+            // their mock attestation. The server still presents its TDX attestation
+            // via the bridge — one-way attestation model.
             if args.direct {
                 println!("[gcp] Direct mode: accepting client connections on 0.0.0.0:9000");
+                let client_verifier = confidential_ml_transport::MockVerifier::new();
                 run_direct_tcp(
                     engine,
                     tee_provider,
                     receipt_key,
                     "0.0.0.0:9000",
                     &bridge,
-                    &verifier,
+                    &client_verifier,
                 )
                 .await
                 .map_err(|e| -> Box<dyn std::error::Error> { e })?;
@@ -609,25 +637,55 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         let receipt_key = ReceiptSigningKey::generate()?;
         let _receipt_pk = receipt_key.public_key_bytes();
 
-        let executor = EphemeralStageExecutor::new(engine, mock_provider, receipt_key);
         // Use transport-compatible MockProvider for handshake (matches host's MockVerifier)
         let transport_provider = MockProvider::new();
         let verifier = MockVerifier::new();
 
-        println!(
-            "Stage worker: control=127.0.0.1:9000, data_in=127.0.0.1:9001, data_out→127.0.0.1:9002"
-        );
+        if args.direct {
+            let receipt_pk = receipt_key.public_key_bytes();
 
-        run_stage_tcp(
-            executor,
-            StageConfig::default(),
-            "127.0.0.1:9000",
-            "127.0.0.1:9001",
-            "127.0.0.1:9002".parse()?,
-            &transport_provider,
-            &verifier,
-        )
-        .await?;
+            // Wrap MockProvider to embed receipt signing key as user_data.
+            // This preserves the MOCK_ATT_V1 format (so MockVerifier works) while
+            // passing EphemeralUserData so the client can extract the signing key.
+            let ud = ephemeral_ml_common::transport_types::EphemeralUserData::new(
+                receipt_pk,
+                1,
+                vec!["gateway".to_string()],
+            );
+            let ud_cbor = ud.to_cbor().expect("CBOR encode");
+            let mock_transport = MockProviderWithUserData(ud_cbor);
+
+            let client_verifier = MockVerifier::new();
+
+            println!("[mock] Direct mode: accepting client connections on 127.0.0.1:9000");
+            run_direct_tcp(
+                engine,
+                mock_provider,
+                receipt_key,
+                "127.0.0.1:9000",
+                &mock_transport,
+                &client_verifier,
+            )
+            .await
+            .map_err(|e| -> Box<dyn std::error::Error> { e })?;
+        } else {
+            let executor = EphemeralStageExecutor::new(engine, mock_provider, receipt_key);
+
+            println!(
+                "Stage worker: control=127.0.0.1:9000, data_in=127.0.0.1:9001, data_out→127.0.0.1:9002"
+            );
+
+            run_stage_tcp(
+                executor,
+                StageConfig::default(),
+                "127.0.0.1:9000",
+                "127.0.0.1:9001",
+                "127.0.0.1:9002".parse()?,
+                &transport_provider,
+                &verifier,
+            )
+            .await?;
+        }
     }
 
     #[cfg(feature = "production")]

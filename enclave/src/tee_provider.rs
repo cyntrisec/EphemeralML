@@ -377,6 +377,66 @@ impl AttestationProvider for TeeAttestationProvider {
     }
 }
 
+impl TeeAttestationProvider {
+    /// Generate a transport-level attestation binding a handshake DH public key.
+    ///
+    /// Unlike `generate_attestation()` which puts the HPKE key in REPORTDATA[0..32],
+    /// this puts the caller-supplied `handshake_pk` there. This is what
+    /// cml-transport's handshake expects: the attestation must bind the same DH
+    /// public key that was sent in the Hello message.
+    ///
+    /// The HPKE key is still included in the `user_data` envelope for the
+    /// application layer to use.
+    pub fn generate_transport_attestation(
+        &self,
+        nonce: &[u8],
+        handshake_pk: &[u8; 32],
+        receipt_public_key: [u8; 32],
+    ) -> Result<AttestationDocument> {
+        if nonce.len() != 32 {
+            return Err(EnclaveError::Enclave(EphemeralError::ValidationError(
+                format!("TDX nonce must be exactly 32 bytes, got {}", nonce.len()),
+            )));
+        }
+        let mut report_data = [0u8; 64];
+        report_data[..32].copy_from_slice(handshake_pk);
+        report_data[32..64].copy_from_slice(nonce);
+
+        let raw_quote = self.generate_quote(&report_data)?;
+        let measurements = Self::parse_measurements(&raw_quote)?;
+        let tdx_wire = Self::encode_tdx_wire(&raw_quote);
+
+        let user_data = AttestationUserData {
+            hpke_public_key: self.hpke_keypair.public_key,
+            receipt_signing_key: receipt_public_key,
+            protocol_version: 1,
+            supported_features: vec!["gateway".to_string()],
+        };
+        let user_data_bytes = serde_json::to_vec(&user_data).map_err(|e| {
+            EnclaveError::Enclave(EphemeralError::SerializationError(e.to_string()))
+        })?;
+
+        let envelope = TeeAttestationEnvelope {
+            platform: "tdx".to_string(),
+            tdx_wire,
+            user_data: user_data_bytes,
+        };
+        let envelope_bytes = envelope.to_cbor().map_err(|e| {
+            EnclaveError::Enclave(EphemeralError::SerializationError(e.to_string()))
+        })?;
+
+        Ok(AttestationDocument {
+            module_id: "tdx-cvm".to_string(),
+            digest: vec![],
+            timestamp: ephemeral_ml_common::current_timestamp(),
+            pcrs: measurements,
+            certificate: vec![],
+            signature: envelope_bytes,
+            nonce: Some(nonce.to_vec()),
+        })
+    }
+}
+
 /// Bridge from `TeeAttestationProvider` to cml-transport's `AttestationProvider`.
 ///
 /// Extracts the TDX wire bytes from the CBOR envelope and passes them to
@@ -405,23 +465,44 @@ impl confidential_ml_transport::AttestationProvider for TeeAttestationBridge {
         &self,
         _user_data: Option<&[u8]>,
         nonce: Option<&[u8]>,
-        _public_key: Option<&[u8]>,
+        public_key: Option<&[u8]>,
     ) -> std::result::Result<
         confidential_ml_transport::attestation::types::AttestationDocument,
         confidential_ml_transport::error::AttestError,
     > {
         let nonce_bytes = nonce.unwrap_or(&[]);
 
-        // Generate attestation via TeeAttestationProvider
-        let doc = self
-            .inner
-            .generate_attestation(nonce_bytes, self.receipt_public_key)
-            .map_err(|e| {
-                confidential_ml_transport::error::AttestError::GenerationFailed(format!(
-                    "TEE attestation failed: {}",
-                    e
-                ))
-            })?;
+        // The handshake passes the DH public key as `public_key`. We must bind
+        // it in REPORTDATA[0..32] so the peer's verifier can confirm the
+        // attestation matches the Hello message's DH key.
+        let doc = if let Some(pk) = public_key {
+            let mut handshake_pk = [0u8; 32];
+            if pk.len() == 32 {
+                handshake_pk.copy_from_slice(pk);
+            }
+            self.inner
+                .generate_transport_attestation(
+                    nonce_bytes,
+                    &handshake_pk,
+                    self.receipt_public_key,
+                )
+                .map_err(|e| {
+                    confidential_ml_transport::error::AttestError::GenerationFailed(format!(
+                        "TEE attestation failed: {}",
+                        e
+                    ))
+                })?
+        } else {
+            // Fallback: no DH key provided, use HPKE key (boot-time attestation).
+            self.inner
+                .generate_attestation(nonce_bytes, self.receipt_public_key)
+                .map_err(|e| {
+                    confidential_ml_transport::error::AttestError::GenerationFailed(format!(
+                        "TEE attestation failed: {}",
+                        e
+                    ))
+                })?
+        };
 
         // Pass the full CBOR envelope (tdx_wire + user_data) to the transport layer.
         // The client's TdxEnvelopeVerifierBridge will decode the envelope, verify

@@ -90,12 +90,11 @@ pub async fn run_direct_tcp<A: crate::AttestationProvider + Send + Sync>(
     };
 
     // Build ConnectionState for receipt generation.
-    // The attestation_hash is the SHA-256 of the attestation doc that was sent
-    // during handshake — for receipts to bind to the attestation identity.
-    let attestation_hash = channel
-        .peer_attestation()
-        .map(|a| a.document_hash)
-        .unwrap_or([0u8; 32]);
+    // In direct mode, the handshake result only exposes the peer (client)
+    // attestation — not the server's own. Use [0; 32] sentinel to indicate
+    // "no attestation binding in direct mode". Server identity is proven
+    // by the ed25519 receipt signature (signing key verified via handshake).
+    let attestation_hash = [0u8; 32];
     let receipt_pk = receipt_key.public_key_bytes();
     let session_id = hex::encode(Sha256::digest(receipt_pk));
     let mut state = ConnectionState::new(

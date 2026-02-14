@@ -1,0 +1,23 @@
+$ cargo run --release --no-default-features --features gcp --bin ephemeralml -- verify \
+    receipt.json --public-key-file receipt.json.pubkey
+
+  ==============================================================
+  EphemeralML Receipt Verification
+  ==============================================================
+
+  Receipt:   8e18f4ed-3cc7-4273-aa01-94df08bf8573
+  Model:     stage-0 v1.0
+  Platform:  tdx-mrtd-rtmr
+  Sequence:  #0
+
+  --------------------------------------------------------------
+  Checks:
+  --------------------------------------------------------------
+  Signature (Ed25519)       [PASS]
+  Timestamp freshness       [PASS]
+  Measurements present      [PASS]
+  --------------------------------------------------------------
+
+  VERIFIED
+
+  ==============================================================

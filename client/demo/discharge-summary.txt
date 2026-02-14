@@ -1,0 +1,18 @@
+DISCHARGE SUMMARY
+
+Admission date: 2026-02-10
+Discharge date: 2026-02-13
+Length of stay: 3 days
+
+Principal diagnosis: Community-acquired pneumonia, right lower lobe
+
+Hospital course:
+Patient was admitted with fever, productive cough, and right-sided pleuritic chest pain. Chest X-ray confirmed right lower lobe consolidation. Blood cultures were obtained and empiric IV antibiotics were initiated with ceftriaxone and azithromycin. By hospital day 2, fever had resolved and oxygen requirements decreased. Patient was transitioned to oral antibiotics on day 3 with clinical improvement.
+
+Discharge medications:
+1. Amoxicillin-clavulanate 875mg PO BID x 5 days
+2. Acetaminophen 650mg PO Q6H PRN for pain
+
+Follow-up: Primary care in 7 days. Repeat chest X-ray in 4-6 weeks to confirm resolution.
+
+Condition at discharge: Stable, improved. Ambulatory without supplemental oxygen.
