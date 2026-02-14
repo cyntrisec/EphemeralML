@@ -1,0 +1,113 @@
+============================================================
+  EphemeralML Real TDX Hardware Attestation Demo
+  GCP c3-standard-4 (Intel Sapphire Rapids, TDX)
+  2026-02-14T03:36:36Z
+  Kernel: 6.14.0-1021-gcp
+============================================================
+
+[1/5] TDX Hardware
+  configfs-tsm: PRESENT (real Intel TDX)
+
+[2/5] Server (--gcp --direct, NO --synthetic)
+  Ready (1s)
+
+  --- Trust Evidence Bundle ---
+  Platform:           tdx
+  Model ID:           stage-0
+  Quote Hash:         e0e9f26785d7fd54ffad6c9e7ba5bec80eb9b87ae960c3b7f3839c1e6c41b7ff
+  HPKE Public Key:    041e30eb944f2b2ed6d8e90ee41a0040
+  Receipt Sign Key:   9d75ab9c8cead33e27d5bd08f5da645f
+  Model Hash:         53aa51172d142c89d9012cce15ae4d6cc0ca6895895114379cacb4fab128d9db
+========================================
+
+[3/5] Inference + Receipt
+
+EphemeralML Confidential Inference
+==================================
+
+Connecting to 127.0.0.1:9000...
+[client] WARNING: No expected MRTD configured. TDX peer measurements are NOT pinned. Set EPHEMERALML_EXPECTED_MRTD for production use.
+  Attestation:    TDX verified (Confidential Space)
+  Encryption:     HPKE-X25519-ChaCha20Poly1305
+  Channel:        established
+
+Input (90 bytes):
+  "Patient presents with acute respiratory distress and bilateral infiltrates on chest X-ray."
+
+Inference
+---------
+  Model:          stage-0
+  Time:           109ms
+  Output:         384-dim embedding
+  Values[0..5]:   [0.1904, 0.6818, 0.0131, 0.1908, -0.0201]
+  L2 norm:        6.1630
+
+Receipt
+-------
+  ID:             36c56a82-42a4-41bd-bc0a-725d90a619a5
+  Platform:       tdx-mrtd-rtmr
+  Signature:      VERIFIED (Ed25519)
+  Saved to:       /home/tsyrulb/receipt-real-tdx.json
+
+
+[4/5] Receipt Verification
+
+  EphemeralML Receipt Verification
+  ================================
+
+  Model:       stage-0 v1.0
+  Receipt:     36c56a82-42a4-41bd-bc0a-725d90a619a5
+  Platform:    tdx-mrtd-rtmr
+  Sequence:    #0
+
+  Signature         PASS  Ed25519 over canonical receipt
+  Attestation hash  PASS  e0e9f26785d7fd54...
+  Model hash        PASS  request=3ddb1a14... response=b2670011...
+  Freshness         SKIP  skipped
+  Measurements      PASS  tdx-mrtd-rtmr
+
+  --> VERIFIED
+
+  Exit code: 0
+
+[5/5] Tamper Detection
+  Modified model_id -> tampered-model
+
+  EphemeralML Receipt Verification
+  ================================
+
+  Model:       tampered-model v1.0
+  Receipt:     36c56a82-42a4-41bd-bc0a-725d90a619a5
+  Platform:    tdx-mrtd-rtmr
+  Sequence:    #0
+
+  Signature         FAIL  Ed25519 over canonical receipt
+  Attestation hash  PASS  e0e9f26785d7fd54...
+  Model hash        PASS  request=3ddb1a14... response=b2670011...
+  Freshness         SKIP  skipped
+  Measurements      PASS  tdx-mrtd-rtmr
+
+  --> INVALID
+
+  Error: Ed25519 signature verification failed
+  Exit code: 0 (expected 1 = INVALID)
+
+============================================================
+  Attestation Evidence
+============================================================
+  receipt_id:           36c56a82-42a4-41bd-bc0a-725d90a619a5
+  attestation_doc_hash: e0e9f26785d7fd54ffad6c9e7ba5bec80eb9b87ae960c3b7f3839c1e6c41b7ff
+  hardware_bound:       YES - REAL TDX HARDWARE
+  model_id:             stage-0
+  model_version:        1.0
+  platform:             tdx-mrtd-rtmr
+  execution_time_ms:    68
+  sequence_number:      0
+  request_hash:         3ddb1a149274c2223c297b4575825655...
+  response_hash:        b26700113106e9a9c12e48ad7b55a835...
+  signature:            2f61f9bd0a631b9795918a14c0d7e5f1...
+
+Full log: /home/tsyrulb/attestation-evidence/real-tdx-20260214-033635.log
+Receipt:  /home/tsyrulb/receipt-real-tdx.json
+
+=== REAL TDX ATTESTATION DEMO COMPLETE ===

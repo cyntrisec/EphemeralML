@@ -1,0 +1,25 @@
+EphemeralML Enclave v2.0 (GCP Confidential VM Mode)
+
+[gcp] Using real configfs-tsm TDX attestation
+[gcp] Loading model from local: /home/tsyrulb/EphemeralML-cyntrisec/test_assets/minilm
+[gcp] Model 'stage-0' loaded in 250.4ms (local, 86.7 MB)
+[gcp] Launcher socket not available (not running in Confidential Space)
+========================================
+  TRUST EVIDENCE BUNDLE
+========================================
+  Platform:           tdx
+  Model ID:           stage-0
+  Quote Hash:         e0e9f26785d7fd54ffad6c9e7ba5bec80eb9b87ae960c3b7f3839c1e6c41b7ff
+  HPKE Public Key:    041e30eb944f2b2ed6d8e90ee41a0040
+  Receipt Sign Key:   9d75ab9c8cead33e27d5bd08f5da645f
+  Model Hash:         53aa51172d142c89d9012cce15ae4d6cc0ca6895895114379cacb4fab128d9db
+========================================
+[gcp] Direct mode: accepting client connections on 0.0.0.0:9000
+[gcp] Boot attestation hash: e0e9f26785d7fd54ffad6c9e7ba5bec80eb9b87ae960c3b7f3839c1e6c41b7ff (hardware)
+[direct] Listening on 0.0.0.0:9000
+[direct] Malformed connection from 127.0.0.1:59066 (attempt 1/50): session closed
+[direct] Secure channel established with 127.0.0.1:59082
+[direct] Ready for inference requests
+[direct] Inference request: model_id=stage-0, input_len=90
+[direct] Response sent: 384 floats, 68ms, seq=0
+[direct] Channel closed: session closed
