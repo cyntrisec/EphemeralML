@@ -546,11 +546,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .or(env_mrtd.as_ref())
                 .and_then(|hex_str| hex::decode(hex_str).ok())
                 .filter(|bytes| bytes.len() == 48);
-            if peer_mrtd.is_none() && !args.synthetic && !cs_mode {
+            if peer_mrtd.is_none() && !args.synthetic && !cs_mode && !args.direct {
                 return Err(
                     "--expected-mrtd (or EPHEMERALML_EXPECTED_MRTD env) is required in GCP mode. \
                      Peer TDX measurements must be pinned for production use. \
-                     Use --synthetic to skip this check in development."
+                     Use --synthetic to skip this check in development, \
+                     or --direct to run single-server mode without peer verification."
                         .into(),
                 );
             }
