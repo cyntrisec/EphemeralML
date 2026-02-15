@@ -3,7 +3,7 @@
 //! Proves the full pipeline round-trip:
 //!   orchestrator → stage control → stage data → executor → receipt → output
 
-#![cfg(all(feature = "mock"))]
+#![cfg(feature = "mock")]
 
 use std::collections::BTreeMap;
 use std::net::SocketAddr;

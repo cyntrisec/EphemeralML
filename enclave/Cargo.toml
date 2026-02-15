@@ -20,7 +20,7 @@ thiserror = { workspace = true }
 uuid = { workspace = true }
 sha2 = { workspace = true }
 libc = "0.2"
-clap = { version = "4.5", features = ["derive"] }
+clap = { version = "4.5", features = ["derive", "env"] }
 
 # Enclave-specific dependencies
 aws-nitro-enclaves-nsm-api = { workspace = true, optional = true }

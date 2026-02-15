@@ -27,47 +27,42 @@ impl MockHttpServer {
         let queue = Arc::new(Mutex::new(VecDeque::from(responses)));
 
         let handle = tokio::spawn(async move {
-            loop {
-                match listener.accept().await {
-                    Ok((mut stream, _)) => {
-                        let queue = queue.clone();
-                        tokio::spawn(async move {
-                            let mut buf = vec![0u8; 16384];
-                            let _ = stream.read(&mut buf).await;
+            while let Ok((mut stream, _)) = listener.accept().await {
+                let queue = queue.clone();
+                tokio::spawn(async move {
+                    let mut buf = vec![0u8; 16384];
+                    let _ = stream.read(&mut buf).await;
 
-                            let (status, body) = queue
-                                .lock()
-                                .unwrap()
-                                .pop_front()
-                                .unwrap_or((500, r#"{"error":"queue empty"}"#.to_string()));
+                    let (status, body) = queue
+                        .lock()
+                        .unwrap()
+                        .pop_front()
+                        .unwrap_or((500, r#"{"error":"queue empty"}"#.to_string()));
 
-                            let status_text = match status {
-                                200 => "OK",
-                                400 => "Bad Request",
-                                401 => "Unauthorized",
-                                403 => "Forbidden",
-                                404 => "Not Found",
-                                500 => "Internal Server Error",
-                                _ => "Error",
-                            };
+                    let status_text = match status {
+                        200 => "OK",
+                        400 => "Bad Request",
+                        401 => "Unauthorized",
+                        403 => "Forbidden",
+                        404 => "Not Found",
+                        500 => "Internal Server Error",
+                        _ => "Error",
+                    };
 
-                            let resp = format!(
-                                "HTTP/1.1 {} {}\r\n\
-                                 Content-Type: application/json\r\n\
-                                 Content-Length: {}\r\n\
-                                 Connection: close\r\n\
-                                 \r\n\
-                                 {}",
-                                status,
-                                status_text,
-                                body.len(),
-                                body
-                            );
-                            let _ = stream.write_all(resp.as_bytes()).await;
-                        });
-                    }
-                    Err(_) => break,
-                }
+                    let resp = format!(
+                        "HTTP/1.1 {} {}\r\n\
+                         Content-Type: application/json\r\n\
+                         Content-Length: {}\r\n\
+                         Connection: close\r\n\
+                         \r\n\
+                         {}",
+                        status,
+                        status_text,
+                        body.len(),
+                        body
+                    );
+                    let _ = stream.write_all(resp.as_bytes()).await;
+                });
             }
         });
 

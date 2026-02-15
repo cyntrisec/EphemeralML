@@ -28,17 +28,42 @@ DEBUG=false
 TAG=""
 SKIP_BUILD=false
 
+# KMS / model configuration
+MODEL_SOURCE="local"
+KMS_KEY=""
+WIP_AUDIENCE=""
+GCS_BUCKET="ephemeralml-models"
+GCP_MODEL_PREFIX="models/minilm"
+EXPECTED_MODEL_HASH=""
+
 # Parse args
 while [[ $# -gt 0 ]]; do
     case "$1" in
-        --debug)      DEBUG=true; shift ;;
-        --skip-build) SKIP_BUILD=true; shift ;;
-        --tag)        TAG="$2"; shift 2 ;;
-        --zone)       ZONE="$2"; shift 2 ;;
-        --project)    PROJECT="$2"; shift 2 ;;
+        --debug)        DEBUG=true; shift ;;
+        --skip-build)   SKIP_BUILD=true; shift ;;
+        --tag)          TAG="$2"; shift 2 ;;
+        --zone)         ZONE="$2"; shift 2 ;;
+        --project)      PROJECT="$2"; shift 2 ;;
+        --model-source) MODEL_SOURCE="$2"; shift 2 ;;
+        --kms-key)       KMS_KEY="$2"; shift 2 ;;
+        --wip-audience)  WIP_AUDIENCE="$2"; shift 2 ;;
+        --bucket)       GCS_BUCKET="$2"; shift 2 ;;
+        --model-prefix) GCP_MODEL_PREFIX="$2"; shift 2 ;;
+        --model-hash)   EXPECTED_MODEL_HASH="$2"; shift 2 ;;
         *) echo "Unknown option: $1"; exit 1 ;;
     esac
 done
+
+# Validate required flags for gcs-kms mode
+if [[ "${MODEL_SOURCE}" == "gcs-kms" ]]; then
+    for var in KMS_KEY WIP_AUDIENCE EXPECTED_MODEL_HASH; do
+        if [[ -z "${!var}" ]]; then
+            flag="$(echo "${var}" | tr '[:upper:]' '[:lower:]' | tr '_' '-')"
+            echo "ERROR: --${flag} is required for --model-source=gcs-kms"
+            exit 1
+        fi
+    done
+fi
 
 if [[ -z "${PROJECT}" ]]; then
     echo "ERROR: GCP project not set."
@@ -64,12 +89,19 @@ echo "============================================"
 echo "  EphemeralML — Deploy to Confidential Space"
 echo "============================================"
 echo
-echo "  Project:    ${PROJECT}"
-echo "  Zone:       ${ZONE}"
-echo "  Machine:    ${MACHINE_TYPE}"
-echo "  Image:      ${IMAGE_URI}"
-echo "  CS family:  ${CS_IMAGE_FAMILY}"
-echo "  Debug:      ${DEBUG}"
+echo "  Project:      ${PROJECT}"
+echo "  Zone:         ${ZONE}"
+echo "  Machine:      ${MACHINE_TYPE}"
+echo "  Image:        ${IMAGE_URI}"
+echo "  CS family:    ${CS_IMAGE_FAMILY}"
+echo "  Debug:        ${DEBUG}"
+echo "  Model source: ${MODEL_SOURCE}"
+if [[ "${MODEL_SOURCE}" == "gcs-kms" ]]; then
+    echo "  KMS key:      ${KMS_KEY}"
+    echo "  WIP audience: ${WIP_AUDIENCE}"
+    echo "  GCS bucket:   ${GCS_BUCKET}"
+    echo "  Model prefix: ${GCP_MODEL_PREFIX}"
+fi
 echo
 
 if $SKIP_BUILD; then
@@ -165,6 +197,17 @@ fi
 METADATA="tee-image-reference=${IMAGE_URI}"
 METADATA="${METADATA},tee-restart-policy=Never"
 METADATA="${METADATA},tee-container-log-redirect=true"
+METADATA="${METADATA},tee-env-EPHEMERALML_MODEL_SOURCE=${MODEL_SOURCE}"
+METADATA="${METADATA},tee-env-EPHEMERALML_DIRECT=true"
+METADATA="${METADATA},tee-env-EPHEMERALML_GCP_PROJECT=${PROJECT}"
+METADATA="${METADATA},tee-env-EPHEMERALML_GCP_LOCATION=${ZONE%-*}"
+if [[ -n "${KMS_KEY}" ]]; then
+    METADATA="${METADATA},tee-env-EPHEMERALML_GCP_KMS_KEY=${KMS_KEY}"
+    METADATA="${METADATA},tee-env-EPHEMERALML_GCP_WIP_AUDIENCE=${WIP_AUDIENCE}"
+    METADATA="${METADATA},tee-env-EPHEMERALML_GCS_BUCKET=${GCS_BUCKET}"
+    METADATA="${METADATA},tee-env-EPHEMERALML_GCP_MODEL_PREFIX=${GCP_MODEL_PREFIX}"
+    METADATA="${METADATA},tee-env-EPHEMERALML_EXPECTED_MODEL_HASH=${EXPECTED_MODEL_HASH}"
+fi
 
 gcloud compute instances create "${INSTANCE_NAME}" \
     --project="${PROJECT}" \

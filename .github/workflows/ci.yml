@@ -71,6 +71,34 @@ jobs:
           key: ${{ runner.os }}-cargo-gcp-${{ hashFiles('**/Cargo.lock') }}
       - run: cargo build --no-default-features --features gcp -p ephemeral-ml-enclave
 
+  smoke:
+    name: Smoke Test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/cache@v5
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-smoke-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Prepare model
+        run: bash scripts/download_model.sh
+
+      - name: Check CLI env vars
+        run: |
+          cargo run --no-default-features --features gcp -p ephemeral-ml-enclave -- --help 2>&1 | grep -q 'EPHEMERALML_MODEL_SOURCE'
+          cargo run --no-default-features --features gcp -p ephemeral-ml-enclave -- --help 2>&1 | grep -q 'EPHEMERALML_GCP_WIP_AUDIENCE'
+
+      - name: Doctor preflight
+        run: bash scripts/doctor.sh || true
+
+      - name: GCS-KMS integration
+        run: cargo test --no-default-features --features gcp -p ephemeral-ml-enclave --test gcs_kms_integration
+
   audit:
     name: Security Audit
     runs-on: ubuntu-latest

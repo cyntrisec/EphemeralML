@@ -72,50 +72,57 @@ struct Args {
     ///   local:   read from --model-dir (bundled in container, no KMS)
     ///   gcs:     fetch plaintext from GCS (requires --expected-model-hash)
     ///   gcs-kms: fetch encrypted model from GCS, decrypt via attestation-bound Cloud KMS (requires --expected-model-hash)
-    #[arg(long)]
+    #[arg(long, env = "EPHEMERALML_MODEL_SOURCE")]
     model_source: Option<String>,
 
     /// GCS bucket for model weights (GCP mode, gcs/gcs-kms).
-    #[arg(long, default_value = "ephemeralml-models")]
+    #[arg(
+        long,
+        env = "EPHEMERALML_GCS_BUCKET",
+        default_value = "ephemeralml-models"
+    )]
     gcp_bucket: String,
 
     /// GCS prefix for model files within the bucket (GCP mode, gcs/gcs-kms).
-    #[arg(long, default_value = "models/minilm")]
+    #[arg(
+        long,
+        env = "EPHEMERALML_GCP_MODEL_PREFIX",
+        default_value = "models/minilm"
+    )]
     gcp_model_prefix: String,
 
     /// GCP project ID (GCP mode).
-    #[arg(long, default_value = "ephemeralml")]
+    #[arg(long, env = "EPHEMERALML_GCP_PROJECT", default_value = "ephemeralml")]
     gcp_project: String,
 
     /// GCP location for Attestation API (GCP mode).
-    #[arg(long, default_value = "us-central1")]
+    #[arg(long, env = "EPHEMERALML_GCP_LOCATION", default_value = "us-central1")]
     gcp_location: String,
 
     /// Cloud KMS key resource name for model DEK decryption (GCP mode, gcs-kms).
     /// Format: projects/P/locations/L/keyRings/KR/cryptoKeys/K
-    #[arg(long)]
+    #[arg(long, env = "EPHEMERALML_GCP_KMS_KEY")]
     gcp_kms_key: Option<String>,
 
     /// Workload Identity Pool audience for STS token exchange (GCP mode, gcs-kms).
     /// Format: //iam.googleapis.com/projects/N/locations/global/workloadIdentityPools/POOL/providers/PROV
-    #[arg(long)]
+    #[arg(long, env = "EPHEMERALML_GCP_WIP_AUDIENCE")]
     gcp_wip_audience: Option<String>,
 
     /// Expected SHA-256 hash of model.safetensors (hex, 64 chars).
     /// Model weights are verified against this hash after loading.
     /// Required for gcs and gcs-kms model sources; optional for local.
-    #[arg(long)]
+    #[arg(long, env = "EPHEMERALML_EXPECTED_MODEL_HASH")]
     expected_model_hash: Option<String>,
 
     /// Expected MRTD measurement (hex, 96 chars = 48 bytes) for TDX peer verification.
-    /// Also reads EPHEMERALML_EXPECTED_MRTD env var. When set, rejects peers with
-    /// non-matching MRTD.
-    #[arg(long)]
+    /// When set, rejects peers with non-matching MRTD.
+    #[arg(long, env = "EPHEMERALML_EXPECTED_MRTD")]
     expected_mrtd: Option<String>,
 
     /// Direct mode: accept client SecureChannel on a single port (9000) and run
     /// inference immediately. No orchestrator needed. For GCP smoke/E2E testing.
-    #[arg(long)]
+    #[arg(long, env = "EPHEMERALML_DIRECT")]
     direct: bool,
 
     /// Control channel listen address for pipeline mode.
@@ -332,18 +339,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         args.gcp_bucket, args.gcp_model_prefix
                     );
 
-                    let kms_provider = if args.synthetic {
-                        ephemeral_ml_enclave::tee_provider::TeeAttestationProvider::synthetic()
-                    } else {
-                        ephemeral_ml_enclave::tee_provider::TeeAttestationProvider::new()?
-                    };
-                    let kms_client = GcpKmsClient::new(
-                        &args.gcp_project,
-                        &args.gcp_location,
-                        wip_audience,
-                        kms_provider,
-                    );
-
                     let gcs = GcsModelLoader::new(&args.gcp_bucket);
 
                     let config_path = format!("{}/config.json", args.gcp_model_prefix);
@@ -368,7 +363,31 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         "[gcp] Decrypting DEK via Cloud KMS (key: {})",
                         &kms_key[kms_key.rfind('/').map(|i| i + 1).unwrap_or(0)..]
                     );
-                    let dek = kms_client.decrypt(kms_key, &wrapped_dek).await?;
+
+                    // Auto-detect: use Confidential Space Launcher path if available,
+                    // otherwise fall back to Cloud Attestation API path.
+                    let launcher_socket =
+                        std::path::Path::new("/run/container_launcher/teeserver.sock");
+                    let dek = if launcher_socket.exists() {
+                        println!("[gcp] Using Confidential Space Launcher KMS path");
+                        let cs_kms =
+                            ephemeral_ml_enclave::cs_kms_client::CsKmsClient::new(wip_audience);
+                        cs_kms.decrypt(kms_key, &wrapped_dek).await?
+                    } else {
+                        println!("[gcp] Using Cloud Attestation API KMS path");
+                        let kms_provider = if args.synthetic {
+                            ephemeral_ml_enclave::tee_provider::TeeAttestationProvider::synthetic()
+                        } else {
+                            ephemeral_ml_enclave::tee_provider::TeeAttestationProvider::new()?
+                        };
+                        let kms_client = GcpKmsClient::new(
+                            &args.gcp_project,
+                            &args.gcp_location,
+                            wip_audience,
+                            kms_provider,
+                        );
+                        kms_client.decrypt(kms_key, &wrapped_dek).await?
+                    };
 
                     if dek.len() != 32 {
                         return Err(format!(
@@ -539,11 +558,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
             // Use TDX verifier for peer verification with measurement pinning.
             // Fail-closed: require MRTD in non-synthetic mode.
-            let env_mrtd = std::env::var("EPHEMERALML_EXPECTED_MRTD").ok();
             let peer_mrtd: Option<Vec<u8>> = args
                 .expected_mrtd
                 .as_ref()
-                .or(env_mrtd.as_ref())
                 .and_then(|hex_str| hex::decode(hex_str).ok())
                 .filter(|bytes| bytes.len() == 48);
             if peer_mrtd.is_none() && !args.synthetic && !cs_mode && !args.direct {

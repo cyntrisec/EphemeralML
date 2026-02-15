@@ -140,8 +140,8 @@ impl GcpKmsClient {
     }
 
     /// Create a client with custom base URLs (for testing with mock servers).
-    #[cfg(test)]
-    pub(crate) fn with_test_urls(
+    #[doc(hidden)]
+    pub fn with_test_urls(
         project: &str,
         location: &str,
         wip_audience: &str,

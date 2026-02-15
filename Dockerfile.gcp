@@ -48,11 +48,18 @@ COPY test_assets/minilm/config.json     /app/model/config.json
 COPY test_assets/minilm/tokenizer.json  /app/model/tokenizer.json
 COPY test_assets/minilm/model.safetensors /app/model/model.safetensors
 
-# GCP configuration (override via instance metadata or env).
-ENV EPHEMERALML_GCP_WIF_PROVIDER="" \
+# GCP configuration (override via instance metadata tee-env-* or env).
+# Default: local model for smoke tests. Override EPHEMERALML_MODEL_SOURCE=gcs-kms for production.
+ENV EPHEMERALML_MODEL_SOURCE="local" \
+    EPHEMERALML_GCS_BUCKET="ephemeralml-models" \
+    EPHEMERALML_GCP_MODEL_PREFIX="models/minilm" \
+    EPHEMERALML_GCP_PROJECT="" \
+    EPHEMERALML_GCP_LOCATION="us-central1" \
     EPHEMERALML_GCP_KMS_KEY="" \
-    EPHEMERALML_GCS_BUCKET="" \
-    EPHEMERALML_EXPECTED_MRTD=""
+    EPHEMERALML_GCP_WIP_AUDIENCE="" \
+    EPHEMERALML_EXPECTED_MODEL_HASH="" \
+    EPHEMERALML_EXPECTED_MRTD="" \
+    EPHEMERALML_DIRECT="true"
 
 EXPOSE 9000
 # Pipeline mode also uses 9001/9002 (data_in/data_out), but direct mode only needs 9000.
@@ -63,4 +70,6 @@ HEALTHCHECK --interval=15s --timeout=3s --start-period=60s --retries=3 \
 
 WORKDIR /app
 ENTRYPOINT ["/app/ephemeral-ml-enclave"]
-CMD ["--gcp", "--model-source", "local", "--model-dir", "/app/model", "--direct"]
+# --gcp flag enables GCP mode; all other config comes from env vars above.
+# Default local model dir for smoke tests; production overrides via tee-env-* metadata.
+CMD ["--gcp", "--model-dir", "/app/model"]

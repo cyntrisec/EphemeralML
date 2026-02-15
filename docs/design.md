@@ -8,7 +8,7 @@ The Confidential Inference Gateway implements a defense-in-depth architecture fo
 
 **Multi-cloud support**: The system supports two deployment targets:
 - **AWS Nitro Enclaves** (`--features production`): The host acts as a blind relay via VSock. All AWS API access is mediated through VSock proxies. Attestation uses NSM (COSE_Sign1).
-- **GCP Confidential Space** (`--features gcp`): The entire CVM is the trust boundary — no host/enclave split, no VSock. The CVM has direct network access. Attestation uses Intel TDX hardware quotes (configfs-tsm). Key release via Attestation API + WIF + Cloud KMS is implemented (`GcpKmsClient`) but not yet wired into the runtime model-loading path.
+- **GCP Confidential Space** (`--features gcp`): The entire CVM is the trust boundary — no host/enclave split, no VSock. The CVM has direct network access. Attestation uses Intel TDX hardware quotes (configfs-tsm). Key release via Attestation API + WIP (Workload Identity Pool, via WIF token exchange) + Cloud KMS is implemented (`GcpKmsClient`) but not yet wired into the runtime model-loading path.
 
 The core security properties (attestation-gated key release, end-to-end encryption, signed receipts) are platform-independent. The transport layer (`confidential-ml-transport`) abstracts over VSock/TCP and Nitro/TDX attestation backends.
 
@@ -126,7 +126,7 @@ sequenceDiagram
 | Attestation hardware | NSM device | Intel TDX (configfs-tsm) |
 | Attestation format | COSE_Sign1 | TDX quote (ECDSA-P256, 8KB) |
 | Measurement registers | PCR0/1/2/8 (SHA-384) | MRTD + RTMR0-3 (SHA-384) |
-| Key release | NSM attestation → AWS KMS RecipientInfo | `GcpKmsClient` (Attestation API → WIF → Cloud KMS), not yet wired into runtime |
+| Key release | NSM attestation → AWS KMS RecipientInfo | `GcpKmsClient` (Attestation API → WIP/WIF → Cloud KMS), not yet wired into runtime |
 | Model storage | S3 via host VSock proxy | GCS via direct HTTPS |
 
 ### TDX Attestation Flow
@@ -137,7 +137,7 @@ sequenceDiagram
 4. Full CBOR envelope is passed through the transport handshake (not just the TDX wire)
 5. Client's `TdxEnvelopeVerifierBridge` decodes the CBOR, verifies inner TDX document, extracts receipt signing key from `user_data`
 
-### GCP Key Release Flow (Attestation API + WIF)
+### GCP Key Release Flow (Attestation API + WIP-Based Key Release)
 
 Current implementation in `enclave/src/gcp_kms_client.rs` uses the Google Cloud Attestation API (not the Launcher socket):
 

@@ -36,6 +36,8 @@ pub mod tee_provider;
 pub mod trust_evidence;
 
 #[cfg(feature = "gcp")]
+pub mod cs_kms_client;
+#[cfg(feature = "gcp")]
 pub mod cs_token_client;
 #[cfg(feature = "gcp")]
 pub mod gcp_kms_client;

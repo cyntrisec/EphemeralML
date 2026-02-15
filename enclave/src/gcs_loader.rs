@@ -58,8 +58,8 @@ impl GcsModelLoader {
     }
 
     /// Create a loader with custom base URLs (for testing with mock servers).
-    #[cfg(test)]
-    pub(crate) fn with_test_urls(bucket: &str, base_url: &str) -> Self {
+    #[doc(hidden)]
+    pub fn with_test_urls(bucket: &str, base_url: &str) -> Self {
         Self {
             client: reqwest::Client::new(),
             bucket: bucket.to_string(),

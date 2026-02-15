@@ -70,7 +70,7 @@
                                      │                    │ TDX quote
                                      │ GCS               ▼
                               ┌──────┴──────┐     ┌──────────────────┐
-                              │  Encrypted  │     │ Cloud KMS (WIF)  │
+                              │  Encrypted  │     │ Cloud KMS (WIP)  │
                               │   Models    │     │ (key release)    │
                               └─────────────┘     └──────────────────┘
 ```
@@ -316,7 +316,7 @@ See [`QUICKSTART.md`](QUICKSTART.md) and [`docs/build-matrix.md`](docs/build-mat
 | NSM Attestation (AWS) | ✅ Production | 11 |
 | TDX Attestation (GCP) | ✅ Production | — |
 | KMS Integration (AWS) | ✅ Production | — |
-| GCP KMS / WIF | ⚠ Code exists, not wired into runtime | — |
+| GCP KMS / WIP | ⚠ Code exists, not wired into runtime | — |
 | Inference Engine (Candle) | ✅ Production | 4 |
 | Receipt Signing (Ed25519) | ✅ Production | 6 |
 | Common / Types | ✅ Production | 42 |
@@ -325,7 +325,7 @@ See [`QUICKSTART.md`](QUICKSTART.md) and [`docs/build-matrix.md`](docs/build-mat
 | GCS Model Loader | ✅ Implemented | — |
 | TDX Verifier Bridge (Client) | ✅ Implemented | — |
 
-**v3.0 Multi-Cloud** — GCP Confidential Space integration with TDX attestation, GCS model loading, and `TdxEnvelopeVerifierBridge` client. GcpKmsClient (WIF + Cloud KMS) implemented but not yet wired into the model-loading runtime. Three-way feature exclusivity (`mock`/`production`/`gcp`) across all crates. 105 tests passing.
+**v3.0 Multi-Cloud** — GCP Confidential Space integration with TDX attestation, GCS model loading, and `TdxEnvelopeVerifierBridge` client. GcpKmsClient (WIP + Cloud KMS, via WIF token exchange) implemented but not yet wired into the model-loading runtime. Three-way feature exclusivity (`mock`/`production`/`gcp`) across all crates. 105 tests passing.
 
 ---
 

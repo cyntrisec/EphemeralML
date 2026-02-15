@@ -38,7 +38,7 @@ cargo clippy --workspace
 
 - `mock` (default) — Local development without TEE hardware
 - `production` — Real NSM attestation and VSock communication (AWS Nitro)
-- `gcp` — Intel TDX attestation, direct TCP, WIF + Cloud KMS (GCP Confidential Space)
+- `gcp` — Intel TDX attestation, direct TCP, WIP + Cloud KMS via WIF (GCP Confidential Space)
 - `cuda` — GPU inference via Candle
 
 **Mutually exclusive:** `mock`, `production`, and `gcp` cannot be combined (enforced by `compile_error!`).

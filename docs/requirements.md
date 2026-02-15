@@ -22,7 +22,7 @@ EphemeralML is a defense-in-depth confidential inference system that protects mo
 - **A2. TEE attestation roots**: AWS Nitro attestation root certificates (COSE_Sign1) and Intel TDX DCAP collateral are trusted for verifying attestation documents
 - **A3. Host compromise**: (AWS) Host OS is assumed fully compromised (root) and can observe/modify vsock traffic, scheduling, and storage; it cannot read enclave memory. (GCP) The CVM is the trust boundary; the VM operator is constrained by the Confidential Space trust model
 - **A4. Network adversary**: On-path attacker can observe/modify network traffic between client and TEE
-- **A5. KMS/Key Authority trust**: AWS KMS correctly enforces attestation-bound key release via RSA-2048 `RecipientInfo`. GCP Cloud KMS correctly enforces WIF-based key release gated by CS attestation token claims (container image digest, TDX measurements)
+- **A5. KMS/Key Authority trust**: AWS KMS correctly enforces attestation-bound key release via RSA-2048 `RecipientInfo`. GCP Cloud KMS correctly enforces WIP-based key release (Workload Identity Pool, via WIF token exchange) gated by CS attestation token claims (container image digest, TDX measurements)
 - **A6. Time source**: "Freshness" is provided via nonces + challenge/response (not wall-clock inside enclave)
 - **A7. Side-channels**: Residual leakage via timing/access-patterns exists; only mitigations listed in-scope are claimed
 
@@ -44,7 +44,8 @@ EphemeralML is a defense-in-depth confidential inference system that protects mo
 - **TDX**: Intel Trust Domain Extensions — hardware TEE providing VM-level isolation
 - **MRTD**: Measurement Register of Trust Domain — TDX equivalent of PCR0, derived from CVM firmware/kernel
 - **RTMR**: Runtime Measurement Register — TDX application-level measurements (RTMR0-RTMR3)
-- **WIF**: Workload Identity Federation — GCP mechanism to exchange external tokens (CS attestation) for GCP access tokens
+- **WIF**: Workload Identity Federation — GCP OAuth2 token-exchange protocol used to exchange external tokens (CS attestation) for GCP access tokens
+- **WIP**: Workload Identity Pool — the GCP resource that holds provider configurations and principals for WIF token exchange
 - **Confidential_Space**: Google Cloud workload environment with measured boot, operator constraints, and attestation tokens
 
 ## Requirements
@@ -239,12 +240,12 @@ EphemeralML is a defense-in-depth confidential inference system that protects mo
 
 1. THE System SHALL integrate with cloud KMS (AWS KMS or GCP Cloud KMS) for key management with TEE identity binding and policy enforcement
 2. WHEN deploying on AWS Nitro Enclaves, THE System SHALL support a reproducible deployment for a single-node pilot
-3. WHEN deploying on GCP Confidential Space, THE System SHALL support TDX CVM deployment with WIF-based key release
+3. WHEN deploying on GCP Confidential Space, THE System SHALL support TDX CVM deployment with WIP-based key release (Workload Identity Pool, via WIF token exchange)
 4. THE System SHALL provide monitoring and logging integration with cloud-native observability tools
 5. THE System SHALL provide deployment validation tools to verify correct security configuration in production environments
 6. (AWS) All AWS API access required by the enclave SHALL be mediated via VSock proxy on the host and treated as untrusted transport
 7. (AWS) The Host SHALL run a dedicated "AWS API proxy" service that forwards enclave-originated requests (KMS, S3) and MUST NOT terminate E2E encryption or gain access to decrypted secrets
-8. (GCP) The CVM SHALL access Cloud KMS and GCS directly over HTTPS using WIF-exchanged access tokens
+8. (GCP) The CVM SHALL access Cloud KMS and GCS directly over HTTPS using WIP/WIF-exchanged access tokens
 9. THE System SHALL treat all responses from external services as untrusted and SHALL authenticate/validate critical responses (e.g., ciphertext format, policy version, receipt fields)
 
 ### Requirement 13: Protocol Compatibility and Versioning

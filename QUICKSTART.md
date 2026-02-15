@@ -2,6 +2,8 @@
 
 ## Prerequisites
 
+> **Tip**: Run `bash scripts/doctor.sh` to validate your environment before getting started.
+
 1. **Install Rust**: Visit [rustup.rs](https://rustup.rs/) and follow the installation instructions.
 2. **AWS CLI & Nitro CLI**: (For AWS production) Required to build EIF and run on Nitro instances.
 3. **gcloud CLI**: (For GCP production) Required for Confidential Space deployment on c3-standard-4 TDX CVMs.

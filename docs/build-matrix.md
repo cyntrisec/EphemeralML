@@ -116,6 +116,6 @@ The GCP verifier decodes a `TeeAttestationEnvelope` (CBOR: `{platform, tdx_wire,
 | Binaries needed | enclave + host + client | enclave + client |
 | Host process | Required (KMS proxy, model relay) | Not needed (direct access) |
 | Network from enclave | None (VSock only) | Full (TCP, HTTPS) |
-| KMS auth | NSM attestation → AWS KMS Recipient | `GcpKmsClient` exists (Attestation API → WIF → Cloud KMS), not yet wired into runtime |
+| KMS auth | NSM attestation → AWS KMS Recipient | `GcpKmsClient` exists (Attestation API → WIP/WIF → Cloud KMS), not yet wired into runtime |
 | Model loading | Host fetches S3 → VSock → enclave | Enclave fetches GCS directly |
 | Bind address | 127.0.0.1 (VSock loopback) | 0.0.0.0 (real network) |

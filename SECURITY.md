@@ -33,7 +33,7 @@ The following are in scope for security reports:
 - **Key material handling** (zeroization, memory safety, key derivation)
 - **Protocol security** (VSock/TCP message framing, session establishment, replay protection)
 - **TDX envelope handling** (CBOR envelope parsing, receipt key propagation, measurement pinning)
-- **Policy enforcement** (measurement allowlists, key release conditions, WIF token handling)
+- **Policy enforcement** (measurement allowlists, key release conditions, WIP/WIF token handling)
 - **Input validation** (model format validation, safetensors parsing, CBOR/JSON deserialization)
 
 ## Supported Versions
