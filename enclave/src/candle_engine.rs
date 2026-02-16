@@ -6,6 +6,7 @@ use std::collections::HashMap;
 use std::io::Cursor;
 use std::sync::{Arc, RwLock};
 use tokenizers::Tokenizer;
+use tracing::{info, warn};
 
 /// Inference engine powered by Candle for production use
 #[derive(Clone)]
@@ -32,11 +33,37 @@ struct LoadedQuantizedLlamaModel {
 }
 
 impl CandleInferenceEngine {
-    /// Create a new CandleInferenceEngine, detecting CUDA availability
+    /// Create a new CandleInferenceEngine, detecting CUDA availability.
+    ///
+    /// When built with the `cuda` feature:
+    /// - Uses `EPHEMERALML_GPU_ID` env var to select GPU device (default: 0)
+    /// - Falls back to CPU if CUDA is compiled in but no GPU is available
+    ///
+    /// When built without `cuda`: always uses CPU.
     pub fn new() -> Result<Self> {
-        let device = if cfg!(feature = "cuda") && candle_core::utils::cuda_is_available() {
-            Device::new_cuda(0).map_err(|e| EnclaveError::CandleError(e.to_string()))?
+        let device = if cfg!(feature = "cuda") {
+            let device_id: usize = std::env::var("EPHEMERALML_GPU_ID")
+                .ok()
+                .and_then(|s| s.parse().ok())
+                .unwrap_or(0);
+            if candle_core::utils::cuda_is_available() {
+                info!(
+                    step = "device_init",
+                    device = "cuda",
+                    gpu_id = device_id,
+                    "CUDA available — using GPU"
+                );
+                Device::new_cuda(device_id)
+                    .map_err(|e| EnclaveError::CandleError(e.to_string()))?
+            } else {
+                warn!(
+                    step = "device_init",
+                    "CUDA feature enabled but no GPU available — falling back to CPU"
+                );
+                Device::Cpu
+            }
         } else {
+            info!(step = "device_init", device = "cpu", "Using CPU device");
             Device::Cpu
         };
         Ok(Self {

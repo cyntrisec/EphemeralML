@@ -122,6 +122,12 @@ struct Args {
     #[arg(long, env = "EPHEMERALML_EXPECTED_MRTD")]
     expected_mrtd: Option<String>,
 
+    /// Model format for loading.
+    ///   safetensors: config.json + tokenizer.json + model.safetensors (BERT-style)
+    ///   gguf:        tokenizer.json + model.gguf (quantized Llama/Mistral/Phi)
+    #[arg(long, env = "EPHEMERALML_MODEL_FORMAT", default_value = "safetensors")]
+    model_format: String,
+
     /// Direct mode: accept client SecureChannel on a single port (9000) and run
     /// inference immediately. No orchestrator needed. For GCP smoke/E2E testing.
     #[arg(long, env = "EPHEMERALML_DIRECT")]
@@ -162,6 +168,7 @@ fn classify_exit_code(err: &str) -> i32 {
         || e.contains("requires the `gcp` feature")
         || e.contains("model signing key must be")
         || e.contains("ephemeralml_model_signing_pubkey")
+        || e.contains("unknown --model-format")
     {
         return 10;
     }
@@ -171,6 +178,7 @@ fn classify_exit_code(err: &str) -> i32 {
         || e.contains("failed to read config.json")
         || e.contains("failed to read tokenizer.json")
         || e.contains("failed to read model.safetensors")
+        || e.contains("failed to read model.gguf")
         || e.contains("model directory does not exist")
         || e.contains("manifest")
         || e.contains("--expected-model-hash")
@@ -361,6 +369,15 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
             let receipt_pk = receipt_key.public_key_bytes();
 
             // 2. Load model via explicit --model-source
+            let model_format = args.model_format.as_str();
+            if model_format != "safetensors" && model_format != "gguf" {
+                return Err(format!(
+                    "Unknown --model-format '{}'. Valid: safetensors, gguf",
+                    model_format
+                )
+                .into());
+            }
+
             let engine = CandleInferenceEngine::new()?;
             let load_start = std::time::Instant::now();
 
@@ -397,47 +414,91 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
                         )
                         .into());
                     }
-                    info!(step = "model_load", source = "local", path = %args.model_dir.display(), "Loading model from local directory");
-                    let config_bytes = std::fs::read(args.model_dir.join("config.json"))
-                        .map_err(|e| format!("Failed to read config.json: {}", e))?;
+                    info!(step = "model_load", source = "local", format = model_format, path = %args.model_dir.display(), "Loading model from local directory");
+
                     let tokenizer_bytes = std::fs::read(args.model_dir.join("tokenizer.json"))
                         .map_err(|e| format!("Failed to read tokenizer.json: {}", e))?;
-                    let weights_bytes = std::fs::read(args.model_dir.join("model.safetensors"))
-                        .map_err(|e| format!("Failed to read model.safetensors: {}", e))?;
 
-                    // Compute and verify model hash
-                    {
-                        use sha2::{Digest, Sha256};
-                        let actual: [u8; 32] = Sha256::digest(&weights_bytes).into();
-                        if let Some(expected) = &expected_model_hash {
-                            if &actual != expected {
-                                return Err(format!(
-                                    "Model hash mismatch (local): expected {}, got {}",
-                                    hex::encode(expected),
-                                    hex::encode(actual)
-                                )
-                                .into());
+                    if model_format == "gguf" {
+                        // GGUF format: single model.gguf file (quantized Llama/Mistral/Phi)
+                        let gguf_bytes = std::fs::read(args.model_dir.join("model.gguf"))
+                            .map_err(|e| format!("Failed to read model.gguf: {}", e))?;
+
+                        // Compute and verify model hash
+                        {
+                            use sha2::{Digest, Sha256};
+                            let actual: [u8; 32] = Sha256::digest(&gguf_bytes).into();
+                            if let Some(expected) = &expected_model_hash {
+                                if &actual != expected {
+                                    return Err(format!(
+                                        "Model hash mismatch (local/gguf): expected {}, got {}",
+                                        hex::encode(expected),
+                                        hex::encode(actual)
+                                    )
+                                    .into());
+                                }
+                                info!(step = "hash_verify", hash = %hex::encode(expected), "Model hash verified");
                             }
-                            info!(step = "hash_verify", hash = %hex::encode(expected), "Model hash verified");
+                            loaded_model_hash = Some(actual);
                         }
-                        loaded_model_hash = Some(actual);
+
+                        engine.register_model_gguf(
+                            &args.model_id,
+                            &gguf_bytes,
+                            &tokenizer_bytes,
+                        )?;
+
+                        info!(
+                            step = "model_load",
+                            source = "local",
+                            format = "gguf",
+                            model_id = %args.model_id,
+                            elapsed_ms = load_start.elapsed().as_secs_f64() * 1000.0,
+                            size_mb = gguf_bytes.len() as f64 / (1024.0 * 1024.0),
+                            "Model loaded"
+                        );
+                    } else {
+                        // Safetensors format: config.json + model.safetensors (BERT-style)
+                        let config_bytes = std::fs::read(args.model_dir.join("config.json"))
+                            .map_err(|e| format!("Failed to read config.json: {}", e))?;
+                        let weights_bytes = std::fs::read(args.model_dir.join("model.safetensors"))
+                            .map_err(|e| format!("Failed to read model.safetensors: {}", e))?;
+
+                        // Compute and verify model hash
+                        {
+                            use sha2::{Digest, Sha256};
+                            let actual: [u8; 32] = Sha256::digest(&weights_bytes).into();
+                            if let Some(expected) = &expected_model_hash {
+                                if &actual != expected {
+                                    return Err(format!(
+                                        "Model hash mismatch (local): expected {}, got {}",
+                                        hex::encode(expected),
+                                        hex::encode(actual)
+                                    )
+                                    .into());
+                                }
+                                info!(step = "hash_verify", hash = %hex::encode(expected), "Model hash verified");
+                            }
+                            loaded_model_hash = Some(actual);
+                        }
+
+                        engine.register_model(
+                            &args.model_id,
+                            &config_bytes,
+                            &weights_bytes,
+                            &tokenizer_bytes,
+                        )?;
+
+                        info!(
+                            step = "model_load",
+                            source = "local",
+                            format = "safetensors",
+                            model_id = %args.model_id,
+                            elapsed_ms = load_start.elapsed().as_secs_f64() * 1000.0,
+                            size_mb = weights_bytes.len() as f64 / (1024.0 * 1024.0),
+                            "Model loaded"
+                        );
                     }
-
-                    engine.register_model(
-                        &args.model_id,
-                        &config_bytes,
-                        &weights_bytes,
-                        &tokenizer_bytes,
-                    )?;
-
-                    info!(
-                        step = "model_load",
-                        source = "local",
-                        model_id = %args.model_id,
-                        elapsed_ms = load_start.elapsed().as_secs_f64() * 1000.0,
-                        size_mb = weights_bytes.len() as f64 / (1024.0 * 1024.0),
-                        "Model loaded"
-                    );
                 }
                 "gcs-kms" => {
                     let kms_key = args
@@ -452,17 +513,25 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
                     use ephemeral_ml_enclave::crypto_util::decrypt_artifact;
                     use ephemeral_ml_enclave::gcp_kms_client::GcpKmsClient;
 
-                    info!(step = "model_load", source = "gcs-kms", bucket = %args.gcp_bucket, prefix = %args.gcp_model_prefix, "Fetching encrypted model from GCS");
+                    info!(step = "model_load", source = "gcs-kms", format = model_format, bucket = %args.gcp_bucket, prefix = %args.gcp_model_prefix, "Fetching encrypted model from GCS");
 
                     let gcs = GcsModelLoader::new(&args.gcp_bucket);
 
-                    let config_path = format!("{}/config.json", args.gcp_model_prefix);
+                    // File names depend on model format
+                    let weights_enc_name = if model_format == "gguf" {
+                        "model.gguf.enc"
+                    } else {
+                        "model.safetensors.enc"
+                    };
+
                     let tokenizer_path = format!("{}/tokenizer.json", args.gcp_model_prefix);
                     let weights_enc_path =
-                        format!("{}/model.safetensors.enc", args.gcp_model_prefix);
+                        format!("{}/{}", args.gcp_model_prefix, weights_enc_name);
                     let dek_path = format!("{}/wrapped_dek.bin", args.gcp_model_prefix);
                     let manifest_path = format!("{}/manifest.json", args.gcp_model_prefix);
 
+                    // Fetch artifacts in parallel. config.json is only needed for safetensors.
+                    let config_path = format!("{}/config.json", args.gcp_model_prefix);
                     let (config_art, tokenizer_art, weights_enc_art, dek_art, manifest_art) = tokio::join!(
                         gcs.fetch_object(&config_path),
                         gcs.fetch_object(&tokenizer_path),
@@ -471,7 +540,15 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
                         gcs.fetch_object(&manifest_path),
                     );
 
-                    let config_bytes = config_art?.bytes;
+                    // config.json is only required for safetensors format
+                    let config_bytes = if model_format == "safetensors" {
+                        Some(config_art?.bytes)
+                    } else {
+                        if let Err(e) = config_art {
+                            info!(step = "model_load", "config.json not fetched (GGUF mode): {}", e);
+                        }
+                        None
+                    };
                     let tokenizer_bytes = tokenizer_art?.bytes;
                     let encrypted_weights = weights_enc_art?.bytes;
                     let wrapped_dek = dek_art?.bytes;
@@ -616,16 +693,28 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
                         loaded_model_hash = Some(actual);
                     }
 
-                    engine.register_model(
-                        &args.model_id,
-                        &config_bytes,
-                        &weights_bytes,
-                        &tokenizer_bytes,
-                    )?;
+                    if model_format == "gguf" {
+                        engine.register_model_gguf(
+                            &args.model_id,
+                            &weights_bytes,
+                            &tokenizer_bytes,
+                        )?;
+                    } else {
+                        let config = config_bytes.as_ref().ok_or(
+                            "config.json required for safetensors format but not fetched",
+                        )?;
+                        engine.register_model(
+                            &args.model_id,
+                            config,
+                            &weights_bytes,
+                            &tokenizer_bytes,
+                        )?;
+                    }
 
                     info!(
                         step = "model_load",
                         source = "gcs-kms",
+                        format = model_format,
                         model_id = %args.model_id,
                         elapsed_ms = load_start.elapsed().as_secs_f64() * 1000.0,
                         size_mb = weights_bytes.len() as f64 / (1024.0 * 1024.0),
@@ -633,7 +722,7 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
                     );
                 }
                 "gcs" => {
-                    info!(step = "model_load", source = "gcs", bucket = %args.gcp_bucket, prefix = %args.gcp_model_prefix, "Fetching model from GCS");
+                    info!(step = "model_load", source = "gcs", format = model_format, bucket = %args.gcp_bucket, prefix = %args.gcp_model_prefix, "Fetching model from GCS");
                     let gcs = GcsModelLoader::new(&args.gcp_bucket);
 
                     let expected = expected_model_hash.as_ref().ok_or(
@@ -641,9 +730,15 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
                          Cannot verify model integrity without a pinned hash.",
                     )?;
 
+                    let weights_name = if model_format == "gguf" {
+                        "model.gguf"
+                    } else {
+                        "model.safetensors"
+                    };
+
                     let config_path = format!("{}/config.json", args.gcp_model_prefix);
                     let tokenizer_path = format!("{}/tokenizer.json", args.gcp_model_prefix);
-                    let weights_path = format!("{}/model.safetensors", args.gcp_model_prefix);
+                    let weights_path = format!("{}/{}", args.gcp_model_prefix, weights_name);
                     let manifest_path = format!("{}/manifest.json", args.gcp_model_prefix);
 
                     let (config_art, tokenizer_art, manifest_art) = tokio::join!(
@@ -651,7 +746,15 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
                         gcs.fetch_object(&tokenizer_path),
                         gcs.fetch_object(&manifest_path),
                     );
-                    let config_bytes = config_art?.bytes;
+                    // config.json only required for safetensors format
+                    let config_bytes = if model_format == "safetensors" {
+                        Some(config_art?.bytes)
+                    } else {
+                        if let Err(e) = config_art {
+                            info!(step = "model_load", "config.json not fetched (GGUF mode): {}", e);
+                        }
+                        None
+                    };
                     let tokenizer_bytes = tokenizer_art?.bytes;
 
                     // Determine if manifest verification is required (pubkey configured)
@@ -723,12 +826,23 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
                         );
                     }
 
-                    engine.register_model(
-                        &args.model_id,
-                        &config_bytes,
-                        &weights_bytes,
-                        &tokenizer_bytes,
-                    )?;
+                    if model_format == "gguf" {
+                        engine.register_model_gguf(
+                            &args.model_id,
+                            &weights_bytes,
+                            &tokenizer_bytes,
+                        )?;
+                    } else {
+                        let config = config_bytes.as_ref().ok_or(
+                            "config.json required for safetensors format but not fetched",
+                        )?;
+                        engine.register_model(
+                            &args.model_id,
+                            config,
+                            &weights_bytes,
+                            &tokenizer_bytes,
+                        )?;
+                    }
 
                     loaded_model_hash = Some(*expected);
                     info!(step = "hash_verify", source = "gcs", hash = %hex::encode(expected), "Model hash verified");
@@ -736,6 +850,7 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
                     info!(
                         step = "model_load",
                         source = "gcs",
+                        format = model_format,
                         model_id = %args.model_id,
                         elapsed_ms = load_start.elapsed().as_secs_f64() * 1000.0,
                         "Model loaded"

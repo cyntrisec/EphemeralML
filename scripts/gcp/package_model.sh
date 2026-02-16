@@ -13,9 +13,10 @@
 #      wrapped_dek.bin, manifest.json
 #
 # Usage:
-#   bash scripts/gcp/package_model.sh <model_dir> <gcs_prefix> [--model-id ID] [--version VER]
+#   bash scripts/gcp/package_model.sh <model_dir> <gcs_prefix> [--model-id ID] [--version VER] [--format FMT]
 #   bash scripts/gcp/package_model.sh test_assets/minilm models/minilm
 #   bash scripts/gcp/package_model.sh test_assets/minilm models/minilm --dry-run
+#   bash scripts/gcp/package_model.sh /path/to/llama models/llama --format gguf --model-id llama-8b
 #
 # Requires:
 #   - openssl, python3 (with cryptography), jq
@@ -36,6 +37,7 @@ shift 2
 # Defaults
 MODEL_ID="minilm-l6-v2"
 MODEL_VERSION="v1.0.0"
+MODEL_FORMAT="safetensors"
 DRY_RUN=false
 
 # Parse optional args
@@ -43,22 +45,46 @@ while [[ $# -gt 0 ]]; do
     case "$1" in
         --model-id)  MODEL_ID="$2"; shift 2 ;;
         --version)   MODEL_VERSION="$2"; shift 2 ;;
+        --format)    MODEL_FORMAT="$2"; shift 2 ;;
         --dry-run)   DRY_RUN=true; shift ;;
         *) echo "Unknown option: $1"; exit 1 ;;
     esac
 done
 
-WEIGHTS="${MODEL_DIR}/model.safetensors"
-CONFIG="${MODEL_DIR}/config.json"
+if [[ "${MODEL_FORMAT}" != "safetensors" && "${MODEL_FORMAT}" != "gguf" ]]; then
+    echo "ERROR: --format must be 'safetensors' or 'gguf', got '${MODEL_FORMAT}'"
+    exit 1
+fi
+
+# File names depend on model format
+if [[ "${MODEL_FORMAT}" == "gguf" ]]; then
+    WEIGHTS="${MODEL_DIR}/model.gguf"
+    WEIGHTS_ENC_NAME="model.gguf.enc"
+else
+    WEIGHTS="${MODEL_DIR}/model.safetensors"
+    WEIGHTS_ENC_NAME="model.safetensors.enc"
+fi
+
 TOKENIZER="${MODEL_DIR}/tokenizer.json"
 
-# Validate inputs
-for f in "${WEIGHTS}" "${CONFIG}" "${TOKENIZER}"; do
-    if [ ! -f "$f" ]; then
-        echo "ERROR: File not found: $f"
-        exit 1
-    fi
-done
+# Validate inputs — config.json only required for safetensors
+if [[ "${MODEL_FORMAT}" == "safetensors" ]]; then
+    CONFIG="${MODEL_DIR}/config.json"
+    for f in "${WEIGHTS}" "${CONFIG}" "${TOKENIZER}"; do
+        if [ ! -f "$f" ]; then
+            echo "ERROR: File not found: $f"
+            exit 1
+        fi
+    done
+else
+    CONFIG=""
+    for f in "${WEIGHTS}" "${TOKENIZER}"; do
+        if [ ! -f "$f" ]; then
+            echo "ERROR: File not found: $f"
+            exit 1
+        fi
+    done
+fi
 
 if ! $DRY_RUN; then
     KMS_KEY="${GCP_KMS_KEY:?Set GCP_KMS_KEY (from setup_kms.sh)}"
@@ -77,6 +103,7 @@ echo "=== EphemeralML Model Packaging ==="
 echo "  Model dir:   ${MODEL_DIR}"
 echo "  Model ID:    ${MODEL_ID}"
 echo "  Version:     ${MODEL_VERSION}"
+echo "  Format:      ${MODEL_FORMAT}"
 echo "  GCS target:  gs://${BUCKET}/${GCS_PREFIX}/"
 echo "  KMS key:     ${KMS_KEY}"
 echo "  Dry run:     ${DRY_RUN}"
@@ -93,10 +120,10 @@ DEK_FILE="${TMPDIR}/dek.bin"
 openssl rand -out "${DEK_FILE}" 32
 echo "  DEK generated (32 bytes)"
 
-# 3. Encrypt model.safetensors with ChaCha20-Poly1305
+# 3. Encrypt model weights with ChaCha20-Poly1305
 echo "[3/6] Encrypting model weights..."
 NONCE_FILE="${TMPDIR}/nonce.bin"
-ENCRYPTED_FILE="${TMPDIR}/model.safetensors.enc"
+ENCRYPTED_FILE="${TMPDIR}/${WEIGHTS_ENC_NAME}"
 openssl rand -out "${NONCE_FILE}" 12
 
 _PY_DEK_FILE="${DEK_FILE}" \
@@ -160,6 +187,8 @@ _PY_SIGNING_KEY="${EPHEMERALML_MODEL_SIGNING_KEY:-}" \
 _PY_MODEL_DIR="${MODEL_DIR}" \
 _PY_MODEL_ID="${MODEL_ID}" \
 _PY_MODEL_VERSION="${MODEL_VERSION}" \
+_PY_MODEL_FORMAT="${MODEL_FORMAT}" \
+_PY_WEIGHTS_ENC_NAME="${WEIGHTS_ENC_NAME}" \
 _PY_KMS_KEY="${KMS_KEY}" \
 _PY_BUCKET="${BUCKET}" \
 _PY_GCS_PREFIX="${GCS_PREFIX}" \
@@ -227,9 +256,9 @@ payload = {
     'hash_algorithm': 'sha256',
     'key_id': os.environ['_PY_KMS_KEY'],
     'gcs_uris': {
-        'config': f'gs://{bucket}/{prefix}/config.json',
+        **({'config': f'gs://{bucket}/{prefix}/config.json'} if os.environ['_PY_MODEL_FORMAT'] == 'safetensors' else {}),
         'tokenizer': f'gs://{bucket}/{prefix}/tokenizer.json',
-        'weights_enc': f'gs://{bucket}/{prefix}/model.safetensors.enc',
+        'weights_enc': f\"gs://{bucket}/{prefix}/{os.environ['_PY_WEIGHTS_ENC_NAME']}\",
         'wrapped_dek': f'gs://{bucket}/{prefix}/wrapped_dek.bin',
     },
     'created_at': os.environ['_PY_CREATED_AT'],
@@ -255,18 +284,22 @@ print(f'  Manifest written ({len(signature)} byte signature)')
 echo "[6/6] Uploading to GCS..."
 if $DRY_RUN; then
     echo "  (dry-run) Would upload:"
-    echo "    gs://${BUCKET}/${GCS_PREFIX}/config.json"
+    if [[ -n "${CONFIG}" ]]; then
+        echo "    gs://${BUCKET}/${GCS_PREFIX}/config.json"
+    fi
     echo "    gs://${BUCKET}/${GCS_PREFIX}/tokenizer.json"
-    echo "    gs://${BUCKET}/${GCS_PREFIX}/model.safetensors.enc"
+    echo "    gs://${BUCKET}/${GCS_PREFIX}/${WEIGHTS_ENC_NAME}"
     echo "    gs://${BUCKET}/${GCS_PREFIX}/wrapped_dek.bin"
     echo "    gs://${BUCKET}/${GCS_PREFIX}/manifest.json"
     echo ""
     echo "  Manifest content:"
     cat "${TMPDIR}/manifest.json"
 else
-    gcloud storage cp "${CONFIG}" "gs://${BUCKET}/${GCS_PREFIX}/config.json"
+    if [[ -n "${CONFIG}" ]]; then
+        gcloud storage cp "${CONFIG}" "gs://${BUCKET}/${GCS_PREFIX}/config.json"
+    fi
     gcloud storage cp "${TOKENIZER}" "gs://${BUCKET}/${GCS_PREFIX}/tokenizer.json"
-    gcloud storage cp "${ENCRYPTED_FILE}" "gs://${BUCKET}/${GCS_PREFIX}/model.safetensors.enc"
+    gcloud storage cp "${ENCRYPTED_FILE}" "gs://${BUCKET}/${GCS_PREFIX}/${WEIGHTS_ENC_NAME}"
     gcloud storage cp "${WRAPPED_DEK}" "gs://${BUCKET}/${GCS_PREFIX}/wrapped_dek.bin"
     gcloud storage cp "${TMPDIR}/manifest.json" "gs://${BUCKET}/${GCS_PREFIX}/manifest.json"
 fi
@@ -279,6 +312,7 @@ echo "  ${MODEL_HASH}"
 echo ""
 echo "Server command:"
 echo "  sudo ./ephemeral-ml-enclave --gcp --direct --model-source gcs-kms \\"
+echo "      --model-format ${MODEL_FORMAT} \\"
 echo "      --gcp-bucket ${BUCKET} --gcp-model-prefix ${GCS_PREFIX} \\"
 echo "      --gcp-kms-key ${KMS_KEY} \\"
 echo "      --gcp-wip-audience \${GCP_WIP_AUDIENCE} \\"

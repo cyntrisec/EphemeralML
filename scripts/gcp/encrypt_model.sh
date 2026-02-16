@@ -9,10 +9,11 @@
 #   5. Print --expected-model-hash and server command
 #
 # Usage:
-#   bash scripts/gcp/encrypt_model.sh <model_dir> <gcs_prefix>
+#   bash scripts/gcp/encrypt_model.sh <model_dir> <gcs_prefix> [--format safetensors|gguf]
 #
 # Example:
 #   bash scripts/gcp/encrypt_model.sh test_assets/minilm models/minilm
+#   bash scripts/gcp/encrypt_model.sh /path/to/llama models/llama --format gguf
 #
 # Requires:
 #   - openssl, xxd, python3
@@ -20,29 +21,61 @@
 
 set -euo pipefail
 
-MODEL_DIR="${1:?Usage: encrypt_model.sh <model_dir> <gcs_prefix>}"
+MODEL_DIR="${1:?Usage: encrypt_model.sh <model_dir> <gcs_prefix> [--format safetensors|gguf]}"
 GCS_PREFIX="${2:?Usage: encrypt_model.sh <model_dir> <gcs_prefix>}"
+shift 2
+
+MODEL_FORMAT="safetensors"
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --format) MODEL_FORMAT="$2"; shift 2 ;;
+        *) echo "Unknown option: $1"; exit 1 ;;
+    esac
+done
+
+if [[ "${MODEL_FORMAT}" != "safetensors" && "${MODEL_FORMAT}" != "gguf" ]]; then
+    echo "ERROR: --format must be 'safetensors' or 'gguf', got '${MODEL_FORMAT}'"
+    exit 1
+fi
 
 KMS_KEY="${GCP_KMS_KEY:?Set GCP_KMS_KEY (from setup_kms.sh)}"
 BUCKET="${GCP_BUCKET:?Set GCP_BUCKET (from setup_kms.sh)}"
 
-WEIGHTS="${MODEL_DIR}/model.safetensors"
-CONFIG="${MODEL_DIR}/config.json"
+if [[ "${MODEL_FORMAT}" == "gguf" ]]; then
+    WEIGHTS="${MODEL_DIR}/model.gguf"
+    WEIGHTS_ENC_NAME="model.gguf.enc"
+else
+    WEIGHTS="${MODEL_DIR}/model.safetensors"
+    WEIGHTS_ENC_NAME="model.safetensors.enc"
+fi
+
 TOKENIZER="${MODEL_DIR}/tokenizer.json"
 
-# Validate inputs
-for f in "${WEIGHTS}" "${CONFIG}" "${TOKENIZER}"; do
-    if [ ! -f "$f" ]; then
-        echo "ERROR: File not found: $f"
-        exit 1
-    fi
-done
+# Validate inputs — config.json only required for safetensors
+if [[ "${MODEL_FORMAT}" == "safetensors" ]]; then
+    CONFIG="${MODEL_DIR}/config.json"
+    for f in "${WEIGHTS}" "${CONFIG}" "${TOKENIZER}"; do
+        if [ ! -f "$f" ]; then
+            echo "ERROR: File not found: $f"
+            exit 1
+        fi
+    done
+else
+    CONFIG=""
+    for f in "${WEIGHTS}" "${TOKENIZER}"; do
+        if [ ! -f "$f" ]; then
+            echo "ERROR: File not found: $f"
+            exit 1
+        fi
+    done
+fi
 
 TMPDIR=$(mktemp -d)
 trap 'rm -rf "${TMPDIR}"' EXIT
 
 echo "=== EphemeralML Model Encryption ==="
 echo "  Model dir:  ${MODEL_DIR}"
+echo "  Format:     ${MODEL_FORMAT}"
 echo "  GCS target: gs://${BUCKET}/${GCS_PREFIX}/"
 echo "  KMS key:    ${KMS_KEY}"
 echo ""
@@ -62,7 +95,7 @@ echo "  DEK generated (32 bytes)"
 # Format: nonce (12 bytes) || ciphertext+tag
 echo "[3/5] Encrypting model weights..."
 NONCE_FILE="${TMPDIR}/nonce.bin"
-ENCRYPTED_FILE="${TMPDIR}/model.safetensors.enc"
+ENCRYPTED_FILE="${TMPDIR}/${WEIGHTS_ENC_NAME}"
 openssl rand -out "${NONCE_FILE}" 12
 
 # Use Python for ChaCha20-Poly1305 encryption (openssl enc doesn't support it directly)
@@ -127,9 +160,11 @@ echo "  Wrapped DEK: $(wc -c < "${WRAPPED_DEK}") bytes"
 
 # 5. Upload to GCS
 echo "[5/5] Uploading to GCS..."
-gcloud storage cp "${CONFIG}" "gs://${BUCKET}/${GCS_PREFIX}/config.json"
+if [[ -n "${CONFIG}" ]]; then
+    gcloud storage cp "${CONFIG}" "gs://${BUCKET}/${GCS_PREFIX}/config.json"
+fi
 gcloud storage cp "${TOKENIZER}" "gs://${BUCKET}/${GCS_PREFIX}/tokenizer.json"
-gcloud storage cp "${ENCRYPTED_FILE}" "gs://${BUCKET}/${GCS_PREFIX}/model.safetensors.enc"
+gcloud storage cp "${ENCRYPTED_FILE}" "gs://${BUCKET}/${GCS_PREFIX}/${WEIGHTS_ENC_NAME}"
 gcloud storage cp "${WRAPPED_DEK}" "gs://${BUCKET}/${GCS_PREFIX}/wrapped_dek.bin"
 
 echo ""

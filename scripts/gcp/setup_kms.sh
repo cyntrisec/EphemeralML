@@ -74,7 +74,7 @@ CREATE_OUTPUT=$(gcloud iam workload-identity-pools providers create-oidc "${PROV
     --workload-identity-pool="${POOL}" \
     --issuer-uri="${ISSUER}" \
     --allowed-audiences="${WIP_AUDIENCE}" \
-    --attribute-mapping="google.subject=assertion.sub,attribute.image_digest=assertion.submods.container.image_digest" \
+    --attribute-mapping="google.subject=assertion.sub,attribute.image_digest=assertion.submods.container.image_digest,attribute.gpu_cc_mode=assertion.submods.nvidia_gpu.cc_mode" \
     2>&1) || {
     if echo "${CREATE_OUTPUT}" | grep -qi "already exists"; then
         echo "  Provider already exists — updating allowed-audiences..."
@@ -96,6 +96,13 @@ CREATE_OUTPUT=$(gcloud iam workload-identity-pools providers create-oidc "${PROV
 }
 
 echo "  WIP audience: ${WIP_AUDIENCE}"
+echo "  Attribute mappings:"
+echo "    attribute.image_digest  = assertion.submods.container.image_digest"
+echo "    attribute.gpu_cc_mode   = assertion.submods.nvidia_gpu.cc_mode"
+echo ""
+echo "  To gate KMS key release on GPU CC mode (recommended for GPU deployments),"
+echo "  add an attribute condition to the IAM binding:"
+echo "    attribute.gpu_cc_mode == 'ON'"
 
 # 4. IAM: WIP principals → KMS decrypter
 echo "[4/5] Granting KMS decrypt permission to WIP principals..."

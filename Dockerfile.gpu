@@ -1,0 +1,89 @@
+# Dockerfile for deploying EphemeralML with GPU support on GCP Confidential Space.
+#
+# Uses NVIDIA H100 Confidential Computing (CC-On mode) via a3-highgpu-1g VMs.
+# The Confidential Space Launcher installs CC-capable GPU drivers at boot via
+# tee-install-gpu-driver=true metadata; this image only needs CUDA runtime libs.
+#
+# Build:
+#   docker build -f Dockerfile.gpu -t ephemeralml-gpu .
+#
+# Deploy (Confidential Space with GPU):
+#   gcloud compute instances create ephemeralml-gpu \
+#     --zone=us-central1-a \
+#     --machine-type=a3-highgpu-1g \
+#     --provisioning-model=SPOT \
+#     --confidential-compute-type=TDX \
+#     --maintenance-policy=TERMINATE \
+#     --shielded-secure-boot \
+#     --image-project=confidential-space-images \
+#     --image-family=confidential-space-preview-cgpu \
+#     --boot-disk-size=30GB \
+#     --metadata="tee-install-gpu-driver=true,tee-image-reference=REGION-docker.pkg.dev/PROJECT/REPO/ephemeralml-gpu:TAG,tee-restart-policy=Never"
+
+# --- Builder stage ---
+# CUDA devel image provides nvcc and CUDA headers needed to compile candle CUDA kernels.
+# CUDA_COMPUTE_CAP=90 targets NVIDIA H100 (Hopper architecture).
+FROM nvidia/cuda:12.6.3-devel-ubuntu24.04 AS builder
+
+# Install Rust toolchain + build dependencies
+RUN apt-get update && apt-get install -y \
+    curl gcc pkg-config libssl-dev \
+    && rm -rf /var/lib/apt/lists/* \
+    && curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain 1.82.0
+ENV PATH="/root/.cargo/bin:${PATH}"
+
+WORKDIR /build
+COPY . .
+
+# Build with GCP + CUDA features. CUDA_COMPUTE_CAP=90 ensures kernels are compiled
+# for H100. This is a long build (~10-15 min) due to CUDA kernel compilation.
+ENV CUDA_COMPUTE_CAP=90
+RUN cargo build --release \
+    --no-default-features --features gcp,cuda \
+    -p ephemeral-ml-enclave
+
+# --- Runtime stage ---
+# CUDA runtime image provides libcudart and math libraries needed at runtime.
+# The Confidential Space host provides the GPU driver via tee-install-gpu-driver;
+# this image only needs the CUDA runtime libraries to link against.
+FROM nvidia/cuda:12.6.3-runtime-ubuntu24.04
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ca-certificates libssl3 \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY --from=builder /build/target/release/ephemeral-ml-enclave /app/ephemeral-ml-enclave
+
+# For GPU deployments, models are fetched from GCS at runtime (not bundled).
+# Bundling a 5+ GB GGUF model in the image would make it too large to push/pull.
+# A small fallback model is included for smoke tests only.
+COPY test_assets/minilm/config.json     /app/model/config.json
+COPY test_assets/minilm/tokenizer.json  /app/model/tokenizer.json
+COPY test_assets/minilm/model.safetensors /app/model/model.safetensors
+
+# GCP configuration (override via instance metadata tee-env-* or env).
+ENV EPHEMERALML_MODEL_SOURCE="local" \
+    EPHEMERALML_GCS_BUCKET="ephemeralml-models" \
+    EPHEMERALML_GCP_MODEL_PREFIX="models/minilm" \
+    EPHEMERALML_GCP_PROJECT="" \
+    EPHEMERALML_GCP_LOCATION="us-central1" \
+    EPHEMERALML_GCP_KMS_KEY="" \
+    EPHEMERALML_GCP_WIP_AUDIENCE="" \
+    EPHEMERALML_EXPECTED_MODEL_HASH="" \
+    EPHEMERALML_EXPECTED_MRTD="" \
+    EPHEMERALML_DIRECT="true" \
+    EPHEMERALML_MODEL_FORMAT="safetensors"
+
+# NVIDIA runtime env: make CUDA libraries visible inside the container.
+# The Confidential Space host injects /dev/nvidia* devices and driver libs.
+ENV NVIDIA_VISIBLE_DEVICES=all \
+    NVIDIA_DRIVER_CAPABILITIES=compute,utility
+
+EXPOSE 9000
+
+HEALTHCHECK --interval=15s --timeout=3s --start-period=120s --retries=3 \
+    CMD timeout 2 bash -c 'echo > /dev/tcp/127.0.0.1/9000' 2>/dev/null || exit 1
+
+WORKDIR /app
+ENTRYPOINT ["/app/ephemeral-ml-enclave"]
+CMD ["--gcp", "--model-dir", "/app/model"]

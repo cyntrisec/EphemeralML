@@ -2,7 +2,8 @@
 # EphemeralML — Build container, push to Artifact Registry, launch Confidential Space CVM.
 #
 # Usage:
-#   bash scripts/gcp/deploy.sh                     # production image (no SSH)
+#   bash scripts/gcp/deploy.sh                     # CPU production image (no SSH)
+#   bash scripts/gcp/deploy.sh --gpu                # GPU image (a3-highgpu-1g, H100 CC, Spot)
 #   bash scripts/gcp/deploy.sh --debug              # debug image (SSH enabled)
 #   bash scripts/gcp/deploy.sh --skip-build         # skip Docker build/push (image already in AR)
 #   bash scripts/gcp/deploy.sh --tag v1.0           # custom image tag
@@ -36,13 +37,16 @@ GCS_BUCKET="${EPHEMERALML_GCS_BUCKET:-${GCP_BUCKET:-ephemeralml-models}}"
 GCP_MODEL_PREFIX="${EPHEMERALML_GCP_MODEL_PREFIX:-models/minilm}"
 EXPECTED_MODEL_HASH="${EPHEMERALML_EXPECTED_MODEL_HASH:-}"
 MODEL_SIGNING_PUBKEY="${EPHEMERALML_MODEL_SIGNING_PUBKEY:-}"
+MODEL_FORMAT="${EPHEMERALML_MODEL_FORMAT:-safetensors}"
 
 YES=false
+GPU=false
 
 # Parse args
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --debug)        DEBUG=true; shift ;;
+        --gpu)          GPU=true; shift ;;
         --skip-build)   SKIP_BUILD=true; shift ;;
         --yes|-y)       YES=true; shift ;;
         --tag)          TAG="$2"; shift 2 ;;
@@ -55,9 +59,19 @@ while [[ $# -gt 0 ]]; do
         --model-prefix) GCP_MODEL_PREFIX="$2"; shift 2 ;;
         --model-hash)   EXPECTED_MODEL_HASH="$2"; shift 2 ;;
         --model-signing-pubkey) MODEL_SIGNING_PUBKEY="$2"; shift 2 ;;
+        --model-format) MODEL_FORMAT="$2"; shift 2 ;;
         *) echo "Unknown option: $1"; exit 1 ;;
     esac
 done
+
+# GPU mode: override machine type, image family, and provisioning model.
+# a3-highgpu-1g = 1x H100 80GB + 26 vCPU + 234 GiB RAM (Intel TDX + NVIDIA CC).
+# Confidential Space GPU images are Preview (confidential-space-preview-cgpu).
+# GPU CC requires Spot or Flex-start provisioning — on-demand is not available.
+if $GPU; then
+    MACHINE_TYPE="a3-highgpu-1g"
+    INSTANCE_NAME="ephemeralml-gpu"
+fi
 
 # Validate metadata-safe values: reject commas and shell metacharacters
 # that could inject additional metadata items into the gcloud command.
@@ -77,7 +91,7 @@ validate_metadata_value() {
 }
 
 # Validate all user-controllable values that end up in instance metadata
-for _var_name in PROJECT ZONE MODEL_SOURCE GCS_BUCKET GCP_MODEL_PREFIX KMS_KEY WIP_AUDIENCE EXPECTED_MODEL_HASH MODEL_SIGNING_PUBKEY; do
+for _var_name in PROJECT ZONE MODEL_SOURCE MODEL_FORMAT GCS_BUCKET GCP_MODEL_PREFIX KMS_KEY WIP_AUDIENCE EXPECTED_MODEL_HASH MODEL_SIGNING_PUBKEY; do
     _var_val="${!_var_name}"
     if [[ -n "${_var_val}" ]]; then
         validate_metadata_value "${_var_name}" "${_var_val}"
@@ -93,6 +107,12 @@ if [[ "${MODEL_SOURCE}" == "gcs-kms" ]]; then
             exit 1
         fi
     done
+fi
+
+# Validate model format
+if [[ "${MODEL_FORMAT}" != "safetensors" && "${MODEL_FORMAT}" != "gguf" ]]; then
+    echo "ERROR: --model-format must be 'safetensors' or 'gguf', got '${MODEL_FORMAT}'"
+    exit 1
 fi
 
 # Validate required flags for gcs mode (no KMS, but still needs hash + bucket)
@@ -117,7 +137,11 @@ fi
 SA_EMAIL="${SA_NAME}@${PROJECT}.iam.gserviceaccount.com"
 IMAGE_URI="${REPO_LOCATION}-docker.pkg.dev/${PROJECT}/${REPO_NAME}/enclave:${TAG}"
 
-if $DEBUG; then
+if $GPU && $DEBUG; then
+    CS_IMAGE_FAMILY="confidential-space-debug-preview-cgpu"
+elif $GPU; then
+    CS_IMAGE_FAMILY="confidential-space-preview-cgpu"
+elif $DEBUG; then
     CS_IMAGE_FAMILY="confidential-space-debug"
 else
     CS_IMAGE_FAMILY="confidential-space"
@@ -133,7 +157,9 @@ echo "  Machine:      ${MACHINE_TYPE}"
 echo "  Image:        ${IMAGE_URI}"
 echo "  CS family:    ${CS_IMAGE_FAMILY}"
 echo "  Debug:        ${DEBUG}"
+echo "  GPU:          ${GPU}"
 echo "  Model source: ${MODEL_SOURCE}"
+echo "  Model format: ${MODEL_FORMAT}"
 if [[ "${MODEL_SOURCE}" == "gcs" || "${MODEL_SOURCE}" == "gcs-kms" ]]; then
     echo "  GCS bucket:   ${GCS_BUCKET}"
     echo "  Model prefix: ${GCP_MODEL_PREFIX}"
@@ -211,8 +237,15 @@ else
     # ---------------------------------------------------------------------------
     echo "[3/6] Building container image..."
     echo "  Tag: ${IMAGE_URI}"
+    if $GPU; then
+        DOCKERFILE="${PROJECT_DIR}/Dockerfile.gpu"
+        echo "  Dockerfile: Dockerfile.gpu (CUDA + GCP features)"
+    else
+        DOCKERFILE="${PROJECT_DIR}/Dockerfile.gcp"
+        echo "  Dockerfile: Dockerfile.gcp (CPU-only GCP features)"
+    fi
     docker build \
-        -f "${PROJECT_DIR}/Dockerfile.gcp" \
+        -f "${DOCKERFILE}" \
         -t "${IMAGE_URI}" \
         "${PROJECT_DIR}"
     echo "  Build complete."
@@ -244,8 +277,13 @@ fi
 METADATA="tee-image-reference=${IMAGE_URI}"
 METADATA="${METADATA},tee-restart-policy=Never"
 METADATA="${METADATA},tee-container-log-redirect=true"
+# GPU: Confidential Space installs CC-capable NVIDIA drivers at boot
+if $GPU; then
+    METADATA="${METADATA},tee-install-gpu-driver=true"
+fi
 METADATA="${METADATA},tee-env-EPHEMERALML_MODEL_SOURCE=${MODEL_SOURCE}"
 METADATA="${METADATA},tee-env-EPHEMERALML_DIRECT=true"
+METADATA="${METADATA},tee-env-EPHEMERALML_MODEL_FORMAT=${MODEL_FORMAT}"
 METADATA="${METADATA},tee-env-EPHEMERALML_GCP_PROJECT=${PROJECT}"
 METADATA="${METADATA},tee-env-EPHEMERALML_GCP_LOCATION=${ZONE%-*}"
 # Inject GCS env vars for gcs and gcs-kms model sources
@@ -264,20 +302,33 @@ if [[ -n "${MODEL_SIGNING_PUBKEY}" ]]; then
     METADATA="${METADATA},tee-env-EPHEMERALML_MODEL_SIGNING_PUBKEY=${MODEL_SIGNING_PUBKEY}"
 fi
 
-gcloud compute instances create "${INSTANCE_NAME}" \
-    --project="${PROJECT}" \
-    --zone="${ZONE}" \
-    --machine-type="${MACHINE_TYPE}" \
-    --confidential-compute-type=TDX \
-    --min-cpu-platform="Intel Sapphire Rapids" \
-    --maintenance-policy=TERMINATE \
-    --shielded-secure-boot \
-    --image-project=confidential-space-images \
-    --image-family="${CS_IMAGE_FAMILY}" \
-    --metadata="${METADATA}" \
-    --tags=ephemeralml \
-    --service-account="${SA_EMAIL}" \
+# Build gcloud create command — GPU requires --provisioning-model=SPOT and
+# larger boot disk (GPU drivers are ~10 GB), and omits --min-cpu-platform
+# (a3-highgpu-1g already implies Sapphire Rapids).
+GCLOUD_ARGS=(
+    --project="${PROJECT}"
+    --zone="${ZONE}"
+    --machine-type="${MACHINE_TYPE}"
+    --confidential-compute-type=TDX
+    --maintenance-policy=TERMINATE
+    --shielded-secure-boot
+    --image-project=confidential-space-images
+    --image-family="${CS_IMAGE_FAMILY}"
+    --metadata="${METADATA}"
+    --tags=ephemeralml
+    --service-account="${SA_EMAIL}"
     --scopes=https://www.googleapis.com/auth/devstorage.read_only,https://www.googleapis.com/auth/cloudkms,https://www.googleapis.com/auth/logging.write,https://www.googleapis.com/auth/monitoring.write
+)
+
+if $GPU; then
+    # GPU CC requires Spot or Flex-start provisioning (on-demand not available).
+    GCLOUD_ARGS+=(--provisioning-model=SPOT)
+    GCLOUD_ARGS+=(--boot-disk-size=30GB)
+else
+    GCLOUD_ARGS+=(--min-cpu-platform="Intel Sapphire Rapids")
+fi
+
+gcloud compute instances create "${INSTANCE_NAME}" "${GCLOUD_ARGS[@]}"
 
 echo "  Instance '${INSTANCE_NAME}' created."
 echo
@@ -317,7 +368,13 @@ if $DEBUG; then
     echo "  Logs: gcloud compute ssh ${INSTANCE_NAME} --zone=${ZONE} --project=${PROJECT} --command='sudo journalctl -u tee-container-runner -f'"
 fi
 echo
-echo "  Note: The container takes ~30-60s to start after the VM is RUNNING."
-echo "        The Launcher pulls the image, verifies it, then starts the workload."
+if $GPU; then
+    echo "  Note: GPU instances take ~2-5 minutes to start (driver install + CC boot)."
+    echo "        The Launcher installs CC GPU drivers, reboots, then starts the workload."
+    echo "  WARNING: GPU Confidential Space is Preview. Spot VMs may be preempted."
+else
+    echo "  Note: The container takes ~30-60s to start after the VM is RUNNING."
+    echo "        The Launcher pulls the image, verifies it, then starts the workload."
+fi
 echo
 echo "  Next: bash scripts/gcp/verify.sh"
