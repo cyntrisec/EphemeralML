@@ -95,6 +95,14 @@ if [[ "${MODEL_SOURCE}" == "gcs-kms" ]]; then
     done
 fi
 
+# Validate required flags for gcs mode (no KMS, but still needs hash + bucket)
+if [[ "${MODEL_SOURCE}" == "gcs" ]]; then
+    if [[ -z "${EXPECTED_MODEL_HASH}" ]]; then
+        echo "ERROR: --model-hash is required for --model-source=gcs"
+        exit 1
+    fi
+fi
+
 if [[ -z "${PROJECT}" ]]; then
     echo "ERROR: GCP project not set."
     echo "Set EPHEMERALML_GCP_PROJECT or pass --project PROJECT_ID"
@@ -126,11 +134,14 @@ echo "  Image:        ${IMAGE_URI}"
 echo "  CS family:    ${CS_IMAGE_FAMILY}"
 echo "  Debug:        ${DEBUG}"
 echo "  Model source: ${MODEL_SOURCE}"
+if [[ "${MODEL_SOURCE}" == "gcs" || "${MODEL_SOURCE}" == "gcs-kms" ]]; then
+    echo "  GCS bucket:   ${GCS_BUCKET}"
+    echo "  Model prefix: ${GCP_MODEL_PREFIX}"
+    echo "  Model hash:   ${EXPECTED_MODEL_HASH}"
+fi
 if [[ "${MODEL_SOURCE}" == "gcs-kms" ]]; then
     echo "  KMS key:      ${KMS_KEY}"
     echo "  WIP audience: ${WIP_AUDIENCE}"
-    echo "  GCS bucket:   ${GCS_BUCKET}"
-    echo "  Model prefix: ${GCP_MODEL_PREFIX}"
 fi
 echo
 
@@ -237,12 +248,16 @@ METADATA="${METADATA},tee-env-EPHEMERALML_MODEL_SOURCE=${MODEL_SOURCE}"
 METADATA="${METADATA},tee-env-EPHEMERALML_DIRECT=true"
 METADATA="${METADATA},tee-env-EPHEMERALML_GCP_PROJECT=${PROJECT}"
 METADATA="${METADATA},tee-env-EPHEMERALML_GCP_LOCATION=${ZONE%-*}"
-if [[ -n "${KMS_KEY}" ]]; then
-    METADATA="${METADATA},tee-env-EPHEMERALML_GCP_KMS_KEY=${KMS_KEY}"
-    METADATA="${METADATA},tee-env-EPHEMERALML_GCP_WIP_AUDIENCE=${WIP_AUDIENCE}"
+# Inject GCS env vars for gcs and gcs-kms model sources
+if [[ "${MODEL_SOURCE}" == "gcs" || "${MODEL_SOURCE}" == "gcs-kms" ]]; then
     METADATA="${METADATA},tee-env-EPHEMERALML_GCS_BUCKET=${GCS_BUCKET}"
     METADATA="${METADATA},tee-env-EPHEMERALML_GCP_MODEL_PREFIX=${GCP_MODEL_PREFIX}"
     METADATA="${METADATA},tee-env-EPHEMERALML_EXPECTED_MODEL_HASH=${EXPECTED_MODEL_HASH}"
+fi
+# KMS-specific env vars only for gcs-kms
+if [[ "${MODEL_SOURCE}" == "gcs-kms" ]]; then
+    METADATA="${METADATA},tee-env-EPHEMERALML_GCP_KMS_KEY=${KMS_KEY}"
+    METADATA="${METADATA},tee-env-EPHEMERALML_GCP_WIP_AUDIENCE=${WIP_AUDIENCE}"
 fi
 # Signing pubkey applies to both gcs and gcs-kms model sources
 if [[ -n "${MODEL_SIGNING_PUBKEY}" ]]; then

@@ -85,7 +85,7 @@ DEFAULT_ZONE="${EPHEMERALML_GCP_ZONE:-us-central1-a}"
 DEFAULT_MODEL_SOURCE="${EPHEMERALML_MODEL_SOURCE:-local}"
 
 prompt ZONE "Zone" "${DEFAULT_ZONE}"
-prompt MODEL_SOURCE "Model source (local/gcs-kms)" "${DEFAULT_MODEL_SOURCE}"
+prompt MODEL_SOURCE "Model source (local/gcs/gcs-kms)" "${DEFAULT_MODEL_SOURCE}"
 
 GCS_BUCKET=""
 GCP_MODEL_PREFIX=""
@@ -93,7 +93,27 @@ KMS_KEY=""
 WIP_AUDIENCE=""
 EXPECTED_MODEL_HASH=""
 
-if [ "${MODEL_SOURCE}" = "gcs-kms" ]; then
+if [ "${MODEL_SOURCE}" = "gcs" ]; then
+    DEFAULT_BUCKET="${EPHEMERALML_GCS_BUCKET:-ephemeralml-models-${GCP_PROJECT}}"
+    DEFAULT_PREFIX="${EPHEMERALML_GCP_MODEL_PREFIX:-models/minilm}"
+    DEFAULT_HASH="${EPHEMERALML_EXPECTED_MODEL_HASH:-}"
+
+    if ! $NON_INTERACTIVE; then
+        echo ""
+        echo "  GCS model configuration:"
+    fi
+
+    prompt GCS_BUCKET "GCS bucket" "${DEFAULT_BUCKET}"
+    prompt GCP_MODEL_PREFIX "GCS model prefix" "${DEFAULT_PREFIX}"
+    prompt EXPECTED_MODEL_HASH "Expected model hash (SHA-256)" "${DEFAULT_HASH}"
+
+    # Validate model hash format: 64 hex characters (SHA-256)
+    if [[ -n "${EXPECTED_MODEL_HASH}" ]] && ! [[ "${EXPECTED_MODEL_HASH}" =~ ^[0-9a-fA-F]{64}$ ]]; then
+        echo "ERROR: Expected model hash is not a valid SHA-256 hex string (64 hex chars)."
+        echo "  Got: ${EXPECTED_MODEL_HASH}"
+        exit 1
+    fi
+elif [ "${MODEL_SOURCE}" = "gcs-kms" ]; then
     DEFAULT_BUCKET="${EPHEMERALML_GCS_BUCKET:-ephemeralml-models-${GCP_PROJECT}}"
     DEFAULT_PREFIX="${EPHEMERALML_GCP_MODEL_PREFIX:-models/minilm}"
     DEFAULT_KMS="${EPHEMERALML_GCP_KMS_KEY:-}"
@@ -159,13 +179,18 @@ export EPHEMERALML_GCP_ZONE="${ZONE}"
 export EPHEMERALML_MODEL_SOURCE="${MODEL_SOURCE}"
 EOF
 
-if [ "${MODEL_SOURCE}" = "gcs-kms" ]; then
+if [ "${MODEL_SOURCE}" = "gcs" ] || [ "${MODEL_SOURCE}" = "gcs-kms" ]; then
     cat >> "${ENV_FILE}" << EOF
 export EPHEMERALML_GCS_BUCKET="${GCS_BUCKET}"
 export EPHEMERALML_GCP_MODEL_PREFIX="${GCP_MODEL_PREFIX}"
+export EPHEMERALML_EXPECTED_MODEL_HASH="${EXPECTED_MODEL_HASH}"
+EOF
+fi
+
+if [ "${MODEL_SOURCE}" = "gcs-kms" ]; then
+    cat >> "${ENV_FILE}" << EOF
 export EPHEMERALML_GCP_KMS_KEY="${KMS_KEY}"
 export EPHEMERALML_GCP_WIP_AUDIENCE="${WIP_AUDIENCE}"
-export EPHEMERALML_EXPECTED_MODEL_HASH="${EXPECTED_MODEL_HASH}"
 EOF
 fi
 

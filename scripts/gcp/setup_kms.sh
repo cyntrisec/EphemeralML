@@ -68,22 +68,32 @@ echo "[3/5] Creating OIDC provider for TDX attestation..."
 # CsKmsClient requests Launcher tokens with aud=WIP_AUDIENCE, so --allowed-audiences must match.
 WIP_AUDIENCE="//iam.googleapis.com/projects/${PROJECT_NUMBER}/locations/global/workloadIdentityPools/${POOL}/providers/${PROVIDER}"
 
-if ! gcloud iam workload-identity-pools providers create-oidc "${PROVIDER}" \
+CREATE_OUTPUT=$(gcloud iam workload-identity-pools providers create-oidc "${PROVIDER}" \
     --project="${PROJECT}" \
     --location="global" \
     --workload-identity-pool="${POOL}" \
     --issuer-uri="${ISSUER}" \
     --allowed-audiences="${WIP_AUDIENCE}" \
     --attribute-mapping="google.subject=assertion.sub,attribute.image_digest=assertion.submods.container.image_digest" \
-    2>/dev/null; then
-    echo "  Provider already exists — updating allowed-audiences..."
-    gcloud iam workload-identity-pools providers update-oidc "${PROVIDER}" \
-        --project="${PROJECT}" \
-        --location="global" \
-        --workload-identity-pool="${POOL}" \
-        --allowed-audiences="${WIP_AUDIENCE}" \
-        2>/dev/null || echo "  WARNING: Could not update provider allowed-audiences"
-fi
+    2>&1) || {
+    if echo "${CREATE_OUTPUT}" | grep -qi "already exists"; then
+        echo "  Provider already exists — updating allowed-audiences..."
+        gcloud iam workload-identity-pools providers update-oidc "${PROVIDER}" \
+            --project="${PROJECT}" \
+            --location="global" \
+            --workload-identity-pool="${POOL}" \
+            --allowed-audiences="${WIP_AUDIENCE}" \
+            2>&1 || {
+            echo "ERROR: Failed to update WIP provider allowed-audiences."
+            echo "  Output: ${CREATE_OUTPUT}"
+            exit 1
+        }
+    else
+        echo "ERROR: Failed to create WIP OIDC provider."
+        echo "  Output: ${CREATE_OUTPUT}"
+        exit 1
+    fi
+}
 
 echo "  WIP audience: ${WIP_AUDIENCE}"
 

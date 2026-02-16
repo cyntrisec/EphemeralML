@@ -189,18 +189,29 @@ if signing_key_hex:
     private_key = Ed25519PrivateKey.from_private_bytes(sk_bytes)
     print('  Using signing key from EPHEMERALML_MODEL_SIGNING_KEY')
 else:
-    private_key = Ed25519PrivateKey.generate()
-    sk_raw = private_key.private_bytes_raw()
-    # Write private key to a persistent secure file — NEVER print to stdout
     import stat
     model_dir = os.environ['_PY_MODEL_DIR']
     key_file = os.path.join(model_dir, '.signing_key.hex')
-    with open(key_file, 'w') as kf:
-        kf.write(sk_raw.hex())
-    os.chmod(key_file, stat.S_IRUSR | stat.S_IWUSR)  # 0600
-    print(f'  Generated new signing key: {key_file} (0600)')
-    print(f'  IMPORTANT: Save this key. To reuse:')
-    print(f'    export EPHEMERALML_MODEL_SIGNING_KEY=\$(cat {key_file})')
+    # Reuse existing key file if present (prevents accidental key rotation)
+    if os.path.isfile(key_file):
+        with open(key_file, 'r') as kf:
+            existing_hex = kf.read().strip()
+        sk_bytes = bytes.fromhex(existing_hex)
+        if len(sk_bytes) != 32:
+            print(f'ERROR: Existing {key_file} has wrong length ({len(sk_bytes)} bytes). Delete it to regenerate.', file=sys.stderr)
+            sys.exit(1)
+        private_key = Ed25519PrivateKey.from_private_bytes(sk_bytes)
+        print(f'  Reusing existing signing key from {key_file}')
+    else:
+        private_key = Ed25519PrivateKey.generate()
+        sk_raw = private_key.private_bytes_raw()
+        # Write private key to a persistent secure file — NEVER print to stdout
+        with open(key_file, 'w') as kf:
+            kf.write(sk_raw.hex())
+        os.chmod(key_file, stat.S_IRUSR | stat.S_IWUSR)  # 0600
+        print(f'  Generated new signing key: {key_file} (0600)')
+        print(f'  IMPORTANT: Save this key. To reuse:')
+        print(f'    export EPHEMERALML_MODEL_SIGNING_KEY=\$(cat {key_file})')
 
 pk_raw = private_key.public_key().public_bytes_raw()
 print(f'  Public key (EPHEMERALML_MODEL_SIGNING_PUBKEY): {pk_raw.hex()}')
