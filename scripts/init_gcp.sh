@@ -120,6 +120,29 @@ if [ "${MODEL_SOURCE}" = "gcs-kms" ]; then
     prompt KMS_KEY "KMS key resource name" "${DEFAULT_KMS}"
     prompt WIP_AUDIENCE "WIP audience string" "${DEFAULT_WIP}"
     prompt EXPECTED_MODEL_HASH "Expected model hash (SHA-256)" "${DEFAULT_HASH}"
+
+    # Validate KMS key format: projects/*/locations/*/keyRings/*/cryptoKeys/*
+    if [[ -n "${KMS_KEY}" ]] && ! [[ "${KMS_KEY}" =~ ^projects/[^/]+/locations/[^/]+/keyRings/[^/]+/cryptoKeys/[^/]+(/cryptoKeyVersions/[0-9]+)?$ ]]; then
+        echo "ERROR: KMS key does not match expected format:"
+        echo "  projects/PROJECT/locations/LOCATION/keyRings/RING/cryptoKeys/KEY"
+        echo "  Got: ${KMS_KEY}"
+        exit 1
+    fi
+
+    # Validate WIP audience format: //iam.googleapis.com/projects/*/locations/*/workloadIdentityPools/*/providers/*
+    if [[ -n "${WIP_AUDIENCE}" ]] && ! [[ "${WIP_AUDIENCE}" =~ ^//iam\.googleapis\.com/projects/[^/]+/locations/[^/]+/workloadIdentityPools/[^/]+/providers/[^/]+$ ]]; then
+        echo "ERROR: WIP audience does not match expected format:"
+        echo "  //iam.googleapis.com/projects/NUM/locations/LOC/workloadIdentityPools/POOL/providers/PROVIDER"
+        echo "  Got: ${WIP_AUDIENCE}"
+        exit 1
+    fi
+
+    # Validate model hash format: 64 hex characters (SHA-256)
+    if [[ -n "${EXPECTED_MODEL_HASH}" ]] && ! [[ "${EXPECTED_MODEL_HASH}" =~ ^[0-9a-fA-F]{64}$ ]]; then
+        echo "ERROR: Expected model hash is not a valid SHA-256 hex string (64 hex chars)."
+        echo "  Got: ${EXPECTED_MODEL_HASH}"
+        exit 1
+    fi
 fi
 
 # Write .env.gcp

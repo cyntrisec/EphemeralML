@@ -41,6 +41,9 @@ const METADATA_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(5);
 /// Timeout for GCS object downloads (large model files may take a while).
 const GCS_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(120);
 
+/// Maximum GCS response size (4 GB). Prevents OOM from misconfigured buckets.
+const MAX_GCS_RESPONSE_SIZE: usize = 4 * 1024 * 1024 * 1024;
+
 impl GcsModelLoader {
     /// Create a new GCS loader for the given bucket.
     pub fn new(bucket: &str) -> Self {
@@ -115,6 +118,16 @@ impl GcsModelLoader {
     ///
     /// Returns the raw bytes along with their SHA-256 hash.
     pub async fn fetch_object(&self, object_path: &str) -> Result<FetchedArtifact> {
+        // Reject path traversal attempts and absolute paths
+        if object_path.contains("..") || object_path.starts_with('/') {
+            return Err(EnclaveError::Enclave(EphemeralError::StorageError(
+                format!(
+                    "Invalid GCS object path (contains '..' or starts with '/'): {}",
+                    object_path
+                ),
+            )));
+        }
+
         let token = self.metadata_token().await?;
 
         // URL-encode the object path for the GCS JSON API media download
@@ -154,6 +167,16 @@ impl GcsModelLoader {
 
         let bytes = bytes.to_vec();
         let size = bytes.len();
+
+        // Enforce size limit to prevent OOM from oversized responses
+        if size > MAX_GCS_RESPONSE_SIZE {
+            return Err(EnclaveError::Enclave(EphemeralError::StorageError(
+                format!(
+                    "GCS response too large for {}: {} bytes (max {})",
+                    object_path, size, MAX_GCS_RESPONSE_SIZE
+                ),
+            )));
+        }
 
         let mut hasher = Sha256::new();
         hasher.update(&bytes);

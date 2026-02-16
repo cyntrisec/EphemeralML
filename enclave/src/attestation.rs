@@ -33,7 +33,7 @@ pub struct AttestationUserData {
 ///
 /// Private key material is zeroized on drop to prevent key leakage.
 /// A new keypair MUST be generated per session for forward secrecy.
-#[derive(Clone, Debug, ZeroizeOnDrop)]
+#[derive(Debug, ZeroizeOnDrop)]
 pub struct EphemeralKeyPair {
     #[zeroize(skip)]
     pub public_key: [u8; 32],

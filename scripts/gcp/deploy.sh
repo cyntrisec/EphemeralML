@@ -160,7 +160,13 @@ else
         RESTORED_SYMLINK="${SYMLINK_TARGET}"
         echo "  Temporarily resolving symlink for Docker build..."
         echo "  Symlink: model.safetensors -> ${SYMLINK_TARGET}"
-        cp --remove-destination "${SYMLINK_TARGET}" "${MODEL_WEIGHTS}"
+        # Copy to a temp file first to avoid TOCTOU between readlink and cp
+        # (symlink could be swapped between checks). Atomic rename ensures
+        # the final file is always a complete copy.
+        TMPFILE="${MODEL_WEIGHTS}.tmp.$$"
+        cp "${SYMLINK_TARGET}" "${TMPFILE}"
+        rm -f "${MODEL_WEIGHTS}"
+        mv "${TMPFILE}" "${MODEL_WEIGHTS}"
         echo "  Copied $(du -h "${MODEL_WEIGHTS}" | cut -f1) model weights into build context."
     elif [[ ! -f "${MODEL_WEIGHTS}" ]]; then
         echo "ERROR: Model weights not found at ${MODEL_WEIGHTS}"

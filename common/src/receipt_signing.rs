@@ -290,19 +290,24 @@ impl AttestationReceipt {
     }
 
     /// Generate canonical encoding for signature (deterministic CBOR)
+    ///
+    /// Uses two-step serialization: struct → serde_cbor::Value (BTreeMap-backed,
+    /// guaranteeing sorted map keys) → CBOR bytes. This ensures deterministic
+    /// encoding regardless of struct field declaration order.
     pub fn canonical_encoding(&self) -> Result<Vec<u8>> {
         // Create a copy without the signature for canonical encoding
         let mut receipt_for_signing = self.clone();
         receipt_for_signing.signature = None;
 
-        // Use deterministic CBOR encoding with sorted keys
-        let cbor_data = serde_cbor::to_vec(&receipt_for_signing).map_err(|e| {
-            EphemeralError::SerializationError(format!("CBOR encoding failed: {}", e))
-        })?;
+        // Step 1: Serialize to serde_cbor::Value (maps become BTreeMap → sorted keys)
+        let value: serde_cbor::Value =
+            serde_cbor::value::to_value(&receipt_for_signing).map_err(|e| {
+                EphemeralError::SerializationError(format!("CBOR value conversion failed: {}", e))
+            })?;
 
-        // Ensure deterministic encoding by sorting map keys
-        // Note: serde_cbor should handle this, but we document the requirement
-        Ok(cbor_data)
+        // Step 2: Serialize the Value to bytes (keys are now sorted)
+        serde_cbor::to_vec(&value)
+            .map_err(|e| EphemeralError::SerializationError(format!("CBOR encoding failed: {}", e)))
     }
 
     /// Sign the receipt with Ed25519 key

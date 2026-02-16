@@ -5,6 +5,18 @@ use confidential_ml_pipeline::{PipelineError, StageConfig, StageExecutor, StageR
 /// are tolerated and retried.
 const MAX_ACCEPT_RETRIES: usize = 50;
 
+/// Base delay for exponential backoff between accept retries (milliseconds).
+const ACCEPT_RETRY_BASE_DELAY_MS: u64 = 100;
+
+/// Maximum delay between accept retries (milliseconds).
+const ACCEPT_RETRY_MAX_DELAY_MS: u64 = 5000;
+
+/// Maximum size for inference input payloads (16 MB).
+const MAX_INPUT_PAYLOAD_SIZE: usize = 16 * 1024 * 1024;
+
+/// Maximum length for model_id strings.
+const MAX_MODEL_ID_LEN: usize = 128;
+
 // --- Direct mode types (matching client's InferenceHandlerInput/Output) ---
 
 #[derive(serde::Deserialize)]
@@ -75,6 +87,12 @@ pub async fn run_direct_tcp<A: crate::AttestationProvider + Send + Sync>(
                         e,
                     );
                     last_err = Some(e);
+                    // Exponential backoff to limit resource exhaustion from rapid probes
+                    let delay = std::cmp::min(
+                        ACCEPT_RETRY_BASE_DELAY_MS * (1 << attempt.min(6)),
+                        ACCEPT_RETRY_MAX_DELAY_MS,
+                    );
+                    tokio::time::sleep(std::time::Duration::from_millis(delay)).await;
                 }
             }
         }
@@ -131,9 +149,9 @@ pub async fn run_direct_tcp<A: crate::AttestationProvider + Send + Sync>(
                     }
                     Err(e) => {
                         eprintln!("[direct] Request failed: {}", e);
-                        // Send error back to client as a JSON object so the
-                        // channel stays open for subsequent requests.
-                        let err_json = serde_json::json!({"error": e.to_string()});
+                        // Send redacted error back to client to avoid leaking
+                        // internal details (file paths, stack traces).
+                        let err_json = serde_json::json!({"error": "Inference request failed"});
                         let err_bytes = serde_json::to_vec(&err_json).unwrap_or_default();
                         if let Err(send_err) = channel.send(Bytes::from(err_bytes)).await {
                             eprintln!("[direct] Failed to send error response: {}", send_err);
@@ -173,6 +191,30 @@ fn handle_direct_request<A: crate::AttestationProvider>(
 ) -> std::result::Result<DirectResult, Box<dyn std::error::Error + Send + Sync>> {
     let request: DirectInferenceRequest =
         serde_json::from_slice(bytes).map_err(|e| format!("Bad request JSON: {}", e))?;
+
+    // Validate model_id: alphanumeric, hyphens, underscores, dots only
+    if request.model_id.len() > MAX_MODEL_ID_LEN
+        || !request
+            .model_id
+            .chars()
+            .all(|c| c.is_alphanumeric() || c == '-' || c == '_' || c == '.')
+    {
+        return Err(format!(
+            "Invalid model_id: must be <= {} chars, alphanumeric/hyphens/underscores/dots",
+            MAX_MODEL_ID_LEN
+        )
+        .into());
+    }
+
+    // Enforce input payload size limit to prevent OOM in constrained enclave
+    if request.input_data.len() > MAX_INPUT_PAYLOAD_SIZE {
+        return Err(format!(
+            "Input payload too large: {} bytes (max {})",
+            request.input_data.len(),
+            MAX_INPUT_PAYLOAD_SIZE
+        )
+        .into());
+    }
 
     println!(
         "[direct] Inference request: model_id={}, input_len={}",
@@ -271,6 +313,12 @@ pub async fn run_stage_tcp<E: StageExecutor + 'static>(
                         e,
                     );
                     last_err = Some(e);
+                    // Exponential backoff to limit resource exhaustion
+                    let delay = std::cmp::min(
+                        ACCEPT_RETRY_BASE_DELAY_MS * (1 << attempt.min(6)),
+                        ACCEPT_RETRY_MAX_DELAY_MS,
+                    );
+                    tokio::time::sleep(std::time::Duration::from_millis(delay)).await;
                 }
                 Err(e) => return Err(e),
             }

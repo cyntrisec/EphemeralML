@@ -223,12 +223,30 @@ impl CsTokenClient {
         // Decode payload (second part), base64url without padding.
         let payload = base64_url_decode(parts[1])?;
 
-        serde_json::from_slice(&payload).map_err(|e| {
+        let claims: CsTokenClaims = serde_json::from_slice(&payload).map_err(|e| {
             EnclaveError::Enclave(EphemeralError::SerializationError(format!(
                 "JWT claims parse failed: {}",
                 e
             )))
-        })
+        })?;
+
+        // Warn on expired tokens. We don't hard-fail here because this function
+        // is informational-only (see doc comment), but downstream code should be
+        // aware of stale tokens.
+        if claims.exp > 0 {
+            let now = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_secs();
+            if now >= claims.exp {
+                eprintln!(
+                    "[cs_token] WARNING: Launcher token expired (exp={}, now={})",
+                    claims.exp, now
+                );
+            }
+        }
+
+        Ok(claims)
     }
 }
 
