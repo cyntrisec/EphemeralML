@@ -140,9 +140,71 @@ struct Args {
     data_out_target: String,
 }
 
+/// Classify an error message into a structured exit code for CI/script parsing.
+///
+/// Exit codes:
+///   1  — general/unknown error
+///   10 — configuration error (missing flags, bad env vars, feature not enabled)
+///   11 — model loading error (hash mismatch, fetch failure, manifest error)
+///   12 — attestation/KMS error (TEE unavailable, KMS decrypt failure, DEK error)
+///   13 — network/bind error (address in use, connection refused)
+fn classify_exit_code(err: &str) -> i32 {
+    let e = err.to_lowercase();
+
+    // Configuration errors (exit 10)
+    if e.contains("--model-source is required")
+        || e.contains("requires --gcp-kms-key")
+        || e.contains("requires --gcp-wip-audience")
+        || e.contains("unknown --model-source")
+        || e.contains("--synthetic is not allowed")
+        || e.contains("--expected-mrtd")
+        || e.contains("requires the `tdx` feature")
+        || e.contains("requires the `gcp` feature")
+        || e.contains("model signing key must be")
+        || e.contains("ephemeralml_model_signing_pubkey")
+    {
+        return 10;
+    }
+
+    // Model loading errors (exit 11)
+    if e.contains("model hash mismatch")
+        || e.contains("failed to read config.json")
+        || e.contains("failed to read tokenizer.json")
+        || e.contains("failed to read model.safetensors")
+        || e.contains("model directory does not exist")
+        || e.contains("manifest")
+        || e.contains("--expected-model-hash")
+        || e.contains("model decomposition")
+        || e.contains("register_model")
+    {
+        return 11;
+    }
+
+    // Attestation/KMS errors (exit 12)
+    if e.contains("attestation")
+        || e.contains("kms")
+        || e.contains("invalid dek length")
+        || e.contains("no tdx attestation source")
+        || e.contains("configfs-tsm")
+    {
+        return 12;
+    }
+
+    // Network/bind errors (exit 13)
+    if e.contains("address already in use")
+        || e.contains("connection refused")
+        || e.contains("addr")
+        || e.contains("bind")
+    {
+        return 13;
+    }
+
+    1
+}
+
 #[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    // Initialize structured logging
+async fn main() {
+    // Initialize structured logging before anything else
     let log_format = std::env::var("EPHEMERALML_LOG_FORMAT").unwrap_or_default();
     if log_format == "json" {
         tracing_subscriber::fmt()
@@ -161,6 +223,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             .init();
     }
 
+    if let Err(e) = run().await {
+        let msg = e.to_string();
+        let exit_code = classify_exit_code(&msg);
+        error!(exit_code = exit_code, "Fatal: {}", msg);
+        std::process::exit(exit_code);
+    }
+}
+
+async fn run() -> Result<(), Box<dyn std::error::Error>> {
     let args = Args::parse();
 
     // --smoke-tdx: generate a TDX quote, print measurements, and exit.
