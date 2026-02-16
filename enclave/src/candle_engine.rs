@@ -298,15 +298,10 @@ impl CandleInferenceEngine {
             .forward(&input_ids, 0)
             .map_err(|e| EnclaveError::CandleError(e.to_string()))?;
 
-        let logits = logits
-            .squeeze(0)
-            .map_err(|e| EnclaveError::CandleError(e.to_string()))?;
-        let last_idx = logits
-            .dim(0)
-            .map_err(|e| EnclaveError::CandleError(e.to_string()))?
-            - 1;
+        // Quantized models return logits for the last token only: [1, vocab_size].
+        // Squeeze batch dim to get [vocab_size].
         let last_logits = logits
-            .get(last_idx)
+            .squeeze(0)
             .map_err(|e| EnclaveError::CandleError(e.to_string()))?;
 
         let res = last_logits
@@ -362,16 +357,10 @@ impl CandleInferenceEngine {
             .forward(&input_ids, 0)
             .map_err(|e| EnclaveError::CandleError(e.to_string()))?;
 
-        // Get logits for the last prompt token
-        let logits = logits
-            .squeeze(0)
-            .map_err(|e| EnclaveError::CandleError(e.to_string()))?;
-        let last_idx = logits
-            .dim(0)
-            .map_err(|e| EnclaveError::CandleError(e.to_string()))?
-            - 1;
+        // Quantized models return logits for the last token only: [1, vocab_size].
+        // Squeeze batch dim to get [vocab_size] for sampling.
         let last_logits = logits
-            .get(last_idx)
+            .squeeze(0)
             .map_err(|e| EnclaveError::CandleError(e.to_string()))?;
 
         // Sample first generated token
