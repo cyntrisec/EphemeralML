@@ -1055,36 +1055,57 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
 
         // Load model weights
         let load_start = std::time::Instant::now();
+        let model_format = args.model_format.as_str();
 
-        let config_path = args.model_dir.join("config.json");
-        let tokenizer_path = args.model_dir.join("tokenizer.json");
-        let weights_path = args.model_dir.join("model.safetensors");
-
-        info!(step = "model_load", source = "local", path = %args.model_dir.display(), "Loading model");
-
-        let config_bytes = std::fs::read(&config_path)
-            .map_err(|e| format!("Failed to read {}: {}", config_path.display(), e))?;
-        let tokenizer_bytes = std::fs::read(&tokenizer_path)
-            .map_err(|e| format!("Failed to read {}: {}", tokenizer_path.display(), e))?;
-        let weights_bytes = std::fs::read(&weights_path)
-            .map_err(|e| format!("Failed to read {}: {}", weights_path.display(), e))?;
+        info!(step = "model_load", source = "local", format = model_format, path = %args.model_dir.display(), "Loading model");
 
         let engine = CandleInferenceEngine::new()?;
 
-        engine.register_model(
-            &args.model_id,
-            &config_bytes,
-            &weights_bytes,
-            &tokenizer_bytes,
-        )?;
+        let weights_size_mb;
+        if model_format == "gguf" {
+            let weights_path = args.model_dir.join("model.gguf");
+            let tokenizer_path = args.model_dir.join("tokenizer.json");
+
+            let weights_bytes = std::fs::read(&weights_path)
+                .map_err(|e| format!("Failed to read {}: {}", weights_path.display(), e))?;
+            let tokenizer_bytes = std::fs::read(&tokenizer_path)
+                .map_err(|e| format!("Failed to read {}: {}", tokenizer_path.display(), e))?;
+
+            weights_size_mb = weights_bytes.len() as f64 / (1024.0 * 1024.0);
+            engine.register_model_gguf(
+                &args.model_id,
+                &weights_bytes,
+                &tokenizer_bytes,
+            )?;
+        } else {
+            let config_path = args.model_dir.join("config.json");
+            let tokenizer_path = args.model_dir.join("tokenizer.json");
+            let weights_path = args.model_dir.join("model.safetensors");
+
+            let config_bytes = std::fs::read(&config_path)
+                .map_err(|e| format!("Failed to read {}: {}", config_path.display(), e))?;
+            let tokenizer_bytes = std::fs::read(&tokenizer_path)
+                .map_err(|e| format!("Failed to read {}: {}", tokenizer_path.display(), e))?;
+            let weights_bytes = std::fs::read(&weights_path)
+                .map_err(|e| format!("Failed to read {}: {}", weights_path.display(), e))?;
+
+            weights_size_mb = weights_bytes.len() as f64 / (1024.0 * 1024.0);
+            engine.register_model(
+                &args.model_id,
+                &config_bytes,
+                &weights_bytes,
+                &tokenizer_bytes,
+            )?;
+        }
 
         let load_elapsed = load_start.elapsed();
         info!(
             step = "model_load",
             source = "local",
             model_id = %args.model_id,
+            format = model_format,
             elapsed_ms = load_elapsed.as_secs_f64() * 1000.0,
-            size_mb = weights_bytes.len() as f64 / (1024.0 * 1024.0),
+            size_mb = weights_size_mb,
             "Model loaded"
         );
 
