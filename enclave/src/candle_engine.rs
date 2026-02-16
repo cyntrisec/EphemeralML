@@ -53,8 +53,7 @@ impl CandleInferenceEngine {
                     gpu_id = device_id,
                     "CUDA available — using GPU"
                 );
-                Device::new_cuda(device_id)
-                    .map_err(|e| EnclaveError::CandleError(e.to_string()))?
+                Device::new_cuda(device_id).map_err(|e| EnclaveError::CandleError(e.to_string()))?
             } else {
                 warn!(
                     step = "device_init",

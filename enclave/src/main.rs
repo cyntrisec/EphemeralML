@@ -545,7 +545,10 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
                         Some(config_art?.bytes)
                     } else {
                         if let Err(e) = config_art {
-                            info!(step = "model_load", "config.json not fetched (GGUF mode): {}", e);
+                            info!(
+                                step = "model_load",
+                                "config.json not fetched (GGUF mode): {}", e
+                            );
                         }
                         None
                     };
@@ -700,9 +703,9 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
                             &tokenizer_bytes,
                         )?;
                     } else {
-                        let config = config_bytes.as_ref().ok_or(
-                            "config.json required for safetensors format but not fetched",
-                        )?;
+                        let config = config_bytes
+                            .as_ref()
+                            .ok_or("config.json required for safetensors format but not fetched")?;
                         engine.register_model(
                             &args.model_id,
                             config,
@@ -751,7 +754,10 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
                         Some(config_art?.bytes)
                     } else {
                         if let Err(e) = config_art {
-                            info!(step = "model_load", "config.json not fetched (GGUF mode): {}", e);
+                            info!(
+                                step = "model_load",
+                                "config.json not fetched (GGUF mode): {}", e
+                            );
                         }
                         None
                     };
@@ -833,9 +839,9 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
                             &tokenizer_bytes,
                         )?;
                     } else {
-                        let config = config_bytes.as_ref().ok_or(
-                            "config.json required for safetensors format but not fetched",
-                        )?;
+                        let config = config_bytes
+                            .as_ref()
+                            .ok_or("config.json required for safetensors format but not fetched")?;
                         engine.register_model(
                             &args.model_id,
                             config,
