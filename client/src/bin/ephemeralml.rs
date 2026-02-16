@@ -57,6 +57,14 @@ struct InferArgs {
     /// Output path for the receipt JSON
     #[arg(long, default_value = "receipt.json")]
     receipt: PathBuf,
+
+    /// Use text generation mode (autoregressive) instead of embeddings
+    #[arg(long, default_value = "false")]
+    generate: bool,
+
+    /// Maximum number of tokens to generate (only used with --generate)
+    #[arg(long, default_value = "256")]
+    max_tokens: usize,
 }
 
 #[derive(Parser)]
@@ -173,40 +181,68 @@ async fn run_infer(args: InferArgs) -> Result<()> {
 
     // Inference
     println!();
-    println!("Inference");
-    println!("---------");
+    if args.generate {
+        println!("Text Generation");
+        println!("---------------");
+    } else {
+        println!("Inference");
+        println!("---------");
+    }
 
     let start = Instant::now();
-    let result = client
-        .execute_inference_text(&args.model, &text)
-        .await
-        .context("Inference failed")?;
+    let result = if args.generate {
+        client
+            .execute_inference_generate(&args.model, &text, args.max_tokens)
+            .await
+            .context("Text generation failed")?
+    } else {
+        client
+            .execute_inference_text(&args.model, &text)
+            .await
+            .context("Inference failed")?
+    };
     let elapsed = start.elapsed();
 
     println!("  Model:          {}", args.model);
     println!("  Time:           {}ms", elapsed.as_millis());
-    println!(
-        "  Output:         {}-dim embedding",
-        result.output_tensor.len()
-    );
 
-    // Show first 5 values
-    let first_n: Vec<String> = result
-        .output_tensor
-        .iter()
-        .take(5)
-        .map(|v| format!("{:.4}", v))
-        .collect();
-    println!("  Values[0..5]:   [{}]", first_n.join(", "));
+    if args.generate {
+        println!(
+            "  Tokens:         {} generated",
+            result.output_tensor.len()
+        );
+        println!();
+        println!("Generated Text");
+        println!("--------------");
+        if let Some(ref gen_text) = result.generated_text {
+            println!("{}", gen_text);
+        } else {
+            println!("  (no text returned)");
+        }
+    } else {
+        println!(
+            "  Output:         {}-dim embedding",
+            result.output_tensor.len()
+        );
 
-    // L2 norm
-    let l2: f64 = result
-        .output_tensor
-        .iter()
-        .map(|v| (*v as f64) * (*v as f64))
-        .sum::<f64>()
-        .sqrt();
-    println!("  L2 norm:        {:.4}", l2);
+        // Show first 5 values
+        let first_n: Vec<String> = result
+            .output_tensor
+            .iter()
+            .take(5)
+            .map(|v| format!("{:.4}", v))
+            .collect();
+        println!("  Values[0..5]:   [{}]", first_n.join(", "));
+
+        // L2 norm
+        let l2: f64 = result
+            .output_tensor
+            .iter()
+            .map(|v| (*v as f64) * (*v as f64))
+            .sum::<f64>()
+            .sqrt();
+        println!("  L2 norm:        {:.4}", l2);
+    }
 
     // Receipt
     println!();

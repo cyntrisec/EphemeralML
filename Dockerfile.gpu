@@ -62,9 +62,12 @@ COPY test_assets/minilm/tokenizer.json  /app/model/tokenizer.json
 COPY test_assets/minilm/model.safetensors /app/model/model.safetensors
 
 # GCP configuration (override via instance metadata tee-env-* or env).
-ENV EPHEMERALML_MODEL_SOURCE="local" \
+# Default: fetch Llama 3 8B Q4_K_M GGUF from GCS for GPU inference.
+# For local smoke tests with MiniLM, set EPHEMERALML_MODEL_SOURCE=local
+# and EPHEMERALML_MODEL_FORMAT=safetensors.
+ENV EPHEMERALML_MODEL_SOURCE="gcs" \
     EPHEMERALML_GCS_BUCKET="ephemeralml-models" \
-    EPHEMERALML_GCP_MODEL_PREFIX="models/minilm" \
+    EPHEMERALML_GCP_MODEL_PREFIX="models/llama3" \
     EPHEMERALML_GCP_PROJECT="" \
     EPHEMERALML_GCP_LOCATION="us-central1" \
     EPHEMERALML_GCP_KMS_KEY="" \
@@ -72,7 +75,7 @@ ENV EPHEMERALML_MODEL_SOURCE="local" \
     EPHEMERALML_EXPECTED_MODEL_HASH="" \
     EPHEMERALML_EXPECTED_MRTD="" \
     EPHEMERALML_DIRECT="true" \
-    EPHEMERALML_MODEL_FORMAT="safetensors"
+    EPHEMERALML_MODEL_FORMAT="gguf"
 
 # NVIDIA runtime env: make CUDA libraries visible inside the container.
 # The Confidential Space host injects /dev/nvidia* devices and driver libs.

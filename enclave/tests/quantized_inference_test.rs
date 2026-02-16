@@ -1,4 +1,48 @@
 use ephemeral_ml_enclave::candle_engine::CandleInferenceEngine;
+use std::path::Path;
+
+#[test]
+fn test_execute_by_id_generate_rejects_bert() {
+    // Load a real BERT model so execute_by_id_generate can dispatch
+    let config_path = "../test_assets/minilm/config.json";
+    let weights_path = "../test_assets/minilm/model.safetensors";
+    let tokenizer_path = "../test_assets/minilm/tokenizer.json";
+
+    if !Path::new(config_path).exists() {
+        println!("Skipping test: model assets not found");
+        return;
+    }
+
+    let engine = CandleInferenceEngine::new().expect("Failed to create engine");
+    let config = std::fs::read(config_path).unwrap();
+    let weights = std::fs::read(weights_path).unwrap();
+    let tokenizer = std::fs::read(tokenizer_path).unwrap();
+    engine
+        .register_model("bert-model", &config, &weights, &tokenizer)
+        .unwrap();
+
+    let result = engine.execute_by_id_generate("bert-model", b"hello", 10, 0.7, 0.9);
+    assert!(result.is_err(), "BERT should not support text generation");
+    let err_msg = format!("{:?}", result.err().unwrap());
+    assert!(
+        err_msg.contains("not supported for BERT"),
+        "Should mention BERT, got: {}",
+        err_msg
+    );
+}
+
+#[test]
+fn test_execute_by_id_generate_unknown_model() {
+    let engine = CandleInferenceEngine::new().expect("Failed to create engine");
+    let result = engine.execute_by_id_generate("nonexistent", b"hello", 10, 0.7, 0.9);
+    assert!(result.is_err(), "Unknown model should fail");
+    let err_msg = format!("{:?}", result.err().unwrap());
+    assert!(
+        err_msg.contains("not loaded"),
+        "Should mention model not loaded, got: {}",
+        err_msg
+    );
+}
 
 #[test]
 fn test_register_gguf_api_plumbing() {

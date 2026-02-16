@@ -1,5 +1,6 @@
 use crate::{EnclaveError, EphemeralError, Result};
 use candle_core::{Device, Tensor};
+use candle_transformers::generation::LogitsProcessor;
 use candle_transformers::models::bert::{BertModel, Config, DTYPE};
 use candle_transformers::models::quantized_llama::ModelWeights as QuantizedLlama;
 use std::collections::HashMap;
@@ -7,6 +8,12 @@ use std::io::Cursor;
 use std::sync::{Arc, RwLock};
 use tokenizers::Tokenizer;
 use tracing::{info, warn};
+
+/// Output from autoregressive text generation.
+pub struct GenerateOutput {
+    pub token_ids: Vec<u32>,
+    pub text: String,
+}
 
 /// Inference engine powered by Candle for production use
 #[derive(Clone)]
@@ -138,7 +145,7 @@ impl CandleInferenceEngine {
         Ok(())
     }
 
-    /// Execute inference by model ID
+    /// Execute inference by model ID (embeddings / raw logits)
     pub fn execute_by_id(&self, model_id: &str, input: &[u8]) -> Result<Vec<f32>> {
         let models = self.models.read().map_err(|_| {
             EnclaveError::Enclave(EphemeralError::Internal("Lock poisoned".to_string()))
@@ -153,6 +160,38 @@ impl CandleInferenceEngine {
         match loaded.as_ref() {
             LoadedModel::Bert(loaded) => self.execute_bert(loaded, input),
             LoadedModel::QuantizedLlama(loaded) => self.execute_quantized_llama(loaded, input),
+        }
+    }
+
+    /// Execute autoregressive text generation by model ID.
+    ///
+    /// Only supported for generative models (QuantizedLlama). Returns an error
+    /// for embedding models (BERT).
+    pub fn execute_by_id_generate(
+        &self,
+        model_id: &str,
+        input: &[u8],
+        max_tokens: usize,
+        temperature: f64,
+        top_p: f64,
+    ) -> Result<GenerateOutput> {
+        let models = self.models.read().map_err(|_| {
+            EnclaveError::Enclave(EphemeralError::Internal("Lock poisoned".to_string()))
+        })?;
+        let loaded = models.get(model_id).ok_or_else(|| {
+            EnclaveError::Enclave(EphemeralError::InferenceError(format!(
+                "Model {} not loaded in engine",
+                model_id
+            )))
+        })?;
+
+        match loaded.as_ref() {
+            LoadedModel::Bert(_) => Err(EnclaveError::Enclave(EphemeralError::InferenceError(
+                "Text generation is not supported for BERT models (use execute_by_id for embeddings)".to_string(),
+            ))),
+            LoadedModel::QuantizedLlama(loaded) => {
+                self.execute_quantized_llama_generate(loaded, input, max_tokens, temperature, top_p)
+            }
         }
     }
 
@@ -275,5 +314,127 @@ impl CandleInferenceEngine {
             .map_err(|e| EnclaveError::CandleError(e.to_string()))?;
 
         Ok(res)
+    }
+
+    /// Autoregressive text generation for quantized Llama models.
+    ///
+    /// 1. Tokenizes input text
+    /// 2. Runs prompt tokens through the model (prefill)
+    /// 3. Samples next token using LogitsProcessor (temperature + top-p)
+    /// 4. Loops until EOS or max_tokens
+    /// 5. Decodes generated tokens back to text
+    fn execute_quantized_llama_generate(
+        &self,
+        loaded: &LoadedQuantizedLlamaModel,
+        input: &[u8],
+        max_tokens: usize,
+        temperature: f64,
+        top_p: f64,
+    ) -> Result<GenerateOutput> {
+        let text = std::str::from_utf8(input).map_err(|e| {
+            EnclaveError::Enclave(EphemeralError::InvalidInput(format!(
+                "Invalid UTF-8 input: {}",
+                e
+            )))
+        })?;
+
+        let tokens = loaded
+            .tokenizer
+            .encode(text, true)
+            .map_err(|e| EnclaveError::CandleError(e.to_string()))?;
+
+        let prompt_ids = tokens.get_ids().to_vec();
+        let prompt_len = prompt_ids.len();
+
+        // Initialize LogitsProcessor with a random seed for non-deterministic sampling
+        let seed = rand::random::<u64>();
+        let mut logits_processor = LogitsProcessor::new(seed, Some(temperature), Some(top_p));
+
+        let mut model = loaded.model.clone();
+
+        // Prefill: forward pass on all prompt tokens at once
+        let input_ids = Tensor::new(prompt_ids.as_slice(), &loaded.device)
+            .map_err(|e| EnclaveError::CandleError(e.to_string()))?
+            .unsqueeze(0)
+            .map_err(|e| EnclaveError::CandleError(e.to_string()))?;
+
+        let logits = model
+            .forward(&input_ids, 0)
+            .map_err(|e| EnclaveError::CandleError(e.to_string()))?;
+
+        // Get logits for the last prompt token
+        let logits = logits
+            .squeeze(0)
+            .map_err(|e| EnclaveError::CandleError(e.to_string()))?;
+        let last_idx = logits
+            .dim(0)
+            .map_err(|e| EnclaveError::CandleError(e.to_string()))?
+            - 1;
+        let last_logits = logits
+            .get(last_idx)
+            .map_err(|e| EnclaveError::CandleError(e.to_string()))?;
+
+        // Sample first generated token
+        let first_token = logits_processor
+            .sample(&last_logits)
+            .map_err(|e| EnclaveError::CandleError(e.to_string()))?;
+
+        let mut generated_tokens: Vec<u32> = vec![first_token];
+
+        // Llama 3 EOS tokens
+        const EOS_TOKEN: u32 = 128001; // <|end_of_text|>
+        const EOT_TOKEN: u32 = 128009; // <|eot_id|>
+
+        if first_token == EOS_TOKEN || first_token == EOT_TOKEN {
+            // Model immediately signaled end
+        } else {
+            // Autoregressive generation loop
+            for i in 0..max_tokens.saturating_sub(1) {
+                let pos = prompt_len + i + 1;
+                let next_input =
+                    Tensor::new(&[*generated_tokens.last().unwrap()], &loaded.device)
+                        .map_err(|e| EnclaveError::CandleError(e.to_string()))?
+                        .unsqueeze(0)
+                        .map_err(|e| EnclaveError::CandleError(e.to_string()))?;
+
+                let logits = model
+                    .forward(&next_input, pos)
+                    .map_err(|e| EnclaveError::CandleError(e.to_string()))?;
+
+                let logits = logits
+                    .squeeze(0)
+                    .map_err(|e| EnclaveError::CandleError(e.to_string()))?
+                    .squeeze(0)
+                    .map_err(|e| EnclaveError::CandleError(e.to_string()))?;
+
+                let next_token = logits_processor
+                    .sample(&logits)
+                    .map_err(|e| EnclaveError::CandleError(e.to_string()))?;
+
+                if next_token == EOS_TOKEN || next_token == EOT_TOKEN {
+                    break;
+                }
+
+                generated_tokens.push(next_token);
+            }
+        }
+
+        // Decode generated tokens to text
+        let decoded_text = loaded
+            .tokenizer
+            .decode(&generated_tokens, true)
+            .map_err(|e| EnclaveError::CandleError(e.to_string()))?;
+
+        info!(
+            step = "generate",
+            prompt_tokens = prompt_len,
+            generated_tokens = generated_tokens.len(),
+            "Text generation complete"
+        );
+
+        Ok(GenerateOutput {
+            token_ids: generated_tokens,
+            text: decoded_text,
+        })
     }
 }

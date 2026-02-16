@@ -19,18 +19,45 @@ const MAX_MODEL_ID_LEN: usize = 128;
 
 // --- Direct mode types (matching client's InferenceHandlerInput/Output) ---
 
+/// Default max tokens for generation.
+const DEFAULT_MAX_TOKENS: usize = 256;
+/// Hard cap on max_tokens to prevent runaway generation.
+const MAX_TOKENS_LIMIT: usize = 4096;
+/// Default sampling temperature.
+const DEFAULT_TEMPERATURE: f64 = 0.7;
+/// Default top-p (nucleus) sampling threshold.
+const DEFAULT_TOP_P: f64 = 0.9;
+
 #[derive(serde::Deserialize)]
 struct DirectInferenceRequest {
     model_id: String,
     input_data: Vec<u8>,
     #[allow(dead_code)]
     input_shape: Option<Vec<usize>>,
+    /// When true, use autoregressive text generation instead of embeddings/logits.
+    #[serde(default)]
+    generate: bool,
+    /// Maximum number of tokens to generate (only used when generate=true).
+    /// Accepts null or absent — defaults to 256, capped at 4096.
+    #[serde(default)]
+    max_tokens: Option<usize>,
+    /// Sampling temperature (only used when generate=true).
+    /// Accepts null or absent — defaults to 0.7.
+    #[serde(default)]
+    temperature: Option<f64>,
+    /// Top-p (nucleus) sampling threshold (only used when generate=true).
+    /// Accepts null or absent — defaults to 0.9.
+    #[serde(default)]
+    top_p: Option<f64>,
 }
 
 #[derive(serde::Serialize)]
 struct DirectInferenceResponse {
     output_tensor: Vec<f32>,
     receipt: ephemeral_ml_common::AttestationReceipt,
+    /// Generated text (only present when generate=true).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    generated_text: Option<String>,
 }
 
 /// Accept a single client SecureChannel on `listen_addr` and serve inference
@@ -217,17 +244,55 @@ fn handle_direct_request<A: crate::AttestationProvider>(
     }
 
     println!(
-        "[direct] Inference request: model_id={}, input_len={}",
+        "[direct] Inference request: model_id={}, input_len={}, generate={}",
         request.model_id,
-        request.input_data.len()
+        request.input_data.len(),
+        request.generate,
     );
 
     let start = std::time::Instant::now();
-    let output = engine.execute_by_id(&request.model_id, &request.input_data)?;
+
+    let (output_tensor, generated_text) = if request.generate {
+        // Resolve defaults for optional generation parameters
+        let max_tokens = request
+            .max_tokens
+            .unwrap_or(DEFAULT_MAX_TOKENS)
+            .min(MAX_TOKENS_LIMIT);
+        let temperature = request.temperature.unwrap_or(DEFAULT_TEMPERATURE);
+        let top_p = request.top_p.unwrap_or(DEFAULT_TOP_P);
+
+        // Validate generation parameters
+        if temperature < 0.0 {
+            return Err(format!("temperature must be >= 0, got {}", temperature).into());
+        }
+        if !(0.0..=1.0).contains(&top_p) {
+            return Err(format!("top_p must be in [0.0, 1.0], got {}", top_p).into());
+        }
+
+        // Text generation mode
+        let gen_output = engine.execute_by_id_generate(
+            &request.model_id,
+            &request.input_data,
+            max_tokens,
+            temperature,
+            top_p,
+        )?;
+        // Store token IDs as f32 for receipt hash verification
+        let token_floats: Vec<f32> = gen_output.token_ids.iter().map(|&id| id as f32).collect();
+        (token_floats, Some(gen_output.text))
+    } else {
+        // Embedding / raw logits mode
+        let output = engine.execute_by_id(&request.model_id, &request.input_data)?;
+        (output, None)
+    };
+
     let exec_ms = start.elapsed().as_millis() as u64;
 
     // Compute response bytes for receipt hash
-    let output_bytes: Vec<u8> = output.iter().flat_map(|f| f.to_le_bytes()).collect();
+    let output_bytes: Vec<u8> = output_tensor
+        .iter()
+        .flat_map(|f| f.to_le_bytes())
+        .collect();
 
     // Build and sign receipt
     state.model_id = request.model_id.clone();
@@ -244,10 +309,11 @@ fn handle_direct_request<A: crate::AttestationProvider>(
     receipt.sign(&state.receipt_signing_key)?;
 
     let seq = receipt.sequence_number;
-    let n_floats = output.len();
+    let n_floats = output_tensor.len();
     let response = DirectInferenceResponse {
-        output_tensor: output,
+        output_tensor,
         receipt,
+        generated_text,
     };
     let response_json = serde_json::to_vec(&response)?;
     Ok(DirectResult {

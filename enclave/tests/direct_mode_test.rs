@@ -21,12 +21,21 @@ struct InferenceRequest {
     model_id: String,
     input_data: Vec<u8>,
     input_shape: Option<Vec<usize>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    generate: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    max_tokens: Option<usize>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    temperature: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    top_p: Option<f64>,
 }
 
 #[derive(Deserialize)]
 struct InferenceResponse {
     output_tensor: Vec<f32>,
     receipt: AttestationReceipt,
+    generated_text: Option<String>,
 }
 
 /// Helper: create an engine with MiniLM loaded. Returns None if test assets missing.
@@ -119,6 +128,10 @@ async fn direct_mode_happy_path() {
         model_id: model_id.to_string(),
         input_data: b"Hello, direct mode!".to_vec(),
         input_shape: None,
+        generate: None,
+        max_tokens: None,
+        temperature: None,
+        top_p: None,
     };
     let request_bytes = serde_json::to_vec(&request).unwrap();
     channel.send(Bytes::from(request_bytes)).await.unwrap();
@@ -253,6 +266,10 @@ async fn direct_mode_malformed_json_no_crash() {
         model_id: model_id.to_string(),
         input_data: b"Recovery test".to_vec(),
         input_shape: None,
+        generate: None,
+        max_tokens: None,
+        temperature: None,
+        top_p: None,
     };
     let request_bytes = serde_json::to_vec(&request).unwrap();
     channel.send(Bytes::from(request_bytes)).await.unwrap();
@@ -268,6 +285,176 @@ async fn direct_mode_malformed_json_no_crash() {
     assert!(response.receipt.signature.is_some());
     // Sequence should be 0 (first successful inference — failed requests don't increment)
     assert_eq!(response.receipt.sequence_number, 0);
+
+    channel.shutdown().await.ok();
+    let _ = tokio::time::timeout(std::time::Duration::from_secs(2), server_handle).await;
+}
+
+/// Helper: spawn a direct-mode server and connect a client channel.
+/// Returns (channel, server_handle). Skips test if model assets are missing.
+async fn setup_direct_server(
+    model_id: &str,
+) -> Option<(
+    SecureChannel<tokio::net::TcpStream>,
+    tokio::task::JoinHandle<Result<(), Box<dyn std::error::Error + Send + Sync>>>,
+)> {
+    let engine = create_engine_with_model(model_id)?;
+    let receipt_key = ReceiptSigningKey::generate().unwrap();
+    let mock_provider = MockAttestationProvider::new();
+
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    drop(listener);
+
+    let addr_str = addr.to_string();
+    let server_handle = tokio::spawn(async move {
+        let transport_provider = MockProvider::new();
+        let transport_verifier = MockVerifier::new();
+        run_direct_tcp(
+            engine,
+            mock_provider,
+            receipt_key,
+            &addr_str,
+            &transport_provider,
+            &transport_verifier,
+            [0u8; 32],
+        )
+        .await
+    });
+
+    tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+
+    let stream = tokio::net::TcpStream::connect(addr).await.unwrap();
+    let client_provider = MockProvider::new();
+    let client_verifier = MockVerifier::new();
+    let config = SessionConfig::default();
+    let channel =
+        SecureChannel::connect_with_attestation(stream, &client_provider, &client_verifier, config)
+            .await
+            .unwrap();
+
+    Some((channel, server_handle))
+}
+
+#[tokio::test]
+async fn direct_mode_generate_on_bert_returns_error() {
+    let model_id = "stage-0";
+    let (mut channel, server_handle) = match setup_direct_server(model_id).await {
+        Some(v) => v,
+        None => {
+            println!("Skipping test: model assets not found");
+            return;
+        }
+    };
+
+    // Request text generation on BERT model — should get an error response, not a crash
+    let request = InferenceRequest {
+        model_id: model_id.to_string(),
+        input_data: b"Generate something".to_vec(),
+        input_shape: None,
+        generate: Some(true),
+        max_tokens: Some(10),
+        temperature: None,
+        top_p: None,
+    };
+    let request_bytes = serde_json::to_vec(&request).unwrap();
+    channel.send(Bytes::from(request_bytes)).await.unwrap();
+
+    let msg = channel.recv().await.unwrap();
+    let response_bytes = match msg {
+        Message::Data(data) => data,
+        other => panic!("Expected Data response, got {:?}", other),
+    };
+
+    // Should be an error response
+    let error_obj: serde_json::Value = serde_json::from_slice(&response_bytes).unwrap();
+    assert!(
+        error_obj.get("error").is_some(),
+        "BERT generate should return error, got: {}",
+        error_obj
+    );
+
+    channel.shutdown().await.ok();
+    let _ = tokio::time::timeout(std::time::Duration::from_secs(2), server_handle).await;
+}
+
+#[tokio::test]
+async fn direct_mode_invalid_top_p_returns_error() {
+    let model_id = "stage-0";
+    let (mut channel, server_handle) = match setup_direct_server(model_id).await {
+        Some(v) => v,
+        None => {
+            println!("Skipping test: model assets not found");
+            return;
+        }
+    };
+
+    // Request with invalid top_p > 1.0 — should get validation error
+    let request = InferenceRequest {
+        model_id: model_id.to_string(),
+        input_data: b"Invalid params".to_vec(),
+        input_shape: None,
+        generate: Some(true),
+        max_tokens: Some(10),
+        temperature: Some(0.7),
+        top_p: Some(1.5), // invalid
+    };
+    let request_bytes = serde_json::to_vec(&request).unwrap();
+    channel.send(Bytes::from(request_bytes)).await.unwrap();
+
+    let msg = channel.recv().await.unwrap();
+    let response_bytes = match msg {
+        Message::Data(data) => data,
+        other => panic!("Expected Data response, got {:?}", other),
+    };
+
+    let error_obj: serde_json::Value = serde_json::from_slice(&response_bytes).unwrap();
+    assert!(
+        error_obj.get("error").is_some(),
+        "Invalid top_p should return error, got: {}",
+        error_obj
+    );
+
+    channel.shutdown().await.ok();
+    let _ = tokio::time::timeout(std::time::Duration::from_secs(2), server_handle).await;
+}
+
+#[tokio::test]
+async fn direct_mode_absent_generate_params_use_defaults() {
+    let model_id = "stage-0";
+    let (mut channel, server_handle) = match setup_direct_server(model_id).await {
+        Some(v) => v,
+        None => {
+            println!("Skipping test: model assets not found");
+            return;
+        }
+    };
+
+    // Send embedding request with generate=false (default), omitting generation params.
+    // This verifies null/absent fields don't cause deserialization errors.
+    let request = InferenceRequest {
+        model_id: model_id.to_string(),
+        input_data: b"Testing defaults".to_vec(),
+        input_shape: None,
+        generate: None,
+        max_tokens: None,
+        temperature: None,
+        top_p: None,
+    };
+    let request_bytes = serde_json::to_vec(&request).unwrap();
+    channel.send(Bytes::from(request_bytes)).await.unwrap();
+
+    let msg = channel.recv().await.unwrap();
+    let response_bytes = match msg {
+        Message::Data(data) => data,
+        other => panic!("Expected Data, got {:?}", other),
+    };
+
+    let response: InferenceResponse = serde_json::from_slice(&response_bytes).unwrap();
+    // Should succeed as an embedding request (384-dim from MiniLM)
+    assert_eq!(response.output_tensor.len(), 384);
+    assert!(response.generated_text.is_none());
+    assert!(response.receipt.signature.is_some());
 
     channel.shutdown().await.ok();
     let _ = tokio::time::timeout(std::time::Duration::from_secs(2), server_handle).await;

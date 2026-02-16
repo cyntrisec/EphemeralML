@@ -12,18 +12,39 @@ pub struct InferenceHandlerInput {
     pub model_id: String,
     pub input_data: Vec<u8>,
     pub input_shape: Option<Vec<usize>>,
+    /// When true, request autoregressive text generation instead of embeddings.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub generate: bool,
+    /// Maximum tokens to generate (only used when generate=true).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max_tokens: Option<usize>,
+    /// Sampling temperature (only used when generate=true).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub temperature: Option<f64>,
+    /// Top-p (nucleus) sampling threshold (only used when generate=true).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub top_p: Option<f64>,
+}
+
+fn is_false(v: &bool) -> bool {
+    !v
 }
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct InferenceHandlerOutput {
     pub output_tensor: Vec<f32>,
     pub receipt: AttestationReceipt,
+    /// Generated text (only present when generate=true on the server).
+    #[serde(default)]
+    pub generated_text: Option<String>,
 }
 
 /// Result of an inference request, including the output tensor and the signed receipt.
 pub struct InferenceResult {
     pub output_tensor: Vec<f32>,
     pub receipt: AttestationReceipt,
+    /// Generated text (only present for text generation requests).
+    pub generated_text: Option<String>,
 }
 
 /// Trait for secure client communication
@@ -47,6 +68,17 @@ pub trait SecureClient {
         &mut self,
         model_id: &str,
         text: &str,
+    ) -> Result<InferenceResult>;
+
+    /// Execute autoregressive text generation.
+    ///
+    /// Sends text to the server and requests generation of up to `max_tokens`
+    /// tokens. Returns the generated text and a signed receipt.
+    async fn execute_inference_generate(
+        &mut self,
+        model_id: &str,
+        text: &str,
+        max_tokens: usize,
     ) -> Result<InferenceResult>;
 }
 
@@ -184,6 +216,10 @@ impl SecureClient for SecureEnclaveClient {
             model_id: model_id.to_string(),
             input_data,
             input_shape: None,
+            generate: false,
+            max_tokens: None,
+            temperature: None,
+            top_p: None,
         };
         let plaintext = serde_json::to_vec(&input)
             .map_err(|e| ClientError::Client(EphemeralError::SerializationError(e.to_string())))?;
@@ -339,6 +375,7 @@ impl SecureClient for SecureEnclaveClient {
         Ok(InferenceResult {
             output_tensor: output.output_tensor,
             receipt: output.receipt,
+            generated_text: None,
         })
     }
 
@@ -358,6 +395,10 @@ impl SecureClient for SecureEnclaveClient {
             model_id: model_id.to_string(),
             input_data: text.as_bytes().to_vec(),
             input_shape: None,
+            generate: false,
+            max_tokens: None,
+            temperature: None,
+            top_p: None,
         };
         let plaintext = serde_json::to_vec(&input)
             .map_err(|e| ClientError::Client(EphemeralError::SerializationError(e.to_string())))?;
@@ -499,6 +540,169 @@ impl SecureClient for SecureEnclaveClient {
         Ok(InferenceResult {
             output_tensor: output.output_tensor,
             receipt: output.receipt,
+            generated_text: output.generated_text,
+        })
+    }
+
+    async fn execute_inference_generate(
+        &mut self,
+        model_id: &str,
+        text: &str,
+        max_tokens: usize,
+    ) -> Result<InferenceResult> {
+        let channel = self.channel.as_mut().ok_or_else(|| {
+            ClientError::Client(EphemeralError::InvalidInput(
+                "Channel not established".to_string(),
+            ))
+        })?;
+
+        let input = InferenceHandlerInput {
+            model_id: model_id.to_string(),
+            input_data: text.as_bytes().to_vec(),
+            input_shape: None,
+            generate: true,
+            max_tokens: Some(max_tokens),
+            temperature: None,
+            top_p: None,
+        };
+        let plaintext = serde_json::to_vec(&input)
+            .map_err(|e| ClientError::Client(EphemeralError::SerializationError(e.to_string())))?;
+
+        channel
+            .send(bytes::Bytes::from(plaintext))
+            .await
+            .map_err(|e| {
+                ClientError::Client(EphemeralError::TransportError(format!(
+                    "Send failed: {}",
+                    e
+                )))
+            })?;
+
+        let msg = channel.recv().await.map_err(|e| {
+            ClientError::Client(EphemeralError::TransportError(format!(
+                "Recv failed: {}",
+                e
+            )))
+        })?;
+
+        let response_bytes = match msg {
+            Message::Data(data) => data,
+            Message::Error(err) => {
+                return Err(ClientError::Client(EphemeralError::InferenceError(
+                    format!("Server error: {}", err),
+                )));
+            }
+            other => {
+                return Err(ClientError::Client(EphemeralError::ProtocolError(format!(
+                    "Expected Data response, got {:?}",
+                    other
+                ))));
+            }
+        };
+
+        let output: InferenceHandlerOutput = serde_json::from_slice(&response_bytes)
+            .map_err(|e| ClientError::Client(EphemeralError::SerializationError(e.to_string())))?;
+
+        // Verify receipt (same checks as other methods)
+        let signing_pk = self.server_receipt_signing_key.ok_or_else(|| {
+            ClientError::Client(EphemeralError::ValidationError(
+                "Missing receipt signing key".to_string(),
+            ))
+        })?;
+
+        let public_key = ed25519_dalek::VerifyingKey::from_bytes(&signing_pk).map_err(|e| {
+            ClientError::Client(EphemeralError::ValidationError(format!(
+                "Invalid receipt public key: {}",
+                e
+            )))
+        })?;
+
+        if !output
+            .receipt
+            .verify_signature(&public_key)
+            .map_err(ClientError::Client)?
+        {
+            return Err(ClientError::Client(EphemeralError::ValidationError(
+                "Invalid receipt signature".to_string(),
+            )));
+        }
+
+        if let Some(_attestation_hash) = self.server_attestation_hash {
+            #[cfg(feature = "gcp")]
+            {
+                if output.receipt.attestation_doc_hash == [0u8; 32] {
+                    return Err(ClientError::Client(EphemeralError::ValidationError(
+                        "Receipt has zero attestation hash (no hardware binding)".to_string(),
+                    )));
+                }
+            }
+            #[cfg(not(feature = "gcp"))]
+            {
+                if output.receipt.attestation_doc_hash != [0u8; 32]
+                    && output.receipt.attestation_doc_hash != _attestation_hash
+                {
+                    return Err(ClientError::Client(EphemeralError::ValidationError(
+                        "Receipt not bound to current attestation".to_string(),
+                    )));
+                }
+            }
+        }
+
+        if output.receipt.model_id != model_id {
+            return Err(ClientError::Client(EphemeralError::ValidationError(
+                format!(
+                    "Receipt model_id mismatch: expected '{}', got '{}'",
+                    model_id, output.receipt.model_id
+                ),
+            )));
+        }
+
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs();
+        let receipt_age = now.saturating_sub(output.receipt.execution_timestamp);
+        if receipt_age > self.max_receipt_age_secs {
+            return Err(ClientError::Client(EphemeralError::ValidationError(
+                format!(
+                    "Receipt too old: {}s (max {}s)",
+                    receipt_age, self.max_receipt_age_secs
+                ),
+            )));
+        }
+
+        let no_receipts_seen = self.last_sequence_number == u64::MAX;
+        if !no_receipts_seen && output.receipt.sequence_number <= self.last_sequence_number {
+            return Err(ClientError::Client(EphemeralError::ValidationError(
+                format!(
+                    "Receipt sequence replay: got {}, last seen {}",
+                    output.receipt.sequence_number, self.last_sequence_number
+                ),
+            )));
+        }
+        self.last_sequence_number = output.receipt.sequence_number;
+
+        {
+            use sha2::{Digest, Sha256};
+            let expected_response_hash: [u8; 32] = {
+                let output_bytes: Vec<u8> = output
+                    .output_tensor
+                    .iter()
+                    .flat_map(|f| f.to_le_bytes())
+                    .collect();
+                Sha256::digest(&output_bytes).into()
+            };
+            if output.receipt.response_hash != expected_response_hash {
+                return Err(ClientError::Client(EphemeralError::ValidationError(
+                    "Receipt response_hash does not match output data".to_string(),
+                )));
+            }
+        }
+
+        Ok(InferenceResult {
+            output_tensor: output.output_tensor,
+            receipt: output.receipt,
+            generated_text: output.generated_text,
         })
     }
 }
@@ -581,6 +785,7 @@ mod tests {
                 let output = InferenceHandlerOutput {
                     output_tensor,
                     receipt: signed_receipt,
+                    generated_text: None,
                 };
                 let response_bytes = serde_json::to_vec(&output).unwrap();
                 channel.send(Bytes::from(response_bytes)).await.unwrap();
@@ -602,6 +807,10 @@ mod tests {
             model_id: "test-model".to_string(),
             input_data: vec![1, 2, 3],
             input_shape: Some(vec![3]),
+            generate: false,
+            max_tokens: None,
+            temperature: None,
+            top_p: None,
         };
         let input_bytes = serde_json::to_vec(&input).unwrap();
         channel.send(Bytes::from(input_bytes)).await.unwrap();

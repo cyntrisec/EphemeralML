@@ -160,6 +160,7 @@ impl SecureClient for MockSecureClient {
         Ok(InferenceResult {
             output_tensor,
             receipt,
+            generated_text: None,
         })
     }
 
@@ -192,6 +193,41 @@ impl SecureClient for MockSecureClient {
         Ok(InferenceResult {
             output_tensor,
             receipt,
+            generated_text: None,
+        })
+    }
+
+    async fn execute_inference_generate(
+        &mut self,
+        model_id: &str,
+        text: &str,
+        max_tokens: usize,
+    ) -> Result<InferenceResult> {
+        use crate::{AttestationReceipt, EnclaveMeasurements, SecurityMode};
+        // Mock: return a canned response
+        let token_count = max_tokens.min(10);
+        let output_tensor: Vec<f32> = (0..token_count).map(|i| i as f32).collect();
+        let generated_text = format!("[mock generation for '{}', {} tokens]", &text[..text.len().min(50)], token_count);
+        let now = current_timestamp();
+        let receipt = AttestationReceipt::new(
+            model_id.to_string(),
+            1,
+            SecurityMode::GatewayOnly,
+            EnclaveMeasurements::new(vec![0u8; 48], vec![0u8; 48], vec![0u8; 48]),
+            [0u8; 32],
+            [0u8; 32],
+            [0u8; 32],
+            "mock".to_string(),
+            now,
+            model_id.to_string(),
+            "mock".to_string(),
+            0,
+            0,
+        );
+        Ok(InferenceResult {
+            output_tensor,
+            receipt,
+            generated_text: Some(generated_text),
         })
     }
 }
