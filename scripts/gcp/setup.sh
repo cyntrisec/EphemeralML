@@ -18,9 +18,11 @@ TAG="ephemeralml"
 
 # Parse args — project must come from env or --project flag
 PROJECT="${EPHEMERALML_GCP_PROJECT:-}"
+FIREWALL_SOURCE_RANGES="${EPHEMERALML_FIREWALL_SOURCE_RANGES:-}"
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --project) PROJECT="$2"; shift 2 ;;
+        --source-ranges) FIREWALL_SOURCE_RANGES="$2"; shift 2 ;;
         *) echo "Unknown option: $1"; exit 1 ;;
     esac
 done
@@ -105,11 +107,18 @@ echo
 # 4. Grant IAM roles
 # ---------------------------------------------------------------------------
 echo "[4/5] Granting IAM roles..."
+# Roles:
+#   artifactregistry.reader  — pull container images from Artifact Registry
+#   logging.logWriter        — write structured logs to Cloud Logging
+#   monitoring.metricWriter  — write metrics to Cloud Monitoring
+#   confidentialcomputing.workloadUser — register as a confidential workload
+#   storage.objectViewer     — read model artifacts from GCS bucket
 ROLES=(
     "roles/artifactregistry.reader"
     "roles/logging.logWriter"
     "roles/monitoring.metricWriter"
     "roles/confidentialcomputing.workloadUser"
+    "roles/storage.objectViewer"
 )
 FAILED_ROLES=()
 for role in "${ROLES[@]}"; do
@@ -136,6 +145,20 @@ echo
 # 5. Create firewall rule
 # ---------------------------------------------------------------------------
 echo "[5/5] Creating firewall rule..."
+# Restrict source CIDRs: prefer explicit --source-ranges, fall back to caller's IP, warn on 0.0.0.0/0
+if [[ -z "${FIREWALL_SOURCE_RANGES}" ]]; then
+    CALLER_IP="$(curl -s -4 https://ifconfig.me 2>/dev/null || true)"
+    if [[ -n "${CALLER_IP}" && "${CALLER_IP}" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+        FIREWALL_SOURCE_RANGES="${CALLER_IP}/32"
+        echo "  Auto-detected caller IP: ${CALLER_IP} (restricting firewall to ${FIREWALL_SOURCE_RANGES})"
+    else
+        FIREWALL_SOURCE_RANGES="0.0.0.0/0"
+        echo "  WARNING: Could not detect caller IP. Using 0.0.0.0/0 — restrict with --source-ranges"
+    fi
+fi
+if [[ "${FIREWALL_SOURCE_RANGES}" == "0.0.0.0/0" ]]; then
+    echo "  WARNING: Firewall open to all IPs (0.0.0.0/0). For production, use --source-ranges=<your-cidr>"
+fi
 if gcloud compute firewall-rules describe "${FIREWALL_RULE}" \
     --project="${PROJECT}" &>/dev/null; then
     echo "  Firewall rule '${FIREWALL_RULE}' already exists."
@@ -147,10 +170,10 @@ else
         --network=default \
         --action=ALLOW \
         --rules=tcp:9000-9002 \
-        --source-ranges=0.0.0.0/0 \
+        --source-ranges="${FIREWALL_SOURCE_RANGES}" \
         --target-tags="${TAG}" \
         --description="Allow inbound TCP 9000-9002 for EphemeralML enclave"
-    echo "  Firewall rule '${FIREWALL_RULE}' created."
+    echo "  Firewall rule '${FIREWALL_RULE}' created (source: ${FIREWALL_SOURCE_RANGES})."
 fi
 echo
 

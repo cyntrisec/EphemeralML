@@ -76,6 +76,8 @@ See `infra/hello-enclave/HELLO_ENCLAVE_RUNBOOK.md` for a step-by-step guide to d
 
 ## Production Mode (GCP)
 
+> For the complete 10-step golden path, see [`docs/PRODUCTION_GCP.md`](docs/PRODUCTION_GCP.md).
+
 ### Build
 
 ```bash
@@ -86,20 +88,33 @@ cargo build --release --no-default-features --features gcp -p ephemeral-ml-encla
 cargo build --release --no-default-features --features gcp -p ephemeral-ml-client
 ```
 
-### Deploy on GCP Confidential Space
+### Deploy with KMS-Gated Model (Recommended)
 
 ```bash
-# 1. Create a c3-standard-4 TDX CVM
-gcloud compute instances create ephemeralml-cvm \
-    --zone=us-central1-a --machine-type=c3-standard-4 \
-    --confidential-compute-type=TDX \
-    --min-cpu-platform="Intel Sapphire Rapids" \
-    --image-family=ubuntu-2404-lts-amd64 --image-project=ubuntu-os-cloud \
-    --maintenance-policy=TERMINATE
+# 1. Setup infrastructure
+bash scripts/gcp/setup.sh
+bash scripts/gcp/setup_kms.sh
 
-# 2. Copy binary and model, run on CVM (--gcp flag required)
-./target/release/ephemeral-ml-enclave \
-    --gcp --model-dir /app/model --model-id stage-0
+# 2. Package model (encrypts, signs manifest, uploads to GCS)
+bash scripts/gcp/package_model.sh test_assets/minilm models/minilm \
+    --model-id minilm-l6-v2 --version v1.0.0
+
+# 3. Deploy to Confidential Space
+bash scripts/gcp/deploy.sh \
+    --model-source gcs-kms \
+    --kms-key "$EPHEMERALML_GCP_KMS_KEY" \
+    --wip-audience "$EPHEMERALML_GCP_WIP_AUDIENCE" \
+    --model-hash "$EXPECTED_MODEL_HASH"
+```
+
+The manifest (`manifest.json`) is automatically fetched and verified by the enclave
+alongside the encrypted model artifacts. See [`docs/MODEL_PACKAGING.md`](docs/MODEL_PACKAGING.md)
+for manifest schema and signing key management.
+
+### Deploy with Local Model (Quick Start)
+
+```bash
+bash scripts/gcp/deploy.sh --model-source local
 ```
 
 ### GCP Architecture Differences
@@ -109,11 +124,13 @@ gcloud compute instances create ephemeralml-cvm \
 | Trust boundary | Enclave process (VSock isolated) | Entire CVM |
 | Host process | Required (blind relay) | Not needed |
 | Network | None (VSock only) | Full TCP/HTTPS |
-| KMS auth | NSM attestation + RecipientInfo | Local files / GCS (Cloud KMS not yet wired) |
+| KMS auth | NSM attestation + RecipientInfo | WIP + Cloud KMS (attestation-bound) |
 | Model loading | Host fetches S3, relays via VSock | CVM fetches GCS directly |
 | Attestation | COSE_Sign1 (NSM) | TDX quote (configfs-tsm) |
 
 See [`docs/build-matrix.md`](docs/build-matrix.md) for the full feature flag compatibility matrix.
+See [`docs/SECURITY_MODEL.md`](docs/SECURITY_MODEL.md) for the trust model and HIPAA mapping.
+See [`docs/TROUBLESHOOTING.md`](docs/TROUBLESHOOTING.md) for error codes and diagnostics.
 
 ## Verification
 

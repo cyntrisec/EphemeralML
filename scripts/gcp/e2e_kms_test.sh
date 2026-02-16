@@ -89,15 +89,23 @@ echo
 # ---------------------------------------------------------------------------
 # Step 2: Encrypt model and upload to GCS
 # ---------------------------------------------------------------------------
-echo "[2/7] Encrypting model and uploading to GCS..."
-bash "${SCRIPT_DIR}/encrypt_model.sh" "${MODEL_DIR}" "models/minilm" 2>&1 | tee "${EVIDENCE_DIR}/encrypt_model_log.txt"
+echo "[2/7] Packaging model with manifest and uploading to GCS..."
+bash "${SCRIPT_DIR}/package_model.sh" "${MODEL_DIR}" "models/minilm" 2>&1 | tee "${EVIDENCE_DIR}/package_model_log.txt"
 
-# Extract model hash from encrypt_model.sh output
-EXPECTED_MODEL_HASH="$(grep 'SHA-256:' "${EVIDENCE_DIR}/encrypt_model_log.txt" | awk '{print $NF}')"
+# Extract model hash from package_model.sh output
+EXPECTED_MODEL_HASH="$(grep 'SHA-256:' "${EVIDENCE_DIR}/package_model_log.txt" | awk '{print $NF}')"
 if [[ -z "${EXPECTED_MODEL_HASH}" ]]; then
-    echo "ERROR: Could not extract model hash from encrypt_model.sh output"
+    echo "ERROR: Could not extract model hash from package_model.sh output"
     exit 1
 fi
+
+# Extract public key for manifest verification
+MODEL_SIGNING_PUBKEY="$(grep 'EPHEMERALML_MODEL_SIGNING_PUBKEY' "${EVIDENCE_DIR}/package_model_log.txt" | awk '{print $NF}')"
+if [[ -n "${MODEL_SIGNING_PUBKEY}" ]]; then
+    echo "  Signing pubkey: ${MODEL_SIGNING_PUBKEY}"
+    export EPHEMERALML_MODEL_SIGNING_PUBKEY="${MODEL_SIGNING_PUBKEY}"
+fi
+
 echo "  Model hash: ${EXPECTED_MODEL_HASH}"
 echo
 
@@ -105,15 +113,20 @@ echo
 # Step 3: Deploy with --model-source gcs-kms
 # ---------------------------------------------------------------------------
 echo "[3/7] Deploying with KMS-gated model release..."
-bash "${SCRIPT_DIR}/deploy.sh" \
-    --project "${PROJECT}" \
-    --zone "${ZONE}" \
-    --model-source gcs-kms \
-    --kms-key "${GCP_KMS_KEY}" \
-    --wip-audience "${GCP_WIP_AUDIENCE}" \
-    --bucket "${GCP_BUCKET}" \
-    --model-prefix "models/minilm" \
-    --model-hash "${EXPECTED_MODEL_HASH}" \
+DEPLOY_ARGS=(
+    --project "${PROJECT}"
+    --zone "${ZONE}"
+    --model-source gcs-kms
+    --kms-key "${GCP_KMS_KEY}"
+    --wip-audience "${GCP_WIP_AUDIENCE}"
+    --bucket "${GCP_BUCKET}"
+    --model-prefix "models/minilm"
+    --model-hash "${EXPECTED_MODEL_HASH}"
+)
+if [[ -n "${MODEL_SIGNING_PUBKEY:-}" ]]; then
+    DEPLOY_ARGS+=(--model-signing-pubkey "${MODEL_SIGNING_PUBKEY}")
+fi
+bash "${SCRIPT_DIR}/deploy.sh" "${DEPLOY_ARGS[@]}" \
     2>&1 | tee "${EVIDENCE_DIR}/deploy_log.txt"
 echo
 

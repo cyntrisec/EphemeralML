@@ -86,6 +86,59 @@ pub enum EphemeralError {
 }
 
 impl EphemeralError {
+    /// Returns a stable numeric error code for this error variant.
+    ///
+    /// Code ranges:
+    /// - 1000-1099: Model/decomposition
+    /// - 1100-1199: Security (attestation, crypto, KMS)
+    /// - 1200-1299: Communication
+    /// - 1300-1399: Inference/assembly
+    /// - 1400-1499: System (storage, IO, config)
+    /// - 1500-1599: Client (input, resource, timeout)
+    /// - 1900-1999: Internal/transport
+    pub fn code(&self) -> u16 {
+        match self {
+            EphemeralError::DecompositionError(_) => 1001,
+            EphemeralError::ValidationError(_) => 1002,
+            EphemeralError::Validation(_) => 1003,
+            EphemeralError::UnsupportedOperatorError(_) => 1004,
+
+            EphemeralError::AttestationError(_) => 1100,
+            EphemeralError::EncryptionError(_) => 1101,
+            EphemeralError::DecryptionError(_) => 1102,
+            EphemeralError::KmsError(_) => 1103,
+
+            EphemeralError::CommunicationError(_) => 1200,
+            EphemeralError::VSockError(_) => 1201,
+            EphemeralError::NetworkError(_) => 1202,
+
+            EphemeralError::AssemblyError(_) => 1300,
+            EphemeralError::InferenceError(_) => 1301,
+            EphemeralError::MemorySecurityError(_) => 1302,
+
+            EphemeralError::StorageError(_) => 1400,
+            EphemeralError::ProxyError(_) => 1401,
+            EphemeralError::IoError(_) => 1402,
+            EphemeralError::SerializationError(_) => 1403,
+            EphemeralError::ConfigurationError(_) => 1404,
+
+            EphemeralError::InvalidInput(_) => 1500,
+            EphemeralError::ResourceExhausted(_) => 1501,
+            EphemeralError::Timeout(_) => 1502,
+            EphemeralError::ProtocolError(_) => 1503,
+
+            EphemeralError::Internal(_) => 1900,
+            EphemeralError::TransportError(_) => 1901,
+        }
+    }
+
+    /// Returns a structured error string in the format "E{code}: {redacted_message}".
+    ///
+    /// Safe for external consumption (logs, exit messages, CI parsing).
+    pub fn to_structured(&self) -> String {
+        format!("E{}: {}", self.code(), self.to_redacted_string())
+    }
+
     /// Returns a redacted error message safe for external consumption.
     /// Sensitive details (keys, internal paths, specific validation failures) are hidden.
     pub fn to_redacted_string(&self) -> String {
@@ -182,6 +235,52 @@ pub type EnclaveResult<T> = std::result::Result<T, EnclaveError>;
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_error_codes_unique() {
+        let variants: Vec<EphemeralError> = vec![
+            EphemeralError::DecompositionError(String::new()),
+            EphemeralError::ValidationError(String::new()),
+            EphemeralError::Validation(crate::ValidationError::InvalidFormat(String::new())),
+            EphemeralError::UnsupportedOperatorError(String::new()),
+            EphemeralError::AttestationError(String::new()),
+            EphemeralError::EncryptionError(String::new()),
+            EphemeralError::DecryptionError(String::new()),
+            EphemeralError::KmsError(String::new()),
+            EphemeralError::CommunicationError(String::new()),
+            EphemeralError::VSockError(String::new()),
+            EphemeralError::NetworkError(String::new()),
+            EphemeralError::AssemblyError(String::new()),
+            EphemeralError::InferenceError(String::new()),
+            EphemeralError::MemorySecurityError(String::new()),
+            EphemeralError::StorageError(String::new()),
+            EphemeralError::ProxyError(String::new()),
+            EphemeralError::IoError(String::new()),
+            EphemeralError::SerializationError(String::new()),
+            EphemeralError::ConfigurationError(String::new()),
+            EphemeralError::InvalidInput(String::new()),
+            EphemeralError::ResourceExhausted(String::new()),
+            EphemeralError::Timeout(String::new()),
+            EphemeralError::ProtocolError(String::new()),
+            EphemeralError::Internal(String::new()),
+            EphemeralError::TransportError(String::new()),
+        ];
+
+        let codes: Vec<u16> = variants.iter().map(|e| e.code()).collect();
+        let mut seen = std::collections::HashSet::new();
+        for code in &codes {
+            assert!(seen.insert(code), "Duplicate error code: {}", code);
+        }
+        assert_eq!(codes.len(), 25, "Must cover all 25 EphemeralError variants");
+    }
+
+    #[test]
+    fn test_error_structured_format() {
+        let err = EphemeralError::KmsError("secret key data".to_string());
+        let structured = err.to_structured();
+        assert_eq!(structured, "E1103: Key management service error");
+        assert!(!structured.contains("secret"));
+    }
 
     #[test]
     fn test_error_redaction() {

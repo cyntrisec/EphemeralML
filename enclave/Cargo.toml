@@ -45,6 +45,8 @@ confidential-ml-transport = { workspace = true }
 confidential-ml-pipeline = { workspace = true }
 bytes = { workspace = true }
 async-trait = { workspace = true }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["json", "env-filter"] }
 
 [dev-dependencies]
 proptest = { workspace = true }

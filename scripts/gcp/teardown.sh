@@ -6,7 +6,8 @@
 #
 # Usage:
 #   bash scripts/gcp/teardown.sh
-#   bash scripts/gcp/teardown.sh --delete-image   # also delete the container image tag
+#   bash scripts/gcp/teardown.sh --yes             # skip confirmation (CI-friendly)
+#   bash scripts/gcp/teardown.sh --delete-image    # also delete the container image tag
 set -euo pipefail
 
 # ---------------------------------------------------------------------------
@@ -21,10 +22,13 @@ PROJECT="${EPHEMERALML_GCP_PROJECT:-}"
 ZONE="us-central1-a"
 DELETE_IMAGE=false
 
+YES=false
+
 # Parse args
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --delete-image) DELETE_IMAGE=true; shift ;;
+        --yes|-y)       YES=true; shift ;;
         --zone)         ZONE="$2"; shift 2 ;;
         --project)      PROJECT="$2"; shift 2 ;;
         *) echo "Unknown option: $1"; exit 1 ;;

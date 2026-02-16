@@ -280,7 +280,20 @@ mod tests {
         // Mock KMS Wrapped DEK (dummy for this test since our mock server ignores input and returns `dek` encrypted)
         let wrapped_dek = vec![0u8; 32];
 
-        // Create Manifest
+        // Create Manifest — use canonical_payload_bytes() via a temporary manifest
+        // to ensure the signing bytes match verify()'s canonical serialization.
+        let mut manifest = ModelManifest {
+            model_id: "test".to_string(),
+            version: "v1".to_string(),
+            model_hash: model_hash,
+            hash_algorithm: "sha256".to_string(),
+            key_id: "key".to_string(),
+            gcs_uris: Default::default(),
+            created_at: String::new(),
+            signature: vec![],
+        };
+        // ModelManifest::canonical_payload_bytes is private, so replicate:
+        // serialize to Value (BTreeMap-backed) then to bytes for sorted keys.
         #[derive(Serialize)]
         struct Payload {
             model_id: String,
@@ -289,25 +302,24 @@ mod tests {
             model_hash: Vec<u8>,
             hash_algorithm: String,
             key_id: String,
+            #[serde(default)]
+            gcs_uris: std::collections::BTreeMap<String, String>,
+            #[serde(default)]
+            created_at: String,
         }
         let payload = Payload {
-            model_id: "test".to_string(),
-            version: "v1".to_string(),
-            model_hash: model_hash.clone(),
-            hash_algorithm: "sha256".to_string(),
-            key_id: "key".to_string(),
+            model_id: manifest.model_id.clone(),
+            version: manifest.version.clone(),
+            model_hash: manifest.model_hash.clone(),
+            hash_algorithm: manifest.hash_algorithm.clone(),
+            key_id: manifest.key_id.clone(),
+            gcs_uris: Default::default(),
+            created_at: String::new(),
         };
-        let payload_bytes = serde_json::to_vec(&payload).unwrap();
+        let value = serde_json::to_value(&payload).unwrap();
+        let payload_bytes = serde_json::to_vec(&value).unwrap();
         let signature = signing_key.sign(&payload_bytes);
-
-        let manifest = ModelManifest {
-            model_id: "test".to_string(),
-            version: "v1".to_string(),
-            model_hash: model_hash,
-            hash_algorithm: "sha256".to_string(),
-            key_id: "key".to_string(),
-            signature: signature.to_bytes().to_vec(),
-        };
+        manifest.signature = signature.to_bytes().to_vec();
 
         // Test Load
         let loaded_bytes = loader.load_model(&manifest, &wrapped_dek).await.unwrap();

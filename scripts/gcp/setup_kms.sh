@@ -53,6 +53,8 @@ echo "  KMS key: ${KMS_KEY_RESOURCE}"
 
 # 2. Workload Identity Pool
 echo "[2/5] Creating Workload Identity Pool..."
+PROJECT_NUMBER=$(gcloud projects describe "${PROJECT}" --format='value(projectNumber)')
+
 gcloud iam workload-identity-pools create "${POOL}" \
     --project="${PROJECT}" \
     --location="global" \
@@ -61,18 +63,28 @@ gcloud iam workload-identity-pools create "${POOL}" \
 
 # 3. OIDC Provider (Confidential Computing attestation)
 echo "[3/5] Creating OIDC provider for TDX attestation..."
-PROJECT_NUMBER=$(gcloud projects describe "${PROJECT}" --format='value(projectNumber)')
 
-gcloud iam workload-identity-pools providers create-oidc "${PROVIDER}" \
+# Compute WIP_AUDIENCE first — the provider must accept tokens with this audience.
+# CsKmsClient requests Launcher tokens with aud=WIP_AUDIENCE, so --allowed-audiences must match.
+WIP_AUDIENCE="//iam.googleapis.com/projects/${PROJECT_NUMBER}/locations/global/workloadIdentityPools/${POOL}/providers/${PROVIDER}"
+
+if ! gcloud iam workload-identity-pools providers create-oidc "${PROVIDER}" \
     --project="${PROJECT}" \
     --location="global" \
     --workload-identity-pool="${POOL}" \
     --issuer-uri="${ISSUER}" \
-    --allowed-audiences="${ISSUER}" \
+    --allowed-audiences="${WIP_AUDIENCE}" \
     --attribute-mapping="google.subject=assertion.sub,attribute.image_digest=assertion.submods.container.image_digest" \
-    2>/dev/null || echo "  Provider already exists"
+    2>/dev/null; then
+    echo "  Provider already exists — updating allowed-audiences..."
+    gcloud iam workload-identity-pools providers update-oidc "${PROVIDER}" \
+        --project="${PROJECT}" \
+        --location="global" \
+        --workload-identity-pool="${POOL}" \
+        --allowed-audiences="${WIP_AUDIENCE}" \
+        2>/dev/null || echo "  WARNING: Could not update provider allowed-audiences"
+fi
 
-WIP_AUDIENCE="//iam.googleapis.com/projects/${PROJECT_NUMBER}/locations/global/workloadIdentityPools/${POOL}/providers/${PROVIDER}"
 echo "  WIP audience: ${WIP_AUDIENCE}"
 
 # 4. IAM: WIP principals → KMS decrypter

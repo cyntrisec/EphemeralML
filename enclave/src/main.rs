@@ -12,6 +12,8 @@ use ephemeral_ml_common::ReceiptSigningKey;
 
 use clap::Parser;
 use std::path::PathBuf;
+#[allow(unused_imports)]
+use tracing::{error, info, warn};
 
 #[cfg(feature = "production")]
 use ephemeral_ml_enclave::attestation_bridge::AttestationBridge;
@@ -140,6 +142,25 @@ struct Args {
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    // Initialize structured logging
+    let log_format = std::env::var("EPHEMERALML_LOG_FORMAT").unwrap_or_default();
+    if log_format == "json" {
+        tracing_subscriber::fmt()
+            .json()
+            .with_env_filter(
+                tracing_subscriber::EnvFilter::from_default_env()
+                    .add_directive(tracing::Level::INFO.into()),
+            )
+            .init();
+    } else {
+        tracing_subscriber::fmt()
+            .with_env_filter(
+                tracing_subscriber::EnvFilter::from_default_env()
+                    .add_directive(tracing::Level::INFO.into()),
+            )
+            .init();
+    }
+
     let args = Args::parse();
 
     // --smoke-tdx: generate a TDX quote, print measurements, and exit.
@@ -208,8 +229,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 TeeAttestationBridge, TeeAttestationProvider,
             };
 
-            println!("EphemeralML Enclave v2.0 (GCP Confidential VM Mode)");
-            println!();
+            info!("EphemeralML Enclave v2.0 (GCP Confidential VM Mode)");
 
             // 0. Validate required --model-source
             let model_source = args
@@ -222,13 +242,25 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             let has_tsm = std::path::Path::new("/sys/kernel/config/tsm/report").exists();
 
             let tee_provider = if args.synthetic {
-                println!("[gcp] Using synthetic TDX quotes (--synthetic flag)");
+                info!(
+                    step = "attestation",
+                    mode = "synthetic",
+                    "Using synthetic TDX quotes"
+                );
                 TeeAttestationProvider::synthetic()
             } else if has_tsm {
-                println!("[gcp] Using real configfs-tsm TDX attestation");
+                info!(
+                    step = "attestation",
+                    mode = "configfs-tsm",
+                    "Using real TDX attestation"
+                );
                 TeeAttestationProvider::new()?
             } else if cs_mode {
-                println!("[gcp] Confidential Space detected (no configfs-tsm) — using Launcher JWT attestation");
+                info!(
+                    step = "attestation",
+                    mode = "cs_launcher",
+                    "Confidential Space detected — using Launcher JWT attestation"
+                );
                 TeeAttestationProvider::synthetic()
             } else {
                 return Err(
@@ -278,10 +310,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         )
                         .into());
                     }
-                    println!(
-                        "[gcp] Loading model from local: {}",
-                        args.model_dir.display()
-                    );
+                    info!(step = "model_load", source = "local", path = %args.model_dir.display(), "Loading model from local directory");
                     let config_bytes = std::fs::read(args.model_dir.join("config.json"))
                         .map_err(|e| format!("Failed to read config.json: {}", e))?;
                     let tokenizer_bytes = std::fs::read(args.model_dir.join("tokenizer.json"))
@@ -302,7 +331,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                 )
                                 .into());
                             }
-                            println!("[gcp] Model hash verified: {}", hex::encode(expected));
+                            info!(step = "hash_verify", hash = %hex::encode(expected), "Model hash verified");
                         }
                         loaded_model_hash = Some(actual);
                     }
@@ -314,11 +343,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         &tokenizer_bytes,
                     )?;
 
-                    println!(
-                        "[gcp] Model '{}' loaded in {:.1}ms (local, {:.1} MB)",
-                        args.model_id,
-                        load_start.elapsed().as_secs_f64() * 1000.0,
-                        weights_bytes.len() as f64 / (1024.0 * 1024.0),
+                    info!(
+                        step = "model_load",
+                        source = "local",
+                        model_id = %args.model_id,
+                        elapsed_ms = load_start.elapsed().as_secs_f64() * 1000.0,
+                        size_mb = weights_bytes.len() as f64 / (1024.0 * 1024.0),
+                        "Model loaded"
                     );
                 }
                 "gcs-kms" => {
@@ -334,10 +365,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     use ephemeral_ml_enclave::crypto_util::decrypt_artifact;
                     use ephemeral_ml_enclave::gcp_kms_client::GcpKmsClient;
 
-                    println!(
-                        "[gcp] Fetching encrypted model from gs://{}/{}",
-                        args.gcp_bucket, args.gcp_model_prefix
-                    );
+                    info!(step = "model_load", source = "gcs-kms", bucket = %args.gcp_bucket, prefix = %args.gcp_model_prefix, "Fetching encrypted model from GCS");
 
                     let gcs = GcsModelLoader::new(&args.gcp_bucket);
 
@@ -346,12 +374,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     let weights_enc_path =
                         format!("{}/model.safetensors.enc", args.gcp_model_prefix);
                     let dek_path = format!("{}/wrapped_dek.bin", args.gcp_model_prefix);
+                    let manifest_path = format!("{}/manifest.json", args.gcp_model_prefix);
 
-                    let (config_art, tokenizer_art, weights_enc_art, dek_art) = tokio::join!(
+                    let (config_art, tokenizer_art, weights_enc_art, dek_art, manifest_art) = tokio::join!(
                         gcs.fetch_object(&config_path),
                         gcs.fetch_object(&tokenizer_path),
                         gcs.fetch_object(&weights_enc_path),
                         gcs.fetch_object(&dek_path),
+                        gcs.fetch_object(&manifest_path),
                     );
 
                     let config_bytes = config_art?.bytes;
@@ -359,22 +389,85 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     let encrypted_weights = weights_enc_art?.bytes;
                     let wrapped_dek = dek_art?.bytes;
 
-                    println!(
-                        "[gcp] Decrypting DEK via Cloud KMS (key: {})",
-                        &kms_key[kms_key.rfind('/').map(|i| i + 1).unwrap_or(0)..]
-                    );
+                    // Determine if manifest verification is required (pubkey configured)
+                    let require_manifest =
+                        std::env::var("EPHEMERALML_MODEL_SIGNING_PUBKEY").is_ok();
+
+                    // Parse manifest — fail-closed if pubkey is set
+                    let manifest = match manifest_art {
+                        Ok(art) => {
+                            match ephemeral_ml_common::ModelManifest::from_json(&art.bytes) {
+                                Ok(m) => {
+                                    info!(step = "manifest", model_id = %m.model_id, version = %m.version, "Manifest found");
+                                    Some(m)
+                                }
+                                Err(e) => {
+                                    if require_manifest {
+                                        return Err(format!(
+                                            "manifest.json parse failed and EPHEMERALML_MODEL_SIGNING_PUBKEY is set: {}", e
+                                        ).into());
+                                    }
+                                    warn!(step = "manifest", error = %e, "manifest.json parse failed");
+                                    None
+                                }
+                            }
+                        }
+                        Err(e) => {
+                            if require_manifest {
+                                return Err(format!(
+                                    "manifest.json missing from GCS but EPHEMERALML_MODEL_SIGNING_PUBKEY is set \
+                                     (manifest is required when signing pubkey is configured): {}", e
+                                ).into());
+                            }
+                            info!(
+                                step = "manifest",
+                                "No manifest.json in GCS (backwards-compatible mode)"
+                            );
+                            None
+                        }
+                    };
+
+                    // Verify manifest signature (fail-closed)
+                    if let Some(ref m) = manifest {
+                        if let Ok(pk_hex) = std::env::var("EPHEMERALML_MODEL_SIGNING_PUBKEY") {
+                            let pk_bytes = hex::decode(&pk_hex).map_err(|e| {
+                                format!("EPHEMERALML_MODEL_SIGNING_PUBKEY: invalid hex: {}", e)
+                            })?;
+                            if pk_bytes.len() != 32 {
+                                return Err(format!(
+                                    "EPHEMERALML_MODEL_SIGNING_PUBKEY must be 64 hex chars (32 bytes), got {}",
+                                    pk_bytes.len()
+                                ).into());
+                            }
+                            m.verify(&pk_bytes).map_err(|e| {
+                                format!("Manifest signature verification failed: {}", e)
+                            })?;
+                            info!(step = "manifest", "Manifest signature verified");
+                        }
+                    }
+
+                    let kms_key_short = &kms_key[kms_key.rfind('/').map(|i| i + 1).unwrap_or(0)..];
+                    info!(step = "kms_decrypt", key = %kms_key_short, "Decrypting DEK via Cloud KMS");
 
                     // Auto-detect: use Confidential Space Launcher path if available,
                     // otherwise fall back to Cloud Attestation API path.
                     let launcher_socket =
                         std::path::Path::new("/run/container_launcher/teeserver.sock");
                     let dek = if launcher_socket.exists() {
-                        println!("[gcp] Using Confidential Space Launcher KMS path");
+                        info!(
+                            step = "kms_decrypt",
+                            path = "cs_launcher",
+                            "Using Confidential Space Launcher KMS path"
+                        );
                         let cs_kms =
                             ephemeral_ml_enclave::cs_kms_client::CsKmsClient::new(wip_audience);
                         cs_kms.decrypt(kms_key, &wrapped_dek).await?
                     } else {
-                        println!("[gcp] Using Cloud Attestation API KMS path");
+                        info!(
+                            step = "kms_decrypt",
+                            path = "cloud_attestation_api",
+                            "Using Cloud Attestation API KMS path"
+                        );
                         let kms_provider = if args.synthetic {
                             ephemeral_ml_enclave::tee_provider::TeeAttestationProvider::synthetic()
                         } else {
@@ -413,12 +506,23 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                 )
                                 .into());
                             }
-                            println!("[gcp] Model hash verified: {}", hex::encode(expected));
+                            info!(step = "hash_verify", source = "gcs-kms", hash = %hex::encode(expected), "Model hash verified");
                         } else {
                             return Err("--expected-model-hash is required for gcs-kms source. \
                                 Cannot verify model integrity without a pinned hash."
                                 .into());
                         }
+
+                        // Validate manifest hash if present
+                        if let Some(ref m) = manifest {
+                            m.validate_hash(&actual)
+                                .map_err(|e| format!("Manifest hash validation failed: {}", e))?;
+                            info!(
+                                step = "manifest",
+                                "Manifest hash validated against decrypted weights"
+                            );
+                        }
+
                         loaded_model_hash = Some(actual);
                     }
 
@@ -429,18 +533,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         &tokenizer_bytes,
                     )?;
 
-                    println!(
-                        "[gcp] Model '{}' loaded in {:.1}ms (KMS-encrypted GCS, {:.1} MB)",
-                        args.model_id,
-                        load_start.elapsed().as_secs_f64() * 1000.0,
-                        weights_bytes.len() as f64 / (1024.0 * 1024.0),
+                    info!(
+                        step = "model_load",
+                        source = "gcs-kms",
+                        model_id = %args.model_id,
+                        elapsed_ms = load_start.elapsed().as_secs_f64() * 1000.0,
+                        size_mb = weights_bytes.len() as f64 / (1024.0 * 1024.0),
+                        "Model loaded"
                     );
                 }
                 "gcs" => {
-                    println!(
-                        "[gcp] Fetching model from gs://{}/{}",
-                        args.gcp_bucket, args.gcp_model_prefix
-                    );
+                    info!(step = "model_load", source = "gcs", bucket = %args.gcp_bucket, prefix = %args.gcp_model_prefix, "Fetching model from GCS");
                     let gcs = GcsModelLoader::new(&args.gcp_bucket);
 
                     let expected = expected_model_hash.as_ref().ok_or(
@@ -451,14 +554,84 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     let config_path = format!("{}/config.json", args.gcp_model_prefix);
                     let tokenizer_path = format!("{}/tokenizer.json", args.gcp_model_prefix);
                     let weights_path = format!("{}/model.safetensors", args.gcp_model_prefix);
+                    let manifest_path = format!("{}/manifest.json", args.gcp_model_prefix);
 
-                    let (config_art, tokenizer_art) = tokio::join!(
+                    let (config_art, tokenizer_art, manifest_art) = tokio::join!(
                         gcs.fetch_object(&config_path),
                         gcs.fetch_object(&tokenizer_path),
+                        gcs.fetch_object(&manifest_path),
                     );
                     let config_bytes = config_art?.bytes;
                     let tokenizer_bytes = tokenizer_art?.bytes;
+
+                    // Determine if manifest verification is required (pubkey configured)
+                    let require_manifest =
+                        std::env::var("EPHEMERALML_MODEL_SIGNING_PUBKEY").is_ok();
+
+                    // Parse manifest — fail-closed if pubkey is set
+                    let manifest = match manifest_art {
+                        Ok(art) => {
+                            match ephemeral_ml_common::ModelManifest::from_json(&art.bytes) {
+                                Ok(m) => {
+                                    info!(step = "manifest", model_id = %m.model_id, version = %m.version, "Manifest found");
+                                    Some(m)
+                                }
+                                Err(e) => {
+                                    if require_manifest {
+                                        return Err(format!(
+                                            "manifest.json parse failed and EPHEMERALML_MODEL_SIGNING_PUBKEY is set: {}", e
+                                        ).into());
+                                    }
+                                    warn!(step = "manifest", error = %e, "manifest.json parse failed");
+                                    None
+                                }
+                            }
+                        }
+                        Err(e) => {
+                            if require_manifest {
+                                return Err(format!(
+                                    "manifest.json missing from GCS but EPHEMERALML_MODEL_SIGNING_PUBKEY is set \
+                                     (manifest is required when signing pubkey is configured): {}", e
+                                ).into());
+                            }
+                            info!(
+                                step = "manifest",
+                                "No manifest.json in GCS (backwards-compatible mode)"
+                            );
+                            None
+                        }
+                    };
+
+                    // Verify manifest signature (fail-closed)
+                    if let Some(ref m) = manifest {
+                        if let Ok(pk_hex) = std::env::var("EPHEMERALML_MODEL_SIGNING_PUBKEY") {
+                            let pk_bytes = hex::decode(&pk_hex).map_err(|e| {
+                                format!("EPHEMERALML_MODEL_SIGNING_PUBKEY: invalid hex: {}", e)
+                            })?;
+                            if pk_bytes.len() != 32 {
+                                return Err(format!(
+                                    "EPHEMERALML_MODEL_SIGNING_PUBKEY must be 64 hex chars (32 bytes), got {}",
+                                    pk_bytes.len()
+                                ).into());
+                            }
+                            m.verify(&pk_bytes).map_err(|e| {
+                                format!("Manifest signature verification failed: {}", e)
+                            })?;
+                            info!(step = "manifest", "Manifest signature verified");
+                        }
+                    }
+
                     let weights_bytes = gcs.fetch_verified(&weights_path, expected).await?;
+
+                    // Validate manifest hash if present
+                    if let Some(ref m) = manifest {
+                        m.validate_hash(expected)
+                            .map_err(|e| format!("Manifest hash validation failed: {}", e))?;
+                        info!(
+                            step = "manifest",
+                            "Manifest hash validated against fetched weights"
+                        );
+                    }
 
                     engine.register_model(
                         &args.model_id,
@@ -468,12 +641,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     )?;
 
                     loaded_model_hash = Some(*expected);
-                    println!("[gcp] Model hash verified: {}", hex::encode(expected));
+                    info!(step = "hash_verify", source = "gcs", hash = %hex::encode(expected), "Model hash verified");
 
-                    println!(
-                        "[gcp] Model '{}' loaded in {:.1}ms (GCS)",
-                        args.model_id,
-                        load_start.elapsed().as_secs_f64() * 1000.0,
+                    info!(
+                        step = "model_load",
+                        source = "gcs",
+                        model_id = %args.model_id,
+                        elapsed_ms = load_start.elapsed().as_secs_f64() * 1000.0,
+                        "Model loaded"
                     );
                 }
                 other => {
@@ -497,21 +672,22 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 {
                     Ok(jwt) => match CsTokenClient::parse_claims(&jwt) {
                         Ok(claims) => {
-                            println!("[gcp] Confidential Space identity:");
-                            println!("  issuer:  {}", claims.iss);
-                            println!("  subject: {}", claims.sub);
-                            println!("  swname:  {}", claims.swname);
-                            if !claims.eat_nonce.is_empty() {
-                                println!("  eat_nonce[0]: {}", claims.eat_nonce[0]);
-                            }
+                            info!(
+                                step = "cs_identity",
+                                issuer = %claims.iss,
+                                subject = %claims.sub,
+                                swname = %claims.swname,
+                                "Confidential Space identity obtained"
+                            );
                         }
                         Err(e) => {
-                            println!("[gcp] CS token received but claims parse failed: {}", e);
+                            warn!(step = "cs_identity", error = %e, "CS token received but claims parse failed");
                         }
                     },
                     Err(_) => {
-                        println!(
-                            "[gcp] Launcher socket not available (not running in Confidential Space)"
+                        info!(
+                            step = "cs_identity",
+                            "Launcher socket not available (not running in Confidential Space)"
                         );
                     }
                 }
@@ -579,15 +755,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             // their mock attestation. The server still presents its TDX attestation
             // via the bridge — one-way attestation model.
             if args.direct {
-                println!("[gcp] Direct mode: accepting client connections on 0.0.0.0:9000");
-                println!(
-                    "[gcp] Boot attestation hash: {} ({})",
-                    hex::encode(boot_attestation_hash),
-                    if args.synthetic {
-                        "synthetic"
-                    } else {
-                        "hardware"
-                    }
+                info!(
+                    step = "boot_evidence",
+                    mode = "direct",
+                    quote_hash = %hex::encode(boot_attestation_hash),
+                    synthetic = args.synthetic,
+                    "Direct mode: accepting client connections on 0.0.0.0:9000"
                 );
                 let client_verifier = confidential_ml_transport::MockVerifier::new();
                 run_direct_tcp(
@@ -624,9 +797,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 args.data_out_target.clone()
             };
 
-            println!(
-                "[gcp] Stage worker: control={}, data_in={}, data_out={}",
-                gcp_control, gcp_data_in, gcp_data_out
+            info!(
+                step = "pipeline",
+                control = %gcp_control,
+                data_in = %gcp_data_in,
+                data_out = %gcp_data_out,
+                "Stage worker starting"
             );
 
             run_stage_tcp(
@@ -651,11 +827,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     }
 
-    println!("EphemeralML Enclave v2.0");
+    info!("EphemeralML Enclave v2.0");
 
     #[cfg(feature = "mock")]
     {
-        println!("EphemeralML Enclave (Mock Mode)");
+        info!("EphemeralML Enclave (Mock Mode)");
 
         // Load model weights
         let load_start = std::time::Instant::now();
@@ -664,7 +840,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         let tokenizer_path = args.model_dir.join("tokenizer.json");
         let weights_path = args.model_dir.join("model.safetensors");
 
-        println!("Loading model from: {}", args.model_dir.display());
+        info!(step = "model_load", source = "local", path = %args.model_dir.display(), "Loading model");
 
         let config_bytes = std::fs::read(&config_path)
             .map_err(|e| format!("Failed to read {}: {}", config_path.display(), e))?;
@@ -683,14 +859,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         )?;
 
         let load_elapsed = load_start.elapsed();
-        println!(
-            "Model '{}' loaded in {:.1}ms (weights: {:.1} MB)",
-            args.model_id,
-            load_elapsed.as_secs_f64() * 1000.0,
-            weights_bytes.len() as f64 / (1024.0 * 1024.0),
+        info!(
+            step = "model_load",
+            source = "local",
+            model_id = %args.model_id,
+            elapsed_ms = load_elapsed.as_secs_f64() * 1000.0,
+            size_mb = weights_bytes.len() as f64 / (1024.0 * 1024.0),
+            "Model loaded"
         );
 
-        println!("Starting pipeline stage worker on TCP...");
+        info!("Starting pipeline stage worker on TCP...");
 
         use confidential_ml_transport::MockProvider;
         use ephemeral_ml_enclave::mock::MockAttestationProvider;
@@ -724,7 +902,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
             let client_verifier = MockVerifier::new();
 
-            println!("[mock] Direct mode: accepting client connections on 127.0.0.1:9000");
+            info!(
+                step = "boot_evidence",
+                mode = "direct",
+                "Mock direct mode: accepting client connections on 127.0.0.1:9000"
+            );
             run_direct_tcp(
                 engine,
                 mock_provider,
@@ -739,9 +921,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         } else {
             let executor = EphemeralStageExecutor::new(engine, mock_provider, receipt_key);
 
-            println!(
-                "Stage worker: control={}, data_in={}, data_out→{}",
-                args.control_addr, args.data_in_addr, args.data_out_target
+            info!(
+                step = "pipeline",
+                control = %args.control_addr,
+                data_in = %args.data_in_addr,
+                data_out = %args.data_out_target,
+                "Stage worker starting"
             );
 
             run_stage_tcp(
@@ -759,7 +944,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     #[cfg(feature = "production")]
     {
-        println!("EphemeralML Enclave (Production Mode)");
+        info!("EphemeralML Enclave (Production Mode)");
 
         let attestation_provider = DefaultAttestationProvider::new()?;
         let engine = CandleInferenceEngine::new()?;
@@ -769,20 +954,21 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         let receipt_pk = receipt_key.public_key_bytes();
 
         // Connectivity health check
-        println!("[boot] Starting connectivity health check...");
+        info!(step = "health_check", "Starting connectivity health check");
         use ephemeral_ml_enclave::kms_client::KmsClient;
         use ephemeral_ml_enclave::model_loader::ModelLoader;
 
         let kms_client = KmsClient::new(attestation_provider.clone(), receipt_pk);
 
-        // Load trusted model signing key from environment (hex-encoded Ed25519 public key)
+        // Load trusted model signing public key from environment (hex-encoded Ed25519 public key)
         let trusted_signing_key: [u8; 32] = {
-            let key_hex = std::env::var("EPHEMERALML_MODEL_SIGNING_KEY").unwrap_or_else(|_| {
+            let key_hex = std::env::var("EPHEMERALML_MODEL_SIGNING_PUBKEY").unwrap_or_else(|_| {
                 // Default to the policy root public key (same trust anchor)
                 "12740b4f2ff1f9dac52cac6db77f3a57950fb15134c8580295c98bd809673444".to_string()
             });
-            let key_bytes = hex::decode(&key_hex)
-                .map_err(|e| format!("EPHEMERALML_MODEL_SIGNING_KEY must be valid hex: {}", e))?;
+            let key_bytes = hex::decode(&key_hex).map_err(|e| {
+                format!("EPHEMERALML_MODEL_SIGNING_PUBKEY must be valid hex: {}", e)
+            })?;
             if key_bytes.len() != 32 || key_bytes.iter().all(|&b| b == 0) {
                 return Err("Model signing key must be 32 non-zero bytes".into());
             }
@@ -796,24 +982,33 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             hex::decode("542c469d0d4c936b05fc57e64e0f5acd1048f186c4705801dcddf718cfde9b74")
                 .unwrap();
 
-        println!("[boot] Fetching test-model-001 from S3 via Host Proxy...");
+        info!(
+            step = "model_load",
+            source = "s3",
+            "Fetching test-model-001 from S3 via Host Proxy"
+        );
         let proxy = loader.kms_client().proxy_client();
         match proxy.fetch_model("test-model-001").await {
             Ok(bytes) => {
-                println!("[boot] SUCCESS: Fetched {} bytes from S3!", bytes.len());
+                info!(
+                    step = "model_load",
+                    bytes = bytes.len(),
+                    "Fetched model from S3"
+                );
                 use sha2::{Digest, Sha256};
                 let mut hasher = Sha256::new();
                 hasher.update(&bytes);
                 let hash = hasher.finalize();
                 if hash.as_slice() == expected_encrypted_hash.as_slice() {
-                    println!("[boot] VERIFIED: Encrypted artifact hash matches.");
+                    info!(step = "hash_verify", "Encrypted artifact hash matches");
                 } else {
-                    println!("[boot] Hash mismatch! Got: {}", hex::encode(hash));
+                    error!(step = "hash_verify", expected = %hex::encode(&expected_encrypted_hash), actual = %hex::encode(&hash), "Hash mismatch");
                 }
             }
-            Err(e) => println!(
-                "[boot] WARNING: S3 fetch failed (expected if model not uploaded): {:?}",
-                e
+            Err(e) => warn!(
+                step = "model_load",
+                error = ?e,
+                "S3 fetch failed (expected if model not uploaded)"
             ),
         }
 
@@ -831,27 +1026,40 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 match hex::decode(&hex_str) {
                     Ok(bytes) if bytes.len() == 48 => {
                         expected_pcrs.insert(i as usize, bytes);
-                        println!("[boot] Pinned PCR{}: {}...", i, &hex_str[..16]);
+                        info!(
+                            step = "pcr_pin",
+                            pcr = i,
+                            prefix = &hex_str[..16],
+                            "Pinned PCR"
+                        );
                     }
                     Ok(bytes) => {
-                        eprintln!("[boot] WARNING: EPHEMERALML_EXPECTED_PCR{} has wrong length ({} bytes, expected 48), ignoring", i, bytes.len());
+                        warn!(
+                            step = "pcr_pin",
+                            pcr = i,
+                            len = bytes.len(),
+                            "EPHEMERALML_EXPECTED_PCR has wrong length, ignoring"
+                        );
                     }
                     Err(e) => {
-                        eprintln!(
-                            "[boot] WARNING: EPHEMERALML_EXPECTED_PCR{} invalid hex: {}, ignoring",
-                            i, e
-                        );
+                        warn!(step = "pcr_pin", pcr = i, error = %e, "EPHEMERALML_EXPECTED_PCR invalid hex, ignoring");
                     }
                 }
             }
         }
         if expected_pcrs.is_empty() {
-            eprintln!("[boot] WARNING: No EPHEMERALML_EXPECTED_PCR{{0,1,2}} set. Peer Nitro attestation measurements are NOT pinned.");
+            warn!(step = "pcr_pin", "No EPHEMERALML_EXPECTED_PCR0/1/2 set. Peer Nitro attestation measurements are NOT pinned.");
         }
         let verifier =
             NitroVerifier::new(expected_pcrs).expect("Failed to initialize NitroVerifier");
 
-        println!("Production stage worker: control=127.0.0.1:5000, data_in=127.0.0.1:5001, data_out→127.0.0.1:5002");
+        info!(
+            step = "pipeline",
+            control = "127.0.0.1:5000",
+            data_in = "127.0.0.1:5001",
+            data_out = "127.0.0.1:5002",
+            "Production stage worker starting"
+        );
 
         run_stage_tcp(
             executor,

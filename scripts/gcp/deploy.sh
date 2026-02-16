@@ -28,19 +28,23 @@ DEBUG=false
 TAG=""
 SKIP_BUILD=false
 
-# KMS / model configuration
-MODEL_SOURCE="local"
-KMS_KEY=""
-WIP_AUDIENCE=""
-GCS_BUCKET="ephemeralml-models"
-GCP_MODEL_PREFIX="models/minilm"
-EXPECTED_MODEL_HASH=""
+# KMS / model configuration — hydrate from env vars (set by init_gcp.sh / setup_kms.sh)
+MODEL_SOURCE="${EPHEMERALML_MODEL_SOURCE:-local}"
+KMS_KEY="${EPHEMERALML_GCP_KMS_KEY:-${GCP_KMS_KEY:-}}"
+WIP_AUDIENCE="${EPHEMERALML_GCP_WIP_AUDIENCE:-${GCP_WIP_AUDIENCE:-}}"
+GCS_BUCKET="${EPHEMERALML_GCS_BUCKET:-${GCP_BUCKET:-ephemeralml-models}}"
+GCP_MODEL_PREFIX="${EPHEMERALML_GCP_MODEL_PREFIX:-models/minilm}"
+EXPECTED_MODEL_HASH="${EPHEMERALML_EXPECTED_MODEL_HASH:-}"
+MODEL_SIGNING_PUBKEY="${EPHEMERALML_MODEL_SIGNING_PUBKEY:-}"
+
+YES=false
 
 # Parse args
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --debug)        DEBUG=true; shift ;;
         --skip-build)   SKIP_BUILD=true; shift ;;
+        --yes|-y)       YES=true; shift ;;
         --tag)          TAG="$2"; shift 2 ;;
         --zone)         ZONE="$2"; shift 2 ;;
         --project)      PROJECT="$2"; shift 2 ;;
@@ -50,6 +54,7 @@ while [[ $# -gt 0 ]]; do
         --bucket)       GCS_BUCKET="$2"; shift 2 ;;
         --model-prefix) GCP_MODEL_PREFIX="$2"; shift 2 ;;
         --model-hash)   EXPECTED_MODEL_HASH="$2"; shift 2 ;;
+        --model-signing-pubkey) MODEL_SIGNING_PUBKEY="$2"; shift 2 ;;
         *) echo "Unknown option: $1"; exit 1 ;;
     esac
 done
@@ -208,6 +213,10 @@ if [[ -n "${KMS_KEY}" ]]; then
     METADATA="${METADATA},tee-env-EPHEMERALML_GCP_MODEL_PREFIX=${GCP_MODEL_PREFIX}"
     METADATA="${METADATA},tee-env-EPHEMERALML_EXPECTED_MODEL_HASH=${EXPECTED_MODEL_HASH}"
 fi
+# Signing pubkey applies to both gcs and gcs-kms model sources
+if [[ -n "${MODEL_SIGNING_PUBKEY}" ]]; then
+    METADATA="${METADATA},tee-env-EPHEMERALML_MODEL_SIGNING_PUBKEY=${MODEL_SIGNING_PUBKEY}"
+fi
 
 gcloud compute instances create "${INSTANCE_NAME}" \
     --project="${PROJECT}" \
@@ -222,7 +231,7 @@ gcloud compute instances create "${INSTANCE_NAME}" \
     --metadata="${METADATA}" \
     --tags=ephemeralml \
     --service-account="${SA_EMAIL}" \
-    --scopes=cloud-platform
+    --scopes=https://www.googleapis.com/auth/devstorage.read_only,https://www.googleapis.com/auth/cloudkms,https://www.googleapis.com/auth/logging.write,https://www.googleapis.com/auth/monitoring.write
 
 echo "  Instance '${INSTANCE_NAME}' created."
 echo

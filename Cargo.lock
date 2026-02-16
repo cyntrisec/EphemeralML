@@ -1782,6 +1782,8 @@ dependencies = [
  "tokenizers",
  "tokio",
  "tokio-vsock 0.4.0",
+ "tracing",
+ "tracing-subscriber",
  "uuid",
  "x25519-dalek",
  "zeroize",

@@ -120,6 +120,7 @@ infra/hello-enclave/tfplan
 
 # Private keys (NEVER commit)
 keys/*_private*
+.signing_key.hex
 
 # Security audit (internal only)
 docs/security_audit_2025-01-31.md

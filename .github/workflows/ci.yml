@@ -94,7 +94,7 @@ jobs:
           cargo run --no-default-features --features gcp -p ephemeral-ml-enclave -- --help 2>&1 | grep -q 'EPHEMERALML_GCP_WIP_AUDIENCE'
 
       - name: Doctor preflight
-        run: bash scripts/doctor.sh || true
+        run: bash scripts/doctor.sh
 
       - name: GCS-KMS integration
         run: cargo test --no-default-features --features gcp -p ephemeral-ml-enclave --test gcs_kms_integration
@@ -111,3 +111,25 @@ jobs:
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           ignore: RUSTSEC-2023-0071
+
+  release-gate:
+    name: Release Gate (GCP)
+    runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/heads/release/')
+    needs: [fmt, clippy, test, build-gcp, smoke]
+    steps:
+      - uses: actions/checkout@v6
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+      - uses: actions/cache@v5
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-release-${{ hashFiles('**/Cargo.lock') }}
+      - name: Prepare model
+        run: bash scripts/download_model.sh
+      - name: Run release gate
+        run: bash scripts/gcp/release_gate.sh

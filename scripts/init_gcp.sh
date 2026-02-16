@@ -6,7 +6,8 @@
 # availability.
 #
 # Usage:
-#   bash scripts/init_gcp.sh
+#   bash scripts/init_gcp.sh                        # interactive (default)
+#   bash scripts/init_gcp.sh --non-interactive      # CI mode (values from env vars)
 #   source .env.gcp && bash scripts/gcp/deploy.sh
 set -euo pipefail
 
@@ -14,19 +15,32 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 ENV_FILE="${PROJECT_DIR}/.env.gcp"
 
+NON_INTERACTIVE=false
+
+# Parse flags
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --non-interactive) NON_INTERACTIVE=true; shift ;;
+        *) echo "Unknown option: $1"; exit 1 ;;
+    esac
+done
+
 echo ""
 echo "EphemeralML GCP Init"
 echo "===================="
 echo ""
 
-# Helper: prompt with default
+# Helper: prompt with default (or read from env in non-interactive mode)
 prompt() {
     local varname="$1"
     local prompt_text="$2"
     local default="$3"
     local value
 
-    if [ -n "${default}" ]; then
+    if $NON_INTERACTIVE; then
+        # In non-interactive mode, use the default (which may come from env)
+        value="${default}"
+    elif [ -n "${default}" ]; then
         read -r -p "${prompt_text} [${default}]: " value
         value="${value:-${default}}"
     else
@@ -46,6 +60,9 @@ prompt GCP_PROJECT "GCP Project" "${DEFAULT_PROJECT}"
 
 if [ -z "${GCP_PROJECT}" ]; then
     echo "ERROR: GCP project is required."
+    if $NON_INTERACTIVE; then
+        echo "Set EPHEMERALML_GCP_PROJECT environment variable."
+    fi
     exit 1
 fi
 
@@ -63,8 +80,11 @@ else
 fi
 echo ""
 
-prompt ZONE "Zone" "us-central1-a"
-prompt MODEL_SOURCE "Model source (local/gcs-kms)" "local"
+DEFAULT_ZONE="${EPHEMERALML_GCP_ZONE:-us-central1-a}"
+DEFAULT_MODEL_SOURCE="${EPHEMERALML_MODEL_SOURCE:-local}"
+
+prompt ZONE "Zone" "${DEFAULT_ZONE}"
+prompt MODEL_SOURCE "Model source (local/gcs-kms)" "${DEFAULT_MODEL_SOURCE}"
 
 GCS_BUCKET=""
 GCP_MODEL_PREFIX=""
@@ -73,13 +93,32 @@ WIP_AUDIENCE=""
 EXPECTED_MODEL_HASH=""
 
 if [ "${MODEL_SOURCE}" = "gcs-kms" ]; then
-    echo ""
-    echo "  KMS-gated model configuration:"
-    prompt GCS_BUCKET "GCS bucket" "ephemeralml-models-${GCP_PROJECT}"
-    prompt GCP_MODEL_PREFIX "GCS model prefix" "models/minilm"
-    prompt KMS_KEY "KMS key resource name" ""
-    prompt WIP_AUDIENCE "WIP audience string" ""
-    prompt EXPECTED_MODEL_HASH "Expected model hash (SHA-256)" ""
+    DEFAULT_BUCKET="${EPHEMERALML_GCS_BUCKET:-ephemeralml-models-${GCP_PROJECT}}"
+    DEFAULT_PREFIX="${EPHEMERALML_GCP_MODEL_PREFIX:-models/minilm}"
+    DEFAULT_KMS="${EPHEMERALML_GCP_KMS_KEY:-}"
+    DEFAULT_WIP="${EPHEMERALML_GCP_WIP_AUDIENCE:-}"
+    DEFAULT_HASH="${EPHEMERALML_EXPECTED_MODEL_HASH:-}"
+
+    if $NON_INTERACTIVE; then
+        # In non-interactive mode, require KMS key and WIP audience
+        if [ -z "${DEFAULT_KMS}" ]; then
+            echo "ERROR: EPHEMERALML_GCP_KMS_KEY is required in non-interactive gcs-kms mode."
+            exit 1
+        fi
+        if [ -z "${DEFAULT_WIP}" ]; then
+            echo "ERROR: EPHEMERALML_GCP_WIP_AUDIENCE is required in non-interactive gcs-kms mode."
+            exit 1
+        fi
+    else
+        echo ""
+        echo "  KMS-gated model configuration:"
+    fi
+
+    prompt GCS_BUCKET "GCS bucket" "${DEFAULT_BUCKET}"
+    prompt GCP_MODEL_PREFIX "GCS model prefix" "${DEFAULT_PREFIX}"
+    prompt KMS_KEY "KMS key resource name" "${DEFAULT_KMS}"
+    prompt WIP_AUDIENCE "WIP audience string" "${DEFAULT_WIP}"
+    prompt EXPECTED_MODEL_HASH "Expected model hash (SHA-256)" "${DEFAULT_HASH}"
 fi
 
 # Write .env.gcp
