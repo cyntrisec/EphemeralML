@@ -31,6 +31,7 @@ echo "===================="
 echo ""
 
 # Helper: prompt with default (or read from env in non-interactive mode)
+# Uses printf -v instead of eval to prevent command injection.
 prompt() {
     local varname="$1"
     local prompt_text="$2"
@@ -46,7 +47,7 @@ prompt() {
     else
         read -r -p "${prompt_text}: " value
     fi
-    eval "${varname}=\"${value}\""
+    printf -v "${varname}" '%s' "${value}"
 }
 
 # Auto-detect GCP project

@@ -1,6 +1,7 @@
 use crate::kms_proxy_client::KmsProxyClient;
 use crate::{EnclaveError, EphemeralError, Result};
 use ephemeral_ml_common::{KmsProxyErrorCode, KmsRequest, KmsResponse};
+use rand::RngCore;
 use std::collections::HashMap;
 
 /// KMS Stub Client for Enclave
@@ -56,8 +57,8 @@ impl<A: crate::attestation::AttestationProvider> KmsClient<A> {
         encryption_context: Option<HashMap<String, String>>,
     ) -> Result<Vec<u8>> {
         // 1. Generate attestation document with random nonce and receipt signing key binding
-        let mut nonce = [0u8; 16];
-        rand::RngCore::fill_bytes(&mut rand::thread_rng(), &mut nonce);
+        let mut nonce = [0u8; 32];
+        rand::rngs::OsRng.fill_bytes(&mut nonce);
         let attestation_doc = self
             .attestation_provider
             .generate_attestation(&nonce, self.receipt_signing_pubkey)?;

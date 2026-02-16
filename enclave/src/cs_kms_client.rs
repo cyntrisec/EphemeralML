@@ -19,6 +19,7 @@ use crate::{EnclaveError, EphemeralError, Result};
 use base64::engine::general_purpose::STANDARD as BASE64;
 use base64::Engine;
 use serde::Deserialize;
+use sha2::{Digest, Sha256};
 
 /// Google STS (Security Token Service) endpoint.
 const STS_ENDPOINT: &str = "https://sts.googleapis.com/v1/token";
@@ -147,8 +148,14 @@ impl CsKmsClient {
     /// `key_name` is the full Cloud KMS key resource name, e.g.:
     /// `projects/my-project/locations/global/keyRings/my-kr/cryptoKeys/my-key`
     pub async fn decrypt(&self, key_name: &str, ciphertext: &[u8]) -> Result<Vec<u8>> {
-        // Get access token via Launcher → STS
-        let access_token = self.get_access_token(&self.wip_audience, vec![]).await?;
+        // Derive a session-binding nonce from the ciphertext hash.
+        // This binds the OIDC token's eat_nonce to the specific DEK being decrypted,
+        // preventing token replay across different model keys.
+        let ciphertext_hash = Sha256::digest(ciphertext);
+        let nonce = hex::encode(&ciphertext_hash[..16]);
+        let access_token = self
+            .get_access_token(&self.wip_audience, vec![nonce])
+            .await?;
 
         let url = format!("{}/{}:decrypt", self.kms_api_base, key_name);
 

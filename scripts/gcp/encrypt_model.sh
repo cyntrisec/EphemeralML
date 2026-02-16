@@ -66,15 +66,25 @@ ENCRYPTED_FILE="${TMPDIR}/model.safetensors.enc"
 openssl rand -out "${NONCE_FILE}" 12
 
 # Use Python for ChaCha20-Poly1305 encryption (openssl enc doesn't support it directly)
+# All file paths passed via environment variables to prevent shell injection.
+_PY_DEK_FILE="${DEK_FILE}" \
+_PY_NONCE_FILE="${NONCE_FILE}" \
+_PY_WEIGHTS="${WEIGHTS}" \
+_PY_ENCRYPTED_FILE="${ENCRYPTED_FILE}" \
 python3 -c "
 import sys, os
 
+dek_file = os.environ['_PY_DEK_FILE']
+nonce_file = os.environ['_PY_NONCE_FILE']
+weights_file = os.environ['_PY_WEIGHTS']
+encrypted_file = os.environ['_PY_ENCRYPTED_FILE']
+
 # Read inputs
-with open('${DEK_FILE}', 'rb') as f:
+with open(dek_file, 'rb') as f:
     dek = f.read()
-with open('${NONCE_FILE}', 'rb') as f:
+with open(nonce_file, 'rb') as f:
     nonce = f.read()
-with open('${WEIGHTS}', 'rb') as f:
+with open(weights_file, 'rb') as f:
     plaintext = f.read()
 
 # ChaCha20-Poly1305 encryption via cryptography library
@@ -98,11 +108,11 @@ except ImportError:
     ciphertext = result.stdout
 
 # Write: nonce || ciphertext+tag
-with open('${ENCRYPTED_FILE}', 'wb') as f:
+with open(encrypted_file, 'wb') as f:
     f.write(nonce)
     f.write(ciphertext)
 
-enc_size = os.path.getsize('${ENCRYPTED_FILE}')
+enc_size = os.path.getsize(encrypted_file)
 print(f'  Encrypted: {enc_size} bytes ({enc_size / 1024 / 1024:.1f} MB)')
 "
 

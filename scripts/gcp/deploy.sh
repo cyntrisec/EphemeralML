@@ -59,6 +59,31 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
+# Validate metadata-safe values: reject commas and shell metacharacters
+# that could inject additional metadata items into the gcloud command.
+validate_metadata_value() {
+    local name="$1"
+    local value="$2"
+    if [[ "${value}" == *","* ]]; then
+        echo "ERROR: ${name} contains a comma, which would corrupt instance metadata."
+        echo "  Value: ${value}"
+        exit 1
+    fi
+    if [[ "${value}" == *"'"* || "${value}" == *'"'* || "${value}" == *'$'* || "${value}" == *'`'* ]]; then
+        echo "ERROR: ${name} contains shell metacharacters (quotes, \$, backticks)."
+        echo "  Value: ${value}"
+        exit 1
+    fi
+}
+
+# Validate all user-controllable values that end up in instance metadata
+for _var_name in PROJECT ZONE MODEL_SOURCE GCS_BUCKET GCP_MODEL_PREFIX KMS_KEY WIP_AUDIENCE EXPECTED_MODEL_HASH MODEL_SIGNING_PUBKEY; do
+    _var_val="${!_var_name}"
+    if [[ -n "${_var_val}" ]]; then
+        validate_metadata_value "${_var_name}" "${_var_val}"
+    fi
+done
+
 # Validate required flags for gcs-kms mode
 if [[ "${MODEL_SOURCE}" == "gcs-kms" ]]; then
     for var in KMS_KEY WIP_AUDIENCE EXPECTED_MODEL_HASH; do

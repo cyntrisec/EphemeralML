@@ -99,14 +99,23 @@ NONCE_FILE="${TMPDIR}/nonce.bin"
 ENCRYPTED_FILE="${TMPDIR}/model.safetensors.enc"
 openssl rand -out "${NONCE_FILE}" 12
 
+_PY_DEK_FILE="${DEK_FILE}" \
+_PY_NONCE_FILE="${NONCE_FILE}" \
+_PY_WEIGHTS="${WEIGHTS}" \
+_PY_ENCRYPTED_FILE="${ENCRYPTED_FILE}" \
 python3 -c "
 import sys, os
 
-with open('${DEK_FILE}', 'rb') as f:
+dek_file = os.environ['_PY_DEK_FILE']
+nonce_file = os.environ['_PY_NONCE_FILE']
+weights_file = os.environ['_PY_WEIGHTS']
+encrypted_file = os.environ['_PY_ENCRYPTED_FILE']
+
+with open(dek_file, 'rb') as f:
     dek = f.read()
-with open('${NONCE_FILE}', 'rb') as f:
+with open(nonce_file, 'rb') as f:
     nonce = f.read()
-with open('${WEIGHTS}', 'rb') as f:
+with open(weights_file, 'rb') as f:
     plaintext = f.read()
 
 try:
@@ -117,11 +126,11 @@ except ImportError:
     print('ERROR: python3-cryptography required. Install: pip3 install cryptography', file=sys.stderr)
     sys.exit(1)
 
-with open('${ENCRYPTED_FILE}', 'wb') as f:
+with open(encrypted_file, 'wb') as f:
     f.write(nonce)
     f.write(ciphertext)
 
-enc_size = os.path.getsize('${ENCRYPTED_FILE}')
+enc_size = os.path.getsize(encrypted_file)
 print(f'  Encrypted: {enc_size} bytes ({enc_size / 1024 / 1024:.1f} MB)')
 "
 
@@ -144,14 +153,25 @@ fi
 echo "[5/6] Generating signed manifest..."
 
 # Ed25519 signing key from env or generate new
-SIGNING_KEY="${EPHEMERALML_MODEL_SIGNING_KEY:-}"
+# All values are passed via environment variables to prevent shell injection
+# into the Python interpreter.
+_PY_MODEL_HASH="${MODEL_HASH}" \
+_PY_SIGNING_KEY="${EPHEMERALML_MODEL_SIGNING_KEY:-}" \
+_PY_MODEL_DIR="${MODEL_DIR}" \
+_PY_MODEL_ID="${MODEL_ID}" \
+_PY_MODEL_VERSION="${MODEL_VERSION}" \
+_PY_KMS_KEY="${KMS_KEY}" \
+_PY_BUCKET="${BUCKET}" \
+_PY_GCS_PREFIX="${GCS_PREFIX}" \
+_PY_CREATED_AT="${CREATED_AT}" \
+_PY_MANIFEST_OUT="${TMPDIR}/manifest.json" \
 python3 -c "
-import json, sys, hashlib
+import json, sys, os
 
-model_hash_hex = '${MODEL_HASH}'
+model_hash_hex = os.environ['_PY_MODEL_HASH']
 model_hash_bytes = bytes.fromhex(model_hash_hex)
 
-signing_key_hex = '${SIGNING_KEY}'
+signing_key_hex = os.environ.get('_PY_SIGNING_KEY', '')
 
 try:
     from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
@@ -172,33 +192,36 @@ else:
     private_key = Ed25519PrivateKey.generate()
     sk_raw = private_key.private_bytes_raw()
     # Write private key to a persistent secure file — NEVER print to stdout
-    import stat, os as _os
-    key_file = _os.path.join('${MODEL_DIR}', '.signing_key.hex')
+    import stat
+    model_dir = os.environ['_PY_MODEL_DIR']
+    key_file = os.path.join(model_dir, '.signing_key.hex')
     with open(key_file, 'w') as kf:
         kf.write(sk_raw.hex())
-    _os.chmod(key_file, stat.S_IRUSR | stat.S_IWUSR)  # 0600
+    os.chmod(key_file, stat.S_IRUSR | stat.S_IWUSR)  # 0600
     print(f'  Generated new signing key: {key_file} (0600)')
     print(f'  IMPORTANT: Save this key. To reuse:')
-    print(f'    export EPHEMERALML_MODEL_SIGNING_KEY=$(cat {key_file})')
+    print(f'    export EPHEMERALML_MODEL_SIGNING_KEY=\$(cat {key_file})')
 
 pk_raw = private_key.public_key().public_bytes_raw()
 print(f'  Public key (EPHEMERALML_MODEL_SIGNING_PUBKEY): {pk_raw.hex()}')
 
 # Build signing payload (matches Rust ManifestSigningPayload serde)
 # serde_bytes serializes Vec<u8> as a list of integers in JSON
+bucket = os.environ['_PY_BUCKET']
+prefix = os.environ['_PY_GCS_PREFIX']
 payload = {
-    'model_id': '${MODEL_ID}',
-    'version': '${MODEL_VERSION}',
+    'model_id': os.environ['_PY_MODEL_ID'],
+    'version': os.environ['_PY_MODEL_VERSION'],
     'model_hash': list(model_hash_bytes),
     'hash_algorithm': 'sha256',
-    'key_id': '${KMS_KEY}',
+    'key_id': os.environ['_PY_KMS_KEY'],
     'gcs_uris': {
-        'config': 'gs://${BUCKET}/${GCS_PREFIX}/config.json',
-        'tokenizer': 'gs://${BUCKET}/${GCS_PREFIX}/tokenizer.json',
-        'weights_enc': 'gs://${BUCKET}/${GCS_PREFIX}/model.safetensors.enc',
-        'wrapped_dek': 'gs://${BUCKET}/${GCS_PREFIX}/wrapped_dek.bin',
+        'config': f'gs://{bucket}/{prefix}/config.json',
+        'tokenizer': f'gs://{bucket}/{prefix}/tokenizer.json',
+        'weights_enc': f'gs://{bucket}/{prefix}/model.safetensors.enc',
+        'wrapped_dek': f'gs://{bucket}/{prefix}/wrapped_dek.bin',
     },
-    'created_at': '${CREATED_AT}',
+    'created_at': os.environ['_PY_CREATED_AT'],
 }
 
 # Sign the canonical JSON payload
@@ -210,7 +233,8 @@ manifest = dict(payload)
 manifest['signature'] = list(signature)
 
 # Write manifest.json (pretty-printed for readability)
-with open('${TMPDIR}/manifest.json', 'w') as f:
+manifest_out = os.environ['_PY_MANIFEST_OUT']
+with open(manifest_out, 'w') as f:
     json.dump(manifest, f, indent=2)
 
 print(f'  Manifest written ({len(signature)} byte signature)')

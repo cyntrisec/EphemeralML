@@ -241,11 +241,21 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             let cs_mode = std::path::Path::new("/run/container_launcher/teeserver.sock").exists();
             let has_tsm = std::path::Path::new("/sys/kernel/config/tsm/report").exists();
 
+            // In release builds, reject --synthetic for GCP mode to prevent
+            // accidental use of fake attestation in production.
+            #[cfg(not(debug_assertions))]
+            if args.synthetic {
+                return Err("--synthetic is not allowed in release builds. \
+                    Deploy on a TDX CVM or Confidential Space for real attestation. \
+                    Build with debug profile for local development."
+                    .into());
+            }
+
             let tee_provider = if args.synthetic {
-                info!(
+                warn!(
                     step = "attestation",
                     mode = "synthetic",
-                    "Using synthetic TDX quotes"
+                    "WARNING: Using synthetic TDX quotes — NOT FOR PRODUCTION"
                 );
                 TeeAttestationProvider::synthetic()
             } else if has_tsm {
@@ -256,16 +266,22 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 );
                 TeeAttestationProvider::new()?
             } else if cs_mode {
-                info!(
+                // Confidential Space detected. configfs-tsm may not be exposed
+                // inside the container, but the Launcher has already attested
+                // the workload. Use synthetic TDX quotes as a placeholder for
+                // transport-level attestation; the real attestation is via
+                // Launcher OIDC tokens (CsKmsClient path).
+                warn!(
                     step = "attestation",
                     mode = "cs_launcher",
-                    "Confidential Space detected — using Launcher JWT attestation"
+                    "Confidential Space detected — TDX configfs-tsm not available, \
+                    using synthetic quotes for transport. Launcher JWT handles KMS attestation."
                 );
                 TeeAttestationProvider::synthetic()
             } else {
                 return Err(
-                    "No TDX attestation source available. Use --synthetic for local dev, \
-                    or deploy on a TDX CVM / Confidential Space."
+                    "No TDX attestation source available. Use --synthetic for local dev \
+                    (debug builds only), or deploy on a TDX CVM / Confidential Space."
                         .into(),
                 );
             };
@@ -468,7 +484,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                             path = "cloud_attestation_api",
                             "Using Cloud Attestation API KMS path"
                         );
+                        // --synthetic is already rejected in release builds (see above).
+                        // In debug builds, allow synthetic for local development.
                         let kms_provider = if args.synthetic {
+                            warn!("Using synthetic TDX provider for KMS — NOT FOR PRODUCTION");
                             ephemeral_ml_enclave::tee_provider::TeeAttestationProvider::synthetic()
                         } else {
                             ephemeral_ml_enclave::tee_provider::TeeAttestationProvider::new()?
@@ -723,12 +742,21 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
 
             // 5. Create transport attestation bridge (for SecureChannel handshake)
+            // --synthetic already rejected in release builds at startup.
             let bridge_provider = if args.synthetic {
+                warn!("Using synthetic TDX provider for transport bridge — NOT FOR PRODUCTION");
                 TeeAttestationProvider::synthetic()
             } else if has_tsm {
                 TeeAttestationProvider::new()?
-            } else {
+            } else if cs_mode {
+                // CS mode without configfs-tsm: Launcher handles attestation,
+                // transport uses synthetic quotes as placeholder.
+                warn!("CS mode without configfs-tsm — transport bridge uses synthetic quotes");
                 TeeAttestationProvider::synthetic()
+            } else {
+                return Err("No TDX attestation source for transport bridge. \
+                    Deploy on TDX CVM or Confidential Space."
+                    .into());
             };
             let bridge = TeeAttestationBridge::new(bridge_provider, receipt_pk);
 
