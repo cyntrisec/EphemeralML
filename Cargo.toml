@@ -4,6 +4,7 @@ members = [
     "client",
     "host",
     "enclave",
+    "verifier-api",
 ]
 resolver = "2"
 

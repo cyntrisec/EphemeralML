@@ -7,6 +7,7 @@ pub mod metrics;
 pub mod model_manifest;
 pub mod model_registry;
 pub mod receipt_signing;
+pub mod receipt_verify;
 pub mod storage_protocol;
 pub mod transport_types;
 pub mod types;
@@ -36,6 +37,8 @@ pub use receipt_signing::{
 pub use transport_types::{ConnectionState, EphemeralUserData};
 
 pub use validation::{InputValidator, ValidationError, ValidationLimits};
+
+pub use receipt_verify::{verify_receipt, CheckResults, CheckStatus, VerifyOptions, VerifyResult};
 
 /// Version information for the common crate
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");

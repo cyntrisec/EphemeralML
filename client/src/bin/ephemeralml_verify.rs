@@ -14,6 +14,7 @@
 use anyhow::{bail, Context, Result};
 use clap::Parser;
 use ed25519_dalek::VerifyingKey;
+use ephemeral_ml_common::receipt_verify::{CheckStatus, VerifyOptions, VerifyResult};
 use ephemeral_ml_common::AttestationReceipt;
 use std::fs;
 use std::path::PathBuf;
@@ -65,49 +66,6 @@ struct Args {
     verbose: bool,
 }
 
-#[derive(serde::Serialize)]
-struct VerifyResult {
-    verified: bool,
-    receipt_id: String,
-    model_id: String,
-    model_version: String,
-    measurement_type: String,
-    sequence_number: u64,
-    execution_timestamp: u64,
-    checks: CheckResults,
-    #[serde(skip_serializing_if = "Vec::is_empty")]
-    errors: Vec<String>,
-    #[serde(skip_serializing_if = "Vec::is_empty")]
-    warnings: Vec<String>,
-}
-
-#[derive(serde::Serialize)]
-struct CheckResults {
-    signature: CheckStatus,
-    model_match: CheckStatus,
-    measurement_type: CheckStatus,
-    timestamp_fresh: CheckStatus,
-    measurements_present: CheckStatus,
-}
-
-#[derive(serde::Serialize)]
-#[serde(rename_all = "lowercase")]
-enum CheckStatus {
-    Pass,
-    Fail,
-    Skip,
-}
-
-impl std::fmt::Display for CheckStatus {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            CheckStatus::Pass => write!(f, "PASS"),
-            CheckStatus::Fail => write!(f, "FAIL"),
-            CheckStatus::Skip => write!(f, "SKIP"),
-        }
-    }
-}
-
 fn main() -> Result<()> {
     let args = Args::parse();
 
@@ -120,98 +78,17 @@ fn main() -> Result<()> {
     // 2. Resolve public key
     let public_key = resolve_public_key(&args)?;
 
-    // 3. Run checks
-    let mut errors: Vec<String> = Vec::new();
-    let mut warnings: Vec<String> = Vec::new();
-
-    // Check: Ed25519 signature
-    let sig_status = match receipt.verify_signature(&public_key) {
-        Ok(true) => CheckStatus::Pass,
-        Ok(false) => {
-            errors.push("Ed25519 signature verification failed".to_string());
-            CheckStatus::Fail
-        }
-        Err(e) => {
-            errors.push(format!("Signature error: {}", e));
-            CheckStatus::Fail
-        }
+    // 3. Build options from CLI args
+    let options = VerifyOptions {
+        expected_model: args.expected_model.clone(),
+        expected_measurement_type: Some(args.measurement_type.clone()),
+        max_age_secs: args.max_age,
     };
 
-    // Check: model ID
-    let model_status = if let Some(ref expected) = args.expected_model {
-        if receipt.model_id == *expected {
-            CheckStatus::Pass
-        } else {
-            errors.push(format!(
-                "Model mismatch: receipt has '{}', expected '{}'",
-                receipt.model_id, expected
-            ));
-            CheckStatus::Fail
-        }
-    } else {
-        CheckStatus::Skip
-    };
+    // 4. Run verification
+    let result = ephemeral_ml_common::verify_receipt(&receipt, &public_key, &options);
 
-    // Check: measurement type
-    let mt_status = if args.measurement_type == "any" {
-        CheckStatus::Skip
-    } else if receipt.enclave_measurements.measurement_type == args.measurement_type {
-        CheckStatus::Pass
-    } else {
-        errors.push(format!(
-            "Measurement type mismatch: receipt has '{}', expected '{}'",
-            receipt.enclave_measurements.measurement_type, args.measurement_type
-        ));
-        CheckStatus::Fail
-    };
-
-    // Check: timestamp freshness
-    let ts_status = if args.max_age == 0 {
-        CheckStatus::Skip
-    } else {
-        let now = ephemeral_ml_common::current_timestamp();
-        let age = now.saturating_sub(receipt.execution_timestamp);
-        if age <= args.max_age {
-            CheckStatus::Pass
-        } else {
-            warnings.push(format!(
-                "Receipt is {}s old (max allowed: {}s)",
-                age, args.max_age
-            ));
-            CheckStatus::Fail
-        }
-    };
-
-    // Check: measurements present and valid
-    let meas_status = if receipt.enclave_measurements.is_valid() {
-        CheckStatus::Pass
-    } else {
-        warnings.push("Measurements are not 48 bytes (expected SHA-384)".to_string());
-        CheckStatus::Fail
-    };
-
-    let verified = matches!(sig_status, CheckStatus::Pass) && errors.is_empty();
-
-    let result = VerifyResult {
-        verified,
-        receipt_id: receipt.receipt_id.clone(),
-        model_id: receipt.model_id.clone(),
-        model_version: receipt.model_version.clone(),
-        measurement_type: receipt.enclave_measurements.measurement_type.clone(),
-        sequence_number: receipt.sequence_number,
-        execution_timestamp: receipt.execution_timestamp,
-        checks: CheckResults {
-            signature: sig_status,
-            model_match: model_status,
-            measurement_type: mt_status,
-            timestamp_fresh: ts_status,
-            measurements_present: meas_status,
-        },
-        errors,
-        warnings,
-    };
-
-    // 4. Output
+    // 5. Output
     match args.format.as_str() {
         "json" => {
             println!("{}", serde_json::to_string_pretty(&result)?);
