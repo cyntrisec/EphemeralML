@@ -207,10 +207,12 @@ impl InputValidator {
             });
         }
 
-        let ratio = uncompressed_size / compressed_size;
         const MAX_COMPRESSION_RATIO: usize = 1000; // 1000:1 ratio limit
 
-        if ratio > MAX_COMPRESSION_RATIO {
+        // Use multiplication instead of division to avoid truncation edge cases
+        // (e.g., uncompressed_size=1001, compressed_size=2 → ratio truncated to 500)
+        if uncompressed_size > compressed_size.saturating_mul(MAX_COMPRESSION_RATIO) {
+            let ratio = uncompressed_size / compressed_size;
             return Err(ValidationError::DecompressionBomb {
                 reason: format!(
                     "Compression ratio {} exceeds maximum {}",

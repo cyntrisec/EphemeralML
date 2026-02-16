@@ -294,6 +294,9 @@ impl AttestationProvider for TeeAttestationProvider {
             digest: vec![],
             timestamp: ephemeral_ml_common::current_timestamp(),
             pcrs: measurements,
+            // TDX quotes carry their signature inline (ECDSA-P256 in the quote body).
+            // There is no separate X.509 certificate chain like Nitro's COSE_Sign1.
+            // This field is kept empty for TDX; Nitro sets it to the CA chain.
             certificate: vec![],
             signature: envelope_bytes,
             nonce: Some(nonce.to_vec()),
@@ -355,6 +358,10 @@ impl AttestationProvider for TeeAttestationProvider {
             )))
         })?;
 
+        // Return a generic error to callers regardless of failure cause (wrong key,
+        // malformed ciphertext, truncated input). The specific HPKE error is logged
+        // server-side for debugging but never sent to the client, preventing an
+        // attacker from distinguishing error types via the response.
         let plaintext = receiver_ctx.open(cipher_text, b"").map_err(|e| {
             EnclaveError::Enclave(EphemeralError::DecryptionError(format!(
                 "HPKE open failed: {}",
@@ -430,6 +437,7 @@ impl TeeAttestationProvider {
             digest: vec![],
             timestamp: ephemeral_ml_common::current_timestamp(),
             pcrs: measurements,
+            // Empty for TDX — see comment in generate_attestation() above.
             certificate: vec![],
             signature: envelope_bytes,
             nonce: Some(nonce.to_vec()),

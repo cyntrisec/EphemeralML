@@ -92,15 +92,20 @@ echo
 echo "[2/7] Packaging model with manifest and uploading to GCS..."
 bash "${SCRIPT_DIR}/package_model.sh" "${MODEL_DIR}" "models/minilm" 2>&1 | tee "${EVIDENCE_DIR}/package_model_log.txt"
 
-# Extract model hash from package_model.sh output
-EXPECTED_MODEL_HASH="$(grep 'SHA-256:' "${EVIDENCE_DIR}/package_model_log.txt" | awk '{print $NF}')"
+# Extract model hash from package_model.sh output.
+# Match "SHA-256: <64 hex chars>" to avoid false matches on other lines.
+EXPECTED_MODEL_HASH="$(grep -oP 'SHA-256:\s+\K[0-9a-fA-F]{64}' "${EVIDENCE_DIR}/package_model_log.txt" | tail -1)"
 if [[ -z "${EXPECTED_MODEL_HASH}" ]]; then
-    echo "ERROR: Could not extract model hash from package_model.sh output"
+    echo "ERROR: Could not extract model hash from package_model.sh output."
+    echo "  Looked for 'SHA-256: <64 hex chars>' in ${EVIDENCE_DIR}/package_model_log.txt"
+    echo "  Last 10 lines of log:"
+    tail -10 "${EVIDENCE_DIR}/package_model_log.txt" || true
     exit 1
 fi
 
-# Extract public key for manifest verification
-MODEL_SIGNING_PUBKEY="$(grep 'EPHEMERALML_MODEL_SIGNING_PUBKEY' "${EVIDENCE_DIR}/package_model_log.txt" | awk '{print $NF}')"
+# Extract public key for manifest verification.
+# Match "EPHEMERALML_MODEL_SIGNING_PUBKEY <64 hex chars>" pattern.
+MODEL_SIGNING_PUBKEY="$(grep -oP 'EPHEMERALML_MODEL_SIGNING_PUBKEY\s+\K[0-9a-fA-F]{64}' "${EVIDENCE_DIR}/package_model_log.txt" | tail -1 || true)"
 if [[ -n "${MODEL_SIGNING_PUBKEY}" ]]; then
     echo "  Signing pubkey: ${MODEL_SIGNING_PUBKEY}"
     export EPHEMERALML_MODEL_SIGNING_PUBKEY="${MODEL_SIGNING_PUBKEY}"

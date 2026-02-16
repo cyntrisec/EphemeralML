@@ -335,6 +335,10 @@ impl AttestationReceipt {
         let signature = ed25519_dalek::Signature::from_bytes(&sig_array);
         let canonical_encoding = self.canonical_encoding()?;
 
+        // Use verify_strict() to reject malleable signatures (RFC 8032 §5.1.7).
+        // Unlike verify(), verify_strict() ensures the signature is in canonical
+        // form, preventing an attacker from creating multiple valid signatures
+        // for the same message.
         match public_key.verify_strict(&canonical_encoding, &signature) {
             Ok(()) => Ok(true),
             Err(_) => Ok(false),

@@ -20,8 +20,17 @@ INSTANCE_NAME="ephemeralml-cvm"
 DATA_PORT=9000            # direct mode: client connects to single port (9000)
 CONTROL_PORT=9000         # used only for the reachability probe
 RECEIPT_PATH="/tmp/ephemeralml-receipt.cbor"
+VERIFY_OUTPUT="$(mktemp /tmp/ephemeralml-verify-output.XXXXXX.txt)"
 MAX_WAIT=180              # seconds to wait for port reachability
 INFERENCE_TEXT="Verify EphemeralML on Confidential Space"
+
+# Clean up temp files on exit (even on failure).
+# RECEIPT_PATH is a well-known location the client binary writes to;
+# VERIFY_OUTPUT is script-only and uses mktemp to avoid collisions.
+cleanup_temp() {
+    rm -f "${RECEIPT_PATH}" "${VERIFY_OUTPUT}"
+}
+trap cleanup_temp EXIT
 
 # Defaults — project must come from env or --project flag
 PROJECT="${EPHEMERALML_GCP_PROJECT:-}"
@@ -107,7 +116,7 @@ cargo build --release --no-default-features --features gcp \
 # It connects to the data_in port (9001) where the enclave accepts inference traffic.
 EPHEMERALML_ENCLAVE_ADDR="${IP}:${DATA_PORT}" \
     cargo run --release --no-default-features --features gcp \
-    -p ephemeral-ml-client --bin ephemeral-ml-client 2>&1 | tee /tmp/ephemeralml-verify-output.txt
+    -p ephemeral-ml-client --bin ephemeral-ml-client 2>&1 | tee ${VERIFY_OUTPUT}
 
 CLIENT_EXIT=${PIPESTATUS[0]}
 
@@ -130,7 +139,7 @@ echo "[4/4] Verifying receipt..."
 
 if [[ -f "${RECEIPT_PATH}" ]]; then
     # Extract public key from client output if available
-    PK_HEX="$(grep -oP 'receipt_signing_key: \K[0-9a-f]{64}' /tmp/ephemeralml-verify-output.txt 2>/dev/null || true)"
+    PK_HEX="$(grep -oP 'receipt_signing_key: \K[0-9a-f]{64}' ${VERIFY_OUTPUT} 2>/dev/null || true)"
 
     if [[ -n "${PK_HEX}" ]]; then
         echo "  Receipt: ${RECEIPT_PATH}"
