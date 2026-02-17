@@ -326,12 +326,20 @@ impl SecureClient for SecureEnclaveClient {
             )));
         }
 
-        // 8. Verify timestamp freshness (reject stale receipts)
+        // 8. Verify timestamp freshness (reject stale and future timestamps)
         let now = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap_or_default()
             .as_secs();
-        let receipt_age = now.saturating_sub(output.receipt.execution_timestamp);
+        if output.receipt.execution_timestamp > now {
+            return Err(ClientError::Client(EphemeralError::ValidationError(
+                format!(
+                    "Receipt timestamp is in the future: {} > now {}",
+                    output.receipt.execution_timestamp, now
+                ),
+            )));
+        }
+        let receipt_age = now - output.receipt.execution_timestamp;
         if receipt_age > self.max_receipt_age_secs {
             return Err(ClientError::Client(EphemeralError::ValidationError(
                 format!(
@@ -499,7 +507,15 @@ impl SecureClient for SecureEnclaveClient {
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap_or_default()
             .as_secs();
-        let receipt_age = now.saturating_sub(output.receipt.execution_timestamp);
+        if output.receipt.execution_timestamp > now {
+            return Err(ClientError::Client(EphemeralError::ValidationError(
+                format!(
+                    "Receipt timestamp is in the future: {} > now {}",
+                    output.receipt.execution_timestamp, now
+                ),
+            )));
+        }
+        let receipt_age = now - output.receipt.execution_timestamp;
         if receipt_age > self.max_receipt_age_secs {
             return Err(ClientError::Client(EphemeralError::ValidationError(
                 format!(
@@ -661,7 +677,15 @@ impl SecureClient for SecureEnclaveClient {
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap_or_default()
             .as_secs();
-        let receipt_age = now.saturating_sub(output.receipt.execution_timestamp);
+        if output.receipt.execution_timestamp > now {
+            return Err(ClientError::Client(EphemeralError::ValidationError(
+                format!(
+                    "Receipt timestamp is in the future: {} > now {}",
+                    output.receipt.execution_timestamp, now
+                ),
+            )));
+        }
+        let receipt_age = now - output.receipt.execution_timestamp;
         if receipt_age > self.max_receipt_age_secs {
             return Err(ClientError::Client(EphemeralError::ValidationError(
                 format!(

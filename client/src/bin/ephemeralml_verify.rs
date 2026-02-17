@@ -138,27 +138,60 @@ fn resolve_public_key(args: &Args) -> Result<VerifyingKey> {
 
 /// Extract the receipt signing key from an attestation document.
 ///
-/// Supports both COSE_Sign1 (Nitro) and plain CBOR map (mock/TDX envelope) formats.
+/// For COSE_Sign1 (Nitro) format: verifies the COSE signature and certificate
+/// chain against the AWS Nitro root CA before extracting the key. Nonce and
+/// PCR policy are NOT checked (this is offline verification — the caller must
+/// independently verify those if needed).
+///
+/// For plain CBOR map (mock/TDX envelope) format: extracts the key directly.
+/// A warning is printed since the document is not cryptographically verified.
 fn extract_key_from_attestation(att_bytes: &[u8]) -> Result<VerifyingKey> {
     let doc: serde_cbor::Value =
         serde_cbor::from_slice(att_bytes).context("Invalid CBOR attestation document")?;
 
-    // Get the map: either from COSE_Sign1 payload[2] or directly
+    // Determine format and extract the payload map
     let map = match &doc {
         serde_cbor::Value::Array(arr) if arr.len() == 4 => {
             // COSE_Sign1: [protected, unprotected, payload, signature]
-            let payload_bytes = match &arr[2] {
-                serde_cbor::Value::Bytes(b) => b,
-                _ => bail!("COSE_Sign1 payload is not bytes"),
+            // Verify COSE signature + cert chain before trusting the payload
+            let att_doc = ephemeral_ml_common::AttestationDocument {
+                module_id: String::new(),
+                digest: vec![],
+                timestamp: 0,
+                pcrs: ephemeral_ml_common::PcrMeasurements::new(vec![], vec![], vec![]),
+                certificate: vec![],
+                signature: att_bytes.to_vec(),
+                nonce: None,
             };
-            let inner: serde_cbor::Value =
-                serde_cbor::from_slice(payload_bytes).context("Invalid COSE_Sign1 payload")?;
-            match inner {
-                serde_cbor::Value::Map(m) => m,
-                _ => bail!("COSE_Sign1 payload is not a CBOR map"),
-            }
+
+            // Use AttestationVerifier with a permissive policy (no PCR allowlist)
+            // to verify COSE_Sign1 signature + certificate chain.
+            // Nonce is skipped since this is offline verification.
+            let policy = ephemeral_ml_client::PolicyManager::new();
+            let mut verifier =
+                ephemeral_ml_client::attestation_verifier::AttestationVerifier::new(policy);
+            let identity = verifier
+                .verify_attestation_skip_nonce(&att_doc)
+                .context(
+                    "Attestation COSE signature or certificate chain verification failed. \
+                     The attestation document is not authentic.",
+                )?;
+
+            return VerifyingKey::from_bytes(&identity.receipt_signing_key)
+                .context("Invalid receipt signing key from verified attestation");
         }
-        serde_cbor::Value::Map(m) => m.clone(),
+        serde_cbor::Value::Map(m) => {
+            eprintln!(
+                "  WARNING: Attestation document is a plain CBOR map (mock/TDX envelope)."
+            );
+            eprintln!(
+                "  The receipt signing key is extracted WITHOUT cryptographic verification."
+            );
+            eprintln!(
+                "  For production use, provide a COSE_Sign1 attestation document."
+            );
+            m.clone()
+        }
         _ => bail!("Attestation document is neither COSE_Sign1 nor CBOR map"),
     };
 

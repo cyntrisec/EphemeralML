@@ -94,18 +94,16 @@ impl CmlAttestationVerifier for CoseVerifierBridge {
     }
 }
 
-/// Internal helper that performs COSE verification without nonce/freshness checks.
+/// Internal helper that performs COSE verification without nonce checks.
 ///
 /// In mock mode, this parses the CBOR map directly.
-/// In production mode, this verifies COSE_Sign1 + cert chain.
+/// In production mode, this verifies COSE_Sign1 + cert chain but skips nonce
+/// validation (cml-transport's handshake handles nonce verification).
 fn verify_attestation_for_bridge(
     verifier: &mut AttestationVerifier,
     doc: &ephemeral_ml_common::AttestationDocument,
 ) -> crate::Result<EnclaveIdentity> {
-    // For mock mode, use a dummy nonce (the verifier skips nonce check for mock docs)
-    // For production, nonce validation is handled by cml-transport
-    let dummy_nonce = vec![0u8; 32];
-    verifier.verify_attestation(doc, &dummy_nonce)
+    verifier.verify_attestation_skip_nonce(doc)
 }
 
 /// TDX envelope verifier bridge for GCP Confidential Space.
@@ -140,6 +138,16 @@ impl TdxEnvelopeVerifierBridge {
         });
 
         if mrtd.is_none() {
+            let require = std::env::var("EPHEMERALML_REQUIRE_MRTD")
+                .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
+                .unwrap_or(false);
+            if require {
+                panic!(
+                    "EPHEMERALML_REQUIRE_MRTD is set but no MRTD configured. \
+                     Set EPHEMERALML_EXPECTED_MRTD (96 hex chars) or disable \
+                     EPHEMERALML_REQUIRE_MRTD for development use."
+                );
+            }
             eprintln!(
                 "[client] WARNING: No expected MRTD configured. TDX peer measurements \
                  are NOT pinned. Set EPHEMERALML_EXPECTED_MRTD for production use."

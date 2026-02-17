@@ -70,6 +70,7 @@ impl AWSApiProxy {
             }
         }
 
+        let has_recipient = recipient.is_some();
         if let Some(attestation_doc) = recipient {
             builder = builder.recipient(
                 aws_sdk_kms::types::RecipientInfo::builder()
@@ -90,9 +91,19 @@ impl AWSApiProxy {
         })?;
 
         let aws_req_id = extract_request_id(&resp);
+
+        // When recipient-based encryption is used, plaintext MUST NOT be returned
+        // to the host — only ciphertext_for_recipient (encrypted to the enclave's
+        // RSA key from the attestation document). Suppress plaintext as defense-in-depth.
+        let plaintext = if has_recipient {
+            None
+        } else {
+            resp.plaintext().map(|b| b.as_ref().to_vec())
+        };
+
         Ok((
             KmsResponse::Decrypt {
-                plaintext: resp.plaintext().map(|b| b.as_ref().to_vec()),
+                plaintext,
                 key_id: resp.key_id().map(|s| s.to_string()),
                 ciphertext_for_recipient: resp
                     .ciphertext_for_recipient()

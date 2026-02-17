@@ -7,6 +7,7 @@ use openssl::x509::X509;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use thiserror::Error;
+use x509_parser::prelude::FromDer;
 
 /// Attestation verification errors
 #[derive(Error, Debug)]
@@ -166,6 +167,36 @@ impl AttestationVerifier {
         self.parse_and_validate_payload(payload, expected_nonce, doc)
     }
 
+    /// Verify attestation document without nonce or PCR policy enforcement.
+    ///
+    /// Performs full COSE_Sign1 signature verification and certificate chain
+    /// validation, but skips nonce comparison (caller handles nonce separately)
+    /// and does NOT check PCR values against the policy allowlist.
+    ///
+    /// This is intended for use by the attestation bridge, where cml-transport's
+    /// handshake already validates the nonce and PCR policy is enforced at
+    /// the application layer.
+    pub fn verify_attestation_skip_nonce(
+        &mut self,
+        doc: &AttestationDocument,
+    ) -> Result<EnclaveIdentity> {
+        // Mock bypass
+        #[cfg(all(feature = "mock", not(feature = "production")))]
+        if doc.module_id == "mock-enclave" || doc.module_id == "mock" {
+            // Delegate to verify_attestation with dummy nonce (mock skips nonce check)
+            return self.verify_attestation(doc, &[0u8; 32]);
+        }
+
+        // 1. Parse and verify the COSE structure and signature
+        let (payload, cert_chain) = self.verify_cose_signature(&doc.signature)?;
+
+        // 2. Validate certificate chain against AWS Nitro root
+        self.validate_certificate_chain(&cert_chain)?;
+
+        // 3. Parse payload — skip nonce, skip PCR policy
+        self.parse_payload_core(payload, None, doc, false)
+    }
+
     /// Verify attestation document without enforcing PCR policy.
     ///
     /// Performs full COSE_Sign1 signature verification and certificate chain
@@ -206,6 +237,16 @@ impl AttestationVerifier {
         doc: &AttestationDocument,
         enforce_pcr_policy: bool,
     ) -> Result<EnclaveIdentity> {
+        self.parse_payload_core(payload, Some(expected_nonce), doc, enforce_pcr_policy)
+    }
+
+    fn parse_payload_core(
+        &mut self,
+        payload: Vec<u8>,
+        expected_nonce: Option<&[u8]>,
+        doc: &AttestationDocument,
+        enforce_pcr_policy: bool,
+    ) -> Result<EnclaveIdentity> {
         // 3. Parse attestation payload (CBOR)
         let attestation_payload: serde_cbor::Value =
             serde_cbor::from_slice(&payload).map_err(|e| {
@@ -221,30 +262,34 @@ impl AttestationVerifier {
             ))
         })?;
 
-        // 4. Validate nonce
-        let doc_nonce = get_bytes_field(payload_map, "nonce")?;
-        if doc_nonce != expected_nonce {
-            return Err(ClientError::Client(
-                crate::EphemeralError::AttestationError(format!(
-                    "Nonce mismatch: expected {}, got {}",
-                    hex::encode(expected_nonce),
-                    hex::encode(&doc_nonce)
-                )),
-            ));
+        // 4. Validate nonce (skipped when expected_nonce is None — bridge mode)
+        if let Some(expected) = expected_nonce {
+            let doc_nonce = get_bytes_field(payload_map, "nonce")?;
+            if doc_nonce != expected {
+                return Err(ClientError::Client(
+                    crate::EphemeralError::AttestationError(format!(
+                        "Nonce mismatch: expected {}, got {}",
+                        hex::encode(expected),
+                        hex::encode(&doc_nonce)
+                    )),
+                ));
+            }
         }
 
-        // 5. Validate freshness timestamp
+        // 5. Validate freshness timestamp (skipped when nonce is None — bridge mode)
         // NSM timestamps are in milliseconds; convert to seconds for FreshnessEnforcer
         // which uses current_timestamp() (seconds since epoch).
-        let timestamp_raw = get_int_field(payload_map, "timestamp")? as u64;
-        let timestamp = if timestamp_raw > 1_000_000_000_000 {
-            // Value is in milliseconds (> year 2001 in ms)
-            timestamp_raw / 1000
-        } else {
-            timestamp_raw
-        };
-        self.freshness_enforcer
-            .validate_attestation_response(expected_nonce, timestamp)?;
+        if let Some(nonce) = expected_nonce {
+            let timestamp_raw = get_int_field(payload_map, "timestamp")? as u64;
+            let timestamp = if timestamp_raw > 1_000_000_000_000 {
+                // Value is in milliseconds (> year 2001 in ms)
+                timestamp_raw / 1000
+            } else {
+                timestamp_raw
+            };
+            self.freshness_enforcer
+                .validate_attestation_response(nonce, timestamp)?;
+        }
 
         // 6. Extract and validate PCRs
         let pcrs = self.extract_pcrs(payload_map)?;
@@ -404,11 +449,18 @@ impl AttestationVerifier {
         Ok((payload, cert_chain))
     }
 
-    /// Validate AWS certificate chain
+    /// Validate AWS certificate chain: signatures, validity periods, and basic constraints.
     fn validate_certificate_chain(&self, cert_chain: &[Vec<u8>]) -> Result<()> {
         let root_ca = X509::from_der(AWS_NITRO_ROOT_CA).map_err(|e| {
             ClientError::Client(crate::EphemeralError::AttestationError(format!(
                 "Invalid root CA: {}",
+                e
+            )))
+        })?;
+
+        let now = openssl::asn1::Asn1Time::days_from_now(0).map_err(|e| {
+            ClientError::Client(crate::EphemeralError::AttestationError(format!(
+                "Failed to get current time: {}",
                 e
             )))
         })?;
@@ -424,6 +476,7 @@ impl AttestationVerifier {
                 )))
             })?;
 
+            // Verify signature against parent cert's public key
             let pubkey = last_cert.public_key().map_err(|e| {
                 ClientError::Client(crate::EphemeralError::AttestationError(format!(
                     "Failed to extract public key from cert at index {}: {}",
@@ -444,6 +497,61 @@ impl AttestationVerifier {
                     )),
                 ));
             }
+
+            // Verify validity period (NotBefore <= now <= NotAfter)
+            if cert.not_before() > now {
+                return Err(ClientError::Client(
+                    crate::EphemeralError::AttestationError(format!(
+                        "Certificate at index {} is not yet valid (NotBefore: {})",
+                        i,
+                        cert.not_before()
+                    )),
+                ));
+            }
+            if cert.not_after() < now {
+                return Err(ClientError::Client(
+                    crate::EphemeralError::AttestationError(format!(
+                        "Certificate at index {} has expired (NotAfter: {})",
+                        i,
+                        cert.not_after()
+                    )),
+                ));
+            }
+
+            // Verify BasicConstraints: non-leaf certs must have CA:TRUE
+            // (i > 0 means it's an intermediate, not the leaf at index 0)
+            if i > 0 {
+                let (_, parsed) =
+                    x509_parser::certificate::X509Certificate::from_der(cert_der).map_err(
+                        |e| {
+                            ClientError::Client(crate::EphemeralError::AttestationError(format!(
+                                "x509 parse error at index {}: {}",
+                                i, e
+                            )))
+                        },
+                    )?;
+                match parsed.basic_constraints() {
+                    Ok(Some(bc)) => {
+                        if !bc.value.ca {
+                            return Err(ClientError::Client(
+                                crate::EphemeralError::AttestationError(format!(
+                                    "Intermediate cert at index {} does not have CA:TRUE",
+                                    i
+                                )),
+                            ));
+                        }
+                    }
+                    _ => {
+                        return Err(ClientError::Client(
+                            crate::EphemeralError::AttestationError(format!(
+                                "Intermediate cert at index {} is missing BasicConstraints extension",
+                                i
+                            )),
+                        ));
+                    }
+                }
+            }
+
             last_cert = cert;
         }
 

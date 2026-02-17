@@ -23,14 +23,23 @@ pub struct EphemeralStageExecutor<A: AttestationProvider> {
 }
 
 impl<A: AttestationProvider> EphemeralStageExecutor<A> {
-    pub fn new(engine: CandleInferenceEngine, provider: A, receipt_key: ReceiptSigningKey) -> Self {
+    /// Create a new stage executor.
+    ///
+    /// `attestation_doc_hash`: if provided, used as the receipt's `attestation_doc_hash`
+    /// field (should be SHA-256 of the actual attestation document bytes). If `None`,
+    /// falls back to SHA-256 of the receipt signing public key as a binding fingerprint.
+    pub fn new(
+        engine: CandleInferenceEngine,
+        provider: A,
+        receipt_key: ReceiptSigningKey,
+        attestation_doc_hash: Option<[u8; 32]>,
+    ) -> Self {
         let receipt_pk = receipt_key.public_key_bytes();
         let session_id = hex::encode(&receipt_pk[..16]);
-        let attestation_hash = {
+        let attestation_hash = attestation_doc_hash.unwrap_or_else(|| {
             use sha2::{Digest, Sha256};
-            let hash: [u8; 32] = Sha256::digest(receipt_pk).into();
-            hash
-        };
+            Sha256::digest(receipt_pk).into()
+        });
         let state = ConnectionState::new(
             session_id,
             receipt_key,
@@ -217,7 +226,7 @@ mod tests {
         let provider = DefaultAttestationProvider::new().unwrap();
         let receipt_key = ReceiptSigningKey::generate().unwrap();
 
-        let mut executor = EphemeralStageExecutor::new(engine, provider, receipt_key);
+        let mut executor = EphemeralStageExecutor::new(engine, provider, receipt_key, None);
 
         let spec = StageSpec {
             stage_idx: 0,

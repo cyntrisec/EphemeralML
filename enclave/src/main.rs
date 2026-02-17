@@ -998,7 +998,7 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
             }
 
             // Pipeline mode: orchestrator connects to control, then data channels.
-            let executor = EphemeralStageExecutor::new(engine, tee_provider, receipt_key);
+            let executor = EphemeralStageExecutor::new(engine, tee_provider, receipt_key, None);
 
             // Use configurable addresses (default: 0.0.0.0:9000/9001/9002 for GCP)
             let gcp_control = if args.control_addr == "127.0.0.1:9000" {
@@ -1160,7 +1160,7 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
             .await
             .map_err(|e| -> Box<dyn std::error::Error> { e })?;
         } else {
-            let executor = EphemeralStageExecutor::new(engine, mock_provider, receipt_key);
+            let executor = EphemeralStageExecutor::new(engine, mock_provider, receipt_key, None);
 
             info!(
                 step = "pipeline",
@@ -1255,7 +1255,7 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
 
         // Start stage worker
         let executor =
-            EphemeralStageExecutor::new(engine, attestation_provider.clone(), receipt_key);
+            EphemeralStageExecutor::new(engine, attestation_provider.clone(), receipt_key, None);
         let bridge = AttestationBridge::new(attestation_provider, receipt_pk);
 
         // Build NitroVerifier with expected PCR measurements for peer verification.

@@ -55,6 +55,7 @@ pub struct VerifyResult {
 }
 
 /// Options controlling which checks are performed.
+#[derive(Default)]
 pub struct VerifyOptions {
     /// If set, the receipt's `model_id` must match this value.
     pub expected_model: Option<String>,
@@ -62,16 +63,6 @@ pub struct VerifyOptions {
     pub expected_measurement_type: Option<String>,
     /// Maximum receipt age in seconds. `0` skips the freshness check.
     pub max_age_secs: u64,
-}
-
-impl Default for VerifyOptions {
-    fn default() -> Self {
-        Self {
-            expected_model: None,
-            expected_measurement_type: None,
-            max_age_secs: 0,
-        }
-    }
 }
 
 /// Run the five verification checks on a receipt.
@@ -129,20 +120,28 @@ pub fn verify_receipt(
         _ => CheckStatus::Skip,
     };
 
-    // 4. Timestamp freshness
+    // 4. Timestamp freshness (reject both stale and future timestamps)
     let ts_status = if options.max_age_secs == 0 {
         CheckStatus::Skip
     } else {
         let now = crate::current_timestamp();
-        let age = now.saturating_sub(receipt.execution_timestamp);
-        if age <= options.max_age_secs {
-            CheckStatus::Pass
-        } else {
+        if receipt.execution_timestamp > now {
             errors.push(format!(
-                "Receipt is {}s old (max allowed: {}s)",
-                age, options.max_age_secs
+                "Receipt timestamp is in the future: {} > now {}",
+                receipt.execution_timestamp, now
             ));
             CheckStatus::Fail
+        } else {
+            let age = now - receipt.execution_timestamp;
+            if age <= options.max_age_secs {
+                CheckStatus::Pass
+            } else {
+                errors.push(format!(
+                    "Receipt is {}s old (max allowed: {}s)",
+                    age, options.max_age_secs
+                ));
+                CheckStatus::Fail
+            }
         }
     };
 
