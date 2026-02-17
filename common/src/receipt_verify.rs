@@ -188,12 +188,8 @@ mod tests {
     use super::*;
     use crate::receipt_signing::{EnclaveMeasurements, ReceiptSigningKey, SecurityMode};
 
-    fn make_signed_receipt(
-        model_id: &str,
-        signing_key: &ReceiptSigningKey,
-    ) -> AttestationReceipt {
-        let measurements =
-            EnclaveMeasurements::new(vec![1u8; 48], vec![2u8; 48], vec![3u8; 48]);
+    fn make_signed_receipt(model_id: &str, signing_key: &ReceiptSigningKey) -> AttestationReceipt {
+        let measurements = EnclaveMeasurements::new(vec![1u8; 48], vec![2u8; 48], vec![3u8; 48]);
         let mut receipt = AttestationReceipt::new(
             "test-receipt-1".to_string(),
             1,
@@ -267,8 +263,7 @@ mod tests {
     #[test]
     fn test_stale_timestamp_fail() {
         let key = ReceiptSigningKey::generate().unwrap();
-        let measurements =
-            EnclaveMeasurements::new(vec![1u8; 48], vec![2u8; 48], vec![3u8; 48]);
+        let measurements = EnclaveMeasurements::new(vec![1u8; 48], vec![2u8; 48], vec![3u8; 48]);
         let mut receipt = AttestationReceipt::new(
             "old-receipt".to_string(),
             1,
@@ -340,8 +335,7 @@ mod tests {
     #[test]
     fn test_invalid_measurements_length() {
         let key = ReceiptSigningKey::generate().unwrap();
-        let measurements =
-            EnclaveMeasurements::new(vec![1u8; 32], vec![2u8; 32], vec![3u8; 32]);
+        let measurements = EnclaveMeasurements::new(vec![1u8; 32], vec![2u8; 32], vec![3u8; 32]);
         let mut receipt = AttestationReceipt::new(
             "bad-meas".to_string(),
             1,

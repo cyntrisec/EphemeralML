@@ -289,10 +289,7 @@ fn handle_direct_request<A: crate::AttestationProvider>(
     let exec_ms = start.elapsed().as_millis() as u64;
 
     // Compute response bytes for receipt hash
-    let output_bytes: Vec<u8> = output_tensor
-        .iter()
-        .flat_map(|f| f.to_le_bytes())
-        .collect();
+    let output_bytes: Vec<u8> = output_tensor.iter().flat_map(|f| f.to_le_bytes()).collect();
 
     // Build and sign receipt
     state.model_id = request.model_id.clone();

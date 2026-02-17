@@ -285,7 +285,10 @@ async fn test_fail_check_means_not_verified() {
 
     assert_eq!(resp.status(), 200);
     let body: serde_json::Value = resp.json().await.unwrap();
-    assert_eq!(body["verified"], false, "measurements_present=fail must make verified=false");
+    assert_eq!(
+        body["verified"], false,
+        "measurements_present=fail must make verified=false"
+    );
     assert_eq!(body["checks"]["signature"], "pass");
     assert_eq!(body["checks"]["measurements_present"], "fail");
 }

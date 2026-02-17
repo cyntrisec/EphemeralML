@@ -1072,11 +1072,7 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
                 .map_err(|e| format!("Failed to read {}: {}", tokenizer_path.display(), e))?;
 
             weights_size_mb = weights_bytes.len() as f64 / (1024.0 * 1024.0);
-            engine.register_model_gguf(
-                &args.model_id,
-                &weights_bytes,
-                &tokenizer_bytes,
-            )?;
+            engine.register_model_gguf(&args.model_id, &weights_bytes, &tokenizer_bytes)?;
         } else {
             let config_path = args.model_dir.join("config.json");
             let tokenizer_path = args.model_dir.join("tokenizer.json");

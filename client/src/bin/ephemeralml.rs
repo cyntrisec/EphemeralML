@@ -207,10 +207,7 @@ async fn run_infer(args: InferArgs) -> Result<()> {
     println!("  Time:           {}ms", elapsed.as_millis());
 
     if args.generate {
-        println!(
-            "  Tokens:         {} generated",
-            result.output_tensor.len()
-        );
+        println!("  Tokens:         {} generated", result.output_tensor.len());
         println!();
         println!("Generated Text");
         println!("--------------");

@@ -380,11 +380,10 @@ impl CandleInferenceEngine {
             // Autoregressive generation loop
             for i in 0..max_tokens.saturating_sub(1) {
                 let pos = prompt_len + i + 1;
-                let next_input =
-                    Tensor::new(&[*generated_tokens.last().unwrap()], &loaded.device)
-                        .map_err(|e| EnclaveError::CandleError(e.to_string()))?
-                        .unsqueeze(0)
-                        .map_err(|e| EnclaveError::CandleError(e.to_string()))?;
+                let next_input = Tensor::new(&[*generated_tokens.last().unwrap()], &loaded.device)
+                    .map_err(|e| EnclaveError::CandleError(e.to_string()))?
+                    .unsqueeze(0)
+                    .map_err(|e| EnclaveError::CandleError(e.to_string()))?;
 
                 let logits = model
                     .forward(&next_input, pos)

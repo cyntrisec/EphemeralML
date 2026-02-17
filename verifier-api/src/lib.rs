@@ -2,8 +2,8 @@ pub mod api_types;
 pub mod routes;
 pub mod templates;
 
-use axum::Router;
 use axum::routing::{get, post};
+use axum::Router;
 use tower_http::cors::{AllowOrigin, CorsLayer};
 use tower_http::limit::RequestBodyLimitLayer;
 use tower_http::trace::TraceLayer;
@@ -20,10 +20,7 @@ pub fn build_router_with_origins(origins: &[String]) -> Router {
     let cors = if origins.is_empty() {
         CorsLayer::permissive()
     } else {
-        let parsed: Vec<_> = origins
-            .iter()
-            .filter_map(|o| o.parse().ok())
-            .collect();
+        let parsed: Vec<_> = origins.iter().filter_map(|o| o.parse().ok()).collect();
         CorsLayer::new()
             .allow_origin(AllowOrigin::list(parsed))
             .allow_methods(tower_http::cors::Any)

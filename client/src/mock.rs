@@ -207,7 +207,11 @@ impl SecureClient for MockSecureClient {
         // Mock: return a canned response
         let token_count = max_tokens.min(10);
         let output_tensor: Vec<f32> = (0..token_count).map(|i| i as f32).collect();
-        let generated_text = format!("[mock generation for '{}', {} tokens]", &text[..text.len().min(50)], token_count);
+        let generated_text = format!(
+            "[mock generation for '{}', {} tokens]",
+            &text[..text.len().min(50)],
+            token_count
+        );
         let now = current_timestamp();
         let receipt = AttestationReceipt::new(
             model_id.to_string(),

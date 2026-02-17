@@ -521,15 +521,13 @@ impl AttestationVerifier {
             // Verify BasicConstraints: non-leaf certs must have CA:TRUE
             // (i > 0 means it's an intermediate, not the leaf at index 0)
             if i > 0 {
-                let (_, parsed) =
-                    x509_parser::certificate::X509Certificate::from_der(cert_der).map_err(
-                        |e| {
-                            ClientError::Client(crate::EphemeralError::AttestationError(format!(
-                                "x509 parse error at index {}: {}",
-                                i, e
-                            )))
-                        },
-                    )?;
+                let (_, parsed) = x509_parser::certificate::X509Certificate::from_der(cert_der)
+                    .map_err(|e| {
+                        ClientError::Client(crate::EphemeralError::AttestationError(format!(
+                            "x509 parse error at index {}: {}",
+                            i, e
+                        )))
+                    })?;
                 match parsed.basic_constraints() {
                     Ok(Some(bc)) => {
                         if !bc.value.ca {

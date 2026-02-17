@@ -170,26 +170,18 @@ fn extract_key_from_attestation(att_bytes: &[u8]) -> Result<VerifyingKey> {
             let policy = ephemeral_ml_client::PolicyManager::new();
             let mut verifier =
                 ephemeral_ml_client::attestation_verifier::AttestationVerifier::new(policy);
-            let identity = verifier
-                .verify_attestation_skip_nonce(&att_doc)
-                .context(
-                    "Attestation COSE signature or certificate chain verification failed. \
+            let identity = verifier.verify_attestation_skip_nonce(&att_doc).context(
+                "Attestation COSE signature or certificate chain verification failed. \
                      The attestation document is not authentic.",
-                )?;
+            )?;
 
             return VerifyingKey::from_bytes(&identity.receipt_signing_key)
                 .context("Invalid receipt signing key from verified attestation");
         }
         serde_cbor::Value::Map(m) => {
-            eprintln!(
-                "  WARNING: Attestation document is a plain CBOR map (mock/TDX envelope)."
-            );
-            eprintln!(
-                "  The receipt signing key is extracted WITHOUT cryptographic verification."
-            );
-            eprintln!(
-                "  For production use, provide a COSE_Sign1 attestation document."
-            );
+            eprintln!("  WARNING: Attestation document is a plain CBOR map (mock/TDX envelope).");
+            eprintln!("  The receipt signing key is extracted WITHOUT cryptographic verification.");
+            eprintln!("  For production use, provide a COSE_Sign1 attestation document.");
             m.clone()
         }
         _ => bail!("Attestation document is neither COSE_Sign1 nor CBOR map"),

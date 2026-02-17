@@ -52,21 +52,24 @@ pub async fn verify_upload(
         let name = field.name().unwrap_or("").to_string();
         match name.as_str() {
             "receipt_file" => {
-                let data = field.bytes().await.map_err(|e| {
-                    bad_request(format!("Failed to read receipt_file: {}", e))
-                })?;
+                let data = field
+                    .bytes()
+                    .await
+                    .map_err(|e| bad_request(format!("Failed to read receipt_file: {}", e)))?;
                 receipt_bytes = Some(data.to_vec());
             }
             "public_key" => {
-                let text = field.text().await.map_err(|e| {
-                    bad_request(format!("Failed to read public_key field: {}", e))
-                })?;
+                let text = field
+                    .text()
+                    .await
+                    .map_err(|e| bad_request(format!("Failed to read public_key field: {}", e)))?;
                 public_key_hex = Some(text.trim().to_string());
             }
             "public_key_file" => {
-                let data = field.bytes().await.map_err(|e| {
-                    bad_request(format!("Failed to read public_key_file: {}", e))
-                })?;
+                let data = field
+                    .bytes()
+                    .await
+                    .map_err(|e| bad_request(format!("Failed to read public_key_file: {}", e)))?;
                 public_key_hex = Some(hex::encode(&data));
             }
             "expected_model" => {
@@ -91,16 +94,18 @@ pub async fn verify_upload(
                 let text = field.text().await.map_err(|e| {
                     bad_request(format!("Failed to read max_age_secs field: {}", e))
                 })?;
-                max_age_secs = text.trim().parse::<u64>().map_err(|_| {
-                    bad_request("max_age_secs must be a non-negative integer")
-                })?;
+                max_age_secs = text
+                    .trim()
+                    .parse::<u64>()
+                    .map_err(|_| bad_request("max_age_secs must be a non-negative integer"))?;
             }
             _ => {} // ignore unknown fields
         }
     }
 
     let receipt_data = receipt_bytes.ok_or_else(|| bad_request("Missing receipt_file field"))?;
-    let key_hex = public_key_hex.ok_or_else(|| bad_request("Missing public_key or public_key_file field"))?;
+    let key_hex =
+        public_key_hex.ok_or_else(|| bad_request("Missing public_key or public_key_file field"))?;
 
     let public_key = parse_hex_public_key(&key_hex)?;
 
@@ -119,11 +124,9 @@ pub async fn verify_upload(
 }
 
 /// Parse a hex-encoded Ed25519 public key.
-fn parse_hex_public_key(
-    hex_str: &str,
-) -> Result<VerifyingKey, (StatusCode, Json<ErrorResponse>)> {
-    let bytes = hex::decode(hex_str.trim())
-        .map_err(|_| bad_request("Invalid hex in public_key"))?;
+fn parse_hex_public_key(hex_str: &str) -> Result<VerifyingKey, (StatusCode, Json<ErrorResponse>)> {
+    let bytes =
+        hex::decode(hex_str.trim()).map_err(|_| bad_request("Invalid hex in public_key"))?;
     if bytes.len() != 32 {
         return Err(bad_request(format!(
             "public_key must be 64 hex chars (32 bytes), got {} bytes",
@@ -132,8 +135,7 @@ fn parse_hex_public_key(
     }
     let mut arr = [0u8; 32];
     arr.copy_from_slice(&bytes);
-    VerifyingKey::from_bytes(&arr)
-        .map_err(|_| bad_request("Invalid Ed25519 public key"))
+    VerifyingKey::from_bytes(&arr).map_err(|_| bad_request("Invalid Ed25519 public key"))
 }
 
 /// Parse receipt from a `serde_json::Value`.
@@ -147,23 +149,20 @@ fn parse_receipt_value(
         serde_json::Value::Object(_) => serde_json::from_value(value.clone())
             .map_err(|e| bad_request(format!("Invalid receipt JSON: {}", e))),
         serde_json::Value::String(s) => {
-            let bytes = base64::Engine::decode(
-                &base64::engine::general_purpose::STANDARD,
-                s,
-            )
-            .map_err(|e| bad_request(format!("Invalid base64 receipt: {}", e)))?;
+            let bytes = base64::Engine::decode(&base64::engine::general_purpose::STANDARD, s)
+                .map_err(|e| bad_request(format!("Invalid base64 receipt: {}", e)))?;
             serde_cbor::from_slice(&bytes)
                 .map_err(|e| bad_request(format!("Invalid CBOR receipt: {}", e)))
         }
-        _ => Err(bad_request("receipt must be a JSON object or base64 string")),
+        _ => Err(bad_request(
+            "receipt must be a JSON object or base64 string",
+        )),
     }
 }
 
 fn bad_request(msg: impl Into<String>) -> (StatusCode, Json<ErrorResponse>) {
     (
         StatusCode::BAD_REQUEST,
-        Json(ErrorResponse {
-            error: msg.into(),
-        }),
+        Json(ErrorResponse { error: msg.into() }),
     )
 }
