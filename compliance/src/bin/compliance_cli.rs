@@ -17,7 +17,7 @@ use ephemeral_ml_compliance::controls::hipaa::hipaa_registry;
 use ephemeral_ml_compliance::evidence::collector::EvidenceBundleCollector;
 use ephemeral_ml_compliance::evidence::schema::validate_bundle;
 use ephemeral_ml_compliance::export::json_export;
-use ephemeral_ml_compliance::export::signing::sign_bundle;
+use ephemeral_ml_compliance::export::signing::{sign_bundle, verify_bundle_signature};
 use ephemeral_ml_compliance::export::BundleExporter;
 use ephemeral_ml_compliance::policy::profiles::profile_by_name;
 use ephemeral_ml_compliance::policy::PolicyEngine;
@@ -41,9 +41,13 @@ enum Commands {
         /// Compliance profile name (baseline or hipaa).
         #[arg(long, default_value = "baseline")]
         profile: String,
-        /// Hex-encoded Ed25519 public key (32 bytes = 64 hex chars).
+        /// Hex-encoded Ed25519 public key for receipt signature verification (32 bytes = 64 hex chars).
         #[arg(long)]
         public_key: String,
+        /// Hex-encoded Ed25519 public key for verifying the export bundle signature (optional).
+        /// If provided and the input is a SignedEvidenceBundle, its signature is verified first.
+        #[arg(long)]
+        bundle_public_key: Option<String>,
     },
     /// Collect evidence files into a bundle.
     Collect {
@@ -85,7 +89,8 @@ fn main() {
             bundle,
             profile,
             public_key,
-        } => run_verify(&bundle, &profile, &public_key),
+            bundle_public_key,
+        } => run_verify(&bundle, &profile, &public_key, bundle_public_key.as_deref()),
         Commands::Collect {
             receipt,
             attestation,
@@ -109,7 +114,38 @@ fn main() {
     process::exit(exit_code);
 }
 
-fn run_verify(bundle_path: &str, profile_name: &str, public_key_hex: &str) -> i32 {
+fn run_verify(
+    bundle_path: &str,
+    profile_name: &str,
+    public_key_hex: &str,
+    bundle_public_key_hex: Option<&str>,
+) -> i32 {
+    // Parse optional bundle public key for export signature verification
+    let bundle_public_key = if let Some(bpk_hex) = bundle_public_key_hex {
+        let bpk_bytes = match hex::decode(bpk_hex) {
+            Ok(b) if b.len() == 32 => b,
+            Ok(b) => {
+                eprintln!("Error: bundle public key must be 32 bytes, got {}", b.len());
+                return 2;
+            }
+            Err(e) => {
+                eprintln!("Error: invalid hex for bundle public key: {}", e);
+                return 2;
+            }
+        };
+        let mut bpk_array = [0u8; 32];
+        bpk_array.copy_from_slice(&bpk_bytes);
+        match ed25519_dalek::VerifyingKey::from_bytes(&bpk_array) {
+            Ok(pk) => Some(pk),
+            Err(e) => {
+                eprintln!("Error: invalid Ed25519 bundle public key: {}", e);
+                return 2;
+            }
+        }
+    } else {
+        None
+    };
+
     // Parse public key
     let pk_bytes = match hex::decode(public_key_hex) {
         Ok(b) if b.len() == 32 => b,
@@ -143,6 +179,22 @@ fn run_verify(bundle_path: &str, profile_name: &str, public_key_hex: &str) -> i3
     let bundle: ephemeral_ml_compliance::evidence::EvidenceBundle = if let Ok(signed) =
         serde_json::from_str::<ephemeral_ml_compliance::export::SignedEvidenceBundle>(&bundle_json)
     {
+        // If --bundle-public-key provided, verify the export signature before trusting the bundle
+        if let Some(ref bpk) = bundle_public_key {
+            match verify_bundle_signature(&signed, bpk) {
+                Ok(true) => {
+                    eprintln!("Bundle export signature verified.");
+                }
+                Ok(false) => {
+                    eprintln!("Error: bundle export signature verification failed");
+                    return 2;
+                }
+                Err(e) => {
+                    eprintln!("Error: bundle export signature check failed: {}", e);
+                    return 2;
+                }
+            }
+        }
         signed.bundle
     } else {
         match serde_json::from_str(&bundle_json) {
