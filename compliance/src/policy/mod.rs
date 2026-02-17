@@ -71,6 +71,8 @@ impl PolicyEngine {
                 "CBOR-001" => rules::check_cbor_001(receipt),
                 "KEY-001" => rules::check_key_001(bundle),
                 "POLICY-001" => rules::check_policy_001(receipt),
+                // v0.1: single-receipt bundles only. SEQ-001 is a structural check
+                // (sequence_number >= 0). Multi-receipt monotonicity deferred to v0.2.
                 "SEQ-001" => rules::check_seq_001(std::slice::from_ref(receipt)),
                 unknown => RuleResult {
                     rule_id: unknown.to_string(),

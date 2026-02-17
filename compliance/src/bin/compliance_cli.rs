@@ -15,6 +15,7 @@ use ephemeral_ml_common::receipt_signing::AttestationReceipt;
 use ephemeral_ml_compliance::controls::baseline::baseline_registry;
 use ephemeral_ml_compliance::controls::hipaa::hipaa_registry;
 use ephemeral_ml_compliance::evidence::collector::EvidenceBundleCollector;
+use ephemeral_ml_compliance::evidence::schema::validate_bundle;
 use ephemeral_ml_compliance::export::json_export;
 use ephemeral_ml_compliance::export::signing::sign_bundle;
 use ephemeral_ml_compliance::export::BundleExporter;
@@ -64,7 +65,10 @@ enum Commands {
         /// Compliance profile name (baseline or hipaa).
         #[arg(long, default_value = "baseline")]
         profile: String,
-        /// Hex-encoded Ed25519 signing key (32 bytes = 64 hex chars).
+        /// Hex-encoded Ed25519 public key for receipt signature verification (32 bytes = 64 hex chars).
+        #[arg(long)]
+        receipt_public_key: String,
+        /// Hex-encoded Ed25519 signing key for bundle signing (32 bytes = 64 hex chars).
         #[arg(long)]
         signing_key: String,
         /// Output path for the signed bundle JSON.
@@ -90,9 +94,16 @@ fn main() {
         Commands::Export {
             bundle,
             profile,
+            receipt_public_key,
             signing_key,
             output,
-        } => run_export(&bundle, &profile, &signing_key, &output),
+        } => run_export(
+            &bundle,
+            &profile,
+            &receipt_public_key,
+            &signing_key,
+            &output,
+        ),
     };
 
     process::exit(exit_code);
@@ -121,7 +132,7 @@ fn run_verify(bundle_path: &str, profile_name: &str, public_key_hex: &str) -> i3
         }
     };
 
-    // Load bundle
+    // Load bundle — accept both EvidenceBundle and SignedEvidenceBundle formats (Fix 7)
     let bundle_json = match std::fs::read_to_string(bundle_path) {
         Ok(s) => s,
         Err(e) => {
@@ -129,28 +140,46 @@ fn run_verify(bundle_path: &str, profile_name: &str, public_key_hex: &str) -> i3
             return 2;
         }
     };
-    let bundle: ephemeral_ml_compliance::evidence::EvidenceBundle =
+    let bundle: ephemeral_ml_compliance::evidence::EvidenceBundle = if let Ok(signed) =
+        serde_json::from_str::<ephemeral_ml_compliance::export::SignedEvidenceBundle>(&bundle_json)
+    {
+        signed.bundle
+    } else {
         match serde_json::from_str(&bundle_json) {
             Ok(b) => b,
             Err(e) => {
                 eprintln!("Error: cannot parse bundle JSON: {}", e);
                 return 2;
             }
-        };
-
-    // Deserialize receipt from first Receipt evidence item
-    let receipt_item = match bundle
-        .items
-        .iter()
-        .find(|i| i.evidence_type == ephemeral_ml_compliance::evidence::EvidenceType::Receipt)
-    {
-        Some(item) => item,
-        None => {
-            eprintln!("Error: no Receipt evidence item found in bundle");
-            return 2;
         }
     };
 
+    // Validate bundle schema + hash integrity (Fix 6)
+    if let Err(e) = validate_bundle(&bundle) {
+        eprintln!("Error: bundle schema validation failed: {}", e);
+        return 2;
+    }
+
+    // v0.1: enforce exactly one receipt per bundle (Fix 5)
+    let receipt_items: Vec<_> = bundle
+        .items
+        .iter()
+        .filter(|i| i.evidence_type == ephemeral_ml_compliance::evidence::EvidenceType::Receipt)
+        .collect();
+
+    if receipt_items.is_empty() {
+        eprintln!("Error: no Receipt evidence item found in bundle");
+        return 2;
+    }
+    if receipt_items.len() > 1 {
+        eprintln!(
+            "Error: v0.1 bundles must contain exactly one receipt, found {}",
+            receipt_items.len()
+        );
+        return 2;
+    }
+
+    let receipt_item = receipt_items[0];
     let receipt: AttestationReceipt = match serde_cbor::from_slice(&receipt_item.data) {
         Ok(r) => r,
         Err(_) => match serde_json::from_slice(&receipt_item.data) {
@@ -235,7 +264,7 @@ fn run_collect(receipt_path: &str, attestation_path: Option<&str>, output_path: 
                 return 2;
             }
         };
-        collector.add_binding(&receipt_id, &att_id, "receipt-attestation", None);
+        collector.add_binding(&receipt_id, &att_id, "signing-key-attestation", None);
     }
 
     // Build
@@ -267,10 +296,36 @@ fn run_collect(receipt_path: &str, attestation_path: Option<&str>, output_path: 
 fn run_export(
     bundle_path: &str,
     profile_name: &str,
+    receipt_public_key_hex: &str,
     signing_key_hex: &str,
     output_path: &str,
 ) -> i32 {
-    // Parse signing key
+    // Parse receipt public key — used for receipt signature verification (SIG-001)
+    let rpk_bytes = match hex::decode(receipt_public_key_hex) {
+        Ok(b) if b.len() == 32 => b,
+        Ok(b) => {
+            eprintln!(
+                "Error: receipt public key must be 32 bytes, got {}",
+                b.len()
+            );
+            return 2;
+        }
+        Err(e) => {
+            eprintln!("Error: invalid hex for receipt public key: {}", e);
+            return 2;
+        }
+    };
+    let mut rpk_array = [0u8; 32];
+    rpk_array.copy_from_slice(&rpk_bytes);
+    let receipt_public_key = match ed25519_dalek::VerifyingKey::from_bytes(&rpk_array) {
+        Ok(pk) => pk,
+        Err(e) => {
+            eprintln!("Error: invalid Ed25519 receipt public key: {}", e);
+            return 2;
+        }
+    };
+
+    // Parse bundle signing key — used ONLY for signing the exported bundle
     let sk_bytes = match hex::decode(signing_key_hex) {
         Ok(b) if b.len() == 32 => b,
         Ok(b) => {
@@ -285,7 +340,6 @@ fn run_export(
     let mut sk_array = [0u8; 32];
     sk_array.copy_from_slice(&sk_bytes);
     let signing_key = ed25519_dalek::SigningKey::from_bytes(&sk_array);
-    let public_key = signing_key.verifying_key();
 
     // Load bundle
     let bundle_json = match std::fs::read_to_string(bundle_path) {
@@ -304,19 +358,32 @@ fn run_export(
             }
         };
 
-    // Deserialize receipt from first Receipt evidence item
-    let receipt_item = match bundle
+    // Validate bundle schema + hash integrity (Fix 6)
+    if let Err(e) = validate_bundle(&bundle) {
+        eprintln!("Error: bundle schema validation failed: {}", e);
+        return 2;
+    }
+
+    // v0.1: enforce exactly one receipt per bundle (Fix 5)
+    let receipt_items: Vec<_> = bundle
         .items
         .iter()
-        .find(|i| i.evidence_type == ephemeral_ml_compliance::evidence::EvidenceType::Receipt)
-    {
-        Some(item) => item,
-        None => {
-            eprintln!("Error: no Receipt evidence item found in bundle");
-            return 2;
-        }
-    };
+        .filter(|i| i.evidence_type == ephemeral_ml_compliance::evidence::EvidenceType::Receipt)
+        .collect();
 
+    if receipt_items.is_empty() {
+        eprintln!("Error: no Receipt evidence item found in bundle");
+        return 2;
+    }
+    if receipt_items.len() > 1 {
+        eprintln!(
+            "Error: v0.1 bundles must contain exactly one receipt, found {}",
+            receipt_items.len()
+        );
+        return 2;
+    }
+
+    let receipt_item = receipt_items[0];
     let receipt: AttestationReceipt = match serde_cbor::from_slice(&receipt_item.data) {
         Ok(r) => r,
         Err(_) => match serde_json::from_slice(&receipt_item.data) {
@@ -340,9 +407,9 @@ fn run_export(
         }
     };
 
-    // Evaluate policy
+    // Evaluate policy using receipt's public key (Fix 1: separate from bundle signing key)
     let engine = PolicyEngine;
-    let policy_result = match engine.evaluate(&bundle, &receipt, &public_key, &profile) {
+    let policy_result = match engine.evaluate(&bundle, &receipt, &receipt_public_key, &profile) {
         Ok(r) => r,
         Err(e) => {
             eprintln!("Error: policy evaluation failed: {}", e);
@@ -372,7 +439,7 @@ fn run_export(
         }
     };
 
-    // Sign
+    // Sign bundle with the bundle signing key (separate from receipt key)
     if let Err(e) = sign_bundle(&mut signed_bundle, &signing_key) {
         eprintln!("Error: signing failed: {}", e);
         return 2;

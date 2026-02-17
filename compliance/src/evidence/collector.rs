@@ -155,7 +155,7 @@ mod tests {
         let mut collector = EvidenceBundleCollector::new();
         let r_id = collector.add_receipt(b"receipt-data").unwrap();
         let a_id = collector.add_attestation(b"attestation-data").unwrap();
-        collector.add_binding(&r_id, &a_id, "receipt-attestation", None);
+        collector.add_binding(&r_id, &a_id, "signing-key-attestation", None);
 
         let bundle = collector.build().unwrap();
         assert_eq!(bundle.schema_version, "0.1");

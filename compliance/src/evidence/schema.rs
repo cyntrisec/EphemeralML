@@ -1,5 +1,7 @@
 //! Schema validation for evidence bundles.
 
+use sha2::{Digest, Sha256};
+
 use super::EvidenceBundle;
 use crate::error::{ComplianceError, ComplianceResult};
 
@@ -49,6 +51,17 @@ pub fn validate_bundle(bundle: &EvidenceBundle) -> ComplianceResult<()> {
                 item.item_id
             )));
         }
+
+        // Verify hash integrity: sha256(data) must match declared hash
+        let computed: [u8; 32] = Sha256::digest(&item.data).into();
+        if computed != item.hash {
+            return Err(ComplianceError::schema_error(format!(
+                "Evidence item '{}' hash mismatch: computed {} != declared {}",
+                item.item_id,
+                hex::encode(computed),
+                hex::encode(item.hash)
+            )));
+        }
     }
 
     Ok(())
@@ -60,11 +73,13 @@ mod tests {
     use crate::evidence::{EvidenceItem, EvidenceType};
 
     fn make_valid_item(id: &str) -> EvidenceItem {
+        let data = vec![1, 2, 3];
+        let hash: [u8; 32] = Sha256::digest(&data).into();
         EvidenceItem {
             item_id: id.to_string(),
             evidence_type: EvidenceType::Receipt,
-            data: vec![1, 2, 3],
-            hash: [1u8; 32],
+            data,
+            hash,
             description: "test item".to_string(),
         }
     }
@@ -116,6 +131,14 @@ mod tests {
     fn test_empty_item_id_rejected() {
         let mut b = make_valid_bundle();
         b.items[0].item_id = String::new();
+        assert!(validate_bundle(&b).is_err());
+    }
+
+    #[test]
+    fn test_hash_integrity_mismatch_rejected() {
+        let mut b = make_valid_bundle();
+        // Corrupt hash so it doesn't match sha256(data)
+        b.items[0].hash = [0xFFu8; 32];
         assert!(validate_bundle(&b).is_err());
     }
 }

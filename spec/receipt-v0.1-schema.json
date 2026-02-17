@@ -24,8 +24,8 @@
   "properties": {
     "receipt_id": {
       "type": "string",
-      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
-      "description": "UUID v4 unique identifier"
+      "minLength": 1,
+      "description": "Unique receipt identifier (any non-empty string)"
     },
     "protocol_version": {
       "const": 1,
@@ -134,7 +134,7 @@
           ]
         },
         "measurement_type": {
-          "enum": ["nitro-pcr", "tdx-mrtd-rtmr"],
+          "enum": ["nitro-pcr", "tdx-mrtd-rtmr", "sev-snp"],
           "description": "Platform measurement type"
         }
       },

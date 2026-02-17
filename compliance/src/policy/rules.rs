@@ -57,6 +57,12 @@ pub fn check_sig_002(receipt: &AttestationReceipt) -> RuleResult {
 // ---------------------------------------------------------------------------
 
 /// ATT-001: Attestation document present in the bundle.
+///
+/// **Trust model note (v0.1):** This rule verifies that an attestation evidence
+/// item exists in the bundle. Cryptographic verification of the attestation
+/// document itself (e.g. COSE_Sign1 signature for Nitro, DCAP quote for TDX)
+/// is delegated to the attestation bridge or caller. This rule checks *presence*,
+/// not *authenticity*.
 pub fn check_att_001(bundle: &EvidenceBundle) -> RuleResult {
     let has_attestation = bundle
         .items
@@ -76,6 +82,12 @@ pub fn check_att_001(bundle: &EvidenceBundle) -> RuleResult {
 }
 
 /// ATT-002: SHA-256 of attestation data matches `receipt.attestation_doc_hash`.
+///
+/// **Trust model note (v0.1):** This rule verifies that the attestation document
+/// in the bundle has the same SHA-256 hash as the receipt's `attestation_doc_hash`
+/// field. This proves the receipt *refers to* this specific attestation document.
+/// It does NOT verify the attestation document's own cryptographic signature —
+/// that is delegated to the attestation bridge or caller.
 pub fn check_att_002(bundle: &EvidenceBundle, receipt: &AttestationReceipt) -> RuleResult {
     let att_item = bundle
         .items
@@ -140,7 +152,7 @@ pub fn check_meas_001(receipt: &AttestationReceipt) -> RuleResult {
 /// MEAS-002: Measurement type is a recognized TEE platform.
 pub fn check_meas_002(receipt: &AttestationReceipt) -> RuleResult {
     let mt = &receipt.enclave_measurements.measurement_type;
-    let recognized = mt == "nitro-pcr" || mt == "tdx-mrtd-rtmr";
+    let recognized = mt == "nitro-pcr" || mt == "tdx-mrtd-rtmr" || mt == "sev-snp";
     RuleResult {
         rule_id: "MEAS-002".to_string(),
         rule_name: "Recognized measurement type".to_string(),
@@ -487,9 +499,17 @@ mod tests {
     }
 
     #[test]
-    fn test_meas_002_unknown() {
+    fn test_meas_002_sev_snp() {
         let mut receipt = make_receipt("model", 0);
         receipt.enclave_measurements.measurement_type = "sev-snp".to_string();
+        let result = check_meas_002(&receipt);
+        assert!(result.passed);
+    }
+
+    #[test]
+    fn test_meas_002_unknown() {
+        let mut receipt = make_receipt("model", 0);
+        receipt.enclave_measurements.measurement_type = "unknown-platform".to_string();
         let result = check_meas_002(&receipt);
         assert!(!result.passed);
     }
