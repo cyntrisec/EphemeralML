@@ -99,6 +99,22 @@ jobs:
       - name: GCS-KMS integration
         run: cargo test --no-default-features --features gcp -p ephemeral-ml-enclave --test gcs_kms_integration
 
+  compliance:
+    name: Compliance + Conformance
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/cache@v5
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-compliance-${{ hashFiles('**/Cargo.lock') }}
+      - run: cargo test -p ephemeral-ml-compliance
+      - run: cargo test --test conformance_test
+
   audit:
     name: Security Audit
     runs-on: ubuntu-latest
@@ -116,7 +132,7 @@ jobs:
     name: Release Gate (GCP)
     runs-on: ubuntu-latest
     if: github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/heads/release/')
-    needs: [fmt, clippy, test, build-gcp, smoke]
+    needs: [fmt, clippy, test, build-gcp, smoke, compliance]
     steps:
       - uses: actions/checkout@v6
       - uses: dtolnay/rust-toolchain@stable

@@ -167,9 +167,17 @@ impl CmlAttestationVerifier for TdxEnvelopeVerifierBridge {
         &self,
         doc: &CmlAttestationDocument,
     ) -> std::result::Result<VerifiedAttestation, AttestError> {
-        // Try to decode as TeeAttestationEnvelope (CBOR with tdx_wire + user_data)
-        if let Ok(envelope) = serde_cbor::from_slice::<TdxEnvelopeHelper>(&doc.raw) {
-            if envelope.platform == "tdx" {
+        // B3: Try to decode as TeeAttestationEnvelope. Use match instead of
+        // if-let to distinguish malformed envelopes from plain TDX wire format.
+        match serde_cbor::from_slice::<TdxEnvelopeHelper>(&doc.raw) {
+            Ok(envelope) => {
+                if envelope.platform != "tdx" {
+                    return Err(AttestError::VerificationFailed(format!(
+                        "TDX envelope has unknown platform '{}' — expected 'tdx'",
+                        envelope.platform
+                    )));
+                }
+
                 // Verify the inner TDX document
                 let tdx_doc = CmlAttestationDocument::new(envelope.tdx_wire);
                 let mut verified = self.inner.verify(&tdx_doc).await?;
@@ -206,12 +214,29 @@ impl CmlAttestationVerifier for TdxEnvelopeVerifierBridge {
                 })?;
                 verified.user_data = Some(cbor);
 
-                return Ok(verified);
+                Ok(verified)
+            }
+            Err(_parse_err) => {
+                // Check if the document was *trying* to be an envelope (has a
+                // "platform" key) but is malformed — fail hard rather than
+                // silently falling back to plain TDX wire format.
+                if let Ok(serde_cbor::Value::Map(ref m)) =
+                    serde_cbor::from_slice::<serde_cbor::Value>(&doc.raw)
+                {
+                    let platform_key = serde_cbor::Value::Text("platform".to_string());
+                    if m.contains_key(&platform_key) {
+                        return Err(AttestError::VerificationFailed(format!(
+                            "Document appears to be a TDX envelope (has 'platform' key) \
+                             but failed to parse: {}",
+                            _parse_err
+                        )));
+                    }
+                }
+
+                // Genuine plain TDX wire format (no envelope structure)
+                self.inner.verify(doc).await
             }
         }
-
-        // Fallback: treat as plain TDX wire format
-        self.inner.verify(doc).await
     }
 }
 

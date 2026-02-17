@@ -99,6 +99,27 @@ impl<A: AttestationProvider + Send + Sync> StageExecutor for EphemeralStageExecu
 
         let input_bytes = data_tensors[0].data.as_ref();
 
+        // S2: Validate input tensor size — reject empty or oversized inputs
+        const MAX_INPUT_SIZE: usize = 32 * 1024 * 1024; // 32 MB
+        if input_bytes.is_empty() {
+            return Err(StageError::ForwardFailed {
+                request_id,
+                micro_batch,
+                reason: "Input tensor data is empty".to_string(),
+            });
+        }
+        if input_bytes.len() > MAX_INPUT_SIZE {
+            return Err(StageError::ForwardFailed {
+                request_id,
+                micro_batch,
+                reason: format!(
+                    "Input tensor too large: {} bytes (max {} bytes)",
+                    input_bytes.len(),
+                    MAX_INPUT_SIZE
+                ),
+            });
+        }
+
         // Execute inference via CandleInferenceEngine
         let infer_start = std::time::Instant::now();
         let output = self
@@ -110,6 +131,20 @@ impl<A: AttestationProvider + Send + Sync> StageExecutor for EphemeralStageExecu
                 reason: format!("Inference failed: {}", e),
             })?;
         let infer_ms = infer_start.elapsed().as_millis() as u64;
+
+        // S3: Detect NaN/Inf in output — these indicate inference corruption
+        for (i, val) in output.iter().enumerate() {
+            if val.is_nan() || val.is_infinite() {
+                return Err(StageError::ForwardFailed {
+                    request_id,
+                    micro_batch,
+                    reason: format!(
+                        "Output contains invalid value at index {}: {} (NaN/Inf detected)",
+                        i, val
+                    ),
+                });
+            }
+        }
 
         // Encode output as f32 bytes
         let output_bytes: Vec<u8> = output.iter().flat_map(|f| f.to_le_bytes()).collect();
@@ -131,6 +166,24 @@ impl<A: AttestationProvider + Send + Sync> StageExecutor for EphemeralStageExecu
         } else {
             None
         };
+
+        // S4: Validate receipt chain consistency.
+        // Stage-0 (no previous receipts) must NOT have a previous_receipt_hash.
+        // Later stages (previous receipts present) MUST have one.
+        if prev_receipt_tensors.is_empty() && previous_receipt_hash.is_some() {
+            return Err(StageError::ForwardFailed {
+                request_id,
+                micro_batch,
+                reason: "Stage-0 must not have a previous_receipt_hash".to_string(),
+            });
+        }
+        if !prev_receipt_tensors.is_empty() && previous_receipt_hash.is_none() {
+            return Err(StageError::ForwardFailed {
+                request_id,
+                micro_batch,
+                reason: "Non-initial stage must have a previous_receipt_hash".to_string(),
+            });
+        }
 
         // Build and sign receipt (needs mutable access to state for sequence counter)
         let receipt = {
@@ -179,16 +232,30 @@ impl<A: AttestationProvider + Send + Sync> StageExecutor for EphemeralStageExecu
                 reason: format!("Receipt serialize failed: {}", e),
             })?;
 
-        // Verify determinism: re-decode and re-encode must produce identical bytes
-        #[cfg(debug_assertions)]
+        // S1: Verify determinism in ALL builds (not just debug).
+        // Non-deterministic CBOR is a security issue — receipts must be
+        // reproducible for signature verification.
         {
             let decoded: serde_cbor::Value =
-                serde_cbor::from_slice(&receipt_bytes).expect("CBOR round-trip decode failed");
-            let re_encoded = serde_cbor::to_vec(&decoded).expect("CBOR round-trip encode failed");
-            assert_eq!(
-                receipt_bytes, re_encoded,
-                "CBOR encoding is not deterministic"
-            );
+                serde_cbor::from_slice(&receipt_bytes).map_err(|e| StageError::ForwardFailed {
+                    request_id,
+                    micro_batch,
+                    reason: format!("CBOR round-trip decode failed: {}", e),
+                })?;
+            let re_encoded =
+                serde_cbor::to_vec(&decoded).map_err(|e| StageError::ForwardFailed {
+                    request_id,
+                    micro_batch,
+                    reason: format!("CBOR round-trip encode failed: {}", e),
+                })?;
+            if receipt_bytes != re_encoded {
+                return Err(StageError::ForwardFailed {
+                    request_id,
+                    micro_batch,
+                    reason: "CBOR encoding is not deterministic — receipt integrity compromised"
+                        .to_string(),
+                });
+            }
         }
 
         let receipt_tensor = OwnedTensor {

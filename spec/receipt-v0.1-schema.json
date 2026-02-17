@@ -1,0 +1,144 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ephemeralml.cyntrisec.com/spec/receipt-v0.1.json",
+  "title": "EphemeralML Attested Execution Receipt v0.1",
+  "description": "Schema for validating receipt structure before cryptographic verification",
+  "type": "object",
+  "required": [
+    "receipt_id",
+    "protocol_version",
+    "security_mode",
+    "enclave_measurements",
+    "attestation_doc_hash",
+    "request_hash",
+    "response_hash",
+    "policy_version",
+    "sequence_number",
+    "execution_timestamp",
+    "model_id",
+    "model_version",
+    "execution_time_ms",
+    "memory_peak_mb",
+    "signature"
+  ],
+  "properties": {
+    "receipt_id": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+      "description": "UUID v4 unique identifier"
+    },
+    "protocol_version": {
+      "const": 1,
+      "description": "Must be 1 for v0.1 receipts"
+    },
+    "security_mode": {
+      "enum": ["GatewayOnly", "ShieldMode"],
+      "description": "Security mode of execution"
+    },
+    "enclave_measurements": {
+      "$ref": "#/$defs/EnclaveMeasurements"
+    },
+    "attestation_doc_hash": {
+      "$ref": "#/$defs/Hash32"
+    },
+    "request_hash": {
+      "$ref": "#/$defs/Hash32"
+    },
+    "response_hash": {
+      "$ref": "#/$defs/Hash32"
+    },
+    "policy_version": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Policy version identifier"
+    },
+    "sequence_number": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Monotonic counter within session"
+    },
+    "execution_timestamp": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Unix timestamp in seconds"
+    },
+    "model_id": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Model identifier"
+    },
+    "model_version": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Model version"
+    },
+    "execution_time_ms": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Inference wall-clock time in milliseconds"
+    },
+    "memory_peak_mb": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Peak memory usage in MB"
+    },
+    "signature": {
+      "oneOf": [
+        { "$ref": "#/$defs/Signature64" },
+        { "type": "null" }
+      ],
+      "description": "Ed25519 signature (64 bytes) or null if unsigned"
+    },
+    "previous_receipt_hash": {
+      "oneOf": [
+        { "$ref": "#/$defs/Hash32" },
+        { "type": "null" }
+      ],
+      "description": "SHA-256 of previous stage receipt (pipeline chaining)"
+    }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "Hash32": {
+      "type": "array",
+      "items": { "type": "integer", "minimum": 0, "maximum": 255 },
+      "minItems": 32,
+      "maxItems": 32,
+      "description": "32-byte hash (SHA-256)"
+    },
+    "Hash48": {
+      "type": "array",
+      "items": { "type": "integer", "minimum": 0, "maximum": 255 },
+      "minItems": 48,
+      "maxItems": 48,
+      "description": "48-byte hash (SHA-384)"
+    },
+    "Signature64": {
+      "type": "array",
+      "items": { "type": "integer", "minimum": 0, "maximum": 255 },
+      "minItems": 64,
+      "maxItems": 64,
+      "description": "64-byte Ed25519 signature"
+    },
+    "EnclaveMeasurements": {
+      "type": "object",
+      "required": ["pcr0", "pcr1", "pcr2", "measurement_type"],
+      "properties": {
+        "pcr0": { "$ref": "#/$defs/Hash48" },
+        "pcr1": { "$ref": "#/$defs/Hash48" },
+        "pcr2": { "$ref": "#/$defs/Hash48" },
+        "pcr8": {
+          "oneOf": [
+            { "$ref": "#/$defs/Hash48" },
+            { "type": "null" }
+          ]
+        },
+        "measurement_type": {
+          "enum": ["nitro-pcr", "tdx-mrtd-rtmr"],
+          "description": "Platform measurement type"
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}

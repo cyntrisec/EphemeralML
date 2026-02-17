@@ -64,6 +64,11 @@ struct Args {
     /// Show verbose details (hashes, measurements, timestamps)
     #[arg(short, long)]
     verbose: bool,
+
+    /// Allow verification of mock/plain-CBOR attestation documents without
+    /// cryptographic verification. DANGEROUS: only for local testing.
+    #[arg(long)]
+    allow_mock: bool,
 }
 
 fn main() -> Result<()> {
@@ -130,7 +135,7 @@ fn resolve_public_key(args: &Args) -> Result<VerifyingKey> {
         VerifyingKey::from_bytes(&arr).context("Invalid Ed25519 public key")
     } else if let Some(ref att_path) = args.attestation {
         let att_bytes = fs::read(att_path).context("Failed to read attestation file")?;
-        extract_key_from_attestation(&att_bytes)
+        extract_key_from_attestation(&att_bytes, args.allow_mock)
     } else {
         bail!("Must provide one of: --public-key, --public-key-file, or --attestation");
     }
@@ -143,9 +148,10 @@ fn resolve_public_key(args: &Args) -> Result<VerifyingKey> {
 /// PCR policy are NOT checked (this is offline verification — the caller must
 /// independently verify those if needed).
 ///
-/// For plain CBOR map (mock/TDX envelope) format: extracts the key directly.
-/// A warning is printed since the document is not cryptographically verified.
-fn extract_key_from_attestation(att_bytes: &[u8]) -> Result<VerifyingKey> {
+/// For plain CBOR map (mock/TDX envelope) format: rejected by default.
+/// Pass `allow_mock = true` (--allow-mock CLI flag) to accept unverified
+/// mock attestation documents for local testing only.
+fn extract_key_from_attestation(att_bytes: &[u8], allow_mock: bool) -> Result<VerifyingKey> {
     let doc: serde_cbor::Value =
         serde_cbor::from_slice(att_bytes).context("Invalid CBOR attestation document")?;
 
@@ -179,9 +185,17 @@ fn extract_key_from_attestation(att_bytes: &[u8]) -> Result<VerifyingKey> {
                 .context("Invalid receipt signing key from verified attestation");
         }
         serde_cbor::Value::Map(m) => {
-            eprintln!("  WARNING: Attestation document is a plain CBOR map (mock/TDX envelope).");
+            if !allow_mock {
+                bail!(
+                    "Attestation document is a plain CBOR map (mock format) without \
+                     cryptographic verification. This is NOT safe for production use.\n\
+                     If you are testing locally, pass --allow-mock to accept unverified \
+                     attestation documents."
+                );
+            }
+            eprintln!("  WARNING: --allow-mock is set. Accepting unverified CBOR map attestation.");
             eprintln!("  The receipt signing key is extracted WITHOUT cryptographic verification.");
-            eprintln!("  For production use, provide a COSE_Sign1 attestation document.");
+            eprintln!("  DO NOT use --allow-mock in production.");
             m.clone()
         }
         _ => bail!("Attestation document is neither COSE_Sign1 nor CBOR map"),

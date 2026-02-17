@@ -101,13 +101,23 @@ impl AWSApiProxy {
             resp.plaintext().map(|b| b.as_ref().to_vec())
         };
 
+        let ciphertext_for_recipient = resp.ciphertext_for_recipient().map(|b| b.as_ref().to_vec());
+
+        // A1: When recipient encryption was requested, ciphertext_for_recipient MUST
+        // be present. If KMS silently drops it, the key material is unrecoverable.
+        if has_recipient && ciphertext_for_recipient.is_none() {
+            return Err(HostError::Host(EphemeralError::KmsError(
+                "KMS Decrypt: recipient was provided but ciphertext_for_recipient is missing \
+                 from response — key material is unrecoverable"
+                    .to_string(),
+            )));
+        }
+
         Ok((
             KmsResponse::Decrypt {
                 plaintext,
                 key_id: resp.key_id().map(|s| s.to_string()),
-                ciphertext_for_recipient: resp
-                    .ciphertext_for_recipient()
-                    .map(|b| b.as_ref().to_vec()),
+                ciphertext_for_recipient,
             },
             aws_req_id,
         ))
@@ -166,17 +176,62 @@ impl AWSApiProxy {
             resp.plaintext().map(|b| b.as_ref().to_vec())
         };
 
+        // A2: Reject empty/missing key_id and ciphertext_blob — these indicate a
+        // malformed KMS response and must not be silently swallowed.
+        let key_id = resp
+            .key_id()
+            .map(|s| s.to_string())
+            .filter(|s| !s.is_empty())
+            .ok_or_else(|| {
+                HostError::Host(EphemeralError::KmsError(
+                    "KMS GenerateDataKey: response missing key_id".to_string(),
+                ))
+            })?;
+
+        let ciphertext_blob = resp
+            .ciphertext_blob()
+            .map(|b| b.as_ref().to_vec())
+            .filter(|b| !b.is_empty())
+            .ok_or_else(|| {
+                HostError::Host(EphemeralError::KmsError(
+                    "KMS GenerateDataKey: response missing ciphertext_blob".to_string(),
+                ))
+            })?;
+
+        let ciphertext_for_recipient = resp.ciphertext_for_recipient().map(|b| b.as_ref().to_vec());
+
+        // A1: When recipient encryption was requested, ciphertext_for_recipient MUST
+        // be present. If KMS silently drops it, the key material is unrecoverable.
+        if has_recipient && ciphertext_for_recipient.is_none() {
+            return Err(HostError::Host(EphemeralError::KmsError(
+                "KMS GenerateDataKey: recipient was provided but ciphertext_for_recipient \
+                 is missing from response — key material is unrecoverable"
+                    .to_string(),
+            )));
+        }
+
+        // A3: Validate plaintext key size when available (non-recipient mode).
+        if let Some(ref pt) = plaintext {
+            let expected_len = match key_spec.as_str() {
+                "AES_128" => 16,
+                _ => 32, // AES_256 default
+            };
+            if pt.len() != expected_len {
+                return Err(HostError::Host(EphemeralError::KmsError(format!(
+                    "KMS GenerateDataKey: plaintext key size {} bytes, expected {} for {}",
+                    pt.len(),
+                    expected_len,
+                    key_spec
+                ))));
+            }
+        }
+
         Ok((
             KmsResponse::GenerateDataKey {
-                key_id: resp.key_id().unwrap_or_default().to_string(),
-                ciphertext_blob: resp
-                    .ciphertext_blob()
-                    .map(|b| b.as_ref().to_vec())
-                    .unwrap_or_default(),
+                key_id,
+                ciphertext_blob,
                 plaintext,
-                ciphertext_for_recipient: resp
-                    .ciphertext_for_recipient()
-                    .map(|b| b.as_ref().to_vec()),
+                ciphertext_for_recipient,
             },
             aws_req_id,
         ))
