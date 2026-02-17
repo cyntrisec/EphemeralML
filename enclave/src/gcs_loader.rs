@@ -39,10 +39,10 @@ const GCS_API_BASE: &str = "https://storage.googleapis.com/storage/v1/b";
 const METADATA_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(5);
 
 /// Timeout for GCS object downloads (large model files may take a while).
-const GCS_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(120);
+const GCS_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(600);
 
-/// Maximum GCS response size (4 GB). Prevents OOM from misconfigured buckets.
-const MAX_GCS_RESPONSE_SIZE: usize = 4 * 1024 * 1024 * 1024;
+/// Maximum GCS response size (16 GB). Prevents OOM from misconfigured buckets.
+const MAX_GCS_RESPONSE_SIZE: usize = 16 * 1024 * 1024 * 1024;
 
 impl GcsModelLoader {
     /// Create a new GCS loader for the given bucket.
@@ -158,6 +158,18 @@ impl GcsModelLoader {
             )));
         }
 
+        // Pre-check Content-Length to fail fast before downloading
+        if let Some(cl) = resp.content_length() {
+            if cl as usize > MAX_GCS_RESPONSE_SIZE {
+                return Err(EnclaveError::Enclave(EphemeralError::StorageError(
+                    format!(
+                        "GCS response too large for {}: {} bytes (max {})",
+                        object_path, cl, MAX_GCS_RESPONSE_SIZE
+                    ),
+                )));
+            }
+        }
+
         let bytes = resp.bytes().await.map_err(|e| {
             EnclaveError::Enclave(EphemeralError::StorageError(format!(
                 "GCS read error: {}",
@@ -168,7 +180,7 @@ impl GcsModelLoader {
         let bytes = bytes.to_vec();
         let size = bytes.len();
 
-        // Enforce size limit to prevent OOM from oversized responses
+        // Enforce size limit (post-download check for chunked responses)
         if size > MAX_GCS_RESPONSE_SIZE {
             return Err(EnclaveError::Enclave(EphemeralError::StorageError(
                 format!(

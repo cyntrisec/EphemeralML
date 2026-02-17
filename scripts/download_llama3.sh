@@ -25,26 +25,14 @@ else
     wget -c -O "$MODEL_DIR/model.gguf" "$GGUF_URL"
 fi
 
-# Download tokenizer.json from the original Meta repo (requires HF access)
-TOKENIZER_URL="https://huggingface.co/meta-llama/Meta-Llama-3-8B-Instruct/resolve/main/tokenizer.json"
+# Download tokenizer.json from NousResearch ungated mirror (no auth required)
+TOKENIZER_URL="https://huggingface.co/NousResearch/Meta-Llama-3-8B-Instruct/resolve/main/tokenizer.json"
 
 if [ -f "$MODEL_DIR/tokenizer.json" ]; then
     echo "tokenizer.json already exists, skipping download"
 else
-    echo "Downloading tokenizer.json (requires HF token for meta-llama repo)..."
-    if [ -n "${HF_TOKEN:-}" ]; then
-        wget -c --header="Authorization: Bearer $HF_TOKEN" \
-            -O "$MODEL_DIR/tokenizer.json" "$TOKENIZER_URL"
-    else
-        echo "HF_TOKEN not set. Trying without auth (may fail for gated repos)..."
-        wget -c -O "$MODEL_DIR/tokenizer.json" "$TOKENIZER_URL" || {
-            echo
-            echo "ERROR: tokenizer download failed. Set HF_TOKEN or run:"
-            echo "  export HF_TOKEN=hf_..."
-            echo "  bash scripts/download_llama3.sh"
-            exit 1
-        }
-    fi
+    echo "Downloading tokenizer.json from NousResearch mirror (no auth required)..."
+    wget -c -O "$MODEL_DIR/tokenizer.json" "$TOKENIZER_URL"
 fi
 
 echo

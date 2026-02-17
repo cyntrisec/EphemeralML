@@ -23,7 +23,9 @@
 # --- Builder stage ---
 # CUDA devel image provides nvcc and CUDA headers needed to compile candle CUDA kernels.
 # CUDA_COMPUTE_CAP=90 targets NVIDIA H100 (Hopper architecture).
-FROM nvidia/cuda:12.6.3-devel-ubuntu24.04 AS builder
+# Using CUDA 12.2 to match Confidential Space GPU driver 535.x (cos-gpu-installer v2.5.3).
+# CUDA 12.6 generates PTX that requires driver 560+, causing CUDA_ERROR_UNSUPPORTED_PTX_VERSION.
+FROM nvidia/cuda:12.2.2-devel-ubuntu22.04 AS builder
 
 # Install Rust toolchain + build dependencies
 RUN apt-get update && apt-get install -y \
@@ -46,7 +48,8 @@ RUN cargo build --release \
 # CUDA runtime image provides libcudart and math libraries needed at runtime.
 # The Confidential Space host provides the GPU driver via tee-install-gpu-driver;
 # this image only needs the CUDA runtime libraries to link against.
-FROM nvidia/cuda:12.6.3-runtime-ubuntu24.04
+# Must match the CUDA version used in builder stage.
+FROM nvidia/cuda:12.2.2-runtime-ubuntu22.04
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates libssl3 \
@@ -81,6 +84,12 @@ ENV EPHEMERALML_MODEL_SOURCE="gcs" \
 # The Confidential Space host injects /dev/nvidia* devices and driver libs.
 ENV NVIDIA_VISIBLE_DEVICES=all \
     NVIDIA_DRIVER_CAPABILITIES=compute,utility
+
+# Confidential Space launch policy: allow operator to override these env vars
+# via instance metadata (tee-env-*). Without this label, the Launcher rejects
+# all env overrides.
+LABEL "tee.launch_policy.allow_env_override"="EPHEMERALML_MODEL_SOURCE,EPHEMERALML_GCS_BUCKET,EPHEMERALML_GCP_MODEL_PREFIX,EPHEMERALML_GCP_PROJECT,EPHEMERALML_GCP_LOCATION,EPHEMERALML_GCP_KMS_KEY,EPHEMERALML_GCP_WIP_AUDIENCE,EPHEMERALML_EXPECTED_MODEL_HASH,EPHEMERALML_EXPECTED_MRTD,EPHEMERALML_DIRECT,EPHEMERALML_MODEL_FORMAT"
+LABEL "tee.launch_policy.log_redirect"="always"
 
 EXPOSE 9000
 

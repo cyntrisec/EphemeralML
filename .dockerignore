@@ -1,0 +1,11 @@
+target/
+.git/
+benchmark_results*/
+docs/
+demo-artifacts/
+evidence/
+attestation-evidence/
+*.md
+test_assets/llama3/
+test_assets/phi*/
+test_assets/gpt2*/
