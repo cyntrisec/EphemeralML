@@ -718,4 +718,87 @@ mod tests {
         let err = format!("{:?}", result.unwrap_err());
         assert!(err.contains("VerifyAttestation returned"), "Error: {}", err);
     }
+
+    /// VerifyAttestation returns 400 with MRTD mismatch → fail-closed.
+    #[tokio::test]
+    async fn verify_attestation_wrong_mrtd() {
+        let server = MockHttpServer::start(vec![(
+            400,
+            r#"{"error":"MRTD mismatch: image does not match expected measurements"}"#.to_string(),
+        )])
+        .await;
+
+        let client = synthetic_client(&server.base_url);
+        let result = client
+            .verify_attestation("token", "projects/p/locations/l/challenges/c", &[0u8; 64])
+            .await;
+        assert!(result.is_err());
+        let err = format!("{:?}", result.unwrap_err());
+        assert!(
+            err.contains("VerifyAttestation returned"),
+            "Wrong MRTD must fail at VerifyAttestation: {}",
+            err
+        );
+    }
+
+    /// STS returns 400 with wrong audience → fail-closed.
+    #[tokio::test]
+    async fn sts_exchange_wrong_audience() {
+        let server = MockHttpServer::start(vec![(
+            400,
+            r#"{"error":"invalid_target","error_description":"The target audience is not allowed"}"#
+                .to_string(),
+        )])
+        .await;
+
+        let client = synthetic_client(&server.base_url);
+        let result = client.exchange_token("oidc-token").await;
+        assert!(result.is_err());
+        let err = format!("{:?}", result.unwrap_err());
+        assert!(
+            err.contains("STS returned"),
+            "Wrong audience must fail at STS: {}",
+            err
+        );
+    }
+
+    /// Full decrypt flow: VerifyAttestation rejects (403) → decrypt() fails
+    /// before reaching STS or KMS (fail-closed).
+    #[tokio::test]
+    async fn full_flow_fails_when_verify_attestation_rejects() {
+        // Steps 1-2 succeed, step 3 (VerifyAttestation) returns 403
+        let server = MockHttpServer::start(vec![
+            // Step 1: metadata token
+            (
+                200,
+                r#"{"access_token":"meta","token_type":"Bearer","expires_in":3600}"#.to_string(),
+            ),
+            // Step 2: create challenge
+            (
+                200,
+                r#"{"name":"projects/p/locations/l/challenges/c","nonce":"AAAA"}"#.to_string(),
+            ),
+            // Step 3: VerifyAttestation → measurement policy violation
+            (
+                403,
+                r#"{"error":{"code":403,"message":"Attestation verification failed: measurement policy violation"}}"#
+                    .to_string(),
+            ),
+            // Steps 4-5 should never be reached — but if they are, they'll
+            // dequeue these and the assertion will still catch it via error message
+        ])
+        .await;
+
+        let client = synthetic_client(&server.base_url);
+        let result = client
+            .decrypt("projects/p/locations/l/keyRings/kr/cryptoKeys/k", b"ct")
+            .await;
+        assert!(result.is_err(), "Attestation rejection must stop the entire decrypt flow");
+        let err = format!("{:?}", result.unwrap_err());
+        assert!(
+            err.contains("VerifyAttestation returned"),
+            "Error must originate from VerifyAttestation, not STS or KMS: {}",
+            err
+        );
+    }
 }

@@ -318,6 +318,105 @@ mod tests {
         );
     }
 
+    /// STS returns 400 (wrong WIP audience) → full decrypt flow fails closed.
+    #[tokio::test]
+    async fn gcs_kms_sts_wrong_audience_fails_closed() {
+        // Steps 1-3 succeed, step 4 (STS) returns 400 with audience error
+        let kms_server = MockHttpServer::start(vec![
+            // Step 1: metadata token
+            (
+                200,
+                r#"{"access_token":"meta","token_type":"Bearer","expires_in":3600}"#.to_string(),
+            ),
+            // Step 2: create challenge
+            (
+                200,
+                r#"{"name":"projects/p/locations/l/challenges/c","nonce":"AAAA"}"#.to_string(),
+            ),
+            // Step 3: verify attestation → OIDC token
+            (200, r#"{"oidcClaimsToken":"tok"}"#.to_string()),
+            // Step 4: STS → wrong audience
+            (
+                400,
+                r#"{"error":"invalid_target","error_description":"The target audience is not allowed for the given subject"}"#
+                    .to_string(),
+            ),
+        ])
+        .await;
+
+        let kms_client = GcpKmsClient::with_test_urls(
+            "test-project",
+            "us-central1",
+            WIP,
+            TeeAttestationProvider::synthetic(),
+            &kms_server.base_url,
+        );
+
+        let result: ephemeral_ml_enclave::Result<Vec<u8>> = kms_client
+            .decrypt(
+                "projects/p/locations/l/keyRings/kr/cryptoKeys/k",
+                b"wrapped-dek",
+            )
+            .await;
+
+        assert!(result.is_err(), "Wrong WIP audience must cause the flow to fail");
+        let err = format!("{:?}", result.unwrap_err());
+        assert!(
+            err.contains("STS returned"),
+            "Error should mention STS rejection: {}",
+            err
+        );
+    }
+
+    /// VerifyAttestation returns 400 (MRTD mismatch) → full decrypt flow fails
+    /// before reaching STS or KMS (fail-closed).
+    #[tokio::test]
+    async fn gcs_kms_verify_attestation_rejects_mrtd() {
+        // Steps 1-2 succeed, step 3 (VerifyAttestation) returns 400
+        let kms_server = MockHttpServer::start(vec![
+            // Step 1: metadata token
+            (
+                200,
+                r#"{"access_token":"meta","token_type":"Bearer","expires_in":3600}"#.to_string(),
+            ),
+            // Step 2: create challenge
+            (
+                200,
+                r#"{"name":"projects/p/locations/l/challenges/c","nonce":"AAAA"}"#.to_string(),
+            ),
+            // Step 3: VerifyAttestation → MRTD mismatch
+            (
+                400,
+                r#"{"error":{"code":400,"message":"MRTD mismatch: container image measurements do not match policy"}}"#
+                    .to_string(),
+            ),
+        ])
+        .await;
+
+        let kms_client = GcpKmsClient::with_test_urls(
+            "test-project",
+            "us-central1",
+            WIP,
+            TeeAttestationProvider::synthetic(),
+            &kms_server.base_url,
+        );
+
+        let result: ephemeral_ml_enclave::Result<Vec<u8>> = kms_client
+            .decrypt(
+                "projects/p/locations/l/keyRings/kr/cryptoKeys/k",
+                b"wrapped-dek",
+            )
+            .await;
+
+        assert!(result.is_err(), "MRTD mismatch must cause the flow to fail");
+        let err = format!("{:?}", result.unwrap_err());
+        assert!(
+            err.contains("VerifyAttestation returned"),
+            "Error should originate from VerifyAttestation, never reach KMS: {}",
+            err
+        );
+    }
+
     /// encrypt_artifact -> decrypt_artifact round-trip with hash verification
     /// (mirrors the exact flow in the gcs-kms match arm of main.rs).
     #[tokio::test]

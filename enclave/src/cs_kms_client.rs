@@ -254,4 +254,94 @@ mod tests {
         let err = format!("{:?}", result.unwrap_err());
         assert!(err.contains("STS returned"), "Error: {}", err);
     }
+
+    /// Full CS decrypt flow: Launcher token + STS succeed, KMS returns 403
+    /// (attestation-based deny) → decrypt() fails closed.
+    #[tokio::test]
+    async fn decrypt_kms_403_fails_closed() {
+        use crate::test_helpers::MockHttpServer;
+        use base64::engine::general_purpose::URL_SAFE_NO_PAD;
+        use base64::Engine;
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        use tokio::net::UnixListener;
+
+        // --- Set up mock Launcher socket returning a synthetic JWT ---
+        let dir = std::env::temp_dir().join(format!("cs_kms_403_{}", std::process::id()));
+        let _ = std::fs::create_dir_all(&dir);
+        let socket_path = dir.join("launcher.sock");
+        let socket_str = socket_path.to_str().unwrap().to_string();
+
+        let header = URL_SAFE_NO_PAD.encode(b"{\"alg\":\"RS256\",\"typ\":\"JWT\"}");
+        let claims = serde_json::json!({
+            "aud": "//iam.googleapis.com/projects/12345/locations/global/workloadIdentityPools/pool/providers/prov",
+            "eat_nonce": ["test-nonce"],
+            "iss": "https://confidentialcomputing.googleapis.com",
+            "exp": 9999999999u64,
+            "iat": 1000000000u64,
+            "swname": "CONFIDENTIAL_SPACE",
+        });
+        let payload =
+            URL_SAFE_NO_PAD.encode(serde_json::to_string(&claims).unwrap().as_bytes());
+        let sig = URL_SAFE_NO_PAD.encode(b"fake-sig");
+        let jwt = format!("{}.{}.{}", header, payload, sig);
+
+        let jwt_clone = jwt.clone();
+        let socket_str_clone = socket_str.clone();
+        let _socket_handle = tokio::spawn(async move {
+            let listener = UnixListener::bind(&socket_str_clone).unwrap();
+            if let Ok((mut stream, _)) = listener.accept().await {
+                let mut buf = vec![0u8; 8192];
+                let _ = stream.read(&mut buf).await;
+                let resp = format!(
+                    "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+                    jwt_clone.len(),
+                    jwt_clone
+                );
+                let _ = stream.write_all(resp.as_bytes()).await;
+            }
+        });
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+
+        // --- Set up mock HTTP server: STS succeeds, KMS returns 403 ---
+        let http_server = MockHttpServer::start(vec![
+            // STS exchange → success
+            (
+                200,
+                r#"{"access_token":"fed-tok","token_type":"Bearer","expires_in":3600}"#.to_string(),
+            ),
+            // KMS decrypt → 403 attestation deny
+            (
+                403,
+                r#"{"error":{"code":403,"message":"Request denied: attestation claims do not satisfy key access policy"}}"#
+                    .to_string(),
+            ),
+        ])
+        .await;
+
+        let cs_token = CsTokenClient::with_socket_path(&socket_str);
+        let client = CsKmsClient::with_test_config(
+            "//iam.googleapis.com/projects/12345/locations/global/workloadIdentityPools/pool/providers/prov",
+            cs_token,
+            &http_server.base_url,
+        );
+
+        let result = client
+            .decrypt(
+                "projects/p/locations/l/keyRings/kr/cryptoKeys/k",
+                b"wrapped-dek",
+            )
+            .await;
+
+        assert!(result.is_err(), "KMS 403 must cause decrypt to fail");
+        let err = format!("{:?}", result.unwrap_err());
+        assert!(
+            err.contains("KMS decrypt returned"),
+            "Error should mention KMS denial: {}",
+            err
+        );
+
+        // Cleanup
+        let _ = std::fs::remove_file(&socket_path);
+        let _ = std::fs::remove_dir(&dir);
+    }
 }
