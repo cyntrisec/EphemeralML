@@ -1,5 +1,21 @@
 # Changelog
 
+## [3.1.0] - 2026-02-17
+
+### Added
+- **GPU Confidential Space deployment**: a3-highgpu-1g with NVIDIA H100 in CC-mode, TDX attestation confirms `nvidia_gpu.cc_mode: ON`
+- **CUDA 12.2 support**: Matches GCP Confidential Space cos-gpu-installer v2.5.3 (driver 535.247.01). CUDA 12.6+ fails with `CUDA_ERROR_UNSUPPORTED_PTX_VERSION`
+- **Llama 3 8B GGUF inference**: Q4_K_M quantized (4.6GB), 50 tokens in 12s (241ms/token) on H100 with TDX attestation and Ed25519-signed receipts
+- **GCS loader improvements**: 16GB max model size (was 4GB), 600s timeout (was 120s), Content-Length pre-check for early rejection of oversized models
+- **`Dockerfile.gpu`**: GPU container build based on `nvidia/cuda:12.2.2-devel-ubuntu22.04`
+- **`.dockerignore`**: Reduces build context size
+- **Launch policy labels**: Container metadata for Confidential Space policy enforcement
+- **`--gpu` flag for deploy.sh**: Selects a3-highgpu-1g machine type and GPU container image
+
+### Changed
+- **GCS loader**: Increased default size limit from 4GB to 16GB and timeout from 120s to 600s
+- **Documentation**: Updated README, QUICKSTART, build-matrix, and PRODUCTION_GCP to reflect GPU capability
+
 ## [3.0.0] - 2026-02-13
 
 ### Added

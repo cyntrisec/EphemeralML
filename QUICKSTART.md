@@ -7,6 +7,7 @@
 1. **Install Rust**: Visit [rustup.rs](https://rustup.rs/) and follow the installation instructions.
 2. **AWS CLI & Nitro CLI**: (For AWS production) Required to build EIF and run on Nitro instances.
 3. **gcloud CLI**: (For GCP production) Required for Confidential Space deployment on c3-standard-4 TDX CVMs.
+4. **CUDA 12.2**: (For GPU builds only) Must use CUDA 12.2 — GCP Confidential Space GPU ships driver 535.x which does not support CUDA 12.6+.
 
 ## Building the Project
 
@@ -24,6 +25,15 @@ cargo build --no-default-features --features production
 ```bash
 cargo build --no-default-features --features gcp -p ephemeral-ml-enclave
 cargo build --no-default-features --features gcp -p ephemeral-ml-client
+```
+
+### GCP GPU Mode (Confidential Space / TDX + H100 CC)
+```bash
+# Build with CUDA support (requires CUDA 12.2 toolkit)
+cargo build --release --no-default-features --features gcp,cuda -p ephemeral-ml-enclave
+
+# Or build via Dockerfile.gpu (recommended — pins CUDA 12.2.2)
+docker build -f Dockerfile.gpu -t ephemeral-ml-gpu .
 ```
 
 ## Running the Demo
@@ -116,6 +126,31 @@ for manifest schema and signing key management.
 ```bash
 bash scripts/gcp/deploy.sh --model-source local
 ```
+
+### Deploy GPU (a3-highgpu-1g + H100 CC)
+
+```bash
+# 1. Build GPU container (CUDA 12.2 — required for CS driver 535.x)
+docker build -f Dockerfile.gpu -t ephemeral-ml-gpu .
+
+# 2. Tag and push to Artifact Registry
+docker tag ephemeral-ml-gpu "$REGION-docker.pkg.dev/$PROJECT/ephemeralml/ephemeral-ml-gpu:latest"
+docker push "$REGION-docker.pkg.dev/$PROJECT/ephemeralml/ephemeral-ml-gpu:latest"
+
+# 3. Deploy with GPU flag
+bash scripts/gcp/deploy.sh --gpu \
+    --model-source gcs \
+    --model-format gguf
+```
+
+Boot timeline: ~3.5 min (image pull → cos-gpu-installer → model fetch from GCS).
+
+Expected output with Llama 3 8B Q4_K_M (4.6GB GGUF):
+- 50 tokens generated in ~12s (241ms/token)
+- TDX attestation with `nvidia_gpu.cc_mode: ON`
+- Ed25519-signed receipt returned to client
+
+**CUDA version warning**: Confidential Space GPU uses cos-gpu-installer v2.5.3 which installs driver 535.247.01. This driver supports CUDA <= 12.2 only. Using CUDA 12.6+ produces `CUDA_ERROR_UNSUPPORTED_PTX_VERSION`. Always use `nvidia/cuda:12.2.2-devel-ubuntu22.04` as the base image.
 
 ### GCP Architecture Differences
 

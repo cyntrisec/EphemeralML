@@ -7,6 +7,7 @@
 | **Mock** | Any (dev/CI) | `--features mock` | TCP localhost | KMS proxy (mock) | Mock COSE_Sign1 |
 | **AWS Production** | Nitro Enclave | `--no-default-features --features production` | VSock (CID 3) | Enclave → VSock → Host Proxy → AWS KMS | NSM device → COSE_Sign1 |
 | **GCP Production** | TDX CVM (c3-standard-4) | `--no-default-features --features gcp` | Direct TCP | Local files or GCS direct (KMS via `GcpKmsClient` not yet wired) | configfs-tsm → TDX quote |
+| **GCP GPU** | TDX CVM + H100 CC (a3-highgpu-1g) | `--no-default-features --features gcp,cuda` | Direct TCP | GCS (GGUF, ≤16GB) | CS Launcher attestation (TDX + `nvidia_gpu.cc_mode: ON`) |
 
 **Mutually exclusive:** `mock`, `production`, and `gcp` cannot be combined (`compile_error!` in all crates).
 
@@ -111,11 +112,14 @@ The GCP verifier decodes a `TeeAttestationEnvelope` (CBOR: `{platform, tdx_wire,
 
 ## Architecture Differences
 
-| Aspect | AWS Nitro | GCP TDX CVM |
-|--------|-----------|-------------|
-| Binaries needed | enclave + host + client | enclave + client |
-| Host process | Required (KMS proxy, model relay) | Not needed (direct access) |
-| Network from enclave | None (VSock only) | Full (TCP, HTTPS) |
-| KMS auth | NSM attestation → AWS KMS Recipient | `GcpKmsClient` exists (Attestation API → WIP/WIF → Cloud KMS), not yet wired into runtime |
-| Model loading | Host fetches S3 → VSock → enclave | Enclave fetches GCS directly |
-| Bind address | 127.0.0.1 (VSock loopback) | 0.0.0.0 (real network) |
+| Aspect | AWS Nitro | GCP TDX CVM | GCP GPU (a3-highgpu-1g) |
+|--------|-----------|-------------|-------------------------|
+| Binaries needed | enclave + host + client | enclave + client | enclave + client (via Dockerfile.gpu) |
+| Host process | Required (KMS proxy, model relay) | Not needed (direct access) | Not needed (direct access) |
+| Network from enclave | None (VSock only) | Full (TCP, HTTPS) | Full (TCP, HTTPS) |
+| KMS auth | NSM attestation → AWS KMS Recipient | `GcpKmsClient` exists (Attestation API → WIP/WIF → Cloud KMS), not yet wired into runtime | Same as GCP TDX |
+| Model loading | Host fetches S3 → VSock → enclave | Enclave fetches GCS directly | GCS runtime fetch (GGUF, ≤16GB) |
+| Model format | safetensors (BF16/F32) | safetensors (BF16/F32) | GGUF (Q4_K_M, Q8_0, etc.) |
+| Compute | CPU only (2 vCPU) | CPU only (4 vCPU) | NVIDIA H100 CC-mode (CUDA 12.2) |
+| SPOT required | No | No | Yes (a3-highgpu preemptible) |
+| Bind address | 127.0.0.1 (VSock loopback) | 0.0.0.0 (real network) | 0.0.0.0 (real network) |

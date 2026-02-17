@@ -8,9 +8,9 @@
 ```
 
 [![CI](https://github.com/cyntrisec/EphemeralML/actions/workflows/ci.yml/badge.svg)](https://github.com/cyntrisec/EphemeralML/actions/workflows/ci.yml)
-[![Status](https://img.shields.io/badge/Status-v3.0%20Multi--Cloud-brightgreen?style=for-the-badge)](https://github.com/cyntrisec/EphemeralML/releases/tag/v3.0.0)
-[![Tests](https://img.shields.io/badge/Tests-99%20Passing-success?style=for-the-badge)](https://github.com/cyntrisec/EphemeralML/actions/workflows/ci.yml)
-[![Platform](https://img.shields.io/badge/Platform-AWS%20Nitro%20|%20GCP%20TDX-orange?style=for-the-badge&logo=amazon-aws)](https://aws.amazon.com/ec2/nitro/nitro-enclaves/)
+[![Status](https://img.shields.io/badge/Status-v3.1%20GPU%20Confidential-brightgreen?style=for-the-badge)](https://github.com/cyntrisec/EphemeralML/releases/tag/v3.1.0)
+[![Tests](https://img.shields.io/badge/Tests-105%20Passing-success?style=for-the-badge)](https://github.com/cyntrisec/EphemeralML/actions/workflows/ci.yml)
+[![Platform](https://img.shields.io/badge/Platform-AWS%20Nitro%20|%20GCP%20TDX%20|%20GPU%20H100-orange?style=for-the-badge&logo=amazon-aws)](https://aws.amazon.com/ec2/nitro/nitro-enclaves/)
 [![Language](https://img.shields.io/badge/Language-Rust-b7410e?style=for-the-badge&logo=rust&logoColor=white)](https://www.rust-lang.org/)
 [![License](https://img.shields.io/badge/Apache%202.0-blue?style=for-the-badge)](LICENSE)
 
@@ -18,7 +18,7 @@
 
 **Confidential AI inference with hardware-backed attestation — multi-cloud**
 
-> Run AI models where prompts and weights stay encrypted — even if the host is compromised. Deploys on AWS Nitro Enclaves and GCP Confidential Space (Intel TDX).
+> Run AI models where prompts and weights stay encrypted — even if the host is compromised. Deploys on AWS Nitro Enclaves, GCP Confidential Space (Intel TDX), and GPU TEEs (NVIDIA H100 CC-mode).
 
 ---
 
@@ -75,7 +75,28 @@
                               └─────────────┘     └──────────────────┘
 ```
 
-**Key insight**: Host never has keys. On AWS, it just forwards ciphertext. On GCP, the entire CVM is the trust boundary — no host/enclave split, no VSock. The pipeline layer (`confidential-ml-pipeline`) orchestrates multi-stage inference with per-stage attestation.
+### GCP Confidential Space — GPU (a3-highgpu-1g + H100 CC)
+
+```
+┌─────────┐  TDX-attested   ┌──────────────────────────────────────────────┐
+│  Client │◄────────────────►│  GCP Confidential Space CVM (TDX + H100 CC) │
+└─────────┘  SecureChannel   │  ┌────────────────────────────────────────┐  │
+                             │  │  EphemeralML Container (CUDA 12.2)     │  │
+                             │  │  - TDX attestation (configfs-tsm)      │  │
+                             │  │  - GGUF model loaded from GCS          │  │
+                             │  │  - GPU inference (candle-cuda, H100)   │  │
+                             │  │  - Receipt signing (Ed25519)           │  │
+                             │  └────────────────────────────────────────┘  │
+                             └──────────────────────────────────────────────┘
+                                     │                    │ TDX quote
+                                     │ GCS               ▼
+                              ┌──────┴──────┐     ┌──────────────────┐
+                              │  GGUF Model │     │ Cloud KMS (WIP)  │
+                              │  (≤16 GB)   │     │ (key release)    │
+                              └─────────────┘     └──────────────────┘
+```
+
+**Key insight**: Host never has keys. On AWS, it just forwards ciphertext. On GCP, the entire CVM is the trust boundary — no host/enclave split, no VSock. GPU deployments use NVIDIA H100 in CC-mode (attestation confirms `nvidia_gpu.cc_mode: ON`). The pipeline layer (`confidential-ml-pipeline`) orchestrates multi-stage inference with per-stage attestation.
 
 ---
 
@@ -111,8 +132,9 @@
 
 ### Inference Engine
 - **Candle-based** transformer inference (MiniLM, BERT, Llama)
-- **GGUF support** for quantized models (int4, int8)
-- **BF16/safetensors** format enforcement
+- **GGUF support** for quantized models (int4, int8) — used for GPU inference (Llama 3 8B Q4_K_M)
+- **CUDA 12.2 GPU inference** via candle-cuda on NVIDIA H100 CC-mode (a3-highgpu-1g)
+- **BF16/safetensors** format enforcement (CPU path)
 - Memory-optimized for TEE constraints
 
 ### Security & Compliance
@@ -190,6 +212,21 @@ Measured on AWS EC2 m6i.xlarge (4 vCPU, 16GB RAM) with MiniLM-L6-v2 (22.7M param
 - **Throughput plateaus at ~14.7 inf/s** — CPU-bound on 2 vCPUs; latency scales linearly with concurrency
 - **$4.72 per 1M inferences** in enclave (1.13x bare metal cost)
 - **First published per-inference latency benchmark on AWS Nitro Enclaves**
+
+### GPU Performance (GCP Confidential Space, H100 CC-mode)
+
+Measured on GCP a3-highgpu-1g (1x NVIDIA H100, TDX CC-mode ON) with Llama 3 8B Q4_K_M GGUF (4.6GB fetched from GCS at runtime).
+
+| Metric | Value |
+|--------|-------|
+| Model | Llama 3 8B Q4_K_M (GGUF, 4.6GB) |
+| Machine | a3-highgpu-1g (1x H100, TDX) |
+| Boot to ready | ~3.5 min |
+| 50 tokens generated | 12s (241ms/token) |
+| Attestation | TDX quote, `nvidia_gpu.cc_mode: ON` |
+| Receipt | Ed25519-signed, CBOR-canonical |
+
+**Critical**: GCP Confidential Space GPU uses cos-gpu-installer v2.5.3, which installs driver 535.247.01. This driver supports CUDA <= 12.2 only. Using CUDA 12.6+ fails with `CUDA_ERROR_UNSUPPORTED_PTX_VERSION`. The `Dockerfile.gpu` must use `nvidia/cuda:12.2.2-devel-ubuntu22.04` as the base image.
 
 See [`docs/benchmarks.md`](docs/benchmarks.md) for methodology, competitive analysis, and literature comparison.
 
@@ -290,7 +327,7 @@ nitro-cli build-enclave --docker-uri ephemeral-ml-enclave:latest --output-file e
 nitro-cli run-enclave --eif-path enclave.eif --cpu-count 2 --memory 4096
 ```
 
-### Production (GCP Confidential Space)
+### Production (GCP Confidential Space — CPU)
 
 Prerequisites: GCP project with Confidential Computing API enabled, c3-standard-4 (TDX), Rust 1.75+.
 
@@ -302,6 +339,22 @@ cargo build --release --no-default-features --features gcp -p ephemeral-ml-encla
 ./target/release/ephemeral-ml-enclave \
     --gcp --model-dir /app/model --model-id stage-0
 ```
+
+### Production (GCP Confidential Space — GPU)
+
+Prerequisites: GCP project with a3-highgpu-1g quota, NVIDIA H100 CC-mode. Requires CUDA 12.2 (not 12.6+).
+
+```bash
+# Build GPU container (CUDA 12.2 base — required for CS driver 535.x)
+docker build -f Dockerfile.gpu -t ephemeral-ml-gpu .
+
+# Deploy to Confidential Space with GPU
+bash scripts/gcp/deploy.sh --gpu \
+    --model-source gcs \
+    --model-format gguf
+```
+
+Expected boot timeline: ~3.5 min (image pull + cos-gpu-installer + model fetch from GCS). Llama 3 8B Q4_K_M generates 50 tokens in 12s.
 
 See [`QUICKSTART.md`](QUICKSTART.md) and [`docs/build-matrix.md`](docs/build-matrix.md) for detailed instructions.
 
@@ -323,9 +376,10 @@ See [`QUICKSTART.md`](QUICKSTART.md) and [`docs/build-matrix.md`](docs/build-mat
 | Host / Client | ✅ Production | 4 |
 | Degradation Policies | ✅ Production | 3 |
 | GCS Model Loader | ✅ Implemented | — |
+| GPU Inference (H100 CC, CUDA 12.2) | ✅ Verified on hardware | — |
 | TDX Verifier Bridge (Client) | ✅ Implemented | — |
 
-**v3.0 Multi-Cloud** — GCP Confidential Space integration with TDX attestation, GCS model loading, and `TdxEnvelopeVerifierBridge` client. GcpKmsClient (WIP + Cloud KMS, via WIF token exchange) implemented but not yet wired into the model-loading runtime. Three-way feature exclusivity (`mock`/`production`/`gcp`) across all crates. 105 tests passing.
+**v3.1 GPU Confidential** — GPU inference on GCP Confidential Space (a3-highgpu-1g, NVIDIA H100 CC-mode) with Llama 3 8B Q4_K_M GGUF, CUDA 12.2, TDX attestation, and Ed25519-signed receipts. GCS loader supports up to 16GB models with Content-Length pre-check. 105 tests passing.
 
 ---
 

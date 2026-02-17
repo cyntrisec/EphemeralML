@@ -183,15 +183,16 @@ bash scripts/gcp/teardown.sh --delete-image
 
 ## Supported Configuration
 
-| Component | Value |
-|-----------|-------|
-| Machine type | c3-standard-4 |
-| Zone | us-central1-a |
-| TEE type | Intel TDX |
-| CS image | confidential-space (production) |
-| Model | MiniLM-L6-v2 (22.7M params) |
-| Encryption | ChaCha20-Poly1305 (model), Cloud KMS (DEK) |
-| Transport | SecureChannel (HPKE + ChaCha20) |
+| Component | CPU Value | GPU Value |
+|-----------|-----------|-----------|
+| Machine type | c3-standard-4 | a3-highgpu-1g (1x H100) |
+| Zone | us-central1-a | us-central1-a |
+| TEE type | Intel TDX | Intel TDX + NVIDIA H100 CC-mode |
+| CS image | confidential-space (production) | confidential-space (production) |
+| Model | MiniLM-L6-v2 (22.7M params, safetensors) | Llama 3 8B Q4_K_M (4.6GB, GGUF) |
+| CUDA | N/A | 12.2 (driver 535.247.01) |
+| Encryption | ChaCha20-Poly1305 (model), Cloud KMS (DEK) | ChaCha20-Poly1305 (model), Cloud KMS (DEK) |
+| Transport | SecureChannel (HPKE + ChaCha20) | SecureChannel (HPKE + ChaCha20) |
 
 ## Environment Variables
 
@@ -206,4 +207,86 @@ bash scripts/gcp/teardown.sh --delete-image
 | `EPHEMERALML_EXPECTED_MODEL_HASH` | gcs/gcs-kms | SHA-256 of plaintext weights |
 | `EPHEMERALML_MODEL_SIGNING_PUBKEY` | Optional | Ed25519 public key (hex, 64 chars) for manifest signature verification |
 | `EPHEMERALML_LOG_FORMAT` | Optional | Set to `json` for structured JSON logs |
+| `EPHEMERALML_MODEL_FORMAT` | GPU only | `gguf` for GGUF models (default: `safetensors`) |
 | `EPHEMERALML_DIRECT` | Optional | `true` for single-server mode |
+
+## GPU Deployment Variant
+
+Deploy EphemeralML with GPU inference on GCP Confidential Space using NVIDIA H100 in CC-mode (confidential computing). This enables large model inference (e.g., Llama 3 8B) inside a TDX-attested CVM with GPU acceleration.
+
+### Requirements
+
+| Component | Value |
+|-----------|-------|
+| Machine type | a3-highgpu-1g (1x NVIDIA H100 80GB) |
+| CUDA version | **12.2** (must match CS driver 535.x) |
+| Model format | GGUF (Q4_K_M, Q8_0, etc.) |
+| Max model size | 16GB (GCS loader limit) |
+| Base image | `nvidia/cuda:12.2.2-devel-ubuntu22.04` |
+
+### CUDA Version Requirement (Critical)
+
+GCP Confidential Space GPU instances use cos-gpu-installer v2.5.3, which installs NVIDIA driver **535.247.01**. This driver supports CUDA **<= 12.2** only.
+
+Using CUDA 12.6 or newer will fail at runtime with:
+```
+CUDA_ERROR_UNSUPPORTED_PTX_VERSION
+```
+
+The `Dockerfile.gpu` pins `nvidia/cuda:12.2.2-devel-ubuntu22.04` to avoid this.
+
+### Build
+
+```bash
+# Build GPU container image
+docker build -f Dockerfile.gpu -t ephemeral-ml-gpu .
+
+# Tag for Artifact Registry
+docker tag ephemeral-ml-gpu \
+    "$REGION-docker.pkg.dev/$PROJECT/ephemeralml/ephemeral-ml-gpu:latest"
+
+# Push
+docker push \
+    "$REGION-docker.pkg.dev/$PROJECT/ephemeralml/ephemeral-ml-gpu:latest"
+```
+
+### Deploy
+
+```bash
+bash scripts/gcp/deploy.sh --gpu \
+    --model-source gcs \
+    --model-format gguf
+```
+
+The `--gpu` flag selects:
+- Machine type: `a3-highgpu-1g` (instead of `c3-standard-4`)
+- Container image: `ephemeral-ml-gpu` (instead of `ephemeral-ml`)
+- Scheduling: SPOT (preemptible) for a3-highgpu availability
+
+### Boot Timeline
+
+| Stage | Approximate Time |
+|-------|-----------------|
+| Image pull | ~60s |
+| cos-gpu-installer (driver 535.x) | ~45s |
+| Container start | ~15s |
+| GCS model fetch (4.6GB GGUF) | ~30s |
+| Model load to GPU | ~20s |
+| **Total boot to ready** | **~3.5 min** |
+
+### Expected Output
+
+With Llama 3 8B Q4_K_M (4.6GB GGUF from GCS):
+
+```
+[INFO] GPU detected: NVIDIA H100 80GB HBM3
+[INFO] CUDA 12.2, driver 535.247.01
+[INFO] Loading model from GCS: gs://BUCKET/models/llama3-8b-q4km.gguf (4.6GB)
+[INFO] Model loaded to GPU in 20.3s
+[INFO] Listening on 0.0.0.0:9000
+[INFO] TDX attestation: nvidia_gpu.cc_mode: ON
+```
+
+- 50 tokens generated in ~12s (241ms/token)
+- TDX attestation confirms `nvidia_gpu.cc_mode: ON`
+- Ed25519-signed receipt returned to client with model hash, attestation hash, and I/O hashes
