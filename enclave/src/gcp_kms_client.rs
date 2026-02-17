@@ -793,7 +793,10 @@ mod tests {
         let result = client
             .decrypt("projects/p/locations/l/keyRings/kr/cryptoKeys/k", b"ct")
             .await;
-        assert!(result.is_err(), "Attestation rejection must stop the entire decrypt flow");
+        assert!(
+            result.is_err(),
+            "Attestation rejection must stop the entire decrypt flow"
+        );
         let err = format!("{:?}", result.unwrap_err());
         assert!(
             err.contains("VerifyAttestation returned"),

@@ -359,7 +359,10 @@ mod tests {
             )
             .await;
 
-        assert!(result.is_err(), "Wrong WIP audience must cause the flow to fail");
+        assert!(
+            result.is_err(),
+            "Wrong WIP audience must cause the flow to fail"
+        );
         let err = format!("{:?}", result.unwrap_err());
         assert!(
             err.contains("STS returned"),

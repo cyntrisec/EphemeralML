@@ -280,8 +280,7 @@ mod tests {
             "iat": 1000000000u64,
             "swname": "CONFIDENTIAL_SPACE",
         });
-        let payload =
-            URL_SAFE_NO_PAD.encode(serde_json::to_string(&claims).unwrap().as_bytes());
+        let payload = URL_SAFE_NO_PAD.encode(serde_json::to_string(&claims).unwrap().as_bytes());
         let sig = URL_SAFE_NO_PAD.encode(b"fake-sig");
         let jwt = format!("{}.{}.{}", header, payload, sig);
 
