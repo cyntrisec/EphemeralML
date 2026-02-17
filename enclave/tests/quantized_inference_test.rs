@@ -8,8 +8,8 @@ fn test_execute_by_id_generate_rejects_bert() {
     let weights_path = "../test_assets/minilm/model.safetensors";
     let tokenizer_path = "../test_assets/minilm/tokenizer.json";
 
-    if !Path::new(config_path).exists() {
-        println!("Skipping test: model assets not found");
+    if !Path::new(config_path).exists() || !Path::new(weights_path).exists() {
+        println!("Skipping test: model assets not found (run scripts/download_model.sh)");
         return;
     }
 
