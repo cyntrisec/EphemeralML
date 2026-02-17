@@ -1,0 +1,28 @@
+# Cloud Build config for EphemeralML GPU enclave image.
+#
+# Usage:
+#   gcloud builds submit --config=cloudbuild-gpu.yaml --project=$PROJECT_ID
+#
+# The build context must include test_assets/minilm/model.safetensors as a
+# real file (not a symlink). Resolve the symlink before submitting:
+#   cp --remove-destination "$(readlink -f test_assets/minilm/model.safetensors)" \
+#       test_assets/minilm/model.safetensors
+#
+# Note: GPU builds compile CUDA kernels (~10-15 min) and require a larger
+# machine type and longer timeout than CPU builds.
+steps:
+  - name: 'gcr.io/cloud-builders/docker'
+    args:
+      - 'build'
+      - '-f'
+      - 'Dockerfile.gpu'
+      - '-t'
+      - 'us-docker.pkg.dev/$PROJECT_ID/ephemeralml/enclave-gpu:latest'
+      - '.'
+
+images: ['us-docker.pkg.dev/$PROJECT_ID/ephemeralml/enclave-gpu:latest']
+
+options:
+  machineType: 'E2_HIGHCPU_32'
+
+timeout: '3600s'
