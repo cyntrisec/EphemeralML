@@ -13,6 +13,10 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
+# Load shared UI helpers
+# shellcheck source=../lib/ui.sh
+source "${SCRIPT_DIR}/../lib/ui.sh"
+
 # ---------------------------------------------------------------------------
 # Configuration
 # ---------------------------------------------------------------------------
@@ -149,36 +153,34 @@ else
     CS_IMAGE_FAMILY="confidential-space"
 fi
 
-echo "============================================"
-echo "  EphemeralML — Deploy to Confidential Space"
-echo "============================================"
-echo
-echo "  Project:      ${PROJECT}"
-echo "  Zone:         ${ZONE}"
-echo "  Machine:      ${MACHINE_TYPE}"
-echo "  Image:        ${IMAGE_URI}"
-echo "  CS family:    ${CS_IMAGE_FAMILY}"
-echo "  Debug:        ${DEBUG}"
-echo "  GPU:          ${GPU}"
-echo "  Model source: ${MODEL_SOURCE}"
-echo "  Model format: ${MODEL_FORMAT}"
+ui_header "EphemeralML — Deploy to Confidential Space"
+ui_blank
+ui_kv "Project" "${PROJECT}"
+ui_kv "Zone" "${ZONE}"
+ui_kv "Machine" "${MACHINE_TYPE}"
+ui_kv "Image" "${IMAGE_URI}"
+ui_kv "CS family" "${CS_IMAGE_FAMILY}"
+ui_kv "Debug" "${DEBUG}"
+ui_kv "GPU" "${GPU}"
+ui_kv "Model src" "${MODEL_SOURCE}"
+ui_kv "Format" "${MODEL_FORMAT}"
 if [[ "${MODEL_SOURCE}" == "gcs" || "${MODEL_SOURCE}" == "gcs-kms" ]]; then
-    echo "  GCS bucket:   ${GCS_BUCKET}"
-    echo "  Model prefix: ${GCP_MODEL_PREFIX}"
-    echo "  Model hash:   ${EXPECTED_MODEL_HASH}"
+    ui_kv "GCS bucket" "${GCS_BUCKET}"
+    ui_kv "Model prefix" "${GCP_MODEL_PREFIX}"
+    ui_kv "Model hash" "${EXPECTED_MODEL_HASH}"
 fi
 if [[ "${MODEL_SOURCE}" == "gcs-kms" ]]; then
-    echo "  KMS key:      ${KMS_KEY}"
-    echo "  WIP audience: ${WIP_AUDIENCE}"
+    ui_kv "KMS key" "${KMS_KEY}"
+    ui_kv "WIP audience" "${WIP_AUDIENCE}"
 fi
-echo
+ui_blank
 
 if $SKIP_BUILD; then
-    echo "[1/6] Skipping model preparation (--skip-build)."
-    echo "[2/6] Skipping Docker auth (--skip-build)."
-    echo "[3/6] Skipping Docker build (--skip-build)."
-    echo "[4/6] Skipping push (--skip-build). Using existing image: ${IMAGE_URI}"
-    echo
+    ui_info "[1/6] Skipping model preparation (--skip-build)."
+    ui_info "[2/6] Skipping Docker auth (--skip-build)."
+    ui_info "[3/6] Skipping Docker build (--skip-build)."
+    ui_info "[4/6] Skipping push (--skip-build). Using existing image: ${IMAGE_URI}"
+    ui_blank
 else
     # ---------------------------------------------------------------------------
     # 1. Resolve model symlink (Docker cannot follow symlinks outside build context)
@@ -229,48 +231,39 @@ else
     # ---------------------------------------------------------------------------
     # 2. Authenticate Docker with Artifact Registry
     # ---------------------------------------------------------------------------
-    echo "[2/6] Configuring Docker authentication..."
-    gcloud auth configure-docker "${REPO_LOCATION}-docker.pkg.dev" --quiet
-    echo "  Docker configured for ${REPO_LOCATION}-docker.pkg.dev"
-    echo
+    run_step 2 6 "Configuring Docker authentication" \
+        gcloud auth configure-docker "${REPO_LOCATION}-docker.pkg.dev" --quiet
+    ui_blank
 
     # ---------------------------------------------------------------------------
     # 3. Build container image
     # ---------------------------------------------------------------------------
-    echo "[3/6] Building container image..."
-    echo "  Tag: ${IMAGE_URI}"
     if $GPU; then
         DOCKERFILE="${PROJECT_DIR}/Dockerfile.gpu"
-        echo "  Dockerfile: Dockerfile.gpu (CUDA + GCP features)"
     else
         DOCKERFILE="${PROJECT_DIR}/Dockerfile.gcp"
-        echo "  Dockerfile: Dockerfile.gcp (CPU-only GCP features)"
     fi
-    docker build \
-        -f "${DOCKERFILE}" \
-        -t "${IMAGE_URI}" \
-        "${PROJECT_DIR}"
-    echo "  Build complete."
-    echo
+    run_step 3 6 "Building container image (${DOCKERFILE##*/})" \
+        docker build -f "${DOCKERFILE}" -t "${IMAGE_URI}" "${PROJECT_DIR}"
+    ui_blank
 
     # ---------------------------------------------------------------------------
     # 4. Push to Artifact Registry
     # ---------------------------------------------------------------------------
-    echo "[4/6] Pushing to Artifact Registry..."
-    docker push "${IMAGE_URI}"
-    echo "  Push complete."
-    echo
+    run_step 4 6 "Pushing to Artifact Registry" \
+        docker push "${IMAGE_URI}"
+    ui_blank
 fi
 
 # ---------------------------------------------------------------------------
 # 5. Launch Confidential Space CVM
 # ---------------------------------------------------------------------------
-echo "[5/6] Launching Confidential Space CVM..."
+ui_info "[5/6] Launching Confidential Space CVM..."
 
 # Delete existing instance if present (avoids name conflict)
 if gcloud compute instances describe "${INSTANCE_NAME}" \
     --zone="${ZONE}" --project="${PROJECT}" &>/dev/null; then
-    echo "  Deleting existing instance '${INSTANCE_NAME}'..."
+    ui_info "Deleting existing instance '${INSTANCE_NAME}'..."
     gcloud compute instances delete "${INSTANCE_NAME}" \
         --zone="${ZONE}" --project="${PROJECT}" --quiet
 fi
@@ -294,15 +287,12 @@ METADATA="${METADATA},tee-env-EPHEMERALML_GCP_LOCATION=${ZONE%-*}"
 # quotes are unavailable. The Launcher JWT is the real attestation root.
 # Synthetic transport must be explicitly opted in via --allow-synthetic-transport.
 if $ALLOW_SYNTHETIC; then
-    echo "  WARNING [DEV ONLY]: Synthetic transport quotes enabled (--allow-synthetic-transport)."
-    echo "           Transport-level attestation is NOT hardware-backed."
-    echo "           KMS attestation via Launcher JWT is still hardware-backed."
-    echo "           Do NOT use this in production."
+    ui_warn "WARNING [DEV ONLY]: Synthetic transport quotes enabled."
+    ui_info "  Transport-level attestation is NOT hardware-backed."
+    ui_info "  KMS attestation via Launcher JWT is still hardware-backed."
     METADATA="${METADATA},tee-env-EPHEMERALML_ALLOW_SYNTHETIC_TRANSPORT=true"
 else
-    echo "  INFO: Synthetic transport disabled (fail-closed default)."
-    echo "        If the enclave fails because configfs-tsm is unavailable:"
-    echo "        re-deploy with --allow-synthetic-transport (dev/test only)."
+    ui_info "Synthetic transport disabled (fail-closed default)."
     METADATA="${METADATA},tee-env-EPHEMERALML_ALLOW_SYNTHETIC_TRANSPORT=false"
 fi
 # Inject GCS env vars for gcs and gcs-kms model sources
@@ -349,13 +339,13 @@ fi
 
 gcloud compute instances create "${INSTANCE_NAME}" "${GCLOUD_ARGS[@]}"
 
-echo "  Instance '${INSTANCE_NAME}' created."
-echo
+ui_info "Instance '${INSTANCE_NAME}' created."
+ui_blank
 
 # ---------------------------------------------------------------------------
 # 6. Wait for instance and print connection info
 # ---------------------------------------------------------------------------
-echo "[6/6] Waiting for instance to become RUNNING..."
+ui_info "[6/6] Waiting for instance to become RUNNING..."
 for i in $(seq 1 30); do
     STATUS="$(gcloud compute instances describe "${INSTANCE_NAME}" \
         --zone="${ZONE}" --project="${PROJECT}" \
@@ -372,28 +362,24 @@ EXTERNAL_IP="$(gcloud compute instances describe "${INSTANCE_NAME}" \
     --zone="${ZONE}" --project="${PROJECT}" \
     --format='value(networkInterfaces[0].accessConfigs[0].natIP)' 2>/dev/null || echo 'UNKNOWN')"
 
-echo "============================================"
-echo "  Deployment complete."
-echo "============================================"
-echo
-echo "  Instance:    ${INSTANCE_NAME}"
-echo "  Zone:        ${ZONE}"
-echo "  Status:      ${STATUS}"
-echo "  External IP: ${EXTERNAL_IP}"
-echo "  Ports:       9000 (control), 9001 (data_in), 9002 (data_out)"
-echo
+ui_header "Deployment complete"
+ui_blank
+ui_kv "Instance" "${INSTANCE_NAME}"
+ui_kv "Zone" "${ZONE}"
+ui_kv "Status" "${STATUS}"
+ui_kv "External IP" "${EXTERNAL_IP}"
+ui_kv "Ports" "9000 (control), 9001 (data_in), 9002 (data_out)"
+ui_blank
 if $DEBUG; then
-    echo "  SSH:  gcloud compute ssh ${INSTANCE_NAME} --zone=${ZONE} --project=${PROJECT}"
-    echo "  Logs: gcloud compute ssh ${INSTANCE_NAME} --zone=${ZONE} --project=${PROJECT} --command='sudo journalctl -u tee-container-runner -f'"
+    ui_info "SSH:  gcloud compute ssh ${INSTANCE_NAME} --zone=${ZONE} --project=${PROJECT}"
+    ui_info "Logs: gcloud compute ssh ${INSTANCE_NAME} --zone=${ZONE} --project=${PROJECT} --command='sudo journalctl -u tee-container-runner -f'"
 fi
-echo
+ui_blank
 if $GPU; then
-    echo "  Note: GPU instances take ~2-5 minutes to start (driver install + CC boot)."
-    echo "        The Launcher installs CC GPU drivers, reboots, then starts the workload."
-    echo "  WARNING: GPU Confidential Space is Preview. Spot VMs may be preempted."
+    ui_info "Note: GPU instances take ~2-5 minutes to start (driver install + CC boot)."
+    ui_warn "WARNING: GPU Confidential Space is Preview. Spot VMs may be preempted."
 else
-    echo "  Note: The container takes ~30-60s to start after the VM is RUNNING."
-    echo "        The Launcher pulls the image, verifies it, then starts the workload."
+    ui_info "Note: The container takes ~30-60s to start after the VM is RUNNING."
 fi
-echo
-echo "  Next: bash scripts/gcp/verify.sh"
+ui_blank
+ui_info "Next: bash scripts/gcp/verify.sh"

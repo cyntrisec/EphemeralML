@@ -12,6 +12,7 @@ pub mod receipt_verify;
 pub mod storage_protocol;
 pub mod transport_types;
 pub mod types;
+pub mod ui;
 pub mod validation;
 
 // Re-export commonly used types and errors

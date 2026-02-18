@@ -13,6 +13,10 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
+# Load shared UI helpers
+# shellcheck source=../lib/ui.sh
+source "${SCRIPT_DIR}/../lib/ui.sh"
+
 # ---------------------------------------------------------------------------
 # Configuration
 # ---------------------------------------------------------------------------
@@ -59,64 +63,60 @@ if [[ -z "${PROJECT}" ]]; then
     exit 1
 fi
 
-echo "============================================"
-echo "  EphemeralML — Verify Deployment"
-echo "============================================"
-echo
+ui_header "EphemeralML — Verify Deployment"
+ui_blank
 
 # ---------------------------------------------------------------------------
 # 1. Resolve instance IP
 # ---------------------------------------------------------------------------
 if [[ -z "${IP}" ]]; then
-    echo "[1/4] Resolving instance IP..."
+    ui_info "[1/4] Resolving instance IP..."
     IP="$(gcloud compute instances describe "${INSTANCE_NAME}" \
         --zone="${ZONE}" --project="${PROJECT}" \
         --format='value(networkInterfaces[0].accessConfigs[0].natIP)' 2>/dev/null)"
     if [[ -z "${IP}" || "${IP}" == "None" ]]; then
-        echo "ERROR: Could not resolve IP for '${INSTANCE_NAME}' in zone '${ZONE}'."
-        echo "Is the instance running? Try: gcloud compute instances list --project=${PROJECT}"
+        ui_fail "ERROR: Could not resolve IP for '${INSTANCE_NAME}' in zone '${ZONE}'."
+        ui_info "Is the instance running? Try: gcloud compute instances list --project=${PROJECT}"
         exit 1
     fi
-    echo "  Instance IP: ${IP}"
+    ui_kv "Instance IP" "${IP}"
 else
-    echo "[1/4] Using provided IP: ${IP}"
+    ui_info "[1/4] Using provided IP: ${IP}"
 fi
-echo
+ui_blank
 
 # ---------------------------------------------------------------------------
 # 2. Wait for port to be reachable
 # ---------------------------------------------------------------------------
-echo "[2/4] Waiting for ${IP}:${CONTROL_PORT} to be reachable (max ${MAX_WAIT}s)..."
+ui_info "[2/4] Waiting for ${IP}:${CONTROL_PORT} to be reachable (max ${MAX_WAIT}s)..."
 WAITED=0
 while ! timeout 2 bash -c "echo >/dev/tcp/${IP}/${CONTROL_PORT}" 2>/dev/null; do
     WAITED=$((WAITED + 5))
     if [[ ${WAITED} -ge ${MAX_WAIT} ]]; then
-        echo "ERROR: Port ${CONTROL_PORT} not reachable after ${MAX_WAIT}s."
-        echo "Check:"
-        echo "  - Firewall rule allows TCP ${CONTROL_PORT}: gcloud compute firewall-rules list --project=${PROJECT}"
-        echo "  - Container is running: gcloud compute ssh ${INSTANCE_NAME} --zone=${ZONE} --command='sudo journalctl -u tee-container-runner --no-pager -n 50'"
+        ui_fail "ERROR: Port ${CONTROL_PORT} not reachable after ${MAX_WAIT}s."
+        ui_bullet "Firewall rule allows TCP ${CONTROL_PORT}: gcloud compute firewall-rules list --project=${PROJECT}"
+        ui_bullet "Container is running: gcloud compute ssh ${INSTANCE_NAME} --zone=${ZONE} --command='sudo journalctl -u tee-container-runner --no-pager -n 50'"
         exit 1
     fi
     printf "  Waiting... [%d/%ds]\r" "${WAITED}" "${MAX_WAIT}"
     sleep 5
 done
-echo "  Port ${CONTROL_PORT} is reachable.                    "
-echo
+ui_ok "Port ${CONTROL_PORT} is reachable."
+ui_blank
 
 # ---------------------------------------------------------------------------
 # 3. Run inference client
 # ---------------------------------------------------------------------------
-echo "[3/4] Running inference against ${IP}:${DATA_PORT}..."
-echo "  Text: \"${INFERENCE_TEXT}\""
-echo "  Mode: gcp (TDX attestation + handshake)"
-echo
+ui_info "[3/4] Running inference against ${IP}:${DATA_PORT}..."
+ui_kv "Text" "\"${INFERENCE_TEXT}\""
+ui_kv "Mode" "gcp (TDX attestation + handshake)"
+ui_blank
 
 cd "${PROJECT_DIR}"
 
 # Build client with gcp feature — must match the enclave's TDX handshake stack
-echo "  Building client..."
-cargo build --release --no-default-features --features gcp \
-    -p ephemeral-ml-client 2>&1 | tail -3
+run_step 3 4 "Building GCP client" \
+    cargo build --release --no-default-features --features gcp -p ephemeral-ml-client
 
 # The GCP-mode client reads EPHEMERALML_ENCLAVE_ADDR for the server address.
 # It connects to the data_in port (9001) where the enclave accepts inference traffic.
@@ -133,21 +133,21 @@ EPHEMERALML_ENCLAVE_ADDR="${IP}:${DATA_PORT}" \
 CLIENT_EXIT=${PIPESTATUS[0]}
 
 if [[ ${CLIENT_EXIT} -ne 0 ]]; then
-    echo
-    echo "ERROR: Client exited with code ${CLIENT_EXIT}."
-    echo "Check the output above for details."
+    ui_blank
+    ui_fail "ERROR: Client exited with code ${CLIENT_EXIT}."
+    ui_info "Check the output above for details."
     exit 1
 fi
-echo
-echo "  Inference completed successfully."
-echo
+ui_blank
+ui_ok "Inference completed successfully."
+ui_blank
 
 # ---------------------------------------------------------------------------
 # 4. Verify receipt (if saved)
 # ---------------------------------------------------------------------------
 RECEIPT_VERIFIED=false
 
-echo "[4/4] Verifying receipt..."
+ui_info "[4/4] Verifying receipt..."
 
 if [[ -f "${RECEIPT_PATH}" ]]; then
     # Read public key from the .pubkey file the client writes (hex-encoded Ed25519 key).
@@ -158,9 +158,9 @@ if [[ -f "${RECEIPT_PATH}" ]]; then
     fi
 
     if [[ -n "${PK_HEX}" ]]; then
-        echo "  Receipt: ${RECEIPT_PATH}"
-        echo "  Public key: ${PK_HEX}"
-        echo
+        ui_kv "Receipt" "${RECEIPT_PATH}"
+        ui_kv "Public key" "${PK_HEX}"
+        ui_blank
 
         cargo run --release --no-default-features --features gcp \
             --bin ephemeralml-verify -- \
@@ -171,35 +171,33 @@ if [[ -f "${RECEIPT_PATH}" ]]; then
         VERIFY_EXIT=$?
         RECEIPT_VERIFIED=true
     else
-        echo "  WARNING: Receipt file exists but no .pubkey file found at ${PUBKEY_FILE}."
-        echo "  Receipt at: ${RECEIPT_PATH}"
+        ui_warn "WARNING: Receipt file exists but no .pubkey file found at ${PUBKEY_FILE}."
+        ui_info "Receipt at: ${RECEIPT_PATH}"
         VERIFY_EXIT=1
     fi
 else
-    echo "  WARNING: No receipt file at ${RECEIPT_PATH}."
-    echo "  The client may not save receipts in this mode."
+    ui_warn "WARNING: No receipt file at ${RECEIPT_PATH}."
+    ui_info "The client may not save receipts in this mode."
     VERIFY_EXIT=1
 fi
-echo
+ui_blank
 
 # ---------------------------------------------------------------------------
 # Summary
 # ---------------------------------------------------------------------------
-echo "============================================"
 if [[ ${CLIENT_EXIT} -eq 0 && ${RECEIPT_VERIFIED} == true && ${VERIFY_EXIT} -eq 0 ]]; then
-    echo "  PASS — Inference + receipt verification succeeded."
+    ui_header "PASS — Inference + receipt verification succeeded"
 elif [[ ${CLIENT_EXIT} -eq 0 ]]; then
-    echo "  PARTIAL — Inference succeeded, receipt NOT verified."
+    ui_header "PARTIAL — Inference succeeded, receipt NOT verified"
 else
-    echo "  FAIL — See errors above."
+    ui_header "FAIL — See errors above"
 fi
-echo "============================================"
-echo
-echo "  Instance:   ${INSTANCE_NAME} (${IP})"
-echo "  Client:     exit ${CLIENT_EXIT}"
-echo "  Receipt:    $(if ${RECEIPT_VERIFIED}; then echo "VERIFIED"; else echo "NOT VERIFIED"; fi)"
-echo
-echo "  Next: bash scripts/gcp/teardown.sh"
+ui_blank
+ui_kv "Instance" "${INSTANCE_NAME} (${IP})"
+ui_kv "Client" "exit ${CLIENT_EXIT}"
+ui_kv "Receipt" "$(if ${RECEIPT_VERIFIED}; then echo "VERIFIED"; else echo "NOT VERIFIED"; fi)"
+ui_blank
+ui_info "Next: bash scripts/gcp/teardown.sh"
 
 # Exit 0 only when both client and receipt verification passed
 if [[ ${CLIENT_EXIT} -eq 0 && ${VERIFY_EXIT} -eq 0 ]]; then

@@ -12,9 +12,11 @@ use clap::Parser;
 use confidential_ml_pipeline::tcp;
 use confidential_ml_pipeline::{OrchestratorConfig, ShardManifest};
 use confidential_ml_transport::{DType, MockProvider, MockVerifier, OwnedTensor};
+use ephemeral_ml_common::ui::{GhostState, Ui, UiConfig};
 use ephemeral_ml_common::AttestationReceipt;
 use serde::{Deserialize, Serialize};
 use std::fs;
+use std::io::IsTerminal;
 use std::path::PathBuf;
 
 #[derive(Parser)]
@@ -38,6 +40,18 @@ struct Args {
     /// Sequence length for the pipeline
     #[arg(long, default_value = "16")]
     seq_len: u32,
+
+    /// Disable colors and mascot (plain text output)
+    #[arg(long)]
+    plain: bool,
+
+    /// Disable color output
+    #[arg(long)]
+    no_color: bool,
+
+    /// Disable ghost mascot
+    #[arg(long)]
+    no_mascot: bool,
 }
 
 /// Pipeline proof bundle containing chained stage receipts.
@@ -62,6 +76,17 @@ struct StageReceiptEntry {
 async fn main() -> Result<()> {
     let args = Args::parse();
 
+    let ui_config = UiConfig::resolve(
+        std::io::stdout().is_terminal(),
+        args.plain,
+        args.no_color,
+        args.no_mascot,
+        false,
+    );
+    let mut ui = Ui::stdout(ui_config);
+
+    ui.ghost(GhostState::Idle);
+
     // 1. Load manifest
     let manifest_bytes = fs::read(&args.manifest)
         .with_context(|| format!("Failed to read manifest: {}", args.manifest.display()))?;
@@ -69,23 +94,22 @@ async fn main() -> Result<()> {
         serde_json::from_slice(&manifest_bytes).context("Failed to parse manifest JSON")?;
 
     let num_stages = manifest.stages.len();
-    println!("EphemeralML Pipeline Orchestrator");
-    println!("=================================");
-    println!("  Model:  {}", manifest.model_name);
-    println!("  Stages: {}", num_stages);
-    println!();
+    ui.header("EphemeralML Pipeline Orchestrator");
+    ui.kv("Model", &manifest.model_name);
+    ui.kv("Stages", &num_stages.to_string());
+    ui.blank();
 
     // 2. Bind orchestrator's data_out listener (receives final stage output)
     let localhost: std::net::SocketAddr = "127.0.0.1:0".parse().unwrap();
     let orch_dout_lis = tokio::net::TcpListener::bind(localhost).await?;
     let orch_dout_addr = orch_dout_lis.local_addr()?;
-    println!("  Orchestrator data_out: {}", orch_dout_addr);
+    ui.kv("Data out", &orch_dout_addr.to_string());
 
     // 3. Initialize orchestrator (connects to all stages)
     let verifier = MockVerifier::new();
     let provider = MockProvider::new();
 
-    println!("  Connecting to stages...");
+    ui.info("Connecting to stages...");
     let mut orch = tcp::init_orchestrator_tcp(
         OrchestratorConfig::default(),
         manifest.clone(),
@@ -98,7 +122,7 @@ async fn main() -> Result<()> {
 
     // 4. Health check
     orch.health_check().await.context("Health check failed")?;
-    println!("  Health check: PASS");
+    ui.info("Health check: PASS");
 
     // 5. Encode input text as tensor
     let input_bytes = args.text.as_bytes().to_vec();
@@ -109,16 +133,14 @@ async fn main() -> Result<()> {
         data: Bytes::from(input_bytes),
     };
 
-    println!();
-    println!("Running inference...");
-    println!(
-        "  Input: \"{}\"",
-        if args.text.len() > 80 {
-            &args.text[..80]
-        } else {
-            &args.text
-        }
-    );
+    ui.blank();
+    ui.section("Inference");
+    let input_preview = if args.text.len() > 80 {
+        &args.text[..80]
+    } else {
+        &args.text
+    };
+    ui.kv("Input", &format!("\"{}\"", input_preview));
 
     let start = std::time::Instant::now();
     let result = orch
@@ -127,7 +149,7 @@ async fn main() -> Result<()> {
         .context("Pipeline inference failed")?;
     let elapsed = start.elapsed();
 
-    println!("  Time: {}ms", elapsed.as_millis());
+    ui.kv("Time", &format!("{}ms", elapsed.as_millis()));
 
     // 6. Extract receipts from output tensors
     let tensors = &result.outputs[0];
@@ -135,7 +157,6 @@ async fn main() -> Result<()> {
 
     for tensor in tensors {
         if tensor.name.starts_with("__receipt__") {
-            // Try to parse as CBOR first (canonical), then JSON (legacy)
             let receipt: AttestationReceipt = ephemeral_ml_common::cbor::from_slice(&tensor.data)
                 .or_else(|_| {
                     serde_json::from_slice(&tensor.data)
@@ -150,9 +171,7 @@ async fn main() -> Result<()> {
                 hex::encode(Sha256::digest(&tensor.data))
             };
 
-            // Determine stage index from tensor name
             let stage_idx = if tensor.name == "__receipt__" {
-                // Last stage (unnamed = current stage)
                 stage_receipts.len()
             } else if let Some(suffix) = tensor.name.strip_prefix("__receipt__stage") {
                 suffix.parse::<usize>().unwrap_or(stage_receipts.len())
@@ -168,7 +187,6 @@ async fn main() -> Result<()> {
         }
     }
 
-    // Sort by stage index
     stage_receipts.sort_by_key(|e| e.stage_index);
 
     // 7. Verify receipt chain
@@ -178,17 +196,19 @@ async fn main() -> Result<()> {
             let expected = &stage_receipts[i - 1].receipt_cbor_hash;
             let actual = hex::encode(prev_hash);
             if actual != *expected {
-                eprintln!(
-                    "  Chain BREAK at stage {}: expected {}, got {}",
+                ui.warn(&format!(
+                    "Chain BREAK at stage {}: expected {}, got {}",
                     i,
                     &expected[..16],
                     &actual[..16]
-                );
+                ));
                 chain_valid = false;
             }
         } else if i > 0 {
-            // Stage > 0 should have a previous_receipt_hash
-            eprintln!("  Chain MISSING at stage {}: no previous_receipt_hash", i);
+            ui.warn(&format!(
+                "Chain MISSING at stage {}: no previous_receipt_hash",
+                i,
+            ));
             chain_valid = false;
         }
     }
@@ -218,41 +238,42 @@ async fn main() -> Result<()> {
     let bundle_json = serde_json::to_string_pretty(&bundle)?;
     fs::write(&args.output, &bundle_json)?;
 
-    println!();
-    println!("Pipeline Proof Bundle");
-    println!("---------------------");
-    println!("  ID:         {}", bundle.pipeline_id);
-    println!("  Model:      {}", bundle.model_name);
-    println!("  Stages:     {}", bundle.num_stages);
-    println!("  Receipts:   {}", bundle.stage_receipts.len());
-    println!(
-        "  Chain:      {}",
+    ui.blank();
+    ui.section("Pipeline Proof Bundle");
+    ui.kv("ID", &bundle.pipeline_id);
+    ui.kv("Model", &bundle.model_name);
+    ui.kv("Stages", &bundle.num_stages.to_string());
+    ui.kv("Receipts", &bundle.stage_receipts.len().to_string());
+    ui.kv(
+        "Chain",
         if bundle.chain_valid {
             "VALID"
         } else {
             "BROKEN"
-        }
+        },
     );
-    println!("  Saved to:   {}", args.output.display());
-    println!();
+    ui.kv("Saved to", &args.output.display().to_string());
+    ui.blank();
 
     // 10. Print per-stage summary
     for entry in &bundle.stage_receipts {
-        println!(
-            "  Stage {}: model={}, seq={}, hash={}...",
+        ui.stage_line(&format!(
+            "Stage {}: model={}, seq={}, hash={}...",
             entry.stage_index,
             entry.receipt.model_id,
             entry.receipt.sequence_number,
             &entry.receipt_cbor_hash[..16]
-        );
+        ));
     }
 
     // 11. Shutdown
     orch.shutdown().await.context("Shutdown failed")?;
 
     if !bundle.chain_valid {
+        ui.ghost(GhostState::Fail);
         bail!("Receipt chain validation failed");
     }
 
+    ui.ghost(GhostState::Success);
     Ok(())
 }

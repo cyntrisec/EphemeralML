@@ -10,8 +10,11 @@ use anyhow::{bail, Context, Result};
 use clap::{Parser, Subcommand};
 use ed25519_dalek::VerifyingKey;
 use ephemeral_ml_client::{AttestationReceipt, SecureClient, SecureEnclaveClient};
+use ephemeral_ml_common::receipt_verify::CheckStatus;
+use ephemeral_ml_common::ui::{GhostState, Ui, UiConfig};
 use sha2::{Digest, Sha256};
 use std::fs;
+use std::io::IsTerminal;
 use std::path::{Path, PathBuf};
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
@@ -24,6 +27,18 @@ use std::time::{Instant, SystemTime, UNIX_EPOCH};
 struct Cli {
     #[command(subcommand)]
     command: Commands,
+
+    /// Disable colors and mascot (plain text output)
+    #[arg(long, global = true)]
+    plain: bool,
+
+    /// Disable color output
+    #[arg(long, global = true)]
+    no_color: bool,
+
+    /// Disable ghost mascot
+    #[arg(long, global = true)]
+    no_mascot: bool,
 }
 
 #[derive(Subcommand)]
@@ -120,13 +135,23 @@ struct StageReceiptEntry {
 #[tokio::main]
 async fn main() -> Result<()> {
     let cli = Cli::parse();
+    let ui_config = UiConfig::resolve(
+        std::io::stdout().is_terminal(),
+        cli.plain,
+        cli.no_color,
+        cli.no_mascot,
+        false,
+    );
+    let mut ui = Ui::stdout(ui_config);
     match cli.command {
-        Commands::Infer(args) => run_infer(args).await,
-        Commands::VerifyPipeline(args) => run_verify_pipeline(args),
+        Commands::Infer(args) => run_infer(&mut ui, args).await,
+        Commands::VerifyPipeline(args) => run_verify_pipeline(&mut ui, args),
     }
 }
 
-async fn run_infer(args: InferArgs) -> Result<()> {
+async fn run_infer(ui: &mut Ui, args: InferArgs) -> Result<()> {
+    ui.ghost(GhostState::Idle);
+
     // Resolve input text
     let text = match (&args.text, &args.file) {
         (Some(t), _) => t.clone(),
@@ -135,13 +160,12 @@ async fn run_infer(args: InferArgs) -> Result<()> {
         _ => bail!("Provide either --text or --file"),
     };
 
-    println!();
-    println!("EphemeralML Confidential Inference");
-    println!("==================================");
-    println!();
+    ui.blank();
+    ui.header("EphemeralML Confidential Inference");
+    ui.blank();
 
     // Connect
-    println!("Connecting to {}...", args.addr);
+    ui.info(&format!("Connecting to {}...", args.addr));
     let mut client = SecureEnclaveClient::new("ephemeralml-cli".to_string());
     client
         .establish_channel(&args.addr)
@@ -157,9 +181,9 @@ async fn run_infer(args: InferArgs) -> Result<()> {
         "COSE-verified (Nitro)"
     };
 
-    println!("  Attestation:    {}", attestation_label);
-    println!("  Encryption:     HPKE-X25519-ChaCha20Poly1305");
-    println!("  Channel:        established");
+    ui.kv("Attestation", attestation_label);
+    ui.kv("Encryption", "HPKE-X25519-ChaCha20Poly1305");
+    ui.kv("Channel", "established");
 
     // Save public key if available
     if let Some(pk_bytes) = client.server_receipt_signing_key() {
@@ -169,25 +193,22 @@ async fn run_infer(args: InferArgs) -> Result<()> {
     }
 
     // Show input summary
-    println!();
+    ui.blank();
     let preview = if text.len() > 120 {
         format!("{}...", &text[..120])
     } else {
         text.clone()
     };
-    // Collapse whitespace for display
     let preview_display: String = preview.split_whitespace().collect::<Vec<_>>().join(" ");
-    println!("Input ({} bytes):", text.len());
-    println!("  \"{}\"", preview_display);
+    ui.info(&format!("Input ({} bytes):", text.len()));
+    ui.info(&format!("  \"{}\"", preview_display));
 
     // Inference
-    println!();
+    ui.blank();
     if args.generate {
-        println!("Text Generation");
-        println!("---------------");
+        ui.section("Text Generation");
     } else {
-        println!("Inference");
-        println!("---------");
+        ui.section("Inference");
     }
 
     let start = Instant::now();
@@ -204,99 +225,100 @@ async fn run_infer(args: InferArgs) -> Result<()> {
     };
     let elapsed = start.elapsed();
 
-    println!("  Model:          {}", args.model);
-    println!("  Time:           {}ms", elapsed.as_millis());
+    ui.kv("Model", &args.model);
+    ui.kv("Time", &format!("{}ms", elapsed.as_millis()));
 
     if args.generate {
-        println!("  Tokens:         {} generated", result.output_tensor.len());
-        println!();
-        println!("Generated Text");
-        println!("--------------");
+        ui.kv(
+            "Tokens",
+            &format!("{} generated", result.output_tensor.len()),
+        );
+        ui.blank();
+        ui.section("Generated Text");
         if let Some(ref gen_text) = result.generated_text {
-            println!("{}", gen_text);
+            ui.info(gen_text);
         } else {
-            println!("  (no text returned)");
+            ui.info("(no text returned)");
         }
     } else {
-        println!(
-            "  Output:         {}-dim embedding",
-            result.output_tensor.len()
+        ui.kv(
+            "Output",
+            &format!("{}-dim embedding", result.output_tensor.len()),
         );
 
-        // Show first 5 values
         let first_n: Vec<String> = result
             .output_tensor
             .iter()
             .take(5)
             .map(|v| format!("{:.4}", v))
             .collect();
-        println!("  Values[0..5]:   [{}]", first_n.join(", "));
+        ui.kv("Values[0..5]", &format!("[{}]", first_n.join(", ")));
 
-        // L2 norm
         let l2: f64 = result
             .output_tensor
             .iter()
             .map(|v| (*v as f64) * (*v as f64))
             .sum::<f64>()
             .sqrt();
-        println!("  L2 norm:        {:.4}", l2);
+        ui.kv("L2 norm", &format!("{:.4}", l2));
     }
 
     // Receipt
-    println!();
-    println!("Receipt");
-    println!("-------");
-    println!("  ID:             {}", result.receipt.receipt_id);
-    println!(
-        "  Platform:       {}",
-        result.receipt.enclave_measurements.measurement_type
+    ui.blank();
+    ui.section("Receipt");
+    ui.kv("ID", &result.receipt.receipt_id);
+    ui.kv(
+        "Platform",
+        &result.receipt.enclave_measurements.measurement_type,
     );
 
     // Inline signature verification
     let sig_status = if let Some(pk_bytes) = client.server_receipt_signing_key() {
         match VerifyingKey::from_bytes(&pk_bytes) {
             Ok(vk) => match result.receipt.verify_signature(&vk) {
-                Ok(true) => "VERIFIED (Ed25519)",
-                Ok(false) => "INVALID",
-                Err(_) => "ERROR",
+                Ok(true) => CheckStatus::Pass,
+                Ok(false) => CheckStatus::Fail,
+                Err(_) => CheckStatus::Fail,
             },
-            Err(_) => "KEY ERROR",
+            Err(_) => CheckStatus::Fail,
         }
     } else {
-        "NO KEY (cannot verify)"
+        CheckStatus::Skip
     };
-    println!("  Signature:      {}", sig_status);
+    ui.check("Signature (Ed25519)", &sig_status);
 
     // Save receipt as JSON
     let receipt_json =
         serde_json::to_string_pretty(&result.receipt).context("Failed to serialize receipt")?;
     fs::write(&args.receipt, &receipt_json)
         .with_context(|| format!("Failed to write {}", args.receipt.display()))?;
-    println!("  Saved to:       {}", args.receipt.display());
+    ui.kv("Saved to", &args.receipt.display().to_string());
 
-    println!();
+    ui.blank();
+    ui.ghost(GhostState::Success);
     Ok(())
 }
 
-fn run_verify_pipeline(args: VerifyPipelineArgs) -> Result<()> {
+fn run_verify_pipeline(ui: &mut Ui, args: VerifyPipelineArgs) -> Result<()> {
+    ui.ghost(GhostState::Idle);
+
     let bundle_bytes = fs::read(&args.bundle)
         .with_context(|| format!("Failed to read {}", args.bundle.display()))?;
     let bundle: PipelineProofBundle = serde_json::from_slice(&bundle_bytes)
         .context("Failed to parse pipeline proof bundle JSON")?;
 
-    println!();
-    println!("  EphemeralML Pipeline Verification");
-    println!("  =================================");
-    println!();
-    println!("  Pipeline:  {}", bundle.pipeline_id);
-    println!("  Model:     {}", bundle.model_name);
-    println!("  Stages:    {}", bundle.num_stages);
-    println!();
+    ui.blank();
+    ui.header("EphemeralML Pipeline Verification");
+    ui.blank();
+    ui.kv("Pipeline", &bundle.pipeline_id);
+    ui.kv("Model", &bundle.model_name);
+    ui.kv("Stages", &bundle.num_stages.to_string());
+    ui.blank();
 
     if bundle.stage_receipts.is_empty() {
-        println!("  --> PIPELINE INVALID");
-        println!("      - No receipts in bundle");
-        println!();
+        ui.failure("--> PIPELINE INVALID");
+        ui.bullet("No receipts in bundle");
+        ui.blank();
         std::process::exit(1);
     }
 
@@ -307,20 +329,20 @@ fn run_verify_pipeline(args: VerifyPipelineArgs) -> Result<()> {
     for (expected, entry) in entries.iter().enumerate() {
         if entry.stage_index != expected {
             stage_index_ok = false;
-            println!(
-                "  Stage index FAIL  expected contiguous index {}, got {}",
+            ui.stage_line(&format!(
+                "Stage index FAIL  expected contiguous index {}, got {}",
                 expected, entry.stage_index
-            );
+            ));
         }
     }
 
     let count_ok = entries.len() == bundle.num_stages;
     if !count_ok {
-        println!(
-            "  Stage count FAIL  bundle says {} stages, found {} receipts",
+        ui.stage_line(&format!(
+            "Stage count FAIL  bundle says {} stages, found {} receipts",
             bundle.num_stages,
             entries.len()
-        );
+        ));
     }
 
     let public_keys = resolve_pipeline_public_keys(&args, entries.len())?;
@@ -369,8 +391,8 @@ fn run_verify_pipeline(args: VerifyPipelineArgs) -> Result<()> {
         }
 
         let hash_prefix_len = std::cmp::min(16, computed_hash_hex.len());
-        println!(
-            "  Stage {} | {} v{:<6} | sig {} | hash {} | fresh {} | cbor {}...",
+        ui.stage_line(&format!(
+            "Stage {} | {} v{:<6} | sig {} | hash {} | fresh {} | cbor {}...",
             entry.stage_index,
             entry.receipt.model_id,
             entry.receipt.model_version,
@@ -382,37 +404,38 @@ fn run_verify_pipeline(args: VerifyPipelineArgs) -> Result<()> {
                 tag(fresh_ok)
             },
             &computed_hash_hex[..hash_prefix_len],
-        );
+        ));
     }
 
-    println!();
+    ui.blank();
 
     let mut chain_ok = true;
     let first = entries[0];
     if first.receipt.previous_receipt_hash.is_some() {
-        println!("  Chain[0]    FAIL  root should have no predecessor");
+        ui.chain_status("Chain[0]", false, "root should have no predecessor");
         chain_ok = false;
     } else {
-        println!("  Chain[0]    PASS  root (no predecessor)");
+        ui.chain_status("Chain[0]", true, "root (no predecessor)");
     }
 
     for i in 1..entries.len() {
         let curr = entries[i];
+        let label = format!("Chain[{}]", i);
         match curr.receipt.previous_receipt_hash {
             Some(hash) => {
                 if hash == computed_hashes[i - 1] {
-                    println!("  Chain[{}]    PASS  links to stage {}", i, i - 1);
+                    ui.chain_status(&label, true, &format!("links to stage {}", i - 1));
                 } else {
-                    println!(
-                        "  Chain[{}]    FAIL  previous hash mismatch against stage {}",
-                        i,
-                        i - 1
+                    ui.chain_status(
+                        &label,
+                        false,
+                        &format!("previous hash mismatch against stage {}", i - 1),
                     );
                     chain_ok = false;
                 }
             }
             None => {
-                println!("  Chain[{}]    FAIL  missing previous_receipt_hash", i);
+                ui.chain_status(&label, false, "missing previous_receipt_hash");
                 chain_ok = false;
             }
         }
@@ -421,40 +444,38 @@ fn run_verify_pipeline(args: VerifyPipelineArgs) -> Result<()> {
     let overall =
         stage_index_ok && count_ok && chain_ok && all_sigs_ok && all_hashes_ok && all_fresh_ok;
 
-    println!();
-    if overall {
-        println!(
-            "  --> PIPELINE VERIFIED ({} stages, signatures + hash chain intact)",
-            entries.len()
-        );
-    } else {
-        println!("  --> PIPELINE INVALID");
+    ui.verdict(
+        overall,
+        &format!("{} stages, signatures + hash chain intact", entries.len()),
+    );
+
+    if !overall {
         if !stage_index_ok {
-            println!("      - Stage indices are not contiguous from 0");
+            ui.bullet("Stage indices are not contiguous from 0");
         }
         if !count_ok {
-            println!("      - Receipt count does not match declared num_stages");
+            ui.bullet("Receipt count does not match declared num_stages");
         }
         if !all_sigs_ok {
-            println!("      - One or more receipt signatures are invalid");
+            ui.bullet("One or more receipt signatures are invalid");
         }
         if !all_hashes_ok {
-            println!(
-                "      - One or more claimed receipt hashes do not match recomputed CBOR hashes"
-            );
+            ui.bullet("One or more claimed receipt hashes do not match recomputed CBOR hashes");
         }
         if !chain_ok {
-            println!("      - Receipt chain integrity check failed");
+            ui.bullet("Receipt chain integrity check failed");
         }
         if !all_fresh_ok {
-            println!("      - One or more receipts are stale/future relative to --max-age");
+            ui.bullet("One or more receipts are stale/future relative to --max-age");
         }
     }
-    println!();
+    ui.blank();
 
     if overall {
+        ui.ghost(GhostState::Success);
         std::process::exit(0);
     } else {
+        ui.ghost(GhostState::Fail);
         std::process::exit(1);
     }
 }
