@@ -892,6 +892,195 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn test_cs_envelope_reject_malformed_cbor() {
+        std::env::set_var("EPHEMERALML_REQUIRE_MRTD", "false");
+        let verifier = TdxEnvelopeVerifierBridge::new(None);
+
+        // Random bytes — not valid CBOR
+        let doc = CmlAttestationDocument::new(vec![0xFF, 0xFE, 0xFD, 0x00]);
+        let result = verifier.verify(&doc).await;
+        assert!(result.is_err(), "Expected error for malformed CBOR");
+    }
+
+    #[tokio::test]
+    async fn test_cs_envelope_reject_empty_document() {
+        std::env::set_var("EPHEMERALML_REQUIRE_MRTD", "false");
+        let verifier = TdxEnvelopeVerifierBridge::new(None);
+
+        let doc = CmlAttestationDocument::new(vec![]);
+        let result = verifier.verify(&doc).await;
+        assert!(result.is_err(), "Expected error for empty document");
+    }
+
+    #[tokio::test]
+    async fn test_cs_envelope_reject_cbor_integer() {
+        std::env::set_var("EPHEMERALML_REQUIRE_MRTD", "false");
+        let verifier = TdxEnvelopeVerifierBridge::new(None);
+
+        // CBOR integer (not a map)
+        let cbor = ephemeral_ml_common::cbor::to_vec(&ciborium::Value::Integer(42.into())).unwrap();
+        let doc = CmlAttestationDocument::new(cbor);
+        let result = verifier.verify(&doc).await;
+        assert!(result.is_err(), "Expected error for CBOR integer");
+    }
+
+    #[tokio::test]
+    async fn test_cs_envelope_reject_truncated_cbor() {
+        let nonce = b"nonce";
+        let nonce_hex = hex::encode(nonce);
+        let jwt = make_test_jwt(
+            "https://confidentialcomputing.googleapis.com",
+            9999999999,
+            &[&nonce_hex],
+        );
+        let envelope = make_cs_envelope(&jwt, nonce);
+        let cbor = envelope.to_cbor_deterministic().unwrap();
+
+        // Truncate to half
+        let truncated = cbor[..cbor.len() / 2].to_vec();
+
+        std::env::set_var("EPHEMERALML_REQUIRE_MRTD", "false");
+        let verifier = TdxEnvelopeVerifierBridge::new(None);
+
+        let doc = CmlAttestationDocument::new(truncated);
+        let result = verifier.verify(&doc).await;
+        assert!(result.is_err(), "Expected error for truncated CBOR");
+    }
+
+    #[tokio::test]
+    async fn test_cs_envelope_reject_jwt_missing_iss() {
+        use base64::engine::general_purpose::URL_SAFE_NO_PAD;
+        use base64::Engine;
+
+        let nonce = b"nonce";
+        let nonce_hex = hex::encode(nonce);
+
+        // JWT with no `iss` field
+        let header = URL_SAFE_NO_PAD.encode(b"{\"alg\":\"RS256\",\"typ\":\"JWT\"}");
+        let claims = format!(
+            "{{\"exp\":9999999999,\"eat_nonce\":\"{}\"}}",
+            nonce_hex
+        );
+        let payload = URL_SAFE_NO_PAD.encode(claims.as_bytes());
+        let sig = URL_SAFE_NO_PAD.encode(b"fake");
+        let jwt = format!("{}.{}.{}", header, payload, sig);
+
+        let envelope = make_cs_envelope(&jwt, nonce);
+        let cbor = envelope.to_cbor_deterministic().unwrap();
+
+        std::env::set_var("EPHEMERALML_REQUIRE_MRTD", "false");
+        let verifier = TdxEnvelopeVerifierBridge::new(None);
+
+        let doc = CmlAttestationDocument::new(cbor);
+        let result = verifier.verify(&doc).await;
+        assert!(result.is_err());
+        let err = format!("{:?}", result.unwrap_err());
+        // Should fail because issuer is empty/missing
+        assert!(
+            err.contains("issuer mismatch") || err.contains("iss"),
+            "Error: {}",
+            err
+        );
+    }
+
+    #[tokio::test]
+    async fn test_cs_envelope_reject_jwt_missing_eat_nonce() {
+        use base64::engine::general_purpose::URL_SAFE_NO_PAD;
+        use base64::Engine;
+
+        let nonce = b"nonce";
+
+        // JWT with no `eat_nonce` field
+        let header = URL_SAFE_NO_PAD.encode(b"{\"alg\":\"RS256\",\"typ\":\"JWT\"}");
+        let claims = "{\"iss\":\"https://confidentialcomputing.googleapis.com\",\"exp\":9999999999}";
+        let payload = URL_SAFE_NO_PAD.encode(claims.as_bytes());
+        let sig = URL_SAFE_NO_PAD.encode(b"fake");
+        let jwt = format!("{}.{}.{}", header, payload, sig);
+
+        let envelope = make_cs_envelope(&jwt, nonce);
+        let cbor = envelope.to_cbor_deterministic().unwrap();
+
+        std::env::set_var("EPHEMERALML_REQUIRE_MRTD", "false");
+        let verifier = TdxEnvelopeVerifierBridge::new(None);
+
+        let doc = CmlAttestationDocument::new(cbor);
+        let result = verifier.verify(&doc).await;
+        assert!(result.is_err());
+        let err = format!("{:?}", result.unwrap_err());
+        assert!(
+            err.contains("eat_nonce"),
+            "Expected eat_nonce error, got: {}",
+            err
+        );
+    }
+
+    #[tokio::test]
+    async fn test_cs_envelope_reject_jwt_empty_nonce_array() {
+        use base64::engine::general_purpose::URL_SAFE_NO_PAD;
+        use base64::Engine;
+
+        let nonce = b"nonce";
+
+        // JWT with empty eat_nonce array
+        let header = URL_SAFE_NO_PAD.encode(b"{\"alg\":\"RS256\",\"typ\":\"JWT\"}");
+        let claims = "{\"iss\":\"https://confidentialcomputing.googleapis.com\",\"exp\":9999999999,\"eat_nonce\":[]}";
+        let payload = URL_SAFE_NO_PAD.encode(claims.as_bytes());
+        let sig = URL_SAFE_NO_PAD.encode(b"fake");
+        let jwt = format!("{}.{}.{}", header, payload, sig);
+
+        let envelope = make_cs_envelope(&jwt, nonce);
+        let cbor = envelope.to_cbor_deterministic().unwrap();
+
+        std::env::set_var("EPHEMERALML_REQUIRE_MRTD", "false");
+        let verifier = TdxEnvelopeVerifierBridge::new(None);
+
+        let doc = CmlAttestationDocument::new(cbor);
+        let result = verifier.verify(&doc).await;
+        assert!(result.is_err());
+        let err = format!("{:?}", result.unwrap_err());
+        assert!(
+            err.contains("eat_nonce"),
+            "Expected eat_nonce error, got: {}",
+            err
+        );
+    }
+
+    #[tokio::test]
+    async fn test_cs_policy_all_three_pins_mismatch_reports_first() {
+        let nonce = b"nonce";
+        let nonce_hex = hex::encode(nonce);
+        let jwt = make_test_jwt_with_submods(
+            "https://confidentialcomputing.googleapis.com",
+            9999999999,
+            &[&nonce_hex],
+            "sha256:wrong-digest",
+            "wrong-project",
+            "wrong-zone",
+        );
+        let envelope = make_cs_envelope(&jwt, nonce);
+        let cbor = envelope.to_cbor_deterministic().unwrap();
+
+        std::env::set_var("EPHEMERALML_REQUIRE_MRTD", "false");
+        let policy = CsPolicy {
+            expected_image_digest: Some("sha256:correct-digest".to_string()),
+            expected_project: Some("correct-project".to_string()),
+            expected_zone: Some("correct-zone".to_string()),
+        };
+        let verifier = TdxEnvelopeVerifierBridge::new(None).with_cs_policy(policy);
+
+        let doc = CmlAttestationDocument::new(cbor);
+        let result = verifier.verify(&doc).await;
+        assert!(result.is_err());
+        // Should fail on first policy check (image_digest)
+        let err = format!("{:?}", result.unwrap_err());
+        assert!(
+            err.contains("mismatch"),
+            "Expected mismatch error, got: {}",
+            err
+        );
+    }
+
+    #[tokio::test]
     async fn test_cs_policy_no_pins_accepts_any() {
         let nonce = b"nonce";
         let nonce_hex = hex::encode(nonce);

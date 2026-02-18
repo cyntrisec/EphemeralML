@@ -455,6 +455,51 @@ mod tests {
         assert_ne!(att1.document_hash().unwrap(), att2.document_hash().unwrap());
     }
 
+    #[test]
+    fn test_cs_transport_attestation_from_cbor_garbage() {
+        // Random non-CBOR bytes should fail cleanly
+        let result = CsTransportAttestation::from_cbor(&[0xFF, 0xFE, 0xFD]);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_cs_transport_attestation_from_cbor_empty() {
+        let result = CsTransportAttestation::from_cbor(&[]);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_cs_transport_attestation_from_cbor_wrong_type() {
+        // Valid CBOR but an integer, not a map
+        let cbor = crate::cbor::to_vec(&ciborium::Value::Integer(42.into())).unwrap();
+        let result = CsTransportAttestation::from_cbor(&cbor);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_cs_transport_attestation_validate_two_part_jwt() {
+        // JWT with only 2 parts (missing signature)
+        let att = CsTransportAttestation::new(
+            "header.payload".to_string(),
+            [0xAA; 32],
+            vec![0xBB; 32],
+            vec![0xCC; 16],
+        );
+        assert!(att.validate_structure().is_err());
+    }
+
+    #[test]
+    fn test_cs_transport_attestation_validate_four_part_jwt() {
+        // JWT with 4 parts (extra section)
+        let att = CsTransportAttestation::new(
+            "a.b.c.d".to_string(),
+            [0xAA; 32],
+            vec![0xBB; 32],
+            vec![0xCC; 16],
+        );
+        assert!(att.validate_structure().is_err());
+    }
+
     #[tokio::test]
     async fn test_simple_frame_roundtrip() {
         use simple_frame::*;
