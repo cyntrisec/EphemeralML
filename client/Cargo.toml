@@ -32,6 +32,7 @@ serde_bytes = "0.11"
 ed25519-dalek = { workspace = true }
 base64 = "0.22.1"
 async-trait = "0.1"
+jsonwebtoken = { version = "9", optional = true }
 coset = { workspace = true }
 x509-parser = { workspace = true }
 openssl = { workspace = true }
@@ -48,7 +49,7 @@ default = ["mock"]
 vendored-openssl = ["openssl/vendored"]
 mock = ["confidential-ml-transport/mock", "confidential-ml-transport/tcp"]
 production = ["confidential-ml-transport/tcp"]
-gcp = ["confidential-ml-transport/tdx", "confidential-ml-transport/tcp", "confidential-ml-transport/mock"]
+gcp = ["confidential-ml-transport/tdx", "confidential-ml-transport/tcp", "confidential-ml-transport/mock", "jsonwebtoken"]
 benchmark = [
     "candle-core",
     "safetensors",

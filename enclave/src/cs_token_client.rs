@@ -39,7 +39,8 @@ struct TokenRequest<'a> {
 /// Parsed (unverified) JWT claims from the attestation token.
 ///
 /// The enclave does not verify the JWT signature — it trusts the local
-/// Launcher socket. The relying party (client) verifies the full JWT.
+/// Launcher socket. The relying party (client) verifies the JWT RS256
+/// signature via JWKS from the Google OIDC discovery endpoint.
 #[derive(Deserialize, Debug, Clone)]
 pub struct CsTokenClaims {
     /// Audience the token was requested for.

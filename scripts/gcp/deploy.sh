@@ -45,7 +45,6 @@ MODEL_FORMAT="${EPHEMERALML_MODEL_FORMAT:-safetensors}"
 
 YES=false
 GPU=false
-ALLOW_SYNTHETIC=false
 
 # Parse args
 while [[ $# -gt 0 ]]; do
@@ -54,7 +53,6 @@ while [[ $# -gt 0 ]]; do
         --gpu)          GPU=true; shift ;;
         --skip-build)   SKIP_BUILD=true; shift ;;
         --yes|-y)       YES=true; shift ;;
-        --allow-synthetic-transport) ALLOW_SYNTHETIC=true; shift ;;
         --tag)          TAG="$2"; shift 2 ;;
         --zone)         ZONE="$2"; shift 2 ;;
         --project)      PROJECT="$2"; shift 2 ;;
@@ -282,19 +280,6 @@ METADATA="${METADATA},tee-env-EPHEMERALML_MODEL_FORMAT=${MODEL_FORMAT}"
 METADATA="${METADATA},tee-env-EPHEMERALML_LOG_FORMAT=json"
 METADATA="${METADATA},tee-env-EPHEMERALML_GCP_PROJECT=${PROJECT}"
 METADATA="${METADATA},tee-env-EPHEMERALML_GCP_LOCATION=${ZONE%-*}"
-# Confidential Space uses the Launcher JWT for attestation, not configfs-tsm.
-# configfs-tsm is not exposed inside CS containers, so transport-level TDX
-# quotes are unavailable. The Launcher JWT is the real attestation root.
-# Synthetic transport must be explicitly opted in via --allow-synthetic-transport.
-if $ALLOW_SYNTHETIC; then
-    ui_warn "WARNING [DEV ONLY]: Synthetic transport quotes enabled."
-    ui_info "  Transport-level attestation is NOT hardware-backed."
-    ui_info "  KMS attestation via Launcher JWT is still hardware-backed."
-    METADATA="${METADATA},tee-env-EPHEMERALML_ALLOW_SYNTHETIC_TRANSPORT=true"
-else
-    ui_info "Synthetic transport disabled (fail-closed default)."
-    METADATA="${METADATA},tee-env-EPHEMERALML_ALLOW_SYNTHETIC_TRANSPORT=false"
-fi
 # Inject GCS env vars for gcs and gcs-kms model sources
 if [[ "${MODEL_SOURCE}" == "gcs" || "${MODEL_SOURCE}" == "gcs-kms" ]]; then
     METADATA="${METADATA},tee-env-EPHEMERALML_GCS_BUCKET=${GCS_BUCKET}"
