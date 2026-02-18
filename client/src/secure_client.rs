@@ -224,6 +224,12 @@ impl SecureClient for SecureEnclaveClient {
         let plaintext = serde_json::to_vec(&input)
             .map_err(|e| ClientError::Client(EphemeralError::SerializationError(e.to_string())))?;
 
+        // Pre-compute request hash before plaintext is moved into Bytes
+        let request_hash: [u8; 32] = {
+            use sha2::{Digest, Sha256};
+            Sha256::digest(&plaintext).into()
+        };
+
         // 2. Send over SecureChannel (encryption handled by channel)
         channel
             .send(bytes::Bytes::from(plaintext))
@@ -363,6 +369,11 @@ impl SecureClient for SecureEnclaveClient {
         self.last_sequence_number = output.receipt.sequence_number;
 
         // 10. Verify request/response hash binding (computation integrity)
+        if output.receipt.request_hash != request_hash {
+            return Err(ClientError::Client(EphemeralError::ValidationError(
+                "Receipt request_hash does not match sent request".to_string(),
+            )));
+        }
         {
             use sha2::{Digest, Sha256};
             let expected_response_hash: [u8; 32] = {
@@ -410,6 +421,12 @@ impl SecureClient for SecureEnclaveClient {
         };
         let plaintext = serde_json::to_vec(&input)
             .map_err(|e| ClientError::Client(EphemeralError::SerializationError(e.to_string())))?;
+
+        // Pre-compute request hash before plaintext is moved into Bytes
+        let request_hash: [u8; 32] = {
+            use sha2::{Digest, Sha256};
+            Sha256::digest(&plaintext).into()
+        };
 
         channel
             .send(bytes::Bytes::from(plaintext))
@@ -536,6 +553,11 @@ impl SecureClient for SecureEnclaveClient {
         }
         self.last_sequence_number = output.receipt.sequence_number;
 
+        if output.receipt.request_hash != request_hash {
+            return Err(ClientError::Client(EphemeralError::ValidationError(
+                "Receipt request_hash does not match sent request".to_string(),
+            )));
+        }
         {
             use sha2::{Digest, Sha256};
             let expected_response_hash: [u8; 32] = {
@@ -583,6 +605,12 @@ impl SecureClient for SecureEnclaveClient {
         };
         let plaintext = serde_json::to_vec(&input)
             .map_err(|e| ClientError::Client(EphemeralError::SerializationError(e.to_string())))?;
+
+        // Pre-compute request hash before plaintext is moved into Bytes
+        let request_hash: [u8; 32] = {
+            use sha2::{Digest, Sha256};
+            Sha256::digest(&plaintext).into()
+        };
 
         channel
             .send(bytes::Bytes::from(plaintext))
@@ -706,6 +734,11 @@ impl SecureClient for SecureEnclaveClient {
         }
         self.last_sequence_number = output.receipt.sequence_number;
 
+        if output.receipt.request_hash != request_hash {
+            return Err(ClientError::Client(EphemeralError::ValidationError(
+                "Receipt request_hash does not match sent request".to_string(),
+            )));
+        }
         {
             use sha2::{Digest, Sha256};
             let expected_response_hash: [u8; 32] = {

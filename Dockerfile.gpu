@@ -78,7 +78,6 @@ ENV EPHEMERALML_MODEL_SOURCE="gcs" \
     EPHEMERALML_EXPECTED_MODEL_HASH="" \
     EPHEMERALML_EXPECTED_MRTD="" \
     EPHEMERALML_DIRECT="true" \
-    EPHEMERALML_ALLOW_SYNTHETIC_TRANSPORT="true" \
     EPHEMERALML_MODEL_FORMAT="gguf"
 
 # NVIDIA runtime env: make CUDA libraries visible inside the container.

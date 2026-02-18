@@ -19,16 +19,15 @@ PROJECT_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
 INSTANCE_NAME="ephemeralml-cvm"
 DATA_PORT=9000            # direct mode: client connects to single port (9000)
 CONTROL_PORT=9000         # used only for the reachability probe
-RECEIPT_PATH="/tmp/ephemeralml-receipt.cbor"
+RECEIPT_PATH="/tmp/ephemeralml-receipt.json"
 VERIFY_OUTPUT="$(mktemp /tmp/ephemeralml-verify-output.XXXXXX.txt)"
 MAX_WAIT=180              # seconds to wait for port reachability
 INFERENCE_TEXT="Verify EphemeralML on Confidential Space"
 
 # Clean up temp files on exit (even on failure).
-# RECEIPT_PATH is a well-known location the client binary writes to;
-# VERIFY_OUTPUT is script-only and uses mktemp to avoid collisions.
+# Only clean up the script-local temp file; receipt is preserved for E2E callers.
 cleanup_temp() {
-    rm -f "${RECEIPT_PATH}" "${VERIFY_OUTPUT}"
+    rm -f "${VERIFY_OUTPUT}"
 }
 trap cleanup_temp EXIT
 
@@ -36,6 +35,7 @@ trap cleanup_temp EXIT
 PROJECT="${EPHEMERALML_GCP_PROJECT:-}"
 ZONE="us-central1-a"
 IP=""
+GPU=false
 
 # Parse args
 while [[ $# -gt 0 ]]; do
@@ -43,9 +43,15 @@ while [[ $# -gt 0 ]]; do
         --ip)      IP="$2"; shift 2 ;;
         --zone)    ZONE="$2"; shift 2 ;;
         --project) PROJECT="$2"; shift 2 ;;
+        --gpu)     GPU=true; shift ;;
         *) echo "Unknown option: $1"; exit 1 ;;
     esac
 done
+
+# GPU mode: match deploy.sh instance name
+if $GPU; then
+    INSTANCE_NAME="ephemeralml-gpu"
+fi
 
 if [[ -z "${PROJECT}" ]]; then
     echo "ERROR: GCP project not set."

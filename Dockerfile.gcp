@@ -60,7 +60,6 @@ ENV EPHEMERALML_MODEL_SOURCE="local" \
     EPHEMERALML_EXPECTED_MODEL_HASH="" \
     EPHEMERALML_EXPECTED_MRTD="" \
     EPHEMERALML_DIRECT="true" \
-    EPHEMERALML_ALLOW_SYNTHETIC_TRANSPORT="true" \
     EPHEMERALML_LOG_FORMAT="json"
 
 # Confidential Space launch policy: allow operator to override these env vars

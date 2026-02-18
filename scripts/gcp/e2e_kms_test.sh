@@ -147,9 +147,9 @@ VERIFY_EXIT=${PIPESTATUS[0]}
 echo
 
 # Copy receipt if it was saved
-if [[ -f /tmp/ephemeralml-receipt.cbor ]]; then
-    cp /tmp/ephemeralml-receipt.cbor "${EVIDENCE_DIR}/receipt.cbor"
-    echo "  Receipt saved to ${EVIDENCE_DIR}/receipt.cbor"
+if [[ -f /tmp/ephemeralml-receipt.json ]]; then
+    cp /tmp/ephemeralml-receipt.json "${EVIDENCE_DIR}/receipt.json"
+    echo "  Receipt saved to ${EVIDENCE_DIR}/receipt.json"
 fi
 
 # ---------------------------------------------------------------------------

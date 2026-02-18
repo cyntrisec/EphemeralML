@@ -186,9 +186,9 @@ if ! $CPU_ONLY; then
     BOOT_TIMEOUT=300  # GPU boot can take longer
 fi
 echo "[4/${STEP_COUNT}] Inference + receipt (timeout: ${BOOT_TIMEOUT}s)..."
-if bash "${SCRIPT_DIR}/verify.sh" \
-    --project "${PROJECT}" \
-    --zone "${ZONE}" \
+VERIFY_ARGS=(--project "${PROJECT}" --zone "${ZONE}")
+[[ -n "${GPU_FLAG}" ]] && VERIFY_ARGS+=("${GPU_FLAG}")
+if bash "${SCRIPT_DIR}/verify.sh" "${VERIFY_ARGS[@]}" \
     2>&1 | tee "${EVIDENCE_DIR}/verify_output.txt"; then
     VERIFY_EXIT=0
     step_pass
@@ -197,12 +197,19 @@ else
     step_fail "verify.sh exit code ${VERIFY_EXIT}"
 fi
 
-# Copy receipt and pubkey artifacts
-if [[ -f /tmp/ephemeralml-receipt.cbor ]]; then
-    cp /tmp/ephemeralml-receipt.cbor "${EVIDENCE_DIR}/receipt.cbor"
+# Copy receipt and pubkey artifacts (verify.sh no longer deletes them)
+RECEIPT_PATH="/tmp/ephemeralml-receipt.json"
+PUBKEY_PATH="${RECEIPT_PATH}.pubkey"
+if [[ -f "${RECEIPT_PATH}" ]]; then
+    cp "${RECEIPT_PATH}" "${EVIDENCE_DIR}/receipt.json"
 fi
-if [[ -f /tmp/ephemeralml-receipt.pubkey ]]; then
-    cp /tmp/ephemeralml-receipt.pubkey "${EVIDENCE_DIR}/receipt.pubkey"
+if [[ -f "${PUBKEY_PATH}" ]]; then
+    cp "${PUBKEY_PATH}" "${EVIDENCE_DIR}/receipt.pubkey"
+fi
+# Extract public key hex from the pubkey file (client writes hex text)
+PK_HEX=""
+if [[ -f "${EVIDENCE_DIR}/receipt.pubkey" ]]; then
+    PK_HEX="$(cat "${EVIDENCE_DIR}/receipt.pubkey" | tr -d '[:space:]')"
 fi
 echo
 
@@ -212,22 +219,20 @@ echo
 echo "[5/${STEP_COUNT}] Receipt verification (ephemeralml-verify)..."
 VERIFY_BIN="${PROJECT_DIR}/target/release/ephemeralml-verify"
 if [[ ! -x "${VERIFY_BIN}" ]]; then
-    # Try building if not present
     VERIFY_BIN="${PROJECT_DIR}/target/debug/ephemeralml-verify"
 fi
 
-if [[ -f "${EVIDENCE_DIR}/receipt.cbor" ]] && [[ -x "${VERIFY_BIN}" ]]; then
-    VERIFY_ARGS=("${EVIDENCE_DIR}/receipt.cbor")
-    [[ -f "${EVIDENCE_DIR}/receipt.pubkey" ]] && VERIFY_ARGS+=(--public-key-file "${EVIDENCE_DIR}/receipt.pubkey")
-
-    if "${VERIFY_BIN}" "${VERIFY_ARGS[@]}" \
+if [[ -f "${EVIDENCE_DIR}/receipt.json" ]] && [[ -x "${VERIFY_BIN}" ]] && [[ -n "${PK_HEX}" ]]; then
+    if "${VERIFY_BIN}" "${EVIDENCE_DIR}/receipt.json" \
+        --public-key "${PK_HEX}" \
+        --max-age 0 \
         2>&1 | tee "${EVIDENCE_DIR}/receipt_verify_log.txt"; then
         step_pass
     else
         step_fail "ephemeralml-verify failed"
     fi
 else
-    step_fail "receipt.cbor or ephemeralml-verify not found"
+    step_fail "receipt.json, ephemeralml-verify, or public key not found"
 fi
 echo
 
@@ -240,9 +245,13 @@ if [[ ! -x "${COMPLIANCE_BIN}" ]]; then
     COMPLIANCE_BIN="${PROJECT_DIR}/target/debug/ephemeralml-compliance"
 fi
 
-if [[ -x "${COMPLIANCE_BIN}" ]]; then
+# Compliance CLI contract (compliance_cli.rs):
+#   collect --receipt PATH --output PATH [--attestation PATH]
+#   verify  BUNDLE --public-key HEX [--profile NAME]
+#   export  --bundle PATH --receipt-public-key HEX --signing-key HEX --output PATH [--profile NAME]
+if [[ -x "${COMPLIANCE_BIN}" ]] && [[ -f "${EVIDENCE_DIR}/receipt.json" ]]; then
     if "${COMPLIANCE_BIN}" collect \
-        --evidence-dir "${EVIDENCE_DIR}" \
+        --receipt "${EVIDENCE_DIR}/receipt.json" \
         --output "${EVIDENCE_DIR}/compliance-bundle.json" \
         2>&1 | tee "${EVIDENCE_DIR}/compliance_collect_log.txt"; then
         step_pass
@@ -250,7 +259,7 @@ if [[ -x "${COMPLIANCE_BIN}" ]]; then
         step_fail "compliance collect failed"
     fi
 else
-    step_fail "ephemeralml-compliance binary not found"
+    step_fail "ephemeralml-compliance binary or receipt not found"
 fi
 echo
 
@@ -258,9 +267,10 @@ echo
 # [7/10] Compliance Verify
 # ---------------------------------------------------------------------------
 echo "[7/${STEP_COUNT}] Compliance verify (--profile baseline)..."
-if [[ -x "${COMPLIANCE_BIN}" ]] && [[ -f "${EVIDENCE_DIR}/compliance-bundle.json" ]]; then
+if [[ -x "${COMPLIANCE_BIN}" ]] && [[ -f "${EVIDENCE_DIR}/compliance-bundle.json" ]] && [[ -n "${PK_HEX}" ]]; then
     if "${COMPLIANCE_BIN}" verify \
-        --bundle "${EVIDENCE_DIR}/compliance-bundle.json" \
+        "${EVIDENCE_DIR}/compliance-bundle.json" \
+        --public-key "${PK_HEX}" \
         --profile baseline \
         2>&1 | tee "${EVIDENCE_DIR}/compliance_verify_log.txt"; then
         step_pass
@@ -268,7 +278,7 @@ if [[ -x "${COMPLIANCE_BIN}" ]] && [[ -f "${EVIDENCE_DIR}/compliance-bundle.json
         step_fail "compliance verify failed"
     fi
 else
-    step_fail "compliance binary or bundle not found"
+    step_fail "compliance binary, bundle, or public key not found"
 fi
 echo
 
@@ -276,17 +286,22 @@ echo
 # [8/10] Compliance Export + Sign
 # ---------------------------------------------------------------------------
 echo "[8/${STEP_COUNT}] Compliance export..."
-if [[ -x "${COMPLIANCE_BIN}" ]] && [[ -f "${EVIDENCE_DIR}/compliance-bundle.json" ]]; then
+# Generate an ephemeral Ed25519 signing key for the bundle export.
+# In production, this would be a persistent key managed by the operator.
+BUNDLE_SIGNING_KEY="$(openssl rand -hex 32 2>/dev/null || head -c 32 /dev/urandom | xxd -p -c 64)"
+if [[ -x "${COMPLIANCE_BIN}" ]] && [[ -f "${EVIDENCE_DIR}/compliance-bundle.json" ]] && [[ -n "${PK_HEX}" ]]; then
     if "${COMPLIANCE_BIN}" export \
         --bundle "${EVIDENCE_DIR}/compliance-bundle.json" \
-        --output "${EVIDENCE_DIR}/compliance-report" \
+        --receipt-public-key "${PK_HEX}" \
+        --signing-key "${BUNDLE_SIGNING_KEY}" \
+        --output "${EVIDENCE_DIR}/compliance-report.json" \
         2>&1 | tee "${EVIDENCE_DIR}/compliance_export_log.txt"; then
         step_pass
     else
         step_fail "compliance export failed"
     fi
 else
-    step_fail "compliance binary or bundle not found"
+    step_fail "compliance binary, bundle, or public key not found"
 fi
 echo
 
@@ -300,7 +315,7 @@ NEGATIVE_TOTAL=0
 # Test 1: Wrong model hash
 echo "  [9a] Wrong model hash..."
 NEGATIVE_TOTAL=$((NEGATIVE_TOTAL + 1))
-bash "${SCRIPT_DIR}/teardown.sh" --project "${PROJECT}" --zone "${ZONE}" 2>&1 | tail -3
+bash "${SCRIPT_DIR}/teardown.sh" --project "${PROJECT}" --zone "${ZONE}" ${GPU_FLAG} 2>&1 | tail -3
 
 WRONG_HASH="0000000000000000000000000000000000000000000000000000000000000000"
 bash "${SCRIPT_DIR}/deploy.sh" \
@@ -319,7 +334,7 @@ bash "${SCRIPT_DIR}/deploy.sh" \
 echo "  Waiting 90s for container boot attempt..."
 sleep 90
 
-if bash "${SCRIPT_DIR}/verify.sh" --project "${PROJECT}" --zone "${ZONE}" \
+if bash "${SCRIPT_DIR}/verify.sh" --project "${PROJECT}" --zone "${ZONE}" ${GPU_FLAG} \
     2>&1 | tee "${EVIDENCE_DIR}/negative_wrong_hash_verify.txt"; then
     echo "  [9a] UNEXPECTED PASS (container should reject wrong hash)"
 else
@@ -330,7 +345,7 @@ fi
 # Test 2: Wrong KMS key (non-existent)
 echo "  [9b] Wrong KMS key..."
 NEGATIVE_TOTAL=$((NEGATIVE_TOTAL + 1))
-bash "${SCRIPT_DIR}/teardown.sh" --project "${PROJECT}" --zone "${ZONE}" 2>&1 | tail -3
+bash "${SCRIPT_DIR}/teardown.sh" --project "${PROJECT}" --zone "${ZONE}" ${GPU_FLAG} 2>&1 | tail -3
 
 WRONG_KEY="projects/${PROJECT}/locations/${REGION}/keyRings/nonexistent/cryptoKeys/fake"
 bash "${SCRIPT_DIR}/deploy.sh" \
@@ -349,7 +364,7 @@ bash "${SCRIPT_DIR}/deploy.sh" \
 echo "  Waiting 90s for container boot attempt..."
 sleep 90
 
-if bash "${SCRIPT_DIR}/verify.sh" --project "${PROJECT}" --zone "${ZONE}" \
+if bash "${SCRIPT_DIR}/verify.sh" --project "${PROJECT}" --zone "${ZONE}" ${GPU_FLAG} \
     2>&1 | tee "${EVIDENCE_DIR}/negative_wrong_key_verify.txt"; then
     echo "  [9b] UNEXPECTED PASS (container should reject wrong key)"
 else
@@ -375,6 +390,7 @@ else
     if bash "${SCRIPT_DIR}/teardown.sh" \
         --project "${PROJECT}" \
         --zone "${ZONE}" \
+        ${GPU_FLAG} \
         2>&1 | tee "${EVIDENCE_DIR}/teardown_log.txt"; then
         step_pass
     else
@@ -430,9 +446,6 @@ echo
 
 if [[ ${PASS_COUNT} -eq ${STEP_COUNT} ]]; then
     echo "  RESULT: PASS (all ${STEP_COUNT} steps green)"
-    exit 0
-elif [[ ${PASS_COUNT} -ge $((STEP_COUNT - 2)) ]]; then
-    echo "  RESULT: PARTIAL PASS (${FAIL_COUNT} steps failed)"
     exit 0
 else
     echo "  RESULT: FAIL (${FAIL_COUNT} steps failed)"

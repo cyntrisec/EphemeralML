@@ -21,6 +21,7 @@ REPO_NAME="ephemeralml"
 PROJECT="${EPHEMERALML_GCP_PROJECT:-}"
 ZONE="us-central1-a"
 DELETE_IMAGE=false
+GPU=false
 
 YES=false
 
@@ -31,9 +32,15 @@ while [[ $# -gt 0 ]]; do
         --yes|-y)       YES=true; shift ;;
         --zone)         ZONE="$2"; shift 2 ;;
         --project)      PROJECT="$2"; shift 2 ;;
+        --gpu)          GPU=true; shift ;;
         *) echo "Unknown option: $1"; exit 1 ;;
     esac
 done
+
+# GPU mode: match deploy.sh instance name
+if $GPU; then
+    INSTANCE_NAME="ephemeralml-gpu"
+fi
 
 if [[ -z "${PROJECT}" ]]; then
     echo "ERROR: GCP project not set."
