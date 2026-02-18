@@ -108,7 +108,9 @@ if $SKIP_SETUP; then
     fi
     step_pass
 else
-    if bash "${SCRIPT_DIR}/setup_kms.sh" "${PROJECT}" "${REGION}" \
+    # Use --allow-broad-binding: image digest is not known until after Docker build.
+    # Production deployments should re-run setup_kms.sh with the actual digest.
+    if bash "${SCRIPT_DIR}/setup_kms.sh" "${PROJECT}" "${REGION}" "--allow-broad-binding" \
         2>&1 | tee "${EVIDENCE_DIR}/setup_kms_log.txt"; then
 
         KEYRING="ephemeralml"

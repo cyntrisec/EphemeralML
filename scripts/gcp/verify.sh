@@ -120,7 +120,10 @@ cargo build --release --no-default-features --features gcp \
 
 # The GCP-mode client reads EPHEMERALML_ENCLAVE_ADDR for the server address.
 # It connects to the data_in port (9001) where the enclave accepts inference traffic.
+# EPHEMERALML_REQUIRE_MRTD=false: verify.sh is a smoke test without pinned MRTD.
+# Production clients should set EPHEMERALML_EXPECTED_MRTD instead.
 EPHEMERALML_ENCLAVE_ADDR="${IP}:${DATA_PORT}" \
+    EPHEMERALML_REQUIRE_MRTD=false \
     cargo run --release --no-default-features --features gcp \
     -p ephemeral-ml-client --bin ephemeral-ml-client 2>&1 | tee ${VERIFY_OUTPUT}
 

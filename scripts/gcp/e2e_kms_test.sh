@@ -71,7 +71,7 @@ if $SKIP_SETUP; then
 else
     echo "[1/7] Setting up KMS + WIP infrastructure..."
     export GOOGLE_CLOUD_PROJECT="${PROJECT}"
-    bash "${SCRIPT_DIR}/setup_kms.sh" "${PROJECT}" "${REGION}" 2>&1 | tee "${EVIDENCE_DIR}/setup_kms_log.txt"
+    bash "${SCRIPT_DIR}/setup_kms.sh" "${PROJECT}" "${REGION}" "--allow-broad-binding" 2>&1 | tee "${EVIDENCE_DIR}/setup_kms_log.txt"
 
     # Extract outputs from setup_kms.sh
     KEYRING="ephemeralml"

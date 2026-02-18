@@ -3,17 +3,17 @@
 //! Usage:
 //!   ephemeralml infer --addr 34.63.158.243:9000 --text "Patient presents with..."
 //!   ephemeralml infer --addr 127.0.0.1:9000 --file client/demo/radiology-report.txt
-//!   ephemeralml verify receipt.json --public-key <hex>
-//!   ephemeralml verify receipt.json --public-key-file receipt.json.pubkey
-//!   ephemeralml verify-pipeline pipeline-proof-bundle.json
+//!   ephemeralml verify-pipeline pipeline-proof-bundle.json --public-key <hex>
+//!   ephemeralml-verify receipt.json --public-key-file receipt.pubkey
 
 use anyhow::{bail, Context, Result};
 use clap::{Parser, Subcommand};
 use ed25519_dalek::VerifyingKey;
 use ephemeral_ml_client::{AttestationReceipt, SecureClient, SecureEnclaveClient};
+use sha2::{Digest, Sha256};
 use std::fs;
-use std::path::PathBuf;
-use std::time::Instant;
+use std::path::{Path, PathBuf};
+use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
 #[derive(Parser)]
 #[command(
@@ -30,8 +30,6 @@ struct Cli {
 enum Commands {
     /// Run confidential inference against an EphemeralML server
     Infer(InferArgs),
-    /// Verify an attested execution receipt
-    Verify(VerifyArgs),
     /// Verify a pipeline proof bundle (chained stage receipts)
     VerifyPipeline(VerifyPipelineArgs),
 }
@@ -68,39 +66,31 @@ struct InferArgs {
 }
 
 #[derive(Parser)]
-struct VerifyArgs {
-    /// Path to the receipt file (CBOR or JSON)
-    receipt: PathBuf,
-
-    /// Ed25519 public key as hex string (64 hex chars = 32 bytes)
-    #[arg(long)]
-    public_key: Option<String>,
-
-    /// Path to file containing the raw 32-byte Ed25519 public key
-    #[arg(long, conflicts_with = "public_key")]
-    public_key_file: Option<PathBuf>,
-
-    /// Maximum receipt age in seconds (0 to skip)
-    #[arg(long, default_value = "3600")]
-    max_age: u64,
-
-    /// Expected model ID (optional). Fails if receipt model_id doesn't match
-    #[arg(long)]
-    expected_model: Option<String>,
-
-    /// Expected measurement type: nitro-pcr, tdx-mrtd-rtmr, or any
-    #[arg(long, default_value = "any")]
-    measurement_type: String,
-
-    /// Output format: text or json
-    #[arg(long, default_value = "text")]
-    format: String,
-}
-
-#[derive(Parser)]
 struct VerifyPipelineArgs {
     /// Path to the pipeline proof bundle JSON
     bundle: PathBuf,
+
+    /// Ed25519 public key as hex string (64 hex chars = 32 bytes).
+    /// Repeat per stage, or provide once to use the same key for all stages.
+    #[arg(
+        long = "public-key",
+        value_name = "HEX",
+        num_args = 1..,
+        required_unless_present = "public_key_file",
+        conflicts_with = "public_key_file"
+    )]
+    public_key: Vec<String>,
+
+    /// Path to file containing Ed25519 public key (32 raw bytes or 64-hex text).
+    /// Repeat per stage, or provide once to use the same key for all stages.
+    #[arg(
+        long = "public-key-file",
+        value_name = "PATH",
+        num_args = 1..,
+        required_unless_present = "public_key",
+        conflicts_with = "public_key"
+    )]
+    public_key_file: Vec<PathBuf>,
 
     /// Maximum receipt age in seconds (0 to skip)
     #[arg(long, default_value = "3600")]
@@ -132,7 +122,6 @@ async fn main() -> Result<()> {
     let cli = Cli::parse();
     match cli.command {
         Commands::Infer(args) => run_infer(args).await,
-        Commands::Verify(args) => run_verify(args),
         Commands::VerifyPipeline(args) => run_verify_pipeline(args),
     }
 }
@@ -289,212 +278,6 @@ async fn run_infer(args: InferArgs) -> Result<()> {
     Ok(())
 }
 
-fn run_verify(args: VerifyArgs) -> Result<()> {
-    // Load receipt
-    let receipt_bytes = fs::read(&args.receipt).context("Failed to read receipt file")?;
-    let receipt: AttestationReceipt = ephemeral_ml_client::cbor::from_slice(&receipt_bytes)
-        .or_else(|_| {
-            serde_json::from_slice(&receipt_bytes)
-                .map_err(|e| ephemeral_ml_client::cbor::CborError(e.to_string()))
-        })
-        .context("Failed to parse receipt (tried CBOR and JSON)")?;
-
-    // Resolve public key
-    let public_key = resolve_public_key(&args)?;
-
-    // Run checks
-    let mut errors: Vec<String> = Vec::new();
-    let mut warnings: Vec<String> = Vec::new();
-
-    // Signature
-    let sig_ok = match receipt.verify_signature(&public_key) {
-        Ok(true) => true,
-        Ok(false) => {
-            errors.push("Ed25519 signature verification failed".to_string());
-            false
-        }
-        Err(e) => {
-            errors.push(format!("Signature error: {}", e));
-            false
-        }
-    };
-
-    // Timestamp freshness
-    let ts_ok = if args.max_age == 0 {
-        true
-    } else {
-        let now = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_secs();
-        let age = now.saturating_sub(receipt.execution_timestamp);
-        if age <= args.max_age {
-            true
-        } else {
-            warnings.push(format!(
-                "Receipt is {}s old (max allowed: {}s)",
-                age, args.max_age
-            ));
-            false
-        }
-    };
-
-    // Model ID match
-    let model_ok = if let Some(ref expected) = args.expected_model {
-        if receipt.model_id != *expected {
-            errors.push(format!(
-                "Model mismatch: receipt has '{}', expected '{}'",
-                receipt.model_id, expected
-            ));
-            false
-        } else {
-            true
-        }
-    } else {
-        true
-    };
-
-    // Measurement type check
-    let mtype_ok = if args.measurement_type == "any" {
-        true
-    } else if receipt.enclave_measurements.measurement_type != args.measurement_type {
-        errors.push(format!(
-            "Measurement type mismatch: receipt has '{}', expected '{}'",
-            receipt.enclave_measurements.measurement_type, args.measurement_type
-        ));
-        false
-    } else {
-        true
-    };
-
-    // Measurements
-    let meas_ok = receipt.enclave_measurements.is_valid();
-    if !meas_ok {
-        warnings.push("Measurements are not 48 bytes (expected SHA-384)".to_string());
-    }
-
-    // Attestation hash non-zero
-    let att_hash_ok = receipt.attestation_doc_hash != [0u8; 32];
-
-    let verified = sig_ok && model_ok && mtype_ok && errors.is_empty();
-
-    // JSON output mode
-    if args.format == "json" {
-        let output = serde_json::json!({
-            "verified": verified,
-            "receipt_id": receipt.receipt_id,
-            "model_id": receipt.model_id,
-            "model_version": receipt.model_version,
-            "measurement_type": receipt.enclave_measurements.measurement_type,
-            "sequence_number": receipt.sequence_number,
-            "execution_timestamp": receipt.execution_timestamp,
-            "checks": {
-                "signature": if sig_ok { "pass" } else { "fail" },
-                "model_match": if args.expected_model.is_none() { "skip" } else if model_ok { "pass" } else { "fail" },
-                "measurement_type": if args.measurement_type == "any" { "skip" } else if mtype_ok { "pass" } else { "fail" },
-                "timestamp_fresh": if args.max_age == 0 { "skip" } else if ts_ok { "pass" } else { "fail" },
-                "measurements_present": if meas_ok { "pass" } else { "fail" },
-            },
-            "errors": errors,
-        });
-        println!("{}", serde_json::to_string_pretty(&output).unwrap());
-        std::process::exit(if verified { 0 } else { 1 });
-    }
-
-    // Compact summary (audience-friendly)
-    println!();
-    println!("  EphemeralML Receipt Verification");
-    println!("  ================================");
-    println!();
-    println!(
-        "  Model:       {} v{}",
-        receipt.model_id, receipt.model_version
-    );
-    println!("  Receipt:     {}", receipt.receipt_id);
-    println!(
-        "  Platform:    {}",
-        receipt.enclave_measurements.measurement_type
-    );
-    println!("  Sequence:    #{}", receipt.sequence_number);
-    println!();
-
-    // Compact PASS/FAIL lines
-    let tag = |ok: bool| if ok { "PASS" } else { "FAIL" };
-    let skip_or = |skip: bool, ok: bool| {
-        if skip {
-            "SKIP"
-        } else if ok {
-            "PASS"
-        } else {
-            "FAIL"
-        }
-    };
-
-    println!(
-        "  Signature         {}  Ed25519 over canonical receipt",
-        tag(sig_ok)
-    );
-    println!(
-        "  Attestation hash  {}  {}",
-        if att_hash_ok { "PASS" } else { "MOCK" },
-        if att_hash_ok {
-            format!("{}...", &hex::encode(receipt.attestation_doc_hash)[..16])
-        } else {
-            "no hardware binding (mock mode)".to_string()
-        }
-    );
-    println!(
-        "  Model hash        {}  request={:.8}... response={:.8}...",
-        tag(true),
-        hex::encode(receipt.request_hash),
-        hex::encode(receipt.response_hash)
-    );
-    println!(
-        "  Freshness         {}  {}",
-        skip_or(args.max_age == 0, ts_ok),
-        if args.max_age == 0 {
-            "skipped".to_string()
-        } else {
-            let now = std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap_or_default()
-                .as_secs();
-            let age = now.saturating_sub(receipt.execution_timestamp);
-            format!("{}s old (max {}s)", age, args.max_age)
-        }
-    );
-    println!(
-        "  Measurements      {}  {}",
-        tag(meas_ok),
-        receipt.enclave_measurements.measurement_type
-    );
-    println!();
-
-    if verified {
-        println!("  --> VERIFIED");
-    } else {
-        println!("  --> INVALID");
-    }
-    println!();
-
-    if !errors.is_empty() {
-        for err in &errors {
-            println!("  Error: {}", err);
-        }
-    }
-    if !warnings.is_empty() {
-        for warn in &warnings {
-            println!("  Warning: {}", warn);
-        }
-    }
-
-    if verified {
-        std::process::exit(0);
-    } else {
-        std::process::exit(1);
-    }
-}
-
 fn run_verify_pipeline(args: VerifyPipelineArgs) -> Result<()> {
     let bundle_bytes = fs::read(&args.bundle)
         .with_context(|| format!("Failed to read {}", args.bundle.display()))?;
@@ -510,86 +293,163 @@ fn run_verify_pipeline(args: VerifyPipelineArgs) -> Result<()> {
     println!("  Stages:    {}", bundle.num_stages);
     println!();
 
+    if bundle.stage_receipts.is_empty() {
+        println!("  --> PIPELINE INVALID");
+        println!("      - No receipts in bundle");
+        println!();
+        std::process::exit(1);
+    }
+
+    let mut entries: Vec<&StageReceiptEntry> = bundle.stage_receipts.iter().collect();
+    entries.sort_by_key(|e| e.stage_index);
+
+    let mut stage_index_ok = true;
+    for (expected, entry) in entries.iter().enumerate() {
+        if entry.stage_index != expected {
+            stage_index_ok = false;
+            println!(
+                "  Stage index FAIL  expected contiguous index {}, got {}",
+                expected, entry.stage_index
+            );
+        }
+    }
+
+    let count_ok = entries.len() == bundle.num_stages;
+    if !count_ok {
+        println!(
+            "  Stage count FAIL  bundle says {} stages, found {} receipts",
+            bundle.num_stages,
+            entries.len()
+        );
+    }
+
+    let public_keys = resolve_pipeline_public_keys(&args, entries.len())?;
+
     let tag = |ok: bool| if ok { "PASS" } else { "FAIL" };
-
-    // Per-stage compact checks
     let mut all_sigs_ok = true;
+    let mut all_hashes_ok = true;
+    let mut all_fresh_ok = true;
+    let mut computed_hashes: Vec<[u8; 32]> = Vec::with_capacity(entries.len());
 
-    for entry in &bundle.stage_receipts {
-        let sig_ok = entry.receipt.signature.is_some();
+    for (i, entry) in entries.iter().enumerate() {
+        let receipt_cbor = ephemeral_ml_common::cbor::to_vec(&entry.receipt)
+            .with_context(|| format!("Failed to CBOR-encode receipt for stage {}", i))?;
+        let computed_hash: [u8; 32] = Sha256::digest(&receipt_cbor).into();
+        computed_hashes.push(computed_hash);
+        let computed_hash_hex = hex::encode(computed_hash);
+        let hash_ok = computed_hash_hex.eq_ignore_ascii_case(&entry.receipt_cbor_hash);
+        if !hash_ok {
+            all_hashes_ok = false;
+        }
+
+        let sig_ok = entry
+            .receipt
+            .verify_signature(&public_keys[i])
+            .unwrap_or(false);
         if !sig_ok {
             all_sigs_ok = false;
         }
 
+        let fresh_ok = if args.max_age == 0 {
+            true
+        } else {
+            let now = SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_secs();
+            if entry.receipt.execution_timestamp > now {
+                false
+            } else {
+                let age = now - entry.receipt.execution_timestamp;
+                age <= args.max_age
+            }
+        };
+        if !fresh_ok {
+            all_fresh_ok = false;
+        }
+
+        let hash_prefix_len = std::cmp::min(16, computed_hash_hex.len());
         println!(
-            "  Stage {} | {} v{:<6} | sig {} | hash {}...",
+            "  Stage {} | {} v{:<6} | sig {} | hash {} | fresh {} | cbor {}...",
             entry.stage_index,
             entry.receipt.model_id,
             entry.receipt.model_version,
             tag(sig_ok),
-            &entry.receipt_cbor_hash[..16]
+            tag(hash_ok),
+            if args.max_age == 0 {
+                "SKIP"
+            } else {
+                tag(fresh_ok)
+            },
+            &computed_hash_hex[..hash_prefix_len],
         );
     }
 
     println!();
 
-    // Chain integrity
     let mut chain_ok = true;
-
-    if bundle.stage_receipts.is_empty() {
-        println!("  Chain       FAIL  no receipts");
+    let first = entries[0];
+    if first.receipt.previous_receipt_hash.is_some() {
+        println!("  Chain[0]    FAIL  root should have no predecessor");
         chain_ok = false;
     } else {
-        let first = &bundle.stage_receipts[0];
-        if first.receipt.previous_receipt_hash.is_some() {
-            println!("  Chain[0]    FAIL  root should have no predecessor");
-            chain_ok = false;
-        } else {
-            println!("  Chain[0]    PASS  root (no predecessor)");
-        }
+        println!("  Chain[0]    PASS  root (no predecessor)");
+    }
 
-        for i in 1..bundle.stage_receipts.len() {
-            let curr = &bundle.stage_receipts[i];
-            let prev = &bundle.stage_receipts[i - 1];
-
-            match &curr.receipt.previous_receipt_hash {
-                Some(hash) => {
-                    let actual = hex::encode(hash);
-                    if actual == prev.receipt_cbor_hash {
-                        println!("  Chain[{}]    PASS  links to stage {}", i, i - 1);
-                    } else {
-                        println!(
-                            "  Chain[{}]    FAIL  expected {}..., got {}...",
-                            i,
-                            &prev.receipt_cbor_hash[..12],
-                            &actual[..12]
-                        );
-                        chain_ok = false;
-                    }
-                }
-                None => {
-                    println!("  Chain[{}]    FAIL  missing previous_receipt_hash", i);
+    for i in 1..entries.len() {
+        let curr = entries[i];
+        match curr.receipt.previous_receipt_hash {
+            Some(hash) => {
+                if hash == computed_hashes[i - 1] {
+                    println!("  Chain[{}]    PASS  links to stage {}", i, i - 1);
+                } else {
+                    println!(
+                        "  Chain[{}]    FAIL  previous hash mismatch against stage {}",
+                        i,
+                        i - 1
+                    );
                     chain_ok = false;
                 }
+            }
+            None => {
+                println!("  Chain[{}]    FAIL  missing previous_receipt_hash", i);
+                chain_ok = false;
             }
         }
     }
 
-    let overall = all_sigs_ok && chain_ok;
+    let overall = stage_index_ok
+        && count_ok
+        && chain_ok
+        && all_sigs_ok
+        && all_hashes_ok
+        && all_fresh_ok;
 
     println!();
     if overall {
         println!(
-            "  --> PIPELINE VERIFIED ({} stages, chain intact)",
-            bundle.num_stages
+            "  --> PIPELINE VERIFIED ({} stages, signatures + hash chain intact)",
+            entries.len()
         );
     } else {
         println!("  --> PIPELINE INVALID");
+        if !stage_index_ok {
+            println!("      - Stage indices are not contiguous from 0");
+        }
+        if !count_ok {
+            println!("      - Receipt count does not match declared num_stages");
+        }
         if !all_sigs_ok {
-            println!("      - One or more stage signatures missing");
+            println!("      - One or more receipt signatures are invalid");
+        }
+        if !all_hashes_ok {
+            println!("      - One or more claimed receipt hashes do not match recomputed CBOR hashes");
         }
         if !chain_ok {
             println!("      - Receipt chain integrity check failed");
+        }
+        if !all_fresh_ok {
+            println!("      - One or more receipts are stale/future relative to --max-age");
         }
     }
     println!();
@@ -601,30 +461,138 @@ fn run_verify_pipeline(args: VerifyPipelineArgs) -> Result<()> {
     }
 }
 
-fn resolve_public_key(args: &VerifyArgs) -> Result<VerifyingKey> {
-    if let Some(ref hex_key) = args.public_key {
-        let bytes = hex::decode(hex_key).context("Invalid hex in --public-key")?;
-        if bytes.len() != 32 {
-            bail!(
-                "--public-key must be 64 hex chars (32 bytes), got {} bytes",
-                bytes.len()
-            );
-        }
-        let mut arr = [0u8; 32];
-        arr.copy_from_slice(&bytes);
-        VerifyingKey::from_bytes(&arr).context("Invalid Ed25519 public key")
-    } else if let Some(ref path) = args.public_key_file {
-        let bytes = fs::read(path).context("Failed to read --public-key-file")?;
-        if bytes.len() != 32 {
-            bail!(
-                "--public-key-file must contain exactly 32 bytes, got {}",
-                bytes.len()
-            );
-        }
-        let mut arr = [0u8; 32];
-        arr.copy_from_slice(&bytes);
-        VerifyingKey::from_bytes(&arr).context("Invalid Ed25519 public key")
+fn resolve_pipeline_public_keys(args: &VerifyPipelineArgs, stage_count: usize) -> Result<Vec<VerifyingKey>> {
+    let mut keys: Vec<VerifyingKey> = if !args.public_key.is_empty() {
+        args.public_key
+            .iter()
+            .map(|k| parse_public_key_hex(k))
+            .collect::<Result<Vec<_>>>()?
     } else {
-        bail!("Must provide one of: --public-key or --public-key-file");
+        args.public_key_file
+            .iter()
+            .map(|p| parse_public_key_file(p))
+            .collect::<Result<Vec<_>>>()?
+    };
+
+    if keys.len() == 1 && stage_count > 1 {
+        let key = keys[0].clone();
+        keys = (0..stage_count).map(|_| key).collect();
+    }
+
+    if keys.len() != stage_count {
+        bail!(
+            "Expected either one key for all stages, or one key per stage ({}). Got {}",
+            stage_count,
+            keys.len()
+        );
+    }
+
+    Ok(keys)
+}
+
+fn parse_public_key_hex(hex_key: &str) -> Result<VerifyingKey> {
+    let bytes = hex::decode(hex_key.trim()).context("Invalid hex in --public-key")?;
+    if bytes.len() != 32 {
+        bail!(
+            "--public-key must be 64 hex chars (32 bytes), got {} bytes",
+            bytes.len()
+        );
+    }
+    let mut arr = [0u8; 32];
+    arr.copy_from_slice(&bytes);
+    VerifyingKey::from_bytes(&arr).context("Invalid Ed25519 public key")
+}
+
+fn parse_public_key_file(path: &Path) -> Result<VerifyingKey> {
+    let bytes = fs::read(path).with_context(|| format!("Failed to read {}", path.display()))?;
+
+    if bytes.len() == 32 {
+        let mut arr = [0u8; 32];
+        arr.copy_from_slice(&bytes);
+        return VerifyingKey::from_bytes(&arr).context("Invalid Ed25519 public key");
+    }
+
+    if let Ok(text) = std::str::from_utf8(&bytes) {
+        let trimmed = text.trim();
+        if !trimmed.is_empty() {
+            return parse_public_key_hex(trimmed)
+                .with_context(|| format!("Invalid hex public key in {}", path.display()));
+        }
+    }
+
+    bail!(
+        "{} must contain either 32 raw bytes or 64-char hex key text",
+        path.display()
+    );
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn test_pubkey_hex() -> String {
+        let sk = ed25519_dalek::SigningKey::from_bytes(&[7u8; 32]);
+        hex::encode(sk.verifying_key().to_bytes())
+    }
+
+    fn temp_path(suffix: &str) -> PathBuf {
+        let nanos = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_nanos();
+        std::env::temp_dir().join(format!(
+            "ephemeralml_cli_test_{}_{}_{}",
+            std::process::id(),
+            nanos,
+            suffix
+        ))
+    }
+
+    #[test]
+    fn parse_public_key_hex_accepts_valid_key() {
+        let hex = test_pubkey_hex();
+        let vk = parse_public_key_hex(&hex).expect("valid hex key should parse");
+        assert_eq!(hex::encode(vk.to_bytes()), hex);
+    }
+
+    #[test]
+    fn parse_public_key_hex_rejects_wrong_length() {
+        let err = parse_public_key_hex("abcd").unwrap_err();
+        assert!(format!("{err}").contains("64 hex chars"));
+    }
+
+    #[test]
+    fn parse_public_key_file_accepts_hex_text() {
+        let path = temp_path("hex.pub");
+        fs::write(&path, format!("{}\n", test_pubkey_hex())).expect("write temp pubkey file");
+        let vk = parse_public_key_file(&path).expect("hex pubkey file should parse");
+        fs::remove_file(&path).ok();
+        assert_eq!(hex::encode(vk.to_bytes()), test_pubkey_hex());
+    }
+
+    #[test]
+    fn parse_public_key_file_accepts_raw_32_bytes() {
+        let path = temp_path("raw.pub");
+        let sk = ed25519_dalek::SigningKey::from_bytes(&[9u8; 32]);
+        let expected = sk.verifying_key().to_bytes();
+        fs::write(&path, expected).expect("write raw pubkey file");
+        let vk = parse_public_key_file(&path).expect("raw pubkey file should parse");
+        fs::remove_file(&path).ok();
+        assert_eq!(vk.to_bytes(), expected);
+    }
+
+    #[test]
+    fn resolve_pipeline_public_keys_fans_out_single_key() {
+        let args = VerifyPipelineArgs {
+            bundle: PathBuf::from("bundle.json"),
+            public_key: vec![test_pubkey_hex()],
+            public_key_file: vec![],
+            max_age: 3600,
+        };
+
+        let keys = resolve_pipeline_public_keys(&args, 3).expect("single key should fan out");
+        assert_eq!(keys.len(), 3);
+        assert_eq!(keys[0].to_bytes(), keys[1].to_bytes());
+        assert_eq!(keys[1].to_bytes(), keys[2].to_bytes());
     }
 }

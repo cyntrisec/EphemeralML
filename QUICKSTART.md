@@ -11,7 +11,7 @@ This installs `ephemeralml`, `ephemeralml-verify`, `ephemeralml-compliance`, and
 ## Verify a Receipt
 
 ```bash
-ephemeralml verify receipt.json --public-key-file receipt.pubkey
+ephemeralml-verify receipt.json --public-key-file receipt.pubkey
 ```
 
 ## 5-Minute Local Demo (build from source)

@@ -8,14 +8,27 @@
 #   - GCS bucket for encrypted models
 #
 # Usage:
-#   bash scripts/gcp/setup_kms.sh [PROJECT_ID] [REGION]
+#   bash scripts/gcp/setup_kms.sh [PROJECT_ID] [REGION] [IMAGE_DIGEST]
 #
 # Defaults: PROJECT_ID=$GOOGLE_CLOUD_PROJECT or "ephemeralml", REGION="us-central1"
+#
+# IMAGE_DIGEST (required by default): KMS decrypt is restricted to workloads whose
+# container image matches this digest (e.g., "sha256:abc123...").
+# Pass "--allow-broad-binding" as the third argument to skip this requirement
+# in development (grants pool-wide decrypt with no image condition).
 
 set -euo pipefail
 
 PROJECT="${1:-${GOOGLE_CLOUD_PROJECT:-ephemeralml}}"
 REGION="${2:-us-central1}"
+THIRD_ARG="${3:-}"
+IMAGE_DIGEST=""
+ALLOW_BROAD_BINDING=false
+if [[ "${THIRD_ARG}" == "--allow-broad-binding" ]]; then
+    ALLOW_BROAD_BINDING=true
+else
+    IMAGE_DIGEST="${THIRD_ARG}"
+fi
 
 KEYRING="ephemeralml"
 KEY="model-dek"
@@ -100,19 +113,39 @@ echo "  Attribute mappings:"
 echo "    attribute.image_digest  = assertion.submods.container.image_digest"
 echo "    attribute.gpu_cc_mode   = assertion.submods.nvidia_gpu.cc_mode"
 echo ""
-echo "  To gate KMS key release on GPU CC mode (recommended for GPU deployments),"
-echo "  add an attribute condition to the IAM binding:"
-echo "    attribute.gpu_cc_mode == 'ON'"
+echo "  To also gate KMS key release on GPU CC mode (recommended for GPU deployments),"
+echo "  add gpu_cc_mode to the attribute condition on the IAM binding."
 
 # 4. IAM: WIP principals → KMS decrypter
 echo "[4/5] Granting KMS decrypt permission to WIP principals..."
-gcloud kms keys add-iam-policy-binding "${KEY}" \
-    --project="${PROJECT}" \
-    --location="${REGION}" \
-    --keyring="${KEYRING}" \
-    --member="principalSet://iam.googleapis.com/projects/${PROJECT_NUMBER}/locations/global/workloadIdentityPools/${POOL}/*" \
-    --role="roles/cloudkms.cryptoKeyDecrypter" \
-    2>/dev/null || echo "  Binding already exists"
+MEMBER="principalSet://iam.googleapis.com/projects/${PROJECT_NUMBER}/locations/global/workloadIdentityPools/${POOL}/*"
+
+if [[ -n "${IMAGE_DIGEST}" ]]; then
+    echo "  Binding with image_digest condition: ${IMAGE_DIGEST}"
+    gcloud kms keys add-iam-policy-binding "${KEY}" \
+        --project="${PROJECT}" \
+        --location="${REGION}" \
+        --keyring="${KEYRING}" \
+        --member="${MEMBER}" \
+        --role="roles/cloudkms.cryptoKeyDecrypter" \
+        --condition="expression=attribute.image_digest == '${IMAGE_DIGEST}',title=ephemeralml-image-pin,description=Only allow decrypt for the pinned container image" \
+        2>/dev/null || echo "  Binding already exists"
+elif $ALLOW_BROAD_BINDING; then
+    echo "  WARNING: --allow-broad-binding set. KMS decrypt granted to ALL workloads in the pool."
+    echo "           This is unsafe for production. Re-run with IMAGE_DIGEST to restrict access."
+    gcloud kms keys add-iam-policy-binding "${KEY}" \
+        --project="${PROJECT}" \
+        --location="${REGION}" \
+        --keyring="${KEYRING}" \
+        --member="${MEMBER}" \
+        --role="roles/cloudkms.cryptoKeyDecrypter" \
+        2>/dev/null || echo "  Binding already exists"
+else
+    echo "  ERROR: IMAGE_DIGEST is required for KMS IAM binding."
+    echo "         Usage: bash scripts/gcp/setup_kms.sh PROJECT REGION sha256:DIGEST"
+    echo "         For development, pass --allow-broad-binding instead of a digest."
+    exit 1
+fi
 
 # 5. GCS bucket
 echo "[5/5] Creating GCS bucket..."

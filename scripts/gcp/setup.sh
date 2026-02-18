@@ -145,24 +145,28 @@ echo
 # 5. Create firewall rule
 # ---------------------------------------------------------------------------
 echo "[5/5] Creating firewall rule..."
-# Restrict source CIDRs: prefer explicit --source-ranges, fall back to caller's IP, warn on 0.0.0.0/0
-if [[ -z "${FIREWALL_SOURCE_RANGES}" ]]; then
-    CALLER_IP="$(curl -s -4 https://ifconfig.me 2>/dev/null || true)"
-    if [[ -n "${CALLER_IP}" && "${CALLER_IP}" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-        FIREWALL_SOURCE_RANGES="${CALLER_IP}/32"
-        echo "  Auto-detected caller IP: ${CALLER_IP} (restricting firewall to ${FIREWALL_SOURCE_RANGES})"
-    else
-        FIREWALL_SOURCE_RANGES="0.0.0.0/0"
-        echo "  WARNING: Could not detect caller IP. Using 0.0.0.0/0 — restrict with --source-ranges"
-    fi
-fi
-if [[ "${FIREWALL_SOURCE_RANGES}" == "0.0.0.0/0" ]]; then
-    echo "  WARNING: Firewall open to all IPs (0.0.0.0/0). For production, use --source-ranges=<your-cidr>"
-fi
 if gcloud compute firewall-rules describe "${FIREWALL_RULE}" \
     --project="${PROJECT}" &>/dev/null; then
     echo "  Firewall rule '${FIREWALL_RULE}' already exists."
 else
+    # Restrict source CIDRs: prefer explicit --source-ranges, fall back to caller's IP.
+    # Fail closed if caller IP can't be detected.
+    if [[ -z "${FIREWALL_SOURCE_RANGES}" ]]; then
+        CALLER_IP="$(curl -s -4 https://ifconfig.me 2>/dev/null || true)"
+        if [[ -n "${CALLER_IP}" && "${CALLER_IP}" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            FIREWALL_SOURCE_RANGES="${CALLER_IP}/32"
+            echo "  Auto-detected caller IP: ${CALLER_IP} (restricting firewall to ${FIREWALL_SOURCE_RANGES})"
+        else
+            echo "ERROR: Could not auto-detect caller IP for firewall restriction."
+            echo "Set --source-ranges=<CIDR[,CIDR...]> (or EPHEMERALML_FIREWALL_SOURCE_RANGES) explicitly."
+            echo "Refusing to create a 0.0.0.0/0 firewall rule by default."
+            exit 1
+        fi
+    fi
+    if [[ "${FIREWALL_SOURCE_RANGES}" == "0.0.0.0/0" ]]; then
+        echo "  WARNING: Firewall open to all IPs (0.0.0.0/0). For production, use --source-ranges=<your-cidr>"
+    fi
+
     gcloud compute firewall-rules create "${FIREWALL_RULE}" \
         --project="${PROJECT}" \
         --direction=INGRESS \

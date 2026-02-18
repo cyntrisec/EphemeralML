@@ -1755,7 +1755,7 @@ dependencies = [
 
 [[package]]
 name = "ephemeral-ml-client"
-version = "0.2.1"
+version = "0.2.2"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -1793,7 +1793,7 @@ dependencies = [
 
 [[package]]
 name = "ephemeral-ml-common"
-version = "0.2.1"
+version = "0.2.2"
 dependencies = [
  "async-trait",
  "bytes",
@@ -1820,7 +1820,7 @@ dependencies = [
 
 [[package]]
 name = "ephemeral-ml-compliance"
-version = "0.2.1"
+version = "0.2.2"
 dependencies = [
  "chrono",
  "ciborium",
@@ -1838,7 +1838,7 @@ dependencies = [
 
 [[package]]
 name = "ephemeral-ml-enclave"
-version = "0.2.1"
+version = "0.2.2"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -1884,7 +1884,7 @@ dependencies = [
 
 [[package]]
 name = "ephemeral-ml-host"
-version = "0.2.1"
+version = "0.2.2"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -1922,7 +1922,7 @@ dependencies = [
 
 [[package]]
 name = "ephemeralml-verifier-api"
-version = "0.2.1"
+version = "0.2.2"
 dependencies = [
  "axum 0.8.8",
  "base64 0.22.1",
@@ -3620,6 +3620,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7c87def4c32ab89d880effc9e097653c8da5d6ef28e6b539d313baaacfbafcbe"
 
 [[package]]
+name = "openssl-src"
+version = "300.5.5+3.5.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3f1787d533e03597a7934fd0a765f0d28e94ecc5fb7789f8053b1e699a56f709"
+dependencies = [
+ "cc",
+]
+
+[[package]]
 name = "openssl-sys"
 version = "0.9.111"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3627,6 +3636,7 @@ checksum = "82cab2d520aa75e3c58898289429321eb788c3106963d0dc886ec7a5f4adc321"
 dependencies = [
  "cc",
  "libc",
+ "openssl-src",
  "pkg-config",
  "vcpkg",
 ]

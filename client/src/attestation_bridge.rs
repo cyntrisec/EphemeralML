@@ -140,19 +140,21 @@ impl TdxEnvelopeVerifierBridge {
         });
 
         if mrtd.is_none() {
+            // Default to requiring MRTD pinning. Opt out for development by
+            // setting EPHEMERALML_REQUIRE_MRTD=false explicitly.
             let require = std::env::var("EPHEMERALML_REQUIRE_MRTD")
-                .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
-                .unwrap_or(false);
+                .map(|v| !(v == "0" || v.eq_ignore_ascii_case("false")))
+                .unwrap_or(true);
             if require {
                 panic!(
-                    "EPHEMERALML_REQUIRE_MRTD is set but no MRTD configured. \
-                     Set EPHEMERALML_EXPECTED_MRTD (96 hex chars) or disable \
-                     EPHEMERALML_REQUIRE_MRTD for development use."
+                    "No expected MRTD configured and MRTD pinning is required (default). \
+                     Set EPHEMERALML_EXPECTED_MRTD (96 hex chars) for production use, \
+                     or set EPHEMERALML_REQUIRE_MRTD=false for development."
                 );
             }
             eprintln!(
-                "[client] WARNING: No expected MRTD configured. TDX peer measurements \
-                 are NOT pinned. Set EPHEMERALML_EXPECTED_MRTD for production use."
+                "[client] WARNING: No expected MRTD configured (EPHEMERALML_REQUIRE_MRTD=false). \
+                 TDX peer measurements are NOT pinned. This is unsafe for production."
             );
         }
 
