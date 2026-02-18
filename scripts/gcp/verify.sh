@@ -144,8 +144,12 @@ RECEIPT_VERIFIED=false
 echo "[4/4] Verifying receipt..."
 
 if [[ -f "${RECEIPT_PATH}" ]]; then
-    # Extract public key from client output if available
-    PK_HEX="$(grep -oP 'receipt_signing_key: \K[0-9a-f]{64}' ${VERIFY_OUTPUT} 2>/dev/null || true)"
+    # Read public key from the .pubkey file the client writes (hex-encoded Ed25519 key).
+    PUBKEY_FILE="${RECEIPT_PATH}.pubkey"
+    PK_HEX=""
+    if [[ -f "${PUBKEY_FILE}" ]]; then
+        PK_HEX="$(tr -d '[:space:]' < "${PUBKEY_FILE}")"
+    fi
 
     if [[ -n "${PK_HEX}" ]]; then
         echo "  Receipt: ${RECEIPT_PATH}"
