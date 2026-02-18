@@ -60,18 +60,9 @@ impl MockSecureClient {
         let pcr2_bytes = pcr0_bytes.clone();
 
         let pcrs_map = vec![
-            (
-                Value::Integer(0.into()),
-                Value::Bytes(pcr0_bytes.clone()),
-            ),
-            (
-                Value::Integer(1.into()),
-                Value::Bytes(pcr1_bytes.clone()),
-            ),
-            (
-                Value::Integer(2.into()),
-                Value::Bytes(pcr2_bytes.clone()),
-            ),
+            (Value::Integer(0.into()), Value::Bytes(pcr0_bytes.clone())),
+            (Value::Integer(1.into()), Value::Bytes(pcr1_bytes.clone())),
+            (Value::Integer(2.into()), Value::Bytes(pcr2_bytes.clone())),
         ];
 
         let payload = vec![
@@ -91,10 +82,7 @@ impl MockSecureClient {
                 Value::Text("user_data".to_string()),
                 Value::Bytes(user_data_json),
             ),
-            (
-                Value::Text("pcrs".to_string()),
-                Value::Map(pcrs_map),
-            ),
+            (Value::Text("pcrs".to_string()), Value::Map(pcrs_map)),
         ];
 
         let payload_bytes = ephemeral_ml_common::cbor::to_vec(&Value::Map(payload)).unwrap();

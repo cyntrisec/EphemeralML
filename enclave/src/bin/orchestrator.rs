@@ -136,12 +136,11 @@ async fn main() -> Result<()> {
     for tensor in tensors {
         if tensor.name.starts_with("__receipt__") {
             // Try to parse as CBOR first (canonical), then JSON (legacy)
-            let receipt: AttestationReceipt =
-                ephemeral_ml_common::cbor::from_slice(&tensor.data)
-                    .or_else(|_| {
-                        serde_json::from_slice(&tensor.data)
-                            .map_err(|e| ephemeral_ml_common::cbor::CborError(e.to_string()))
-                    })
+            let receipt: AttestationReceipt = ephemeral_ml_common::cbor::from_slice(&tensor.data)
+                .or_else(|_| {
+                    serde_json::from_slice(&tensor.data)
+                        .map_err(|e| ephemeral_ml_common::cbor::CborError(e.to_string()))
+                })
                 .with_context(|| {
                     format!("Failed to parse receipt from tensor '{}'", tensor.name)
                 })?;

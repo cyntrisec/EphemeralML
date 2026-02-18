@@ -199,8 +199,8 @@ impl KmsProxyClient {
 
         let response_payload = self.send_tagged(TAG_STORAGE, &payload).await?;
 
-        let response: StorageResponse =
-            ephemeral_ml_common::cbor::from_slice(&response_payload).map_err(|e| {
+        let response: StorageResponse = ephemeral_ml_common::cbor::from_slice(&response_payload)
+            .map_err(|e| {
                 EnclaveError::Enclave(EphemeralError::SerializationError(e.to_string()))
             })?;
 

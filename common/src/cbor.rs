@@ -90,17 +90,19 @@ fn cmp_cbor_keys(a: &Value, b: &Value) -> Ordering {
         }
     }
 
-    variant_idx(a).cmp(&variant_idx(b)).then_with(|| match (a, b) {
-        (Value::Integer(x), Value::Integer(y)) => {
-            let xv: i128 = (*x).into();
-            let yv: i128 = (*y).into();
-            xv.cmp(&yv)
-        }
-        (Value::Text(x), Value::Text(y)) => x.cmp(y),
-        (Value::Bytes(x), Value::Bytes(y)) => x.cmp(y),
-        (Value::Bool(x), Value::Bool(y)) => x.cmp(y),
-        _ => Ordering::Equal,
-    })
+    variant_idx(a)
+        .cmp(&variant_idx(b))
+        .then_with(|| match (a, b) {
+            (Value::Integer(x), Value::Integer(y)) => {
+                let xv: i128 = (*x).into();
+                let yv: i128 = (*y).into();
+                xv.cmp(&yv)
+            }
+            (Value::Text(x), Value::Text(y)) => x.cmp(y),
+            (Value::Bytes(x), Value::Bytes(y)) => x.cmp(y),
+            (Value::Bool(x), Value::Bool(y)) => x.cmp(y),
+            _ => Ordering::Equal,
+        })
 }
 
 /// Look up a key in a ciborium Map's entries.

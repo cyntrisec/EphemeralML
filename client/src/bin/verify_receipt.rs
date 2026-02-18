@@ -233,8 +233,8 @@ fn verify_attestation_authenticity(attestation_bytes: &[u8]) -> Result<()> {
         .ok_or_else(|| anyhow::anyhow!("COSE_Sign1 has no payload"))?;
 
     // Parse inner CBOR map to get the certificate
-    let inner: ciborium::Value =
-        ephemeral_ml_common::cbor::from_slice(payload).context("Failed to parse COSE_Sign1 payload")?;
+    let inner: ciborium::Value = ephemeral_ml_common::cbor::from_slice(payload)
+        .context("Failed to parse COSE_Sign1 payload")?;
 
     let map = match &inner {
         ciborium::Value::Map(m) => m,
@@ -292,7 +292,9 @@ fn verify_attestation_authenticity(attestation_bytes: &[u8]) -> Result<()> {
 
     // Extract CA bundle and verify certificate chain
     let cabundle_key = ciborium::Value::Text("cabundle".to_string());
-    if let Some(ciborium::Value::Array(certs)) = ephemeral_ml_common::cbor::map_get(map, &cabundle_key) {
+    if let Some(ciborium::Value::Array(certs)) =
+        ephemeral_ml_common::cbor::map_get(map, &cabundle_key)
+    {
         let mut store_builder = openssl::x509::store::X509StoreBuilder::new()?;
         for cert_val in certs {
             if let ciborium::Value::Bytes(der) = cert_val {
@@ -318,8 +320,8 @@ fn verify_attestation_authenticity(attestation_bytes: &[u8]) -> Result<()> {
 
 fn extract_user_data_from_attestation(attestation_bytes: &[u8]) -> Result<AttestationUserData> {
     // Parse CBOR attestation document
-    let doc: ciborium::Value =
-        ephemeral_ml_common::cbor::from_slice(attestation_bytes).context("Failed to parse attestation CBOR")?;
+    let doc: ciborium::Value = ephemeral_ml_common::cbor::from_slice(attestation_bytes)
+        .context("Failed to parse attestation CBOR")?;
 
     // Try COSE_Sign1 format first (production), then fall back to CBOR map (mock).
     // COSE_Sign1 is a CBOR array: [protected, unprotected, payload, signature].
@@ -339,8 +341,8 @@ fn extract_user_data_from_attestation(attestation_bytes: &[u8]) -> Result<Attest
 }
 
 fn extract_user_data_from_map_bytes(map_bytes: &[u8]) -> Result<AttestationUserData> {
-    let doc: ciborium::Value =
-        ephemeral_ml_common::cbor::from_slice(map_bytes).context("Failed to parse COSE_Sign1 payload as CBOR")?;
+    let doc: ciborium::Value = ephemeral_ml_common::cbor::from_slice(map_bytes)
+        .context("Failed to parse COSE_Sign1 payload as CBOR")?;
     extract_user_data_from_map(&doc)
 }
 

@@ -77,7 +77,10 @@ fn main() -> Result<()> {
     // 1. Load receipt
     let receipt_bytes = fs::read(&args.receipt).context("Failed to read receipt file")?;
     let receipt: AttestationReceipt = ephemeral_ml_common::cbor::from_slice(&receipt_bytes)
-        .or_else(|_| serde_json::from_slice(&receipt_bytes).map_err(|e| ephemeral_ml_common::cbor::CborError(e.to_string())))
+        .or_else(|_| {
+            serde_json::from_slice(&receipt_bytes)
+                .map_err(|e| ephemeral_ml_common::cbor::CborError(e.to_string()))
+        })
         .context("Failed to parse receipt (tried CBOR and JSON)")?;
 
     // 2. Resolve public key
@@ -154,8 +157,8 @@ fn resolve_public_key(args: &Args) -> Result<VerifyingKey> {
 fn extract_key_from_attestation(att_bytes: &[u8], allow_mock: bool) -> Result<VerifyingKey> {
     use ciborium::Value;
 
-    let doc: Value =
-        ephemeral_ml_common::cbor::from_slice(att_bytes).context("Invalid CBOR attestation document")?;
+    let doc: Value = ephemeral_ml_common::cbor::from_slice(att_bytes)
+        .context("Invalid CBOR attestation document")?;
 
     // Determine format and extract the payload map entries
     let map_entries = match &doc {

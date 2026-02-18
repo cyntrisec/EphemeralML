@@ -136,16 +136,12 @@ impl MockAttestationProvider {
                 Value::Text("public_key".to_string()),
                 Value::Bytes(kms_pub_der.as_bytes().to_vec()),
             ),
-            (
-                Value::Text("pcrs".to_string()),
-                Value::Map(pcrs_map),
-            ),
+            (Value::Text("pcrs".to_string()), Value::Map(pcrs_map)),
         ];
 
-        let signature_bytes =
-            ephemeral_ml_common::cbor::to_vec(&Value::Map(map)).map_err(|e| {
-                EnclaveError::Enclave(EphemeralError::SerializationError(e.to_string()))
-            })?;
+        let signature_bytes = ephemeral_ml_common::cbor::to_vec(&Value::Map(map)).map_err(|e| {
+            EnclaveError::Enclave(EphemeralError::SerializationError(e.to_string()))
+        })?;
 
         Ok(AttestationDocument {
             module_id: "mock-enclave".to_string(),

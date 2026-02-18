@@ -528,9 +528,7 @@ impl KmsProxyServer {
         };
 
         // Validate PCRs (Mock Allowlist)
-        if let Some(Value::Map(pcrs)) =
-            cbor::map_get(&entries, &Value::Text("pcrs".to_string()))
-        {
+        if let Some(Value::Map(pcrs)) = cbor::map_get(&entries, &Value::Text("pcrs".to_string())) {
             // Check PCR0 existence and length as a basic check
             if let Some(Value::Bytes(pcr0)) = cbor::map_get(pcrs, &Value::Integer(0.into())) {
                 if pcr0.len() != 48 {

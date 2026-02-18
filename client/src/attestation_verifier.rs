@@ -1,11 +1,11 @@
 use crate::{ClientError, FreshnessEnforcer, PolicyManager, Result};
+use ciborium::Value as CborValue;
 use coset::{CborSerializable, CoseSign1};
 use ephemeral_ml_common::{AttestationDocument, PcrMeasurements};
 use openssl::hash::MessageDigest;
 use openssl::sign::Verifier;
 use openssl::x509::X509;
 use serde::{Deserialize, Serialize};
-use ciborium::Value as CborValue;
 use thiserror::Error;
 use x509_parser::prelude::FromDer;
 
@@ -108,7 +108,9 @@ impl AttestationVerifier {
 
             // Try to parse the CBOR payload in doc.signature to extract real keys
             let (hpke_public_key, receipt_signing_key, measurements, kms_public_key) =
-                if let Ok(parsed) = ephemeral_ml_common::cbor::from_slice::<CborValue>(&doc.signature) {
+                if let Ok(parsed) =
+                    ephemeral_ml_common::cbor::from_slice::<CborValue>(&doc.signature)
+                {
                     if let Some(map) = cbor_as_map(&parsed) {
                         // Extract user_data containing keys — reject if missing or unparseable
                         let ud_bytes = get_bytes_field(map, "user_data").map_err(|_| {
@@ -248,8 +250,8 @@ impl AttestationVerifier {
         enforce_pcr_policy: bool,
     ) -> Result<EnclaveIdentity> {
         // 3. Parse attestation payload (CBOR)
-        let attestation_payload: CborValue =
-            ephemeral_ml_common::cbor::from_slice(&payload).map_err(|e| {
+        let attestation_payload: CborValue = ephemeral_ml_common::cbor::from_slice(&payload)
+            .map_err(|e| {
                 ClientError::Client(crate::EphemeralError::AttestationError(format!(
                     "Failed to parse attestation payload: {}",
                     e
@@ -345,8 +347,8 @@ impl AttestationVerifier {
         // AWS Nitro NSM attestation documents store the certificate chain inside
         // the CBOR payload (fields "certificate" and "cabundle"), NOT in the COSE
         // headers (x5chain / label 33). Parse the payload first to extract them.
-        let payload_value: CborValue =
-            ephemeral_ml_common::cbor::from_slice(payload_bytes).map_err(|e| {
+        let payload_value: CborValue = ephemeral_ml_common::cbor::from_slice(payload_bytes)
+            .map_err(|e| {
                 ClientError::Client(crate::EphemeralError::AttestationError(format!(
                     "Failed to parse CBOR payload for cert extraction: {}",
                     e
@@ -584,10 +586,7 @@ impl AttestationVerifier {
         Ok(())
     }
 
-    fn extract_pcrs(
-        &self,
-        payload_map: &[(CborValue, CborValue)],
-    ) -> Result<PcrMeasurements> {
+    fn extract_pcrs(&self, payload_map: &[(CborValue, CborValue)]) -> Result<PcrMeasurements> {
         let pcrs_val = get_field(payload_map, "pcrs")?;
         let pcrs_map = cbor_as_map(pcrs_val).ok_or_else(|| {
             ClientError::Client(crate::EphemeralError::AttestationError(
@@ -645,10 +644,7 @@ impl AttestationVerifier {
 }
 
 // Free-standing CBOR map helpers (work with ciborium's Vec<(Value, Value)> maps)
-fn get_field<'a>(
-    map: &'a [(CborValue, CborValue)],
-    key: &str,
-) -> Result<&'a CborValue> {
+fn get_field<'a>(map: &'a [(CborValue, CborValue)], key: &str) -> Result<&'a CborValue> {
     let key_val = CborValue::Text(key.to_string());
     ephemeral_ml_common::cbor::map_get(map, &key_val).ok_or_else(|| {
         ClientError::Client(crate::EphemeralError::AttestationError(format!(
@@ -658,10 +654,7 @@ fn get_field<'a>(
     })
 }
 
-fn get_bytes_field(
-    map: &[(CborValue, CborValue)],
-    key: &str,
-) -> Result<Vec<u8>> {
+fn get_bytes_field(map: &[(CborValue, CborValue)], key: &str) -> Result<Vec<u8>> {
     match get_field(map, key)? {
         CborValue::Bytes(b) => Ok(b.clone()),
         _ => Err(ClientError::Client(
@@ -670,10 +663,7 @@ fn get_bytes_field(
     }
 }
 
-fn get_str_field(
-    map: &[(CborValue, CborValue)],
-    key: &str,
-) -> Result<String> {
+fn get_str_field(map: &[(CborValue, CborValue)], key: &str) -> Result<String> {
     match get_field(map, key)? {
         CborValue::Text(s) => Ok(s.clone()),
         _ => Err(ClientError::Client(

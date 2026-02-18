@@ -246,10 +246,11 @@ async fn handle_connection<S: AsyncStream + 'static>(
             }
             TAG_STORAGE => {
                 info!(event = "storage_request_raw", payload_len = payload.len());
-                let req: StorageRequest = ephemeral_ml_common::cbor::from_slice(&payload).map_err(|e| {
-                    error!(event = "storage_parse_error", error = %e);
-                    e
-                })?;
+                let req: StorageRequest =
+                    ephemeral_ml_common::cbor::from_slice(&payload).map_err(|e| {
+                        error!(event = "storage_parse_error", error = %e);
+                        e
+                    })?;
                 info!(event = "storage_request", model_id = %req.model_id, "fetching model data");
 
                 let resp = match storage.retrieve(&req.model_id).await {

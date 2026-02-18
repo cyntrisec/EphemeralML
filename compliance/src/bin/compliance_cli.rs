@@ -232,16 +232,17 @@ fn run_verify(
     }
 
     let receipt_item = receipt_items[0];
-    let receipt: AttestationReceipt = match ephemeral_ml_common::cbor::from_slice(&receipt_item.data) {
-        Ok(r) => r,
-        Err(_) => match serde_json::from_slice(&receipt_item.data) {
+    let receipt: AttestationReceipt =
+        match ephemeral_ml_common::cbor::from_slice(&receipt_item.data) {
             Ok(r) => r,
-            Err(e) => {
-                eprintln!("Error: cannot deserialize receipt: {}", e);
-                return 2;
-            }
-        },
-    };
+            Err(_) => match serde_json::from_slice(&receipt_item.data) {
+                Ok(r) => r,
+                Err(e) => {
+                    eprintln!("Error: cannot deserialize receipt: {}", e);
+                    return 2;
+                }
+            },
+        };
 
     // Load profile
     let profile = match profile_by_name(profile_name) {
@@ -436,16 +437,17 @@ fn run_export(
     }
 
     let receipt_item = receipt_items[0];
-    let receipt: AttestationReceipt = match ephemeral_ml_common::cbor::from_slice(&receipt_item.data) {
-        Ok(r) => r,
-        Err(_) => match serde_json::from_slice(&receipt_item.data) {
+    let receipt: AttestationReceipt =
+        match ephemeral_ml_common::cbor::from_slice(&receipt_item.data) {
             Ok(r) => r,
-            Err(e) => {
-                eprintln!("Error: cannot deserialize receipt: {}", e);
-                return 2;
-            }
-        },
-    };
+            Err(_) => match serde_json::from_slice(&receipt_item.data) {
+                Ok(r) => r,
+                Err(e) => {
+                    eprintln!("Error: cannot deserialize receipt: {}", e);
+                    return 2;
+                }
+            },
+        };
 
     // Load profile
     let profile = match profile_by_name(profile_name) {

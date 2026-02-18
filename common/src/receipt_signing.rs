@@ -466,13 +466,9 @@ impl ReceiptVerifier {
                         ))
                     }
                 };
-                let inner: Value =
-                    crate::cbor::from_slice(payload_bytes).map_err(|e| {
-                        EphemeralError::ValidationError(format!(
-                            "Invalid COSE_Sign1 payload: {}",
-                            e
-                        ))
-                    })?;
+                let inner: Value = crate::cbor::from_slice(payload_bytes).map_err(|e| {
+                    EphemeralError::ValidationError(format!("Invalid COSE_Sign1 payload: {}", e))
+                })?;
                 match inner {
                     Value::Map(m) => m,
                     _ => {

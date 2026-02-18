@@ -6,6 +6,8 @@
 //!
 //! `MockVerifierBridge` delegates to cml-transport's `MockVerifier` for mock mode.
 
+#[cfg(feature = "gcp")]
+use ciborium::Value as CborValue;
 use confidential_ml_transport::attestation::types::{
     AttestationDocument as CmlAttestationDocument, VerifiedAttestation,
 };
@@ -15,8 +17,6 @@ use ephemeral_ml_common::transport_types::EphemeralUserData;
 use ephemeral_ml_common::PcrMeasurements;
 use std::collections::BTreeMap;
 use std::sync::Mutex;
-#[cfg(feature = "gcp")]
-use ciborium::Value as CborValue;
 
 use crate::attestation_verifier::{AttestationVerifier, EnclaveIdentity};
 use crate::PolicyManager;

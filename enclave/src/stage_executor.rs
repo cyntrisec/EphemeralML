@@ -236,22 +236,19 @@ impl<A: AttestationProvider + Send + Sync> StageExecutor for EphemeralStageExecu
         // Non-deterministic CBOR is a security issue — receipts must be
         // reproducible for signature verification.
         {
-            let decoded: ciborium::Value =
-                ephemeral_ml_common::cbor::from_slice(&receipt_bytes).map_err(|e| {
-                    StageError::ForwardFailed {
-                        request_id,
-                        micro_batch,
-                        reason: format!("CBOR round-trip decode failed: {}", e),
-                    }
+            let decoded: ciborium::Value = ephemeral_ml_common::cbor::from_slice(&receipt_bytes)
+                .map_err(|e| StageError::ForwardFailed {
+                    request_id,
+                    micro_batch,
+                    reason: format!("CBOR round-trip decode failed: {}", e),
                 })?;
-            let re_encoded =
-                ephemeral_ml_common::cbor::to_vec(&decoded).map_err(|e| {
-                    StageError::ForwardFailed {
-                        request_id,
-                        micro_batch,
-                        reason: format!("CBOR round-trip encode failed: {}", e),
-                    }
-                })?;
+            let re_encoded = ephemeral_ml_common::cbor::to_vec(&decoded).map_err(|e| {
+                StageError::ForwardFailed {
+                    request_id,
+                    micro_batch,
+                    reason: format!("CBOR round-trip encode failed: {}", e),
+                }
+            })?;
             if receipt_bytes != re_encoded {
                 return Err(StageError::ForwardFailed {
                     request_id,

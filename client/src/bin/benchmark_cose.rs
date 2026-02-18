@@ -445,7 +445,8 @@ fn bench_full_verification(
         }
 
         // 4. Parse CBOR payload
-        let _payload: ciborium::Value = ephemeral_ml_common::cbor::from_slice(payload_bytes).unwrap();
+        let _payload: ciborium::Value =
+            ephemeral_ml_common::cbor::from_slice(payload_bytes).unwrap();
 
         let ms = start.elapsed().as_secs_f64() * 1000.0;
         if i >= NUM_WARMUP {

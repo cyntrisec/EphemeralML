@@ -209,8 +209,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 if t.name == "__receipt__" {
                     // Try CBOR first (canonical format), fall back to JSON
                     match ephemeral_ml_common::cbor::from_slice::<AttestationReceipt>(&t.data)
-                        .or_else(|_| serde_json::from_slice::<AttestationReceipt>(&t.data).map_err(|e| ephemeral_ml_common::cbor::CborError(e.to_string())))
-                    {
+                        .or_else(|_| {
+                            serde_json::from_slice::<AttestationReceipt>(&t.data)
+                                .map_err(|e| ephemeral_ml_common::cbor::CborError(e.to_string()))
+                        }) {
                         Ok(receipt) => {
                             print_receipt(&receipt);
                         }
