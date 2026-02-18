@@ -72,10 +72,11 @@ fn main() -> Result<()> {
 
     // Load receipt (try CBOR first for canonical format, then JSON for backwards compat)
     let receipt_bytes = fs::read(&args.receipt).context("Failed to read receipt file")?;
-    let receipt: AttestationReceipt = serde_cbor::from_slice(&receipt_bytes)
+    let receipt: AttestationReceipt = ephemeral_ml_common::cbor::from_slice(&receipt_bytes)
         .or_else(|_| {
             // Fall back to JSON (e.g. older receipts or human-readable format)
             serde_json::from_slice(&receipt_bytes)
+                .map_err(|e| ephemeral_ml_common::cbor::CborError(e.to_string()))
         })
         .context("Failed to parse receipt (tried CBOR and JSON)")?;
 
@@ -232,18 +233,18 @@ fn verify_attestation_authenticity(attestation_bytes: &[u8]) -> Result<()> {
         .ok_or_else(|| anyhow::anyhow!("COSE_Sign1 has no payload"))?;
 
     // Parse inner CBOR map to get the certificate
-    let inner: serde_cbor::Value =
-        serde_cbor::from_slice(payload).context("Failed to parse COSE_Sign1 payload")?;
+    let inner: ciborium::Value =
+        ephemeral_ml_common::cbor::from_slice(payload).context("Failed to parse COSE_Sign1 payload")?;
 
     let map = match &inner {
-        serde_cbor::Value::Map(m) => m,
+        ciborium::Value::Map(m) => m,
         _ => bail!("COSE_Sign1 payload is not a CBOR map"),
     };
 
     // Extract certificate (the signing cert)
-    let cert_key = serde_cbor::Value::Text("certificate".to_string());
-    let cert_der = match map.get(&cert_key) {
-        Some(serde_cbor::Value::Bytes(b)) => b,
+    let cert_key = ciborium::Value::Text("certificate".to_string());
+    let cert_der = match ephemeral_ml_common::cbor::map_get(map, &cert_key) {
+        Some(ciborium::Value::Bytes(b)) => b,
         _ => bail!("No 'certificate' field in attestation document"),
     };
 
@@ -290,11 +291,11 @@ fn verify_attestation_authenticity(attestation_bytes: &[u8]) -> Result<()> {
     }
 
     // Extract CA bundle and verify certificate chain
-    let cabundle_key = serde_cbor::Value::Text("cabundle".to_string());
-    if let Some(serde_cbor::Value::Array(certs)) = map.get(&cabundle_key) {
+    let cabundle_key = ciborium::Value::Text("cabundle".to_string());
+    if let Some(ciborium::Value::Array(certs)) = ephemeral_ml_common::cbor::map_get(map, &cabundle_key) {
         let mut store_builder = openssl::x509::store::X509StoreBuilder::new()?;
         for cert_val in certs {
-            if let serde_cbor::Value::Bytes(der) = cert_val {
+            if let ciborium::Value::Bytes(der) = cert_val {
                 if let Ok(ca_cert) = openssl::x509::X509::from_der(der) {
                     store_builder.add_cert(ca_cert)?;
                 }
@@ -317,50 +318,54 @@ fn verify_attestation_authenticity(attestation_bytes: &[u8]) -> Result<()> {
 
 fn extract_user_data_from_attestation(attestation_bytes: &[u8]) -> Result<AttestationUserData> {
     // Parse CBOR attestation document
-    let doc: serde_cbor::Value =
-        serde_cbor::from_slice(attestation_bytes).context("Failed to parse attestation CBOR")?;
+    let doc: ciborium::Value =
+        ephemeral_ml_common::cbor::from_slice(attestation_bytes).context("Failed to parse attestation CBOR")?;
 
     // Try COSE_Sign1 format first (production), then fall back to CBOR map (mock).
     // COSE_Sign1 is a CBOR array: [protected, unprotected, payload, signature].
     // The payload (index 2) contains the attestation document as a CBOR map.
     match &doc {
-        serde_cbor::Value::Array(arr) if arr.len() == 4 => {
+        ciborium::Value::Array(arr) if arr.len() == 4 => {
             // COSE_Sign1: extract payload bytes from index 2
-            if let serde_cbor::Value::Bytes(payload_bytes) = &arr[2] {
+            if let ciborium::Value::Bytes(payload_bytes) = &arr[2] {
                 extract_user_data_from_map_bytes(payload_bytes)
             } else {
                 bail!("COSE_Sign1 payload is not bytes")
             }
         }
-        serde_cbor::Value::Map(_) => extract_user_data_from_map(&doc),
+        ciborium::Value::Map(_) => extract_user_data_from_map(&doc),
         _ => bail!("Attestation document is neither a COSE_Sign1 array nor a CBOR map"),
     }
 }
 
 fn extract_user_data_from_map_bytes(map_bytes: &[u8]) -> Result<AttestationUserData> {
-    let doc: serde_cbor::Value =
-        serde_cbor::from_slice(map_bytes).context("Failed to parse COSE_Sign1 payload as CBOR")?;
+    let doc: ciborium::Value =
+        ephemeral_ml_common::cbor::from_slice(map_bytes).context("Failed to parse COSE_Sign1 payload as CBOR")?;
     extract_user_data_from_map(&doc)
 }
 
-fn extract_user_data_from_map(doc: &serde_cbor::Value) -> Result<AttestationUserData> {
+fn extract_user_data_from_map(doc: &ciborium::Value) -> Result<AttestationUserData> {
     let map = match doc {
-        serde_cbor::Value::Map(m) => m,
+        ciborium::Value::Map(m) => m,
         _ => bail!("Attestation payload is not a CBOR map"),
     };
 
     // Extract user_data field
-    let user_data_key = serde_cbor::Value::Text("user_data".to_string());
-    let user_data_bytes = match map.get(&user_data_key) {
-        Some(serde_cbor::Value::Bytes(b)) => b.clone(),
+    let user_data_key = ciborium::Value::Text("user_data".to_string());
+    let user_data_bytes = match ephemeral_ml_common::cbor::map_get(map, &user_data_key) {
+        Some(ciborium::Value::Bytes(b)) => b.clone(),
         Some(_) => bail!("user_data field is not bytes"),
         None => bail!("user_data field not found in attestation"),
     };
 
-    // Parse user data
-    let user_data: AttestationUserData = serde_json::from_slice(&user_data_bytes)
-        .or_else(|_| serde_cbor::from_slice(&user_data_bytes))
-        .context("Failed to parse user_data")?;
+    // Parse user data (try JSON first, then CBOR)
+    let user_data: AttestationUserData =
+        if let Ok(parsed) = serde_json::from_slice(&user_data_bytes) {
+            parsed
+        } else {
+            ephemeral_ml_common::cbor::from_slice(&user_data_bytes)
+                .context("Failed to parse user_data (tried JSON and CBOR)")?
+        };
 
     Ok(user_data)
 }

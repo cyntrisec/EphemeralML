@@ -124,13 +124,13 @@ impl AttestationUserData {
 
     /// Serialize to CBOR for embedding in attestation document
     pub fn to_cbor(&self) -> Result<Vec<u8>> {
-        serde_cbor::to_vec(self)
+        crate::cbor::to_vec(self)
             .map_err(|e| EphemeralError::SerializationError(format!("CBOR encoding failed: {}", e)))
     }
 
     /// Deserialize from CBOR attestation user data
     pub fn from_cbor(data: &[u8]) -> Result<Self> {
-        serde_cbor::from_slice(data)
+        crate::cbor::from_slice(data)
             .map_err(|e| EphemeralError::SerializationError(format!("CBOR decoding failed: {}", e)))
     }
 
@@ -291,22 +291,21 @@ impl AttestationReceipt {
 
     /// Generate canonical encoding for signature (deterministic CBOR)
     ///
-    /// Uses two-step serialization: struct → serde_cbor::Value (BTreeMap-backed,
-    /// guaranteeing sorted map keys) → CBOR bytes. This ensures deterministic
-    /// encoding regardless of struct field declaration order.
+    /// Uses two-step serialization: struct → ciborium::Value (with recursively
+    /// sorted map keys) → CBOR bytes. This ensures deterministic encoding
+    /// regardless of struct field declaration order.
     pub fn canonical_encoding(&self) -> Result<Vec<u8>> {
         // Create a copy without the signature for canonical encoding
         let mut receipt_for_signing = self.clone();
         receipt_for_signing.signature = None;
 
-        // Step 1: Serialize to serde_cbor::Value (maps become BTreeMap → sorted keys)
-        let value: serde_cbor::Value =
-            serde_cbor::value::to_value(&receipt_for_signing).map_err(|e| {
-                EphemeralError::SerializationError(format!("CBOR value conversion failed: {}", e))
-            })?;
+        // Step 1: Serialize to ciborium::Value with sorted map keys
+        let value = crate::cbor::to_value(&receipt_for_signing).map_err(|e| {
+            EphemeralError::SerializationError(format!("CBOR value conversion failed: {}", e))
+        })?;
 
         // Step 2: Serialize the Value to bytes (keys are now sorted)
-        serde_cbor::to_vec(&value)
+        crate::cbor::to_vec(&value)
             .map_err(|e| EphemeralError::SerializationError(format!("CBOR encoding failed: {}", e)))
     }
 
@@ -451,29 +450,31 @@ impl ReceiptVerifier {
     /// Handles both COSE_Sign1 (production: CBOR array with payload at index 2)
     /// and plain CBOR map (mock) formats.
     fn extract_user_data(&self, attestation_doc: &[u8]) -> Result<AttestationUserData> {
-        let doc: serde_cbor::Value = serde_cbor::from_slice(attestation_doc)
+        use ciborium::Value;
+
+        let doc: Value = crate::cbor::from_slice(attestation_doc)
             .map_err(|e| EphemeralError::ValidationError(format!("Invalid CBOR: {}", e)))?;
 
         let map = match &doc {
             // COSE_Sign1: [protected, unprotected, payload, signature]
-            serde_cbor::Value::Array(arr) if arr.len() == 4 => {
+            Value::Array(arr) if arr.len() == 4 => {
                 let payload_bytes = match &arr[2] {
-                    serde_cbor::Value::Bytes(b) => b,
+                    Value::Bytes(b) => b,
                     _ => {
                         return Err(EphemeralError::ValidationError(
                             "COSE_Sign1 payload is not bytes".to_string(),
                         ))
                     }
                 };
-                let inner: serde_cbor::Value =
-                    serde_cbor::from_slice(payload_bytes).map_err(|e| {
+                let inner: Value =
+                    crate::cbor::from_slice(payload_bytes).map_err(|e| {
                         EphemeralError::ValidationError(format!(
                             "Invalid COSE_Sign1 payload: {}",
                             e
                         ))
                     })?;
                 match inner {
-                    serde_cbor::Value::Map(m) => m,
+                    Value::Map(m) => m,
                     _ => {
                         return Err(EphemeralError::ValidationError(
                             "COSE_Sign1 payload is not a CBOR map".to_string(),
@@ -481,7 +482,7 @@ impl ReceiptVerifier {
                     }
                 }
             }
-            serde_cbor::Value::Map(m) => m.clone(),
+            Value::Map(m) => m.clone(),
             _ => {
                 return Err(EphemeralError::ValidationError(
                     "Attestation document is neither COSE_Sign1 nor CBOR map".to_string(),
@@ -489,9 +490,9 @@ impl ReceiptVerifier {
             }
         };
 
-        let user_data_key = serde_cbor::Value::Text("user_data".to_string());
-        let user_data_bytes = match map.get(&user_data_key) {
-            Some(serde_cbor::Value::Bytes(b)) => b,
+        let user_data_key = Value::Text("user_data".to_string());
+        let user_data_bytes = match crate::cbor::map_get(&map, &user_data_key) {
+            Some(Value::Bytes(b)) => b,
             Some(_) => {
                 return Err(EphemeralError::ValidationError(
                     "user_data field is not bytes".to_string(),
@@ -506,7 +507,7 @@ impl ReceiptVerifier {
 
         serde_json::from_slice(user_data_bytes)
             .or_else(|_| {
-                serde_cbor::from_slice(user_data_bytes).map_err(|e| {
+                crate::cbor::from_slice(user_data_bytes).map_err(|e| {
                     EphemeralError::ValidationError(format!("Invalid user_data: {}", e))
                 })
             })
@@ -643,16 +644,17 @@ mod tests {
 
     #[test]
     fn test_extract_user_data_from_cbor_map() {
+        use ciborium::Value;
+
         let user_data = AttestationUserData::new([1u8; 32], [2u8; 32], 1, vec![]);
         let user_data_json = serde_json::to_vec(&user_data).unwrap();
 
         // Build a plain CBOR map with a user_data field (mock format)
-        let mut map = std::collections::BTreeMap::new();
-        map.insert(
-            serde_cbor::Value::Text("user_data".to_string()),
-            serde_cbor::Value::Bytes(user_data_json),
-        );
-        let doc_bytes = serde_cbor::to_vec(&serde_cbor::Value::Map(map)).unwrap();
+        let map = vec![(
+            Value::Text("user_data".to_string()),
+            Value::Bytes(user_data_json),
+        )];
+        let doc_bytes = crate::cbor::to_vec(&Value::Map(map)).unwrap();
 
         let verifier = ReceiptVerifier::new(vec![]);
         let extracted = verifier.extract_user_data(&doc_bytes).unwrap();
@@ -662,25 +664,26 @@ mod tests {
 
     #[test]
     fn test_extract_user_data_from_cose_sign1() {
+        use ciborium::Value;
+
         let user_data = AttestationUserData::new([3u8; 32], [4u8; 32], 1, vec![]);
         let user_data_json = serde_json::to_vec(&user_data).unwrap();
 
         // Build a CBOR map payload with user_data
-        let mut map = std::collections::BTreeMap::new();
-        map.insert(
-            serde_cbor::Value::Text("user_data".to_string()),
-            serde_cbor::Value::Bytes(user_data_json),
-        );
-        let payload_bytes = serde_cbor::to_vec(&serde_cbor::Value::Map(map)).unwrap();
+        let map = vec![(
+            Value::Text("user_data".to_string()),
+            Value::Bytes(user_data_json),
+        )];
+        let payload_bytes = crate::cbor::to_vec(&Value::Map(map)).unwrap();
 
         // Wrap in COSE_Sign1 array: [protected, unprotected, payload, signature]
-        let cose = serde_cbor::Value::Array(vec![
-            serde_cbor::Value::Bytes(vec![]),           // protected
-            serde_cbor::Value::Map(Default::default()), // unprotected
-            serde_cbor::Value::Bytes(payload_bytes),    // payload
-            serde_cbor::Value::Bytes(vec![0u8; 64]),    // signature
+        let cose = Value::Array(vec![
+            Value::Bytes(vec![]),        // protected
+            Value::Map(vec![]),          // unprotected
+            Value::Bytes(payload_bytes), // payload
+            Value::Bytes(vec![0u8; 64]), // signature
         ]);
-        let doc_bytes = serde_cbor::to_vec(&cose).unwrap();
+        let doc_bytes = crate::cbor::to_vec(&cose).unwrap();
 
         let verifier = ReceiptVerifier::new(vec![]);
         let extracted = verifier.extract_user_data(&doc_bytes).unwrap();
@@ -690,10 +693,12 @@ mod tests {
 
     #[test]
     fn test_extract_user_data_rejects_invalid_format() {
+        use ciborium::Value;
+
         let verifier = ReceiptVerifier::new(vec![]);
 
         // A CBOR integer is neither a map nor COSE_Sign1
-        let bad_bytes = serde_cbor::to_vec(&serde_cbor::Value::Integer(42)).unwrap();
+        let bad_bytes = crate::cbor::to_vec(&Value::Integer(42.into())).unwrap();
         assert!(verifier.extract_user_data(&bad_bytes).is_err());
 
         // Totally invalid CBOR
@@ -736,8 +741,8 @@ mod tests {
         assert!(from_json.verify_signature(&signing_key.public_key).unwrap());
 
         // CBOR round-trip
-        let cbor = serde_cbor::to_vec(&receipt).unwrap();
-        let from_cbor: AttestationReceipt = serde_cbor::from_slice(&cbor).unwrap();
+        let cbor = crate::cbor::to_vec(&receipt).unwrap();
+        let from_cbor: AttestationReceipt = crate::cbor::from_slice(&cbor).unwrap();
         assert!(from_cbor.previous_receipt_hash.is_none());
         assert!(from_cbor.verify_signature(&signing_key.public_key).unwrap());
 

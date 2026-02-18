@@ -5,7 +5,7 @@ use openssl::hash::MessageDigest;
 use openssl::sign::Verifier;
 use openssl::x509::X509;
 use serde::{Deserialize, Serialize};
-use std::collections::BTreeMap;
+use ciborium::Value as CborValue;
 use thiserror::Error;
 use x509_parser::prelude::FromDer;
 
@@ -65,10 +65,10 @@ pub struct AttestationUserData {
 /// AWS Nitro Enclaves Root CA (G1)
 const AWS_NITRO_ROOT_CA: &[u8] = include_bytes!("aws_nitro_root_ca.der");
 
-/// Helper to extract a map from serde_cbor::Value
-fn cbor_as_map(val: &serde_cbor::Value) -> Option<&BTreeMap<serde_cbor::Value, serde_cbor::Value>> {
+/// Helper to extract a map from CborValue
+fn cbor_as_map(val: &CborValue) -> Option<&Vec<(CborValue, CborValue)>> {
     match val {
-        serde_cbor::Value::Map(m) => Some(m),
+        CborValue::Map(m) => Some(m),
         _ => None,
     }
 }
@@ -108,7 +108,7 @@ impl AttestationVerifier {
 
             // Try to parse the CBOR payload in doc.signature to extract real keys
             let (hpke_public_key, receipt_signing_key, measurements, kms_public_key) =
-                if let Ok(parsed) = serde_cbor::from_slice::<serde_cbor::Value>(&doc.signature) {
+                if let Ok(parsed) = ephemeral_ml_common::cbor::from_slice::<CborValue>(&doc.signature) {
                     if let Some(map) = cbor_as_map(&parsed) {
                         // Extract user_data containing keys — reject if missing or unparseable
                         let ud_bytes = get_bytes_field(map, "user_data").map_err(|_| {
@@ -248,8 +248,8 @@ impl AttestationVerifier {
         enforce_pcr_policy: bool,
     ) -> Result<EnclaveIdentity> {
         // 3. Parse attestation payload (CBOR)
-        let attestation_payload: serde_cbor::Value =
-            serde_cbor::from_slice(&payload).map_err(|e| {
+        let attestation_payload: CborValue =
+            ephemeral_ml_common::cbor::from_slice(&payload).map_err(|e| {
                 ClientError::Client(crate::EphemeralError::AttestationError(format!(
                     "Failed to parse attestation payload: {}",
                     e
@@ -345,8 +345,8 @@ impl AttestationVerifier {
         // AWS Nitro NSM attestation documents store the certificate chain inside
         // the CBOR payload (fields "certificate" and "cabundle"), NOT in the COSE
         // headers (x5chain / label 33). Parse the payload first to extract them.
-        let payload_value: serde_cbor::Value =
-            serde_cbor::from_slice(payload_bytes).map_err(|e| {
+        let payload_value: CborValue =
+            ephemeral_ml_common::cbor::from_slice(payload_bytes).map_err(|e| {
                 ClientError::Client(crate::EphemeralError::AttestationError(format!(
                     "Failed to parse CBOR payload for cert extraction: {}",
                     e
@@ -365,10 +365,10 @@ impl AttestationVerifier {
         // Extract CA bundle from "cabundle" field (array of DER-encoded certs)
         let cabundle_val = get_field(payload_map, "cabundle")?;
         let cabundle_certs = match cabundle_val {
-            serde_cbor::Value::Array(arr) => {
+            CborValue::Array(arr) => {
                 let mut certs = Vec::new();
                 for v in arr {
-                    if let serde_cbor::Value::Bytes(b) = v {
+                    if let CborValue::Bytes(b) = v {
                         certs.push(b.clone());
                     }
                 }
@@ -586,7 +586,7 @@ impl AttestationVerifier {
 
     fn extract_pcrs(
         &self,
-        payload_map: &BTreeMap<serde_cbor::Value, serde_cbor::Value>,
+        payload_map: &[(CborValue, CborValue)],
     ) -> Result<PcrMeasurements> {
         let pcrs_val = get_field(payload_map, "pcrs")?;
         let pcrs_map = cbor_as_map(pcrs_val).ok_or_else(|| {
@@ -600,9 +600,10 @@ impl AttestationVerifier {
         let mut pcr2 = vec![];
 
         for (k, v) in pcrs_map {
-            if let serde_cbor::Value::Integer(idx) = k {
+            if let CborValue::Integer(int_val) = k {
+                let idx: i128 = (*int_val).into();
                 let bytes = match v {
-                    serde_cbor::Value::Bytes(b) => b.clone(),
+                    CborValue::Bytes(b) => b.clone(),
                     _ => {
                         return Err(ClientError::Client(
                             crate::EphemeralError::AttestationError(format!(
@@ -643,13 +644,13 @@ impl AttestationVerifier {
     }
 }
 
-// Free-standing CBOR map helpers (work with BTreeMap)
+// Free-standing CBOR map helpers (work with ciborium's Vec<(Value, Value)> maps)
 fn get_field<'a>(
-    map: &'a BTreeMap<serde_cbor::Value, serde_cbor::Value>,
+    map: &'a [(CborValue, CborValue)],
     key: &str,
-) -> Result<&'a serde_cbor::Value> {
-    let key_val = serde_cbor::Value::Text(key.to_string());
-    map.get(&key_val).ok_or_else(|| {
+) -> Result<&'a CborValue> {
+    let key_val = CborValue::Text(key.to_string());
+    ephemeral_ml_common::cbor::map_get(map, &key_val).ok_or_else(|| {
         ClientError::Client(crate::EphemeralError::AttestationError(format!(
             "Missing field: {}",
             key
@@ -658,11 +659,11 @@ fn get_field<'a>(
 }
 
 fn get_bytes_field(
-    map: &BTreeMap<serde_cbor::Value, serde_cbor::Value>,
+    map: &[(CborValue, CborValue)],
     key: &str,
 ) -> Result<Vec<u8>> {
     match get_field(map, key)? {
-        serde_cbor::Value::Bytes(b) => Ok(b.clone()),
+        CborValue::Bytes(b) => Ok(b.clone()),
         _ => Err(ClientError::Client(
             crate::EphemeralError::AttestationError(format!("Field {} is not bytes", key)),
         )),
@@ -670,20 +671,20 @@ fn get_bytes_field(
 }
 
 fn get_str_field(
-    map: &BTreeMap<serde_cbor::Value, serde_cbor::Value>,
+    map: &[(CborValue, CborValue)],
     key: &str,
 ) -> Result<String> {
     match get_field(map, key)? {
-        serde_cbor::Value::Text(s) => Ok(s.clone()),
+        CborValue::Text(s) => Ok(s.clone()),
         _ => Err(ClientError::Client(
             crate::EphemeralError::AttestationError(format!("Field {} is not text", key)),
         )),
     }
 }
 
-fn get_int_field(map: &BTreeMap<serde_cbor::Value, serde_cbor::Value>, key: &str) -> Result<i128> {
+fn get_int_field(map: &[(CborValue, CborValue)], key: &str) -> Result<i128> {
     match get_field(map, key)? {
-        serde_cbor::Value::Integer(i) => Ok(*i),
+        CborValue::Integer(i) => Ok((*i).into()),
         _ => Err(ClientError::Client(
             crate::EphemeralError::AttestationError(format!("Field {} is not integer", key)),
         )),

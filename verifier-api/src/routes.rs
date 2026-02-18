@@ -110,7 +110,7 @@ pub async fn verify_upload(
     let public_key = parse_hex_public_key(&key_hex)?;
 
     // Try CBOR first, then JSON
-    let receipt: AttestationReceipt = serde_cbor::from_slice(&receipt_data)
+    let receipt: AttestationReceipt = ephemeral_ml_common::cbor::from_slice(&receipt_data)
         .or_else(|_| serde_json::from_slice(&receipt_data))
         .map_err(|_| bad_request("Failed to parse receipt (tried CBOR and JSON)"))?;
 
@@ -151,7 +151,7 @@ fn parse_receipt_value(
         serde_json::Value::String(s) => {
             let bytes = base64::Engine::decode(&base64::engine::general_purpose::STANDARD, s)
                 .map_err(|e| bad_request(format!("Invalid base64 receipt: {}", e)))?;
-            serde_cbor::from_slice(&bytes)
+            ephemeral_ml_common::cbor::from_slice(&bytes)
                 .map_err(|e| bad_request(format!("Invalid CBOR receipt: {}", e)))
         }
         _ => Err(bad_request(

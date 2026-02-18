@@ -246,7 +246,7 @@ async fn handle_connection<S: AsyncStream + 'static>(
             }
             TAG_STORAGE => {
                 info!(event = "storage_request_raw", payload_len = payload.len());
-                let req: StorageRequest = serde_cbor::from_slice(&payload).map_err(|e| {
+                let req: StorageRequest = ephemeral_ml_common::cbor::from_slice(&payload).map_err(|e| {
                     error!(event = "storage_parse_error", error = %e);
                     e
                 })?;
@@ -263,7 +263,7 @@ async fn handle_connection<S: AsyncStream + 'static>(
                     }
                 };
 
-                let resp_payload = serde_cbor::to_vec(&resp)?;
+                let resp_payload = ephemeral_ml_common::cbor::to_vec(&resp)?;
                 simple_frame::write_frame(&mut stream, TAG_STORAGE, &resp_payload)
                     .await
                     .map_err(|e| anyhow::anyhow!("write_frame error: {}", e))?;

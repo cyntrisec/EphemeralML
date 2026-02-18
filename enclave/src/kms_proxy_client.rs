@@ -193,15 +193,16 @@ impl KmsProxyClient {
             part_index: 0,
         };
 
-        let payload = serde_cbor::to_vec(&req).map_err(|e| {
+        let payload = ephemeral_ml_common::cbor::to_vec(&req).map_err(|e| {
             EnclaveError::Enclave(EphemeralError::SerializationError(e.to_string()))
         })?;
 
         let response_payload = self.send_tagged(TAG_STORAGE, &payload).await?;
 
-        let response: StorageResponse = serde_cbor::from_slice(&response_payload).map_err(|e| {
-            EnclaveError::Enclave(EphemeralError::SerializationError(e.to_string()))
-        })?;
+        let response: StorageResponse =
+            ephemeral_ml_common::cbor::from_slice(&response_payload).map_err(|e| {
+                EnclaveError::Enclave(EphemeralError::SerializationError(e.to_string()))
+            })?;
 
         match response {
             StorageResponse::Data { payload, .. } => Ok(payload),

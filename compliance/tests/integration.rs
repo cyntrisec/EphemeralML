@@ -55,7 +55,7 @@ fn test_full_baseline_pipeline() {
     let (receipt, signing_key, attestation_data) = make_test_receipt_and_attestation();
 
     // 1. Collect evidence
-    let receipt_cbor = serde_cbor::to_vec(&receipt).unwrap();
+    let receipt_cbor = ephemeral_ml_common::cbor::to_vec(&receipt).unwrap();
     let mut collector = EvidenceBundleCollector::new();
     let receipt_id = collector.add_receipt(&receipt_cbor).unwrap();
     let att_id = collector.add_attestation(&attestation_data).unwrap();
@@ -114,7 +114,7 @@ fn test_full_baseline_pipeline() {
 fn test_full_hipaa_pipeline() {
     let (receipt, signing_key, attestation_data) = make_test_receipt_and_attestation();
 
-    let receipt_cbor = serde_cbor::to_vec(&receipt).unwrap();
+    let receipt_cbor = ephemeral_ml_common::cbor::to_vec(&receipt).unwrap();
     let mut collector = EvidenceBundleCollector::new();
     let receipt_id = collector.add_receipt(&receipt_cbor).unwrap();
     let att_id = collector.add_attestation(&attestation_data).unwrap();
@@ -148,7 +148,7 @@ fn test_non_compliant_receipt_no_signature() {
     // Remove signature
     receipt.signature = None;
 
-    let receipt_cbor = serde_cbor::to_vec(&receipt).unwrap();
+    let receipt_cbor = ephemeral_ml_common::cbor::to_vec(&receipt).unwrap();
     let mut collector = EvidenceBundleCollector::new();
     let receipt_id = collector.add_receipt(&receipt_cbor).unwrap();
     let att_id = collector.add_attestation(&attestation_data).unwrap();
@@ -174,7 +174,7 @@ fn test_non_compliant_receipt_no_signature() {
 fn test_non_compliant_missing_attestation() {
     let (receipt, signing_key, _att_data) = make_test_receipt_and_attestation();
 
-    let receipt_cbor = serde_cbor::to_vec(&receipt).unwrap();
+    let receipt_cbor = ephemeral_ml_common::cbor::to_vec(&receipt).unwrap();
     let mut collector = EvidenceBundleCollector::new();
     collector.add_receipt(&receipt_cbor).unwrap();
 
@@ -220,7 +220,7 @@ fn test_non_compliant_bad_measurements() {
     );
     receipt.sign(&signing_key).unwrap();
 
-    let receipt_cbor = serde_cbor::to_vec(&receipt).unwrap();
+    let receipt_cbor = ephemeral_ml_common::cbor::to_vec(&receipt).unwrap();
     let mut collector = EvidenceBundleCollector::new();
     collector.add_receipt(&receipt_cbor).unwrap();
     collector.add_attestation(b"att").unwrap();
@@ -254,7 +254,7 @@ fn test_schema_validation_rejects_bad_version() {
 fn test_export_json_round_trip_preserves_compliance() {
     let (receipt, signing_key, attestation_data) = make_test_receipt_and_attestation();
 
-    let receipt_cbor = serde_cbor::to_vec(&receipt).unwrap();
+    let receipt_cbor = ephemeral_ml_common::cbor::to_vec(&receipt).unwrap();
     let mut collector = EvidenceBundleCollector::new();
     let receipt_id = collector.add_receipt(&receipt_cbor).unwrap();
     let att_id = collector.add_attestation(&attestation_data).unwrap();

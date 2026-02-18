@@ -261,7 +261,7 @@ mod tests {
                             payload: encrypted_artifact_clone.clone(),
                             is_last: true,
                         };
-                        let resp_payload = serde_cbor::to_vec(&response).unwrap();
+                        let resp_payload = ephemeral_ml_common::cbor::to_vec(&response).unwrap();
                         simple_frame::write_frame(&mut socket, TAG_STORAGE, &resp_payload)
                             .await
                             .unwrap();

@@ -15,6 +15,8 @@ use ephemeral_ml_common::transport_types::EphemeralUserData;
 use ephemeral_ml_common::PcrMeasurements;
 use std::collections::BTreeMap;
 use std::sync::Mutex;
+#[cfg(feature = "gcp")]
+use ciborium::Value as CborValue;
 
 use crate::attestation_verifier::{AttestationVerifier, EnclaveIdentity};
 use crate::PolicyManager;
@@ -169,7 +171,7 @@ impl CmlAttestationVerifier for TdxEnvelopeVerifierBridge {
     ) -> std::result::Result<VerifiedAttestation, AttestError> {
         // B3: Try to decode as TeeAttestationEnvelope. Use match instead of
         // if-let to distinguish malformed envelopes from plain TDX wire format.
-        match serde_cbor::from_slice::<TdxEnvelopeHelper>(&doc.raw) {
+        match ephemeral_ml_common::cbor::from_slice::<TdxEnvelopeHelper>(&doc.raw) {
             Ok(envelope) => {
                 if envelope.platform != "tdx" {
                     return Err(AttestError::VerificationFailed(format!(
@@ -220,11 +222,11 @@ impl CmlAttestationVerifier for TdxEnvelopeVerifierBridge {
                 // Check if the document was *trying* to be an envelope (has a
                 // "platform" key) but is malformed — fail hard rather than
                 // silently falling back to plain TDX wire format.
-                if let Ok(serde_cbor::Value::Map(ref m)) =
-                    serde_cbor::from_slice::<serde_cbor::Value>(&doc.raw)
+                if let Ok(CborValue::Map(ref m)) =
+                    ephemeral_ml_common::cbor::from_slice::<CborValue>(&doc.raw)
                 {
-                    let platform_key = serde_cbor::Value::Text("platform".to_string());
-                    if m.contains_key(&platform_key) {
+                    let platform_key = CborValue::Text("platform".to_string());
+                    if ephemeral_ml_common::cbor::map_contains_key(m, &platform_key) {
                         return Err(AttestError::VerificationFailed(format!(
                             "Document appears to be a TDX envelope (has 'platform' key) \
                              but failed to parse: {}",

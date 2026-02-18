@@ -315,7 +315,7 @@ async fn receipt_chain_tamper_detection() {
     receipt0.sign(&key0).unwrap();
 
     // Serialize receipt0 as CBOR (canonical encoding for hash chain)
-    let receipt0_cbor = serde_cbor::to_vec(&receipt0).unwrap();
+    let receipt0_cbor = ephemeral_ml_common::cbor::to_vec(&receipt0).unwrap();
     let receipt0_hash: [u8; 32] = Sha256::digest(&receipt0_cbor).into();
 
     // Build stage 1 receipt with correct previous_receipt_hash
@@ -371,7 +371,7 @@ async fn receipt_chain_tamper_detection() {
     );
 
     // Re-serialize the tampered receipt
-    let tampered_cbor = serde_cbor::to_vec(&tampered_receipt0).unwrap();
+    let tampered_cbor = ephemeral_ml_common::cbor::to_vec(&tampered_receipt0).unwrap();
     let tampered_hash: [u8; 32] = Sha256::digest(&tampered_cbor).into();
 
     // Chain breaks: stage 1 still points to original receipt0, not tampered

@@ -57,7 +57,7 @@ fn e2e_receipt_to_signed_compliance_bundle() {
     assert!(verify_result.verified);
 
     // 2. Collect evidence
-    let receipt_cbor = serde_cbor::to_vec(&receipt).unwrap();
+    let receipt_cbor = ephemeral_ml_common::cbor::to_vec(&receipt).unwrap();
     let mut collector = EvidenceBundleCollector::new();
     let r_id = collector.add_receipt(&receipt_cbor).unwrap();
     let a_id = collector.add_attestation(attestation_data).unwrap();

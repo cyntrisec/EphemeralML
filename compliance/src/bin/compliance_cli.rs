@@ -232,7 +232,7 @@ fn run_verify(
     }
 
     let receipt_item = receipt_items[0];
-    let receipt: AttestationReceipt = match serde_cbor::from_slice(&receipt_item.data) {
+    let receipt: AttestationReceipt = match ephemeral_ml_common::cbor::from_slice(&receipt_item.data) {
         Ok(r) => r,
         Err(_) => match serde_json::from_slice(&receipt_item.data) {
             Ok(r) => r,
@@ -436,7 +436,7 @@ fn run_export(
     }
 
     let receipt_item = receipt_items[0];
-    let receipt: AttestationReceipt = match serde_cbor::from_slice(&receipt_item.data) {
+    let receipt: AttestationReceipt = match ephemeral_ml_common::cbor::from_slice(&receipt_item.data) {
         Ok(r) => r,
         Err(_) => match serde_json::from_slice(&receipt_item.data) {
             Ok(r) => r,

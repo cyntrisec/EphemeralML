@@ -224,9 +224,9 @@ impl<A: AttestationProvider + Send + Sync> StageExecutor for EphemeralStageExecu
         };
 
         // Serialize receipt as canonical CBOR for deterministic encoding.
-        // CBOR with serde_cbor produces deterministic output (sorted keys, no indefinite lengths).
+        // ciborium produces deterministic output (sorted keys, no indefinite lengths).
         let receipt_bytes =
-            serde_cbor::to_vec(&receipt).map_err(|e| StageError::ForwardFailed {
+            ephemeral_ml_common::cbor::to_vec(&receipt).map_err(|e| StageError::ForwardFailed {
                 request_id,
                 micro_batch,
                 reason: format!("Receipt serialize failed: {}", e),
@@ -236,17 +236,21 @@ impl<A: AttestationProvider + Send + Sync> StageExecutor for EphemeralStageExecu
         // Non-deterministic CBOR is a security issue — receipts must be
         // reproducible for signature verification.
         {
-            let decoded: serde_cbor::Value =
-                serde_cbor::from_slice(&receipt_bytes).map_err(|e| StageError::ForwardFailed {
-                    request_id,
-                    micro_batch,
-                    reason: format!("CBOR round-trip decode failed: {}", e),
+            let decoded: ciborium::Value =
+                ephemeral_ml_common::cbor::from_slice(&receipt_bytes).map_err(|e| {
+                    StageError::ForwardFailed {
+                        request_id,
+                        micro_batch,
+                        reason: format!("CBOR round-trip decode failed: {}", e),
+                    }
                 })?;
             let re_encoded =
-                serde_cbor::to_vec(&decoded).map_err(|e| StageError::ForwardFailed {
-                    request_id,
-                    micro_batch,
-                    reason: format!("CBOR round-trip encode failed: {}", e),
+                ephemeral_ml_common::cbor::to_vec(&decoded).map_err(|e| {
+                    StageError::ForwardFailed {
+                        request_id,
+                        micro_batch,
+                        reason: format!("CBOR round-trip encode failed: {}", e),
+                    }
                 })?;
             if receipt_bytes != re_encoded {
                 return Err(StageError::ForwardFailed {

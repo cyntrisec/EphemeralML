@@ -12,7 +12,7 @@ workload. It is the core product artifact of EphemeralML.
 ## 2. Encoding
 
 - Receipts are encoded as **CBOR** (RFC 8949)
-- Map keys are serialized via `serde_cbor::Value` which uses `BTreeMap`, ensuring
+- Map keys are sorted by encoded bytes (per RFC 7049 §3.9), ensuring
   **deterministic sorted-key ordering**
 - Receipts may also be represented as JSON for human readability, but the
   **canonical form for signature computation is always CBOR**
@@ -60,7 +60,7 @@ All measurement byte strings MUST be exactly 48 bytes (SHA-384).
 
 1. Clone the receipt
 2. Set `signature` to `null`
-3. Serialize to `serde_cbor::Value` (struct → Value, maps become BTreeMap with sorted keys)
+3. Convert to CBOR Value tree with recursively sorted map keys (variant index then content)
 4. Serialize the `Value` to CBOR bytes
 5. Sign the resulting byte string with Ed25519
 

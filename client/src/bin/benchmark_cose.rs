@@ -293,12 +293,12 @@ fn build_cose_sign1(payload: &[u8], signing_key: &PKey<openssl::pkey::Private>) 
 
 /// Extract leaf certificate DER from CBOR payload's `certificate` field.
 fn extract_leaf_cert_from_payload(payload_bytes: &[u8]) -> Vec<u8> {
-    let val: serde_cbor::Value = serde_cbor::from_slice(payload_bytes).unwrap();
-    if let serde_cbor::Value::Map(map) = val {
+    let val: ciborium::Value = ephemeral_ml_common::cbor::from_slice(payload_bytes).unwrap();
+    if let ciborium::Value::Map(map) = val {
         for (k, v) in &map {
-            if let serde_cbor::Value::Text(key) = k {
+            if let ciborium::Value::Text(key) = k {
                 if key == "certificate" {
-                    if let serde_cbor::Value::Bytes(b) = v {
+                    if let ciborium::Value::Bytes(b) = v {
                         return b.clone();
                     }
                 }
@@ -388,7 +388,7 @@ fn bench_payload_parse(cose_bytes: &[u8]) -> Vec<f64> {
     for i in 0..(NUM_WARMUP + NUM_ITERATIONS) {
         let start = Instant::now();
 
-        let _val: serde_cbor::Value = serde_cbor::from_slice(&payload_bytes).unwrap();
+        let _val: ciborium::Value = ephemeral_ml_common::cbor::from_slice(&payload_bytes).unwrap();
 
         let ms = start.elapsed().as_secs_f64() * 1000.0;
         if i >= NUM_WARMUP {
@@ -445,7 +445,7 @@ fn bench_full_verification(
         }
 
         // 4. Parse CBOR payload
-        let _payload: serde_cbor::Value = serde_cbor::from_slice(payload_bytes).unwrap();
+        let _payload: ciborium::Value = ephemeral_ml_common::cbor::from_slice(payload_bytes).unwrap();
 
         let ms = start.elapsed().as_secs_f64() * 1000.0;
         if i >= NUM_WARMUP {
@@ -494,72 +494,64 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
     });
     let user_data_bytes = serde_json::to_vec(&user_data)?;
 
-    let payload_map = serde_cbor::Value::Map(
-        vec![
-            (
-                serde_cbor::Value::Text("module_id".into()),
-                serde_cbor::Value::Text("i-XXXXXXXXXXXXXXXXX-enc01a2b3c4d5e6f7g8".into()),
-            ),
-            (
-                serde_cbor::Value::Text("timestamp".into()),
-                serde_cbor::Value::Integer(1769977102),
-            ),
-            (
-                serde_cbor::Value::Text("digest".into()),
-                serde_cbor::Value::Text("SHA384".into()),
-            ),
-            (
-                serde_cbor::Value::Text("nonce".into()),
-                serde_cbor::Value::Bytes(vec![0u8; 32]),
-            ),
-            (
-                serde_cbor::Value::Text("user_data".into()),
-                serde_cbor::Value::Bytes(user_data_bytes),
-            ),
-            (
-                serde_cbor::Value::Text("public_key".into()),
-                serde_cbor::Value::Bytes(vec![0u8; 270]),
-            ), // RSA-2048 SPKI ~270 bytes
-            (
-                serde_cbor::Value::Text("pcrs".into()),
-                serde_cbor::Value::Map(
-                    vec![
-                        (
-                            serde_cbor::Value::Integer(0),
-                            serde_cbor::Value::Bytes(vec![0xAA; 48]),
-                        ),
-                        (
-                            serde_cbor::Value::Integer(1),
-                            serde_cbor::Value::Bytes(vec![0xBB; 48]),
-                        ),
-                        (
-                            serde_cbor::Value::Integer(2),
-                            serde_cbor::Value::Bytes(vec![0xCC; 48]),
-                        ),
-                    ]
-                    .into_iter()
+    let payload_map = ciborium::Value::Map(vec![
+        (
+            ciborium::Value::Text("module_id".into()),
+            ciborium::Value::Text("i-XXXXXXXXXXXXXXXXX-enc01a2b3c4d5e6f7g8".into()),
+        ),
+        (
+            ciborium::Value::Text("timestamp".into()),
+            ciborium::Value::Integer(1769977102_i64.into()),
+        ),
+        (
+            ciborium::Value::Text("digest".into()),
+            ciborium::Value::Text("SHA384".into()),
+        ),
+        (
+            ciborium::Value::Text("nonce".into()),
+            ciborium::Value::Bytes(vec![0u8; 32]),
+        ),
+        (
+            ciborium::Value::Text("user_data".into()),
+            ciborium::Value::Bytes(user_data_bytes),
+        ),
+        (
+            ciborium::Value::Text("public_key".into()),
+            ciborium::Value::Bytes(vec![0u8; 270]),
+        ), // RSA-2048 SPKI ~270 bytes
+        (
+            ciborium::Value::Text("pcrs".into()),
+            ciborium::Value::Map(vec![
+                (
+                    ciborium::Value::Integer(0.into()),
+                    ciborium::Value::Bytes(vec![0xAA; 48]),
+                ),
+                (
+                    ciborium::Value::Integer(1.into()),
+                    ciborium::Value::Bytes(vec![0xBB; 48]),
+                ),
+                (
+                    ciborium::Value::Integer(2.into()),
+                    ciborium::Value::Bytes(vec![0xCC; 48]),
+                ),
+            ]),
+        ),
+        (
+            ciborium::Value::Text("certificate".into()),
+            ciborium::Value::Bytes(cert_chain[0].clone()),
+        ),
+        (
+            ciborium::Value::Text("cabundle".into()),
+            ciborium::Value::Array(
+                cert_chain
+                    .iter()
+                    .skip(1)
+                    .map(|c| ciborium::Value::Bytes(c.clone()))
                     .collect(),
-                ),
             ),
-            (
-                serde_cbor::Value::Text("certificate".into()),
-                serde_cbor::Value::Bytes(cert_chain[0].clone()),
-            ),
-            (
-                serde_cbor::Value::Text("cabundle".into()),
-                serde_cbor::Value::Array(
-                    cert_chain
-                        .iter()
-                        .skip(1)
-                        .map(|c| serde_cbor::Value::Bytes(c.clone()))
-                        .collect(),
-                ),
-            ),
-        ]
-        .into_iter()
-        .collect(),
-    );
-    let payload_bytes = serde_cbor::to_vec(&payload_map)?;
+        ),
+    ]);
+    let payload_bytes = ephemeral_ml_common::cbor::to_vec(&payload_map)?;
 
     eprintln!("[cose] Payload size: {} bytes", payload_bytes.len());
 

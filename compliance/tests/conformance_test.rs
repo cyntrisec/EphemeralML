@@ -298,10 +298,10 @@ fn ct_012_cbor_determinism() {
     );
 
     // Round-trip through CBOR value must preserve bytes
-    let value: serde_cbor::Value = serde_cbor::value::to_value(&receipt).unwrap();
-    let bytes = serde_cbor::to_vec(&value).unwrap();
-    let decoded: serde_cbor::Value = serde_cbor::from_slice(&bytes).unwrap();
-    let re_encoded = serde_cbor::to_vec(&decoded).unwrap();
+    let value = ephemeral_ml_common::cbor::to_value(&receipt).unwrap();
+    let bytes = ephemeral_ml_common::cbor::to_vec(&value).unwrap();
+    let decoded: ciborium::Value = ephemeral_ml_common::cbor::from_slice(&bytes).unwrap();
+    let re_encoded = ephemeral_ml_common::cbor::to_vec(&decoded).unwrap();
     assert_eq!(bytes, re_encoded, "CT-012: CBOR round-trip is not stable");
 }
 
@@ -311,10 +311,10 @@ fn ct_013_json_cbor_interop() {
     let key = key_a();
     let receipt = make_valid_receipt_nitro(&key);
 
-    let cbor_bytes = serde_cbor::to_vec(&receipt).unwrap();
+    let cbor_bytes = ephemeral_ml_common::cbor::to_vec(&receipt).unwrap();
     let json_bytes = serde_json::to_vec(&receipt).unwrap();
 
-    let from_cbor: AttestationReceipt = serde_cbor::from_slice(&cbor_bytes).unwrap();
+    let from_cbor: AttestationReceipt = ephemeral_ml_common::cbor::from_slice(&cbor_bytes).unwrap();
     let from_json: AttestationReceipt = serde_json::from_slice(&json_bytes).unwrap();
 
     // Both should verify with the same key
@@ -354,7 +354,7 @@ fn ct_014_baseline_compliance_pass() {
     );
     receipt.sign(&key).unwrap();
 
-    let receipt_cbor = serde_cbor::to_vec(&receipt).unwrap();
+    let receipt_cbor = ephemeral_ml_common::cbor::to_vec(&receipt).unwrap();
     let mut collector = EvidenceBundleCollector::new();
     let r_id = collector.add_receipt(&receipt_cbor).unwrap();
     let a_id = collector.add_attestation(attestation_data).unwrap();
@@ -381,7 +381,7 @@ fn ct_015_missing_attestation_fail() {
     let key = key_a();
     let receipt = make_valid_receipt_nitro(&key);
 
-    let receipt_cbor = serde_cbor::to_vec(&receipt).unwrap();
+    let receipt_cbor = ephemeral_ml_common::cbor::to_vec(&receipt).unwrap();
     let mut collector = EvidenceBundleCollector::new();
     collector.add_receipt(&receipt_cbor).unwrap();
 
@@ -408,7 +408,7 @@ fn ct_016_tampered_receipt_compliance_fail() {
     let mut receipt = make_valid_receipt_nitro(&key);
     receipt.model_id = "tampered-model".to_string(); // breaks signature
 
-    let receipt_cbor = serde_cbor::to_vec(&receipt).unwrap();
+    let receipt_cbor = ephemeral_ml_common::cbor::to_vec(&receipt).unwrap();
     let mut collector = EvidenceBundleCollector::new();
     let r_id = collector.add_receipt(&receipt_cbor).unwrap();
     let a_id = collector.add_attestation(b"att").unwrap();

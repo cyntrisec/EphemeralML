@@ -1,4 +1,5 @@
 pub mod audit;
+pub mod cbor;
 pub mod error;
 #[cfg(feature = "inference")]
 pub mod inference;

@@ -103,9 +103,21 @@ impl From<serde_json::Error> for ComplianceError {
     }
 }
 
-impl From<serde_cbor::Error> for ComplianceError {
-    fn from(err: serde_cbor::Error) -> Self {
+impl From<ephemeral_ml_common::cbor::CborError> for ComplianceError {
+    fn from(err: ephemeral_ml_common::cbor::CborError) -> Self {
         Self::serialization_error(err.to_string())
+    }
+}
+
+impl<T: std::fmt::Debug> From<ciborium::ser::Error<T>> for ComplianceError {
+    fn from(err: ciborium::ser::Error<T>) -> Self {
+        Self::serialization_error(format!("{:?}", err))
+    }
+}
+
+impl<T: std::fmt::Debug> From<ciborium::de::Error<T>> for ComplianceError {
+    fn from(err: ciborium::de::Error<T>) -> Self {
+        Self::serialization_error(format!("{:?}", err))
     }
 }
 

@@ -28,7 +28,7 @@ aws-nitro-enclaves-nsm-api = { workspace = true, optional = true }
 tokio-vsock = { workspace = true, optional = true }
 openssl = { workspace = true, optional = true }
 hex = "0.4"
-serde_cbor = "0.11"
+ciborium = "0.2"
 serde_bytes = "0.11"
 hpke = { workspace = true, features = ["std", "x25519"] }
 chacha20poly1305 = { workspace = true }

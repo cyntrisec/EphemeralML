@@ -280,8 +280,8 @@ async fn run_infer(args: InferArgs) -> Result<()> {
 fn run_verify(args: VerifyArgs) -> Result<()> {
     // Load receipt
     let receipt_bytes = fs::read(&args.receipt).context("Failed to read receipt file")?;
-    let receipt: AttestationReceipt = serde_cbor::from_slice(&receipt_bytes)
-        .or_else(|_| serde_json::from_slice(&receipt_bytes))
+    let receipt: AttestationReceipt = ephemeral_ml_client::cbor::from_slice(&receipt_bytes)
+        .or_else(|_| serde_json::from_slice(&receipt_bytes).map_err(|e| ephemeral_ml_client::cbor::CborError(e.to_string())))
         .context("Failed to parse receipt (tried CBOR and JSON)")?;
 
     // Resolve public key

@@ -76,8 +76,8 @@ fn main() -> Result<()> {
 
     // 1. Load receipt
     let receipt_bytes = fs::read(&args.receipt).context("Failed to read receipt file")?;
-    let receipt: AttestationReceipt = serde_cbor::from_slice(&receipt_bytes)
-        .or_else(|_| serde_json::from_slice(&receipt_bytes))
+    let receipt: AttestationReceipt = ephemeral_ml_common::cbor::from_slice(&receipt_bytes)
+        .or_else(|_| serde_json::from_slice(&receipt_bytes).map_err(|e| ephemeral_ml_common::cbor::CborError(e.to_string())))
         .context("Failed to parse receipt (tried CBOR and JSON)")?;
 
     // 2. Resolve public key
@@ -152,12 +152,14 @@ fn resolve_public_key(args: &Args) -> Result<VerifyingKey> {
 /// Pass `allow_mock = true` (--allow-mock CLI flag) to accept unverified
 /// mock attestation documents for local testing only.
 fn extract_key_from_attestation(att_bytes: &[u8], allow_mock: bool) -> Result<VerifyingKey> {
-    let doc: serde_cbor::Value =
-        serde_cbor::from_slice(att_bytes).context("Invalid CBOR attestation document")?;
+    use ciborium::Value;
 
-    // Determine format and extract the payload map
-    let map = match &doc {
-        serde_cbor::Value::Array(arr) if arr.len() == 4 => {
+    let doc: Value =
+        ephemeral_ml_common::cbor::from_slice(att_bytes).context("Invalid CBOR attestation document")?;
+
+    // Determine format and extract the payload map entries
+    let map_entries = match &doc {
+        Value::Array(arr) if arr.len() == 4 => {
             // COSE_Sign1: [protected, unprotected, payload, signature]
             // Verify COSE signature + cert chain before trusting the payload
             let att_doc = ephemeral_ml_common::AttestationDocument {
@@ -184,7 +186,7 @@ fn extract_key_from_attestation(att_bytes: &[u8], allow_mock: bool) -> Result<Ve
             return VerifyingKey::from_bytes(&identity.receipt_signing_key)
                 .context("Invalid receipt signing key from verified attestation");
         }
-        serde_cbor::Value::Map(m) => {
+        Value::Map(m) => {
             if !allow_mock {
                 bail!(
                     "Attestation document is a plain CBOR map (mock format) without \
@@ -201,16 +203,20 @@ fn extract_key_from_attestation(att_bytes: &[u8], allow_mock: bool) -> Result<Ve
         _ => bail!("Attestation document is neither COSE_Sign1 nor CBOR map"),
     };
 
-    let user_data_key = serde_cbor::Value::Text("user_data".to_string());
-    let user_data_bytes = match map.get(&user_data_key) {
-        Some(serde_cbor::Value::Bytes(b)) => b,
+    let user_data_key = Value::Text("user_data".to_string());
+    let user_data_bytes = match ephemeral_ml_common::cbor::map_get(&map_entries, &user_data_key) {
+        Some(Value::Bytes(b)) => b,
         _ => bail!("No user_data bytes in attestation document"),
     };
 
     // Try JSON first (EphemeralML format), then CBOR
-    let ud: ephemeral_ml_common::AttestationUserData = serde_json::from_slice(user_data_bytes)
-        .or_else(|_| serde_cbor::from_slice(user_data_bytes))
-        .context("Failed to parse user_data from attestation")?;
+    let ud: ephemeral_ml_common::AttestationUserData =
+        if let Ok(parsed) = serde_json::from_slice(user_data_bytes) {
+            parsed
+        } else {
+            ephemeral_ml_common::cbor::from_slice(user_data_bytes)
+                .context("Failed to parse user_data from attestation (tried JSON and CBOR)")?
+        };
 
     VerifyingKey::from_bytes(&ud.receipt_signing_key).context("Invalid receipt signing key")
 }

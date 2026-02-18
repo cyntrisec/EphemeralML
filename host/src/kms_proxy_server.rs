@@ -515,21 +515,24 @@ impl KmsProxyServer {
         attestation_bytes: &[u8],
         key_material: &[u8],
     ) -> Result<Vec<u8>, String> {
+        use ciborium::Value;
+        use ephemeral_ml_common::cbor;
+
         // Parse CBOR
-        let value: serde_cbor::Value = serde_cbor::from_slice(attestation_bytes)
+        let value: Value = cbor::from_slice(attestation_bytes)
             .map_err(|e| format!("Failed to parse attestation doc: {}", e))?;
 
-        let map = match value {
-            serde_cbor::Value::Map(m) => m,
+        let entries = match value {
+            Value::Map(m) => m,
             _ => return Err("Attestation doc is not a map".to_string()),
         };
 
         // Validate PCRs (Mock Allowlist)
-        if let Some(serde_cbor::Value::Map(pcrs)) =
-            map.get(&serde_cbor::Value::Text("pcrs".to_string()))
+        if let Some(Value::Map(pcrs)) =
+            cbor::map_get(&entries, &Value::Text("pcrs".to_string()))
         {
             // Check PCR0 existence and length as a basic check
-            if let Some(serde_cbor::Value::Bytes(pcr0)) = pcrs.get(&serde_cbor::Value::Integer(0)) {
+            if let Some(Value::Bytes(pcr0)) = cbor::map_get(pcrs, &Value::Integer(0.into())) {
                 if pcr0.len() != 48 {
                     return Err(format!("Invalid PCR0 length: {}", pcr0.len()));
                 }
@@ -537,8 +540,8 @@ impl KmsProxyServer {
         }
 
         // Extract User Data
-        let user_data_bytes = match map.get(&serde_cbor::Value::Text("user_data".to_string())) {
-            Some(serde_cbor::Value::Bytes(b)) => b,
+        let user_data_bytes = match cbor::map_get(&entries, &Value::Text("user_data".to_string())) {
+            Some(Value::Bytes(b)) => b,
             _ => return Err("Missing user_data in attestation".to_string()),
         };
 
@@ -624,8 +627,8 @@ mod tests {
         let pk_bytes = public_key_obj.to_bytes();
 
         // Setup a mock attestation with a dummy HPKE public key
-        use std::collections::BTreeMap;
-        let mut map = BTreeMap::new();
+        use ciborium::Value;
+        use ephemeral_ml_common::cbor;
 
         // Create user data JSON with real PK bytes
         #[derive(serde::Serialize)]
@@ -637,12 +640,12 @@ mod tests {
         };
         let user_data_json = serde_json::to_vec(&user_data).unwrap();
 
-        map.insert(
-            serde_cbor::Value::Text("user_data".to_string()),
-            serde_cbor::Value::Bytes(user_data_json),
-        );
+        let entries = vec![(
+            Value::Text("user_data".to_string()),
+            Value::Bytes(user_data_json),
+        )];
 
-        let attestation_cbor = serde_cbor::to_vec(&serde_cbor::Value::Map(map)).unwrap();
+        let attestation_cbor = cbor::to_vec(&Value::Map(entries)).unwrap();
 
         let request = KmsRequest::Decrypt {
             ciphertext_blob: vec![1, 2, 3, 4],

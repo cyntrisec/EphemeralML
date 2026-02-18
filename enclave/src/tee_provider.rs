@@ -55,12 +55,14 @@ pub struct TeeAttestationEnvelope {
 impl TeeAttestationEnvelope {
     /// Decode envelope from CBOR bytes.
     pub fn from_cbor(bytes: &[u8]) -> std::result::Result<Self, String> {
-        serde_cbor::from_slice(bytes).map_err(|e| format!("envelope decode failed: {}", e))
+        ephemeral_ml_common::cbor::from_slice(bytes)
+            .map_err(|e| format!("envelope decode failed: {}", e))
     }
 
     /// Encode envelope to CBOR bytes.
     pub fn to_cbor(&self) -> std::result::Result<Vec<u8>, String> {
-        serde_cbor::to_vec(self).map_err(|e| format!("envelope encode failed: {}", e))
+        ephemeral_ml_common::cbor::to_vec(self)
+            .map_err(|e| format!("envelope encode failed: {}", e))
     }
 }
 

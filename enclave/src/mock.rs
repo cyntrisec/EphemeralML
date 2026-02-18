@@ -115,42 +115,37 @@ impl MockAttestationProvider {
         let kms_pub_key = self.kms_keypair.to_public_key();
         let kms_pub_der = kms_pub_key.to_public_key_der().expect("RSA export failed");
 
-        use std::collections::BTreeMap;
-        let mut map = BTreeMap::new();
-        map.insert(
-            serde_cbor::Value::Text("module_id".to_string()),
-            serde_cbor::Value::Text("mock-enclave".to_string()),
-        );
-        map.insert(
-            serde_cbor::Value::Text("user_data".to_string()),
-            serde_cbor::Value::Bytes(user_data_bytes),
-        );
-        map.insert(
-            serde_cbor::Value::Text("public_key".to_string()),
-            serde_cbor::Value::Bytes(kms_pub_der.as_bytes().to_vec()),
-        );
+        use ciborium::Value;
 
-        let mut pcrs_map = BTreeMap::new();
-        pcrs_map.insert(
-            serde_cbor::Value::Integer(0),
-            serde_cbor::Value::Bytes(pcr0_bytes.clone()),
-        );
-        pcrs_map.insert(
-            serde_cbor::Value::Integer(1),
-            serde_cbor::Value::Bytes(pcr1_bytes.clone()),
-        );
-        pcrs_map.insert(
-            serde_cbor::Value::Integer(2),
-            serde_cbor::Value::Bytes(pcr2_bytes.clone()),
-        );
-        map.insert(
-            serde_cbor::Value::Text("pcrs".to_string()),
-            serde_cbor::Value::Map(pcrs_map),
-        );
+        let pcrs_map = vec![
+            (Value::Integer(0.into()), Value::Bytes(pcr0_bytes.clone())),
+            (Value::Integer(1.into()), Value::Bytes(pcr1_bytes.clone())),
+            (Value::Integer(2.into()), Value::Bytes(pcr2_bytes.clone())),
+        ];
 
-        let signature_bytes = serde_cbor::to_vec(&serde_cbor::Value::Map(map)).map_err(|e| {
-            EnclaveError::Enclave(EphemeralError::SerializationError(e.to_string()))
-        })?;
+        let map = vec![
+            (
+                Value::Text("module_id".to_string()),
+                Value::Text("mock-enclave".to_string()),
+            ),
+            (
+                Value::Text("user_data".to_string()),
+                Value::Bytes(user_data_bytes),
+            ),
+            (
+                Value::Text("public_key".to_string()),
+                Value::Bytes(kms_pub_der.as_bytes().to_vec()),
+            ),
+            (
+                Value::Text("pcrs".to_string()),
+                Value::Map(pcrs_map),
+            ),
+        ];
+
+        let signature_bytes =
+            ephemeral_ml_common::cbor::to_vec(&Value::Map(map)).map_err(|e| {
+                EnclaveError::Enclave(EphemeralError::SerializationError(e.to_string()))
+            })?;
 
         Ok(AttestationDocument {
             module_id: "mock-enclave".to_string(),

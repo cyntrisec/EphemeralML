@@ -117,15 +117,17 @@ mod tests {
 
         // The raw bytes are a CBOR map produced by MockAttestationProvider.
         // Parse and verify receipt_signing_key is embedded in user_data.
-        let cbor: serde_cbor::Value = serde_cbor::from_slice(&doc.raw).unwrap();
+        use ciborium::Value;
+
+        let cbor: Value = ephemeral_ml_common::cbor::from_slice(&doc.raw).unwrap();
         let map = match cbor {
-            serde_cbor::Value::Map(m) => m,
+            Value::Map(m) => m,
             _ => panic!("Expected CBOR map"),
         };
 
-        let ud_key = serde_cbor::Value::Text("user_data".to_string());
-        let ud_bytes = match map.get(&ud_key) {
-            Some(serde_cbor::Value::Bytes(b)) => b,
+        let ud_key = Value::Text("user_data".to_string());
+        let ud_bytes = match ephemeral_ml_common::cbor::map_get(&map, &ud_key) {
+            Some(Value::Bytes(b)) => b,
             _ => panic!("No user_data bytes in attestation"),
         };
 

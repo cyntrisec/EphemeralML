@@ -47,13 +47,13 @@ impl EphemeralUserData {
 
     /// Serialize to CBOR for embedding in attestation document
     pub fn to_cbor(&self) -> Result<Vec<u8>> {
-        serde_cbor::to_vec(self)
+        crate::cbor::to_vec(self)
             .map_err(|e| EphemeralError::SerializationError(format!("CBOR encoding failed: {}", e)))
     }
 
     /// Deserialize from CBOR attestation user data
     pub fn from_cbor(data: &[u8]) -> Result<Self> {
-        serde_cbor::from_slice(data)
+        crate::cbor::from_slice(data)
             .map_err(|e| EphemeralError::SerializationError(format!("CBOR decoding failed: {}", e)))
     }
 }

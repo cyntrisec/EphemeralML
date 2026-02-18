@@ -37,7 +37,7 @@ impl MockSecureClient {
 
     /// Generate a mock attestation document for testing with embedded keys
     pub fn generate_mock_attestation() -> AttestationDocument {
-        use std::collections::BTreeMap;
+        use ciborium::Value;
 
         #[derive(serde::Serialize)]
         struct UserData {
@@ -59,43 +59,45 @@ impl MockSecureClient {
         let pcr1_bytes = pcr0_bytes.clone();
         let pcr2_bytes = pcr0_bytes.clone();
 
-        let mut payload = BTreeMap::new();
-        payload.insert(
-            serde_cbor::Value::Text("module_id".to_string()),
-            serde_cbor::Value::Text("mock-enclave".to_string()),
-        );
-        payload.insert(
-            serde_cbor::Value::Text("timestamp".to_string()),
-            serde_cbor::Value::Integer(current_timestamp() as i128),
-        );
-        payload.insert(
-            serde_cbor::Value::Text("nonce".to_string()),
-            serde_cbor::Value::Bytes(b"mock_nonce".to_vec()),
-        );
-        payload.insert(
-            serde_cbor::Value::Text("user_data".to_string()),
-            serde_cbor::Value::Bytes(user_data_json),
-        );
+        let pcrs_map = vec![
+            (
+                Value::Integer(0.into()),
+                Value::Bytes(pcr0_bytes.clone()),
+            ),
+            (
+                Value::Integer(1.into()),
+                Value::Bytes(pcr1_bytes.clone()),
+            ),
+            (
+                Value::Integer(2.into()),
+                Value::Bytes(pcr2_bytes.clone()),
+            ),
+        ];
 
-        let mut pcrs_map = BTreeMap::new();
-        pcrs_map.insert(
-            serde_cbor::Value::Integer(0),
-            serde_cbor::Value::Bytes(pcr0_bytes.clone()),
-        );
-        pcrs_map.insert(
-            serde_cbor::Value::Integer(1),
-            serde_cbor::Value::Bytes(pcr1_bytes.clone()),
-        );
-        pcrs_map.insert(
-            serde_cbor::Value::Integer(2),
-            serde_cbor::Value::Bytes(pcr2_bytes.clone()),
-        );
-        payload.insert(
-            serde_cbor::Value::Text("pcrs".to_string()),
-            serde_cbor::Value::Map(pcrs_map),
-        );
+        let payload = vec![
+            (
+                Value::Text("module_id".to_string()),
+                Value::Text("mock-enclave".to_string()),
+            ),
+            (
+                Value::Text("timestamp".to_string()),
+                Value::Integer((current_timestamp() as i64).into()),
+            ),
+            (
+                Value::Text("nonce".to_string()),
+                Value::Bytes(b"mock_nonce".to_vec()),
+            ),
+            (
+                Value::Text("user_data".to_string()),
+                Value::Bytes(user_data_json),
+            ),
+            (
+                Value::Text("pcrs".to_string()),
+                Value::Map(pcrs_map),
+            ),
+        ];
 
-        let payload_bytes = serde_cbor::to_vec(&serde_cbor::Value::Map(payload)).unwrap();
+        let payload_bytes = ephemeral_ml_common::cbor::to_vec(&Value::Map(payload)).unwrap();
 
         AttestationDocument {
             module_id: "mock-enclave".to_string(),

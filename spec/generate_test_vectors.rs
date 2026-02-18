@@ -61,7 +61,7 @@ fn build_receipt(
 
 /// Serialize a receipt to CBOR bytes.
 fn to_cbor(receipt: &AttestationReceipt) -> Vec<u8> {
-    serde_cbor::to_vec(receipt).expect("CBOR serialization failed")
+    ephemeral_ml_common::cbor::to_vec(receipt).expect("CBOR serialization failed")
 }
 
 /// Serialize a receipt to pretty JSON bytes.
