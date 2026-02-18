@@ -83,6 +83,18 @@ struct VerifyArgs {
     /// Maximum receipt age in seconds (0 to skip)
     #[arg(long, default_value = "3600")]
     max_age: u64,
+
+    /// Expected model ID (optional). Fails if receipt model_id doesn't match
+    #[arg(long)]
+    expected_model: Option<String>,
+
+    /// Expected measurement type: nitro-pcr, tdx-mrtd-rtmr, or any
+    #[arg(long, default_value = "any")]
+    measurement_type: String,
+
+    /// Output format: text or json
+    #[arg(long, default_value = "text")]
+    format: String,
 }
 
 #[derive(Parser)]
@@ -327,6 +339,34 @@ fn run_verify(args: VerifyArgs) -> Result<()> {
         }
     };
 
+    // Model ID match
+    let model_ok = if let Some(ref expected) = args.expected_model {
+        if receipt.model_id != *expected {
+            errors.push(format!(
+                "Model mismatch: receipt has '{}', expected '{}'",
+                receipt.model_id, expected
+            ));
+            false
+        } else {
+            true
+        }
+    } else {
+        true
+    };
+
+    // Measurement type check
+    let mtype_ok = if args.measurement_type == "any" {
+        true
+    } else if receipt.enclave_measurements.measurement_type != args.measurement_type {
+        errors.push(format!(
+            "Measurement type mismatch: receipt has '{}', expected '{}'",
+            receipt.enclave_measurements.measurement_type, args.measurement_type
+        ));
+        false
+    } else {
+        true
+    };
+
     // Measurements
     let meas_ok = receipt.enclave_measurements.is_valid();
     if !meas_ok {
@@ -336,7 +376,30 @@ fn run_verify(args: VerifyArgs) -> Result<()> {
     // Attestation hash non-zero
     let att_hash_ok = receipt.attestation_doc_hash != [0u8; 32];
 
-    let verified = sig_ok && errors.is_empty();
+    let verified = sig_ok && model_ok && mtype_ok && errors.is_empty();
+
+    // JSON output mode
+    if args.format == "json" {
+        let output = serde_json::json!({
+            "verified": verified,
+            "receipt_id": receipt.receipt_id,
+            "model_id": receipt.model_id,
+            "model_version": receipt.model_version,
+            "measurement_type": receipt.enclave_measurements.measurement_type,
+            "sequence_number": receipt.sequence_number,
+            "execution_timestamp": receipt.execution_timestamp,
+            "checks": {
+                "signature": if sig_ok { "pass" } else { "fail" },
+                "model_match": if args.expected_model.is_none() { "skip" } else if model_ok { "pass" } else { "fail" },
+                "measurement_type": if args.measurement_type == "any" { "skip" } else if mtype_ok { "pass" } else { "fail" },
+                "timestamp_fresh": if args.max_age == 0 { "skip" } else if ts_ok { "pass" } else { "fail" },
+                "measurements_present": if meas_ok { "pass" } else { "fail" },
+            },
+            "errors": errors,
+        });
+        println!("{}", serde_json::to_string_pretty(&output).unwrap());
+        std::process::exit(if verified { 0 } else { 1 });
+    }
 
     // Compact summary (audience-friendly)
     println!();
