@@ -418,12 +418,8 @@ fn run_verify_pipeline(args: VerifyPipelineArgs) -> Result<()> {
         }
     }
 
-    let overall = stage_index_ok
-        && count_ok
-        && chain_ok
-        && all_sigs_ok
-        && all_hashes_ok
-        && all_fresh_ok;
+    let overall =
+        stage_index_ok && count_ok && chain_ok && all_sigs_ok && all_hashes_ok && all_fresh_ok;
 
     println!();
     if overall {
@@ -443,7 +439,9 @@ fn run_verify_pipeline(args: VerifyPipelineArgs) -> Result<()> {
             println!("      - One or more receipt signatures are invalid");
         }
         if !all_hashes_ok {
-            println!("      - One or more claimed receipt hashes do not match recomputed CBOR hashes");
+            println!(
+                "      - One or more claimed receipt hashes do not match recomputed CBOR hashes"
+            );
         }
         if !chain_ok {
             println!("      - Receipt chain integrity check failed");
@@ -461,7 +459,10 @@ fn run_verify_pipeline(args: VerifyPipelineArgs) -> Result<()> {
     }
 }
 
-fn resolve_pipeline_public_keys(args: &VerifyPipelineArgs, stage_count: usize) -> Result<Vec<VerifyingKey>> {
+fn resolve_pipeline_public_keys(
+    args: &VerifyPipelineArgs,
+    stage_count: usize,
+) -> Result<Vec<VerifyingKey>> {
     let mut keys: Vec<VerifyingKey> = if !args.public_key.is_empty() {
         args.public_key
             .iter()
@@ -475,7 +476,7 @@ fn resolve_pipeline_public_keys(args: &VerifyPipelineArgs, stage_count: usize) -
     };
 
     if keys.len() == 1 && stage_count > 1 {
-        let key = keys[0].clone();
+        let key = keys[0];
         keys = (0..stage_count).map(|_| key).collect();
     }
 

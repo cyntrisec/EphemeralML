@@ -58,6 +58,155 @@ impl EphemeralUserData {
     }
 }
 
+/// Confidential Space transport attestation envelope.
+///
+/// Carries a Launcher JWT (hardware-backed by Confidential Space) plus
+/// application-level binding data for the SecureChannel handshake.
+/// Unlike `TeeAttestationEnvelope` (which wraps raw TDX quotes from configfs-tsm),
+/// this envelope uses the Launcher JWT as the attestation root — no configfs-tsm needed.
+///
+/// Encoded as deterministic CBOR (sorted map keys) for consistent hashing.
+///
+/// Wire format (CBOR map):
+/// ```text
+/// {
+///   "handshake_public_key": <32 bytes>,   // X25519 DH key from SecureChannel handshake
+///   "launcher_jwt": "<OIDC JWT string>",  // Confidential Space Launcher token
+///   "nonce": <bytes>,                     // Handshake nonce (binds attestation to session)
+///   "platform": "cs-tdx",                // Platform identifier
+///   "protocol_version": 1,               // Protocol version
+///   "receipt_signing_key": <32 bytes>,    // Ed25519 public key for receipt verification
+/// }
+/// ```
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+pub struct CsTransportAttestation {
+    /// Platform identifier. Must be "cs-tdx" for Confidential Space TDX.
+    pub platform: String,
+
+    /// Launcher JWT (OIDC token from Confidential Space).
+    /// Contains claims: eat_nonce, submods.container.image_digest,
+    /// submods.container.image_reference, etc.
+    pub launcher_jwt: String,
+
+    /// Ed25519 public key for receipt signature verification (32 bytes).
+    #[serde(with = "serde_bytes")]
+    pub receipt_signing_key: Vec<u8>,
+
+    /// X25519 public key from the SecureChannel handshake (32 bytes).
+    /// Binds this attestation to a specific handshake session.
+    #[serde(with = "serde_bytes")]
+    pub handshake_public_key: Vec<u8>,
+
+    /// Nonce from the handshake protocol (binds attestation to session).
+    #[serde(with = "serde_bytes")]
+    pub nonce: Vec<u8>,
+
+    /// Protocol version for forward compatibility.
+    pub protocol_version: u32,
+}
+
+/// Expected platform string for Confidential Space TDX attestation envelopes.
+pub const CS_TDX_PLATFORM: &str = "cs-tdx";
+
+impl CsTransportAttestation {
+    /// Create a new CS transport attestation envelope.
+    ///
+    /// # Arguments
+    /// * `launcher_jwt` — Launcher JWT from Confidential Space
+    /// * `receipt_signing_key` — Ed25519 public key (32 bytes)
+    /// * `handshake_public_key` — X25519 DH key from handshake (32 bytes)
+    /// * `nonce` — Handshake nonce
+    pub fn new(
+        launcher_jwt: String,
+        receipt_signing_key: [u8; 32],
+        handshake_public_key: Vec<u8>,
+        nonce: Vec<u8>,
+    ) -> Self {
+        Self {
+            platform: CS_TDX_PLATFORM.to_string(),
+            launcher_jwt,
+            receipt_signing_key: receipt_signing_key.to_vec(),
+            handshake_public_key,
+            nonce,
+            protocol_version: 1,
+        }
+    }
+
+    /// Encode as deterministic CBOR (sorted map keys for consistent hashing).
+    pub fn to_cbor_deterministic(&self) -> Result<Vec<u8>> {
+        let value = crate::cbor::to_value(self).map_err(|e| {
+            EphemeralError::SerializationError(format!(
+                "CsTransportAttestation CBOR value conversion failed: {}",
+                e
+            ))
+        })?;
+        crate::cbor::to_vec(&value).map_err(|e| {
+            EphemeralError::SerializationError(format!(
+                "CsTransportAttestation CBOR encoding failed: {}",
+                e
+            ))
+        })
+    }
+
+    /// Decode from CBOR bytes.
+    pub fn from_cbor(data: &[u8]) -> Result<Self> {
+        crate::cbor::from_slice(data).map_err(|e| {
+            EphemeralError::SerializationError(format!(
+                "CsTransportAttestation CBOR decoding failed: {}",
+                e
+            ))
+        })
+    }
+
+    /// Compute SHA-256 hash of the deterministic CBOR encoding.
+    /// Used for attestation_hash in receipts and handshake transcript binding.
+    pub fn document_hash(&self) -> Result<[u8; 32]> {
+        use sha2::{Digest, Sha256};
+        let cbor = self.to_cbor_deterministic()?;
+        Ok(Sha256::digest(&cbor).into())
+    }
+
+    /// Validate the envelope structure (does NOT verify the JWT signature).
+    /// Returns an error if any field has an invalid length or value.
+    pub fn validate_structure(&self) -> Result<()> {
+        if self.platform != CS_TDX_PLATFORM {
+            return Err(EphemeralError::AttestationError(format!(
+                "Invalid platform '{}', expected '{}'",
+                self.platform, CS_TDX_PLATFORM
+            )));
+        }
+        if self.launcher_jwt.is_empty() {
+            return Err(EphemeralError::AttestationError(
+                "launcher_jwt is empty".to_string(),
+            ));
+        }
+        // Basic JWT structure check: must have 3 dot-separated parts
+        if self.launcher_jwt.split('.').count() != 3 {
+            return Err(EphemeralError::AttestationError(
+                "launcher_jwt is not a valid JWT (expected 3 dot-separated parts)".to_string(),
+            ));
+        }
+        if self.receipt_signing_key.len() != 32 {
+            return Err(EphemeralError::AttestationError(format!(
+                "receipt_signing_key must be 32 bytes, got {}",
+                self.receipt_signing_key.len()
+            )));
+        }
+        if self.handshake_public_key.len() != 32 {
+            return Err(EphemeralError::AttestationError(format!(
+                "handshake_public_key must be 32 bytes, got {}",
+                self.handshake_public_key.len()
+            )));
+        }
+        if self.nonce.is_empty() {
+            return Err(EphemeralError::AttestationError(
+                "nonce is empty".to_string(),
+            ));
+        }
+        Ok(())
+    }
+}
+
 /// Per-connection session metadata.
 ///
 /// Replaces `EnclaveSession` — the `SecureChannel` handles encryption,
@@ -209,6 +358,145 @@ mod tests {
         assert_eq!(state.next_seq(), 0);
         assert_eq!(state.next_seq(), 1);
         assert_eq!(state.next_seq(), 2);
+    }
+
+    fn make_test_jwt() -> String {
+        // Minimal valid JWT structure (3 dot-separated base64 parts)
+        "eyJhbGciOiJSUzI1NiJ9.eyJpc3MiOiJodHRwczovL2NvbmZpZGVudGlhbGNvbXB1dGluZy5nb29nbGVhcGlzLmNvbSJ9.signature".to_string()
+    }
+
+    #[test]
+    fn test_cs_transport_attestation_roundtrip() {
+        let att = CsTransportAttestation::new(
+            make_test_jwt(),
+            [0xAA; 32],
+            vec![0xBB; 32],
+            vec![0xCC; 16],
+        );
+        let cbor = att.to_cbor_deterministic().unwrap();
+        let decoded = CsTransportAttestation::from_cbor(&cbor).unwrap();
+        assert_eq!(att, decoded);
+    }
+
+    #[test]
+    fn test_cs_transport_attestation_deterministic_encoding() {
+        let att =
+            CsTransportAttestation::new(make_test_jwt(), [0x11; 32], vec![0x22; 32], vec![0x33; 8]);
+        // Encode twice — must produce identical bytes
+        let cbor1 = att.to_cbor_deterministic().unwrap();
+        let cbor2 = att.to_cbor_deterministic().unwrap();
+        assert_eq!(
+            cbor1, cbor2,
+            "deterministic CBOR must be identical across calls"
+        );
+
+        // Hash must also be deterministic
+        let hash1 = att.document_hash().unwrap();
+        let hash2 = att.document_hash().unwrap();
+        assert_eq!(hash1, hash2);
+    }
+
+    #[test]
+    fn test_cs_transport_attestation_validate_structure() {
+        let valid = CsTransportAttestation::new(
+            make_test_jwt(),
+            [0xAA; 32],
+            vec![0xBB; 32],
+            vec![0xCC; 16],
+        );
+        valid.validate_structure().unwrap();
+
+        // Wrong platform
+        let mut bad = valid.clone();
+        bad.platform = "tdx".to_string();
+        assert!(bad.validate_structure().is_err());
+
+        // Empty JWT
+        let mut bad = valid.clone();
+        bad.launcher_jwt = String::new();
+        assert!(bad.validate_structure().is_err());
+
+        // Invalid JWT structure (no dots)
+        let mut bad = valid.clone();
+        bad.launcher_jwt = "not-a-jwt".to_string();
+        assert!(bad.validate_structure().is_err());
+
+        // Wrong key size
+        let mut bad = valid.clone();
+        bad.receipt_signing_key = vec![0; 16];
+        assert!(bad.validate_structure().is_err());
+
+        // Wrong handshake key size
+        let mut bad = valid.clone();
+        bad.handshake_public_key = vec![0; 16];
+        assert!(bad.validate_structure().is_err());
+
+        // Empty nonce
+        let mut bad = valid.clone();
+        bad.nonce = vec![];
+        assert!(bad.validate_structure().is_err());
+    }
+
+    #[test]
+    fn test_cs_transport_attestation_hash_changes_with_content() {
+        let att1 = CsTransportAttestation::new(
+            make_test_jwt(),
+            [0xAA; 32],
+            vec![0xBB; 32],
+            vec![0xCC; 16],
+        );
+        let att2 = CsTransportAttestation::new(
+            make_test_jwt(),
+            [0xAA; 32],
+            vec![0xBB; 32],
+            vec![0xDD; 16], // different nonce
+        );
+        assert_ne!(att1.document_hash().unwrap(), att2.document_hash().unwrap());
+    }
+
+    #[test]
+    fn test_cs_transport_attestation_from_cbor_garbage() {
+        // Random non-CBOR bytes should fail cleanly
+        let result = CsTransportAttestation::from_cbor(&[0xFF, 0xFE, 0xFD]);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_cs_transport_attestation_from_cbor_empty() {
+        let result = CsTransportAttestation::from_cbor(&[]);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_cs_transport_attestation_from_cbor_wrong_type() {
+        // Valid CBOR but an integer, not a map
+        let cbor = crate::cbor::to_vec(&ciborium::Value::Integer(42.into())).unwrap();
+        let result = CsTransportAttestation::from_cbor(&cbor);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_cs_transport_attestation_validate_two_part_jwt() {
+        // JWT with only 2 parts (missing signature)
+        let att = CsTransportAttestation::new(
+            "header.payload".to_string(),
+            [0xAA; 32],
+            vec![0xBB; 32],
+            vec![0xCC; 16],
+        );
+        assert!(att.validate_structure().is_err());
+    }
+
+    #[test]
+    fn test_cs_transport_attestation_validate_four_part_jwt() {
+        // JWT with 4 parts (extra section)
+        let att = CsTransportAttestation::new(
+            "a.b.c.d".to_string(),
+            [0xAA; 32],
+            vec![0xBB; 32],
+            vec![0xCC; 16],
+        );
+        assert!(att.validate_structure().is_err());
     }
 
     #[tokio::test]

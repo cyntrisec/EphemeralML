@@ -35,7 +35,9 @@ pub use receipt_signing::{
     ReceiptSigningKey, ReceiptVerifier, SecurityMode,
 };
 
-pub use transport_types::{ConnectionState, EphemeralUserData};
+pub use transport_types::{
+    ConnectionState, CsTransportAttestation, EphemeralUserData, CS_TDX_PLATFORM,
+};
 
 pub use validation::{InputValidator, ValidationError, ValidationLimits};
 

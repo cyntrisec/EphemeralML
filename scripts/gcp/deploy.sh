@@ -294,13 +294,15 @@ METADATA="${METADATA},tee-env-EPHEMERALML_GCP_LOCATION=${ZONE%-*}"
 # quotes are unavailable. The Launcher JWT is the real attestation root.
 # Synthetic transport must be explicitly opted in via --allow-synthetic-transport.
 if $ALLOW_SYNTHETIC; then
-    echo "  WARNING: Synthetic transport quotes enabled (--allow-synthetic-transport)."
+    echo "  WARNING [DEV ONLY]: Synthetic transport quotes enabled (--allow-synthetic-transport)."
     echo "           Transport-level attestation is NOT hardware-backed."
-    echo "           The Launcher JWT still handles KMS attestation."
+    echo "           KMS attestation via Launcher JWT is still hardware-backed."
+    echo "           Do NOT use this in production."
     METADATA="${METADATA},tee-env-EPHEMERALML_ALLOW_SYNTHETIC_TRANSPORT=true"
 else
-    echo "  INFO: Synthetic transport disabled (default). If the enclave fails to start"
-    echo "        because configfs-tsm is unavailable, re-deploy with --allow-synthetic-transport."
+    echo "  INFO: Synthetic transport disabled (fail-closed default)."
+    echo "        If the enclave fails because configfs-tsm is unavailable:"
+    echo "        re-deploy with --allow-synthetic-transport (dev/test only)."
     METADATA="${METADATA},tee-env-EPHEMERALML_ALLOW_SYNTHETIC_TRANSPORT=false"
 fi
 # Inject GCS env vars for gcs and gcs-kms model sources

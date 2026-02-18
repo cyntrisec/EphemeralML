@@ -27,7 +27,7 @@ impl std::fmt::Display for CheckStatus {
     }
 }
 
-/// Results of the five verification checks.
+/// Results of the verification checks.
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct CheckResults {
     pub signature: CheckStatus,
@@ -35,6 +35,8 @@ pub struct CheckResults {
     pub measurement_type: CheckStatus,
     pub timestamp_fresh: CheckStatus,
     pub measurements_present: CheckStatus,
+    pub attestation_source: CheckStatus,
+    pub image_digest: CheckStatus,
 }
 
 /// Full verification result with metadata.
@@ -47,6 +49,10 @@ pub struct VerifyResult {
     pub measurement_type: String,
     pub sequence_number: u64,
     pub execution_timestamp: u64,
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub attestation_source: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub cs_image_digest: Option<String>,
     pub checks: CheckResults,
     #[serde(skip_serializing_if = "Vec::is_empty", default)]
     pub errors: Vec<String>,
@@ -63,6 +69,10 @@ pub struct VerifyOptions {
     pub expected_measurement_type: Option<String>,
     /// Maximum receipt age in seconds. `0` skips the freshness check.
     pub max_age_secs: u64,
+    /// If set, the receipt's `attestation_source` must match this value.
+    pub expected_attestation_source: Option<String>,
+    /// If set, the receipt's `cs_image_digest` must match this value.
+    pub expected_image_digest: Option<String>,
 }
 
 /// Run the five verification checks on a receipt.
@@ -153,6 +163,52 @@ pub fn verify_receipt(
         CheckStatus::Fail
     };
 
+    // 6. Attestation source match (if expected)
+    let att_src_status = if let Some(ref expected) = options.expected_attestation_source {
+        match &receipt.attestation_source {
+            Some(actual) if actual == expected => CheckStatus::Pass,
+            Some(actual) => {
+                errors.push(format!(
+                    "Attestation source mismatch: receipt has '{}', expected '{}'",
+                    actual, expected
+                ));
+                CheckStatus::Fail
+            }
+            None => {
+                errors.push(format!(
+                    "Attestation source not set in receipt, expected '{}'",
+                    expected
+                ));
+                CheckStatus::Fail
+            }
+        }
+    } else {
+        CheckStatus::Skip
+    };
+
+    // 7. Image digest match (if expected)
+    let img_digest_status = if let Some(ref expected) = options.expected_image_digest {
+        match &receipt.cs_image_digest {
+            Some(actual) if actual == expected => CheckStatus::Pass,
+            Some(actual) => {
+                errors.push(format!(
+                    "Image digest mismatch: receipt has '{}', expected '{}'",
+                    actual, expected
+                ));
+                CheckStatus::Fail
+            }
+            None => {
+                errors.push(format!(
+                    "Image digest not set in receipt, expected '{}'",
+                    expected
+                ));
+                CheckStatus::Fail
+            }
+        }
+    } else {
+        CheckStatus::Skip
+    };
+
     // Any Fail check must produce verified: false. We check all statuses
     // rather than relying solely on errors.is_empty(), as a defense against
     // future checks that might accidentally populate only warnings.
@@ -160,7 +216,9 @@ pub fn verify_receipt(
         || matches!(model_status, CheckStatus::Fail)
         || matches!(mt_status, CheckStatus::Fail)
         || matches!(ts_status, CheckStatus::Fail)
-        || matches!(meas_status, CheckStatus::Fail);
+        || matches!(meas_status, CheckStatus::Fail)
+        || matches!(att_src_status, CheckStatus::Fail)
+        || matches!(img_digest_status, CheckStatus::Fail);
     let verified = !any_fail;
 
     VerifyResult {
@@ -171,12 +229,16 @@ pub fn verify_receipt(
         measurement_type: receipt.enclave_measurements.measurement_type.clone(),
         sequence_number: receipt.sequence_number,
         execution_timestamp: receipt.execution_timestamp,
+        attestation_source: receipt.attestation_source.clone(),
+        cs_image_digest: receipt.cs_image_digest.clone(),
         checks: CheckResults {
             signature: sig_status,
             model_match: model_status,
             measurement_type: mt_status,
             timestamp_fresh: ts_status,
             measurements_present: meas_status,
+            attestation_source: att_src_status,
+            image_digest: img_digest_status,
         },
         errors,
         warnings,
@@ -217,6 +279,7 @@ mod tests {
             expected_model: Some("minilm-l6-v2".to_string()),
             expected_measurement_type: None,
             max_age_secs: 3600,
+            ..Default::default()
         };
         let result = verify_receipt(&receipt, &key.public_key, &options);
         assert!(result.verified);
@@ -356,5 +419,152 @@ mod tests {
         assert!(!result.verified);
         assert_eq!(result.checks.measurements_present, CheckStatus::Fail);
         assert!(!result.errors.is_empty());
+    }
+
+    #[test]
+    fn test_attestation_source_match() {
+        let key = ReceiptSigningKey::generate().unwrap();
+        let mut receipt = make_signed_receipt("model", &key);
+        receipt.attestation_source = Some("cs-tdx".to_string());
+        // Re-sign after modification
+        receipt.sign(&key).unwrap();
+
+        let options = VerifyOptions {
+            expected_attestation_source: Some("cs-tdx".to_string()),
+            ..Default::default()
+        };
+        let result = verify_receipt(&receipt, &key.public_key, &options);
+        assert!(result.verified);
+        assert_eq!(result.checks.attestation_source, CheckStatus::Pass);
+        assert_eq!(result.attestation_source, Some("cs-tdx".to_string()));
+    }
+
+    #[test]
+    fn test_attestation_source_mismatch() {
+        let key = ReceiptSigningKey::generate().unwrap();
+        let mut receipt = make_signed_receipt("model", &key);
+        receipt.attestation_source = Some("tdx".to_string());
+        receipt.sign(&key).unwrap();
+
+        let options = VerifyOptions {
+            expected_attestation_source: Some("cs-tdx".to_string()),
+            ..Default::default()
+        };
+        let result = verify_receipt(&receipt, &key.public_key, &options);
+        assert!(!result.verified);
+        assert_eq!(result.checks.attestation_source, CheckStatus::Fail);
+    }
+
+    #[test]
+    fn test_attestation_source_missing_when_expected() {
+        let key = ReceiptSigningKey::generate().unwrap();
+        let receipt = make_signed_receipt("model", &key);
+        // attestation_source is None (legacy receipt)
+
+        let options = VerifyOptions {
+            expected_attestation_source: Some("cs-tdx".to_string()),
+            ..Default::default()
+        };
+        let result = verify_receipt(&receipt, &key.public_key, &options);
+        assert!(!result.verified);
+        assert_eq!(result.checks.attestation_source, CheckStatus::Fail);
+    }
+
+    #[test]
+    fn test_attestation_source_skipped_when_not_expected() {
+        let key = ReceiptSigningKey::generate().unwrap();
+        let receipt = make_signed_receipt("model", &key);
+        let result = verify_receipt(&receipt, &key.public_key, &VerifyOptions::default());
+        assert_eq!(result.checks.attestation_source, CheckStatus::Skip);
+    }
+
+    #[test]
+    fn test_image_digest_match() {
+        let key = ReceiptSigningKey::generate().unwrap();
+        let mut receipt = make_signed_receipt("model", &key);
+        receipt.cs_image_digest = Some("sha256:abc123".to_string());
+        receipt.sign(&key).unwrap();
+
+        let options = VerifyOptions {
+            expected_image_digest: Some("sha256:abc123".to_string()),
+            ..Default::default()
+        };
+        let result = verify_receipt(&receipt, &key.public_key, &options);
+        assert!(result.verified);
+        assert_eq!(result.checks.image_digest, CheckStatus::Pass);
+        assert_eq!(result.cs_image_digest, Some("sha256:abc123".to_string()));
+    }
+
+    #[test]
+    fn test_image_digest_mismatch() {
+        let key = ReceiptSigningKey::generate().unwrap();
+        let mut receipt = make_signed_receipt("model", &key);
+        receipt.cs_image_digest = Some("sha256:actual".to_string());
+        receipt.sign(&key).unwrap();
+
+        let options = VerifyOptions {
+            expected_image_digest: Some("sha256:expected".to_string()),
+            ..Default::default()
+        };
+        let result = verify_receipt(&receipt, &key.public_key, &options);
+        assert!(!result.verified);
+        assert_eq!(result.checks.image_digest, CheckStatus::Fail);
+    }
+
+    #[test]
+    fn test_image_digest_missing_when_expected() {
+        let key = ReceiptSigningKey::generate().unwrap();
+        let receipt = make_signed_receipt("model", &key);
+
+        let options = VerifyOptions {
+            expected_image_digest: Some("sha256:abc".to_string()),
+            ..Default::default()
+        };
+        let result = verify_receipt(&receipt, &key.public_key, &options);
+        assert!(!result.verified);
+        assert_eq!(result.checks.image_digest, CheckStatus::Fail);
+    }
+
+    #[test]
+    fn test_new_fields_backward_compat_json_roundtrip() {
+        let key = ReceiptSigningKey::generate().unwrap();
+        let receipt = make_signed_receipt("model", &key);
+
+        // Legacy receipt without new fields — JSON should omit them
+        let json = serde_json::to_string(&receipt).unwrap();
+        assert!(!json.contains("attestation_source"));
+        assert!(!json.contains("cs_image_digest"));
+        assert!(!json.contains("cs_claims_hash"));
+
+        // Deserialize back — new fields should be None
+        let parsed: AttestationReceipt = serde_json::from_str(&json).unwrap();
+        assert!(parsed.attestation_source.is_none());
+        assert!(parsed.cs_image_digest.is_none());
+        assert!(parsed.cs_claims_hash.is_none());
+        assert!(parsed.verify_signature(&key.public_key).unwrap());
+    }
+
+    #[test]
+    fn test_new_fields_present_in_json() {
+        let key = ReceiptSigningKey::generate().unwrap();
+        let receipt = make_signed_receipt("model", &key)
+            .with_attestation_source("cs-tdx".to_string())
+            .with_cs_evidence("sha256:deadbeef".to_string(), [0xAA; 32]);
+        // Re-sign after adding fields (builder consumed unsigned receipt)
+        let mut receipt = receipt;
+        receipt.sign(&key).unwrap();
+
+        let json = serde_json::to_string(&receipt).unwrap();
+        assert!(json.contains("attestation_source"));
+        assert!(json.contains("cs-tdx"));
+        assert!(json.contains("cs_image_digest"));
+        assert!(json.contains("sha256:deadbeef"));
+        assert!(json.contains("cs_claims_hash"));
+
+        let parsed: AttestationReceipt = serde_json::from_str(&json).unwrap();
+        assert_eq!(parsed.attestation_source, Some("cs-tdx".to_string()));
+        assert_eq!(parsed.cs_image_digest, Some("sha256:deadbeef".to_string()));
+        assert_eq!(parsed.cs_claims_hash, Some([0xAA; 32]));
+        assert!(parsed.verify_signature(&key.public_key).unwrap());
     }
 }

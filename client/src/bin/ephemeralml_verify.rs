@@ -57,6 +57,14 @@ struct Args {
     #[arg(long, default_value = "any")]
     measurement_type: String,
 
+    /// Expected attestation source (e.g. cs-tdx, tdx, nitro). Skipped if not set.
+    #[arg(long)]
+    expected_attestation_source: Option<String>,
+
+    /// Expected container image digest (e.g. sha256:<hex>). Skipped if not set.
+    #[arg(long)]
+    expected_image_digest: Option<String>,
+
     /// Output format: text or json
     #[arg(long, default_value = "text")]
     format: String,
@@ -91,6 +99,8 @@ fn main() -> Result<()> {
         expected_model: args.expected_model.clone(),
         expected_measurement_type: Some(args.measurement_type.clone()),
         max_age_secs: args.max_age,
+        expected_attestation_source: args.expected_attestation_source.clone(),
+        expected_image_digest: args.expected_image_digest.clone(),
     };
 
     // 4. Run verification
@@ -237,6 +247,12 @@ fn print_text_report(result: &VerifyResult, receipt: &AttestationReceipt, verbos
     println!("  Receipt:   {}", result.receipt_id);
     println!("  Model:     {} v{}", result.model_id, result.model_version);
     println!("  Platform:  {}", result.measurement_type);
+    if let Some(ref src) = result.attestation_source {
+        println!("  Att.Source: {}", src);
+    }
+    if let Some(ref digest) = result.cs_image_digest {
+        println!("  Image:     {}", digest);
+    }
     println!("  Sequence:  #{}", result.sequence_number);
     println!();
     println!("  {}", thin);
@@ -261,6 +277,14 @@ fn print_text_report(result: &VerifyResult, receipt: &AttestationReceipt, verbos
     println!(
         "  Measurements present      {}",
         status_icon(&result.checks.measurements_present)
+    );
+    println!(
+        "  Attestation source        {}",
+        status_icon(&result.checks.attestation_source)
+    );
+    println!(
+        "  Image digest              {}",
+        status_icon(&result.checks.image_digest)
     );
     println!("  {}", thin);
 

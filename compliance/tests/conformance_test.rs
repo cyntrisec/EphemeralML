@@ -81,6 +81,7 @@ fn ct_001_valid_receipt_nitro() {
         expected_model: Some("minilm-l6-v2".to_string()),
         expected_measurement_type: Some("nitro-pcr".to_string()),
         max_age_secs: 3600,
+        ..Default::default()
     };
     let result = verify_receipt(&receipt, &key.public_key, &opts);
     assert!(result.verified, "CT-001 failed: {:?}", result.errors);
@@ -99,6 +100,7 @@ fn ct_002_valid_receipt_tdx() {
         expected_model: Some("gpt2-medium".to_string()),
         expected_measurement_type: Some("tdx-mrtd-rtmr".to_string()),
         max_age_secs: 3600,
+        ..Default::default()
     };
     let result = verify_receipt(&receipt, &key.public_key, &opts);
     assert!(result.verified, "CT-002 failed: {:?}", result.errors);
