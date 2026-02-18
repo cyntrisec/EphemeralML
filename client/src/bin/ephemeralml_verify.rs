@@ -14,9 +14,11 @@
 use anyhow::{bail, Context, Result};
 use clap::Parser;
 use ed25519_dalek::VerifyingKey;
-use ephemeral_ml_common::receipt_verify::{CheckStatus, VerifyOptions, VerifyResult};
+use ephemeral_ml_common::receipt_verify::{VerifyOptions, VerifyResult};
+use ephemeral_ml_common::ui::{GhostState, Ui, UiConfig};
 use ephemeral_ml_common::AttestationReceipt;
 use std::fs;
+use std::io::IsTerminal;
 use std::path::PathBuf;
 
 #[derive(Parser, Debug)]
@@ -77,10 +79,34 @@ struct Args {
     /// cryptographic verification. DANGEROUS: only for local testing.
     #[arg(long)]
     allow_mock: bool,
+
+    /// Disable colors and mascot (plain text output)
+    #[arg(long)]
+    plain: bool,
+
+    /// Disable color output
+    #[arg(long)]
+    no_color: bool,
+
+    /// Disable ghost mascot
+    #[arg(long)]
+    no_mascot: bool,
 }
 
 fn main() -> Result<()> {
     let args = Args::parse();
+
+    let format_json = args.format == "json";
+    let ui_config = UiConfig::resolve(
+        std::io::stdout().is_terminal(),
+        args.plain,
+        args.no_color,
+        args.no_mascot,
+        format_json,
+    );
+    let mut ui = Ui::stdout(ui_config);
+
+    ui.ghost(GhostState::Idle);
 
     // 1. Load receipt
     let receipt_bytes = fs::read(&args.receipt).context("Failed to read receipt file")?;
@@ -112,13 +138,15 @@ fn main() -> Result<()> {
             println!("{}", serde_json::to_string_pretty(&result)?);
         }
         _ => {
-            print_text_report(&result, &receipt, args.verbose);
+            print_text_report(&mut ui, &result, &receipt, args.verbose);
         }
     }
 
     if result.verified {
+        ui.ghost(GhostState::Success);
         std::process::exit(0);
     } else {
+        ui.ghost(GhostState::Fail);
         std::process::exit(1);
     }
 }
@@ -234,127 +262,104 @@ fn extract_key_from_attestation(att_bytes: &[u8], allow_mock: bool) -> Result<Ve
     VerifyingKey::from_bytes(&ud.receipt_signing_key).context("Invalid receipt signing key")
 }
 
-fn print_text_report(result: &VerifyResult, receipt: &AttestationReceipt, verbose: bool) {
-    let w = 62;
-    let bar = "=".repeat(w);
-    let thin = "-".repeat(w);
-
-    println!();
-    println!("  {}", bar);
-    println!("  EphemeralML Receipt Verification");
-    println!("  {}", bar);
-    println!();
-    println!("  Receipt:   {}", result.receipt_id);
-    println!("  Model:     {} v{}", result.model_id, result.model_version);
-    println!("  Platform:  {}", result.measurement_type);
+fn print_text_report(
+    ui: &mut Ui,
+    result: &VerifyResult,
+    receipt: &AttestationReceipt,
+    verbose: bool,
+) {
+    ui.blank();
+    ui.header("EphemeralML Receipt Verification");
+    ui.blank();
+    ui.kv("Receipt", &result.receipt_id);
+    ui.kv(
+        "Model",
+        &format!("{} v{}", result.model_id, result.model_version),
+    );
+    ui.kv("Platform", &result.measurement_type);
     if let Some(ref src) = result.attestation_source {
-        println!("  Att.Source: {}", src);
+        ui.kv("Att.Source", src);
     }
     if let Some(ref digest) = result.cs_image_digest {
-        println!("  Image:     {}", digest);
+        ui.kv("Image", digest);
     }
-    println!("  Sequence:  #{}", result.sequence_number);
-    println!();
-    println!("  {}", thin);
-    println!("  Checks:");
-    println!("  {}", thin);
-    println!(
-        "  Signature (Ed25519)       {}",
-        status_icon(&result.checks.signature)
+    ui.kv("Sequence", &format!("#{}", result.sequence_number));
+    ui.blank();
+    ui.section("Checks");
+    ui.check_explained("Signature (Ed25519)", "signature", &result.checks.signature);
+    ui.check_explained("Model ID match", "model_match", &result.checks.model_match);
+    ui.check_explained(
+        "Measurement type",
+        "measurement_type",
+        &result.checks.measurement_type,
     );
-    println!(
-        "  Model ID match            {}",
-        status_icon(&result.checks.model_match)
+    ui.check_explained(
+        "Timestamp freshness",
+        "timestamp_fresh",
+        &result.checks.timestamp_fresh,
     );
-    println!(
-        "  Measurement type          {}",
-        status_icon(&result.checks.measurement_type)
+    ui.check_explained(
+        "Measurements present",
+        "measurements_present",
+        &result.checks.measurements_present,
     );
-    println!(
-        "  Timestamp freshness       {}",
-        status_icon(&result.checks.timestamp_fresh)
+    ui.check_explained(
+        "Attestation source",
+        "attestation_source",
+        &result.checks.attestation_source,
     );
-    println!(
-        "  Measurements present      {}",
-        status_icon(&result.checks.measurements_present)
-    );
-    println!(
-        "  Attestation source        {}",
-        status_icon(&result.checks.attestation_source)
-    );
-    println!(
-        "  Image digest              {}",
-        status_icon(&result.checks.image_digest)
-    );
-    println!("  {}", thin);
+    ui.check_explained("Image digest", "image_digest", &result.checks.image_digest);
+    ui.divider();
 
+    ui.blank();
     if result.verified {
-        println!();
-        println!("  VERIFIED");
-        println!();
+        ui.success("VERIFIED");
     } else {
-        println!();
-        println!("  INVALID");
-        println!();
+        ui.failure("INVALID");
     }
+    ui.blank();
 
     if !result.errors.is_empty() {
-        println!("  Errors:");
+        ui.info("Errors:");
         for err in &result.errors {
-            println!("    - {}", err);
+            ui.bullet(err);
         }
-        println!();
+        ui.blank();
     }
 
     if !result.warnings.is_empty() {
-        println!("  Warnings:");
+        ui.info("Warnings:");
         for warn in &result.warnings {
-            println!("    - {}", warn);
+            ui.bullet(warn);
         }
-        println!();
+        ui.blank();
     }
 
     if verbose {
-        println!("  {}", thin);
-        println!("  Details:");
-        println!("  {}", thin);
-        println!("  Execution time:    {}ms", receipt.execution_time_ms);
-        println!("  Memory peak:       {} MB", receipt.memory_peak_mb);
-        println!("  Timestamp:         {}", receipt.execution_timestamp);
-        println!("  Request hash:      {}", hex::encode(receipt.request_hash));
-        println!(
-            "  Response hash:     {}",
-            hex::encode(receipt.response_hash)
+        ui.section("Details");
+        ui.kv("Exec time", &format!("{}ms", receipt.execution_time_ms));
+        ui.kv("Memory", &format!("{} MB", receipt.memory_peak_mb));
+        ui.kv("Timestamp", &receipt.execution_timestamp.to_string());
+        ui.kv("Req hash", &hex::encode(receipt.request_hash));
+        ui.kv("Resp hash", &hex::encode(receipt.response_hash));
+        ui.kv("Att hash", &hex::encode(receipt.attestation_doc_hash));
+        ui.kv(
+            "PCR0/MRTD",
+            &hex::encode(&receipt.enclave_measurements.pcr0),
         );
-        println!(
-            "  Attestation hash:  {}",
-            hex::encode(receipt.attestation_doc_hash)
+        ui.kv(
+            "PCR1/RTMR0",
+            &hex::encode(&receipt.enclave_measurements.pcr1),
         );
-        println!(
-            "  PCR0/MRTD:         {}",
-            hex::encode(&receipt.enclave_measurements.pcr0)
-        );
-        println!(
-            "  PCR1/RTMR0:        {}",
-            hex::encode(&receipt.enclave_measurements.pcr1)
-        );
-        println!(
-            "  PCR2/RTMR1:        {}",
-            hex::encode(&receipt.enclave_measurements.pcr2)
+        ui.kv(
+            "PCR2/RTMR1",
+            &hex::encode(&receipt.enclave_measurements.pcr2),
         );
         if let Some(sig) = &receipt.signature {
-            println!("  Signature:         {}...", &hex::encode(sig)[..32]);
+            ui.kv("Signature", &format!("{}...", &hex::encode(sig)[..32]));
         }
-        println!();
+        ui.blank();
     }
 
-    println!("  {}", bar);
-}
-
-fn status_icon(status: &CheckStatus) -> &'static str {
-    match status {
-        CheckStatus::Pass => "[PASS]",
-        CheckStatus::Fail => "[FAIL]",
-        CheckStatus::Skip => "[SKIP]",
-    }
+    ui.divider();
 }

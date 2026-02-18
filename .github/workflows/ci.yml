@@ -150,6 +150,18 @@ jobs:
           token: ${{ secrets.GITHUB_TOKEN }}
           ignore: RUSTSEC-2023-0071
 
+  shell-lint:
+    name: Shell Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - name: Syntax check
+        run: bash -n scripts/lib/ui.sh scripts/gcp/*.sh
+      - name: ShellCheck (ui.sh)
+        run: shellcheck scripts/lib/ui.sh
+      - name: ShellCheck (gcp scripts, advisory)
+        run: shellcheck scripts/gcp/*.sh || true
+
   release-gate:
     name: Release Gate (GCP)
     runs-on: ubuntu-latest
