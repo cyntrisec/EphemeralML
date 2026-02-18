@@ -29,6 +29,7 @@ pub async fn verify_json(
         expected_model: body.expected_model,
         expected_measurement_type: Some(body.measurement_type),
         max_age_secs: body.max_age_secs,
+        ..Default::default()
     };
 
     let result = verify_receipt(&receipt, &public_key, &options);
@@ -118,6 +119,7 @@ pub async fn verify_upload(
         expected_model,
         expected_measurement_type: Some(measurement_type),
         max_age_secs,
+        ..Default::default()
     };
     let result = verify_receipt(&receipt, &public_key, &options);
     Ok(Json(ApiVerifyResponse::from_result(result)))
