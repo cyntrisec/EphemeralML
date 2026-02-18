@@ -128,6 +128,12 @@ struct Args {
     #[arg(long, env = "EPHEMERALML_MODEL_FORMAT", default_value = "safetensors")]
     model_format: String,
 
+    /// Allow synthetic TDX quotes for transport in Confidential Space mode.
+    /// Without this flag, CS deployments without configfs-tsm will fail (fail-closed).
+    /// Set EPHEMERALML_ALLOW_SYNTHETIC_TRANSPORT=true or pass --allow-synthetic-transport.
+    #[arg(long, env = "EPHEMERALML_ALLOW_SYNTHETIC_TRANSPORT")]
+    allow_synthetic_transport: bool,
+
     /// Direct mode: accept client SecureChannel on a single port (9000) and run
     /// inference immediately. No orchestrator needed. For GCP smoke/E2E testing.
     #[arg(long, env = "EPHEMERALML_DIRECT")]
@@ -347,14 +353,24 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
             } else if cs_mode {
                 // Confidential Space detected. configfs-tsm may not be exposed
                 // inside the container, but the Launcher has already attested
-                // the workload. Use synthetic TDX quotes as a placeholder for
-                // transport-level attestation; the real attestation is via
-                // Launcher OIDC tokens (CsKmsClient path).
+                // the workload. Require explicit opt-in for synthetic transport
+                // quotes — silent fallback is a security gap.
+                if !args.allow_synthetic_transport {
+                    return Err(
+                        "Confidential Space detected but configfs-tsm is not available. \
+                        Transport-level attestation requires real TDX quotes. \
+                        Set --allow-synthetic-transport (or EPHEMERALML_ALLOW_SYNTHETIC_TRANSPORT=true) \
+                        to explicitly opt in to synthetic transport quotes. \
+                        The Launcher JWT still handles KMS attestation."
+                            .into(),
+                    );
+                }
                 warn!(
                     step = "attestation",
                     mode = "cs_launcher",
                     "Confidential Space detected — TDX configfs-tsm not available, \
-                    using synthetic quotes for transport. Launcher JWT handles KMS attestation."
+                    using synthetic quotes for transport (explicit opt-in). \
+                    Launcher JWT handles KMS attestation."
                 );
                 TeeAttestationProvider::synthetic()
             } else {
@@ -941,9 +957,16 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
             } else if has_tsm {
                 TeeAttestationProvider::new()?
             } else if cs_mode {
-                // CS mode without configfs-tsm: Launcher handles attestation,
-                // transport uses synthetic quotes as placeholder.
-                warn!("CS mode without configfs-tsm — transport bridge uses synthetic quotes");
+                // CS mode without configfs-tsm: require explicit opt-in.
+                if !args.allow_synthetic_transport {
+                    return Err(
+                        "CS mode without configfs-tsm — transport bridge requires real TDX quotes. \
+                        Set --allow-synthetic-transport (or EPHEMERALML_ALLOW_SYNTHETIC_TRANSPORT=true) \
+                        to explicitly opt in to synthetic transport quotes."
+                            .into(),
+                    );
+                }
+                warn!("CS mode without configfs-tsm — transport bridge uses synthetic quotes (explicit opt-in)");
                 TeeAttestationProvider::synthetic()
             } else {
                 return Err("No TDX attestation source for transport bridge. \

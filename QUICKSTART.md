@@ -1,5 +1,38 @@
 # EphemeralML Quick Start Guide
 
+## 30-Second Verify (prebuilt binary, no server needed)
+
+Download the latest release from [GitHub Releases](https://github.com/cyntrisec/EphemeralML/releases):
+
+```bash
+# Download and extract
+curl -sL https://github.com/cyntrisec/EphemeralML/releases/latest/download/ephemeralml-v0.2.0-linux-amd64.tar.gz | tar xz
+cd ephemeralml-v0.2.0-linux-amd64
+
+# Verify a receipt
+./bin/ephemeralml verify receipt.json --public-key-file receipt.pubkey
+```
+
+## 5-Minute Local Demo (build from source)
+
+```bash
+git clone https://github.com/cyntrisec/EphemeralML && cd EphemeralML
+bash scripts/demo.sh
+```
+
+This builds everything in mock mode, loads MiniLM-L6-v2 (22.7M params), runs inference, and returns a signed receipt.
+
+## Full GCP GPU Deployment (one command)
+
+```bash
+export EPHEMERALML_GCP_PROJECT=your-project
+bash scripts/gcp/mvp_gpu_e2e.sh --project $EPHEMERALML_GCP_PROJECT
+```
+
+This runs the complete 10-step golden path: KMS setup, model packaging, GPU deployment (a3-highgpu-1g + H100 CC), inference, receipt verification, compliance bundle, negative tests, and teardown. Add `--cpu-only` for c3-standard-4 (no GPU).
+
+---
+
 ## Prerequisites
 
 > **Tip**: Run `bash scripts/doctor.sh` to validate your environment before getting started.
@@ -29,11 +62,11 @@ cargo build --no-default-features --features gcp -p ephemeral-ml-client
 
 ### GCP GPU Mode (Confidential Space / TDX + H100 CC)
 ```bash
-# Build with CUDA support (requires CUDA 12.2 toolkit)
-cargo build --release --no-default-features --features gcp,cuda -p ephemeral-ml-enclave
-
-# Or build via Dockerfile.gpu (recommended — pins CUDA 12.2.2)
+# Build via Dockerfile.gpu (recommended — pins CUDA 12.2.2)
 docker build -f Dockerfile.gpu -t ephemeral-ml-gpu .
+
+# Or build locally (requires CUDA 12.2 toolkit)
+cargo build --release --no-default-features --features gcp,cuda -p ephemeral-ml-enclave
 ```
 
 ## Running the Demo
@@ -73,30 +106,9 @@ cargo run --release --features mock --bin ephemeral-ml-host
   - PCR0/1/2 enclave measurements
   - Ed25519 signature
 
-### CLI Options (Enclave)
-
-| Flag | Default | Description |
-|------|---------|-------------|
-| `--model-dir` | `test_assets/minilm` | Directory containing config.json, tokenizer.json, model.safetensors |
-| `--model-id` | `stage-0` | Model ID to register (maps to pipeline stage) |
-
-## Production Mode (AWS)
-
-See `infra/hello-enclave/HELLO_ENCLAVE_RUNBOOK.md` for a step-by-step guide to deploying on AWS Nitro Enclaves.
-
 ## Production Mode (GCP)
 
 > For the complete 10-step golden path, see [`docs/PRODUCTION_GCP.md`](docs/PRODUCTION_GCP.md).
-
-### Build
-
-```bash
-# Enclave binary (runs inside Confidential Space CVM)
-cargo build --release --no-default-features --features gcp -p ephemeral-ml-enclave
-
-# Client binary (runs outside the CVM)
-cargo build --release --no-default-features --features gcp -p ephemeral-ml-client
-```
 
 ### Deploy with KMS-Gated Model (Recommended)
 
@@ -117,16 +129,6 @@ bash scripts/gcp/deploy.sh \
     --model-hash "$EXPECTED_MODEL_HASH"
 ```
 
-The manifest (`manifest.json`) is automatically fetched and verified by the enclave
-alongside the encrypted model artifacts. See [`docs/MODEL_PACKAGING.md`](docs/MODEL_PACKAGING.md)
-for manifest schema and signing key management.
-
-### Deploy with Local Model (Quick Start)
-
-```bash
-bash scripts/gcp/deploy.sh --model-source local
-```
-
 ### Deploy GPU (a3-highgpu-1g + H100 CC)
 
 ```bash
@@ -143,7 +145,7 @@ bash scripts/gcp/deploy.sh --gpu \
     --model-format gguf
 ```
 
-Boot timeline: ~3.5 min (image pull → cos-gpu-installer → model fetch from GCS).
+Boot timeline: ~3.5 min (image pull -> cos-gpu-installer -> model fetch from GCS).
 
 Expected output with Llama 3 8B Q4_K_M (4.6GB GGUF):
 - 50 tokens generated in ~12s (241ms/token)
@@ -152,7 +154,11 @@ Expected output with Llama 3 8B Q4_K_M (4.6GB GGUF):
 
 **CUDA version warning**: Confidential Space GPU uses cos-gpu-installer v2.5.3 which installs driver 535.247.01. This driver supports CUDA <= 12.2 only. Using CUDA 12.6+ produces `CUDA_ERROR_UNSUPPORTED_PTX_VERSION`. Always use `nvidia/cuda:12.2.2-devel-ubuntu22.04` as the base image.
 
-### GCP Architecture Differences
+## Production Mode (AWS)
+
+See `infra/hello-enclave/HELLO_ENCLAVE_RUNBOOK.md` for a step-by-step guide to deploying on AWS Nitro Enclaves.
+
+## GCP Architecture Differences
 
 | Aspect | AWS Nitro | GCP TDX CVM |
 |--------|-----------|-------------|
@@ -162,10 +168,6 @@ Expected output with Llama 3 8B Q4_K_M (4.6GB GGUF):
 | KMS auth | NSM attestation + RecipientInfo | WIP + Cloud KMS (attestation-bound) |
 | Model loading | Host fetches S3, relays via VSock | CVM fetches GCS directly |
 | Attestation | COSE_Sign1 (NSM) | TDX quote (configfs-tsm) |
-
-See [`docs/build-matrix.md`](docs/build-matrix.md) for the full feature flag compatibility matrix.
-See [`docs/SECURITY_MODEL.md`](docs/SECURITY_MODEL.md) for the trust model and HIPAA mapping.
-See [`docs/TROUBLESHOOTING.md`](docs/TROUBLESHOOTING.md) for error codes and diagnostics.
 
 ## Verification
 
@@ -182,3 +184,10 @@ cargo test --features mock -p ephemeral-ml-enclave --test pipeline_integration_t
 # Common crate tests (receipts, types, attestation)
 cargo test --features mock -p ephemeral-ml-common
 ```
+
+## Further Reading
+
+- [`docs/build-matrix.md`](docs/build-matrix.md) — Feature flag compatibility matrix
+- [`docs/SECURITY_MODEL.md`](docs/SECURITY_MODEL.md) — Trust model and HIPAA mapping
+- [`docs/TROUBLESHOOTING.md`](docs/TROUBLESHOOTING.md) — Error codes and diagnostics
+- [`docs/PRODUCTION_GCP.md`](docs/PRODUCTION_GCP.md) — Full GCP deployment guide
