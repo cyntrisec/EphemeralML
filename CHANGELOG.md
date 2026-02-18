@@ -1,6 +1,6 @@
 # Changelog
 
-## [0.2.1] - 2026-02-18
+## [0.2.2] - 2026-02-18
 
 ### Fixed
 - **GCP deploy scopes**: Changed from narrow scopes to `cloud-platform` (fixes 403 on Confidential Space)
