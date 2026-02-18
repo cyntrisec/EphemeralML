@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.2.1] - 2026-02-18
+
+### Fixed
+- **GCP deploy scopes**: Changed from narrow scopes to `cloud-platform` (fixes 403 on Confidential Space)
+- **Fail-closed attestation on CS**: Added `EPHEMERALML_ALLOW_SYNTHETIC_TRANSPORT=true` to deploy.sh metadata (configfs-tsm is not exposed inside CS containers)
+- **Empty env var crash**: Dockerfile `ENV=""` + clap `Option<String>` yielded `Some("")` not `None`, crashing on model hash and signing key checks
+- **Receipt request_hash mismatch**: Enclave now hashes full serialized request (matching client), not just `input_data` field
+- **CLI verify missing flags**: Added `--format`, `--expected-model`, `--measurement-type` to `ephemeralml verify`
+
+### Added
+- **Installer script** (`scripts/install.sh`): `curl -fsSL .../install.sh | bash` installs CLI binaries to `~/.ephemeralml/bin/`
+- **JSON output for verify**: `ephemeralml verify --format json` returns machine-readable verification results
+
 ## [0.2.0] - 2026-02-18
 
 ### Added

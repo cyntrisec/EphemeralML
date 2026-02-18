@@ -1,16 +1,17 @@
 # EphemeralML Quick Start Guide
 
-## 30-Second Verify (prebuilt binary, no server needed)
-
-Download the latest release from [GitHub Releases](https://github.com/cyntrisec/EphemeralML/releases):
+## Install (one command)
 
 ```bash
-# Download and extract
-curl -sL https://github.com/cyntrisec/EphemeralML/releases/latest/download/ephemeralml-v0.2.0-linux-amd64.tar.gz | tar xz
-cd ephemeralml-v0.2.0-linux-amd64
+curl -fsSL https://github.com/cyntrisec/EphemeralML/releases/latest/download/install.sh | bash
+```
 
-# Verify a receipt
-./bin/ephemeralml verify receipt.json --public-key-file receipt.pubkey
+This installs `ephemeralml`, `ephemeralml-verify`, `ephemeralml-compliance`, and `ephemeralml-orchestrator` to `~/.ephemeralml/bin/`. Set `EPHEMERALML_INSTALL_DIR` to override the install location.
+
+## Verify a Receipt
+
+```bash
+ephemeralml verify receipt.json --public-key-file receipt.pubkey
 ```
 
 ## 5-Minute Local Demo (build from source)

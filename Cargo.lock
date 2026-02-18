@@ -1755,7 +1755,7 @@ dependencies = [
 
 [[package]]
 name = "ephemeral-ml-client"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -1793,7 +1793,7 @@ dependencies = [
 
 [[package]]
 name = "ephemeral-ml-common"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "async-trait",
  "bytes",
@@ -1820,7 +1820,7 @@ dependencies = [
 
 [[package]]
 name = "ephemeral-ml-compliance"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "chrono",
  "ciborium",
@@ -1838,7 +1838,7 @@ dependencies = [
 
 [[package]]
 name = "ephemeral-ml-enclave"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -1884,7 +1884,7 @@ dependencies = [
 
 [[package]]
 name = "ephemeral-ml-host"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -1922,7 +1922,7 @@ dependencies = [
 
 [[package]]
 name = "ephemeralml-verifier-api"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "axum 0.8.8",
  "base64 0.22.1",

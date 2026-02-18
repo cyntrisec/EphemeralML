@@ -108,12 +108,16 @@ jobs:
         with:
           name: release-linux
 
+      - name: Copy install script
+        run: cp scripts/install.sh .
+
       - name: Create release
         uses: softprops/action-gh-release@v2
         with:
           files: |
             ephemeralml-*.tar.gz
             SHA256SUMS
+            install.sh
           generate_release_notes: true
           draft: false
           prerelease: false
