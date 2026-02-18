@@ -397,9 +397,10 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
             let engine = CandleInferenceEngine::new()?;
             let load_start = std::time::Instant::now();
 
-            // Parse expected model hash if provided
+            // Parse expected model hash if provided.
+            // Empty strings from env vars (e.g. EPHEMERALML_EXPECTED_MODEL_HASH="") are treated as None.
             let expected_model_hash: Option<[u8; 32]> = match &args.expected_model_hash {
-                Some(hex_str) => {
+                Some(hex_str) if !hex_str.is_empty() => {
                     let bytes = hex::decode(hex_str)
                         .map_err(|e| format!("--expected-model-hash: invalid hex: {}", e))?;
                     if bytes.len() != 32 {
@@ -413,7 +414,7 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
                     arr.copy_from_slice(&bytes);
                     Some(arr)
                 }
-                None => None,
+                _ => None,
             };
 
             // Track the verified model weights hash for trust evidence.
@@ -572,9 +573,11 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
                     let encrypted_weights = weights_enc_art?.bytes;
                     let wrapped_dek = dek_art?.bytes;
 
-                    // Determine if manifest verification is required (pubkey configured)
-                    let require_manifest =
-                        std::env::var("EPHEMERALML_MODEL_SIGNING_PUBKEY").is_ok();
+                    // Determine if manifest verification is required (pubkey configured).
+                    // Empty strings from env vars are treated as unset.
+                    let require_manifest = std::env::var("EPHEMERALML_MODEL_SIGNING_PUBKEY")
+                        .map(|v| !v.is_empty())
+                        .unwrap_or(false);
 
                     // Parse manifest — fail-closed if pubkey is set
                     let manifest = match manifest_art {
@@ -610,9 +613,10 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
                         }
                     };
 
-                    // Verify manifest signature (fail-closed)
+                    // Verify manifest signature (fail-closed).
+                    // Empty env var is treated as unset (Dockerfile defaults set it to "").
                     if let Some(ref m) = manifest {
-                        if let Ok(pk_hex) = std::env::var("EPHEMERALML_MODEL_SIGNING_PUBKEY") {
+                        if let Some(pk_hex) = std::env::var("EPHEMERALML_MODEL_SIGNING_PUBKEY").ok().filter(|v| !v.is_empty()) {
                             let pk_bytes = hex::decode(&pk_hex).map_err(|e| {
                                 format!("EPHEMERALML_MODEL_SIGNING_PUBKEY: invalid hex: {}", e)
                             })?;
@@ -779,9 +783,11 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
                     };
                     let tokenizer_bytes = tokenizer_art?.bytes;
 
-                    // Determine if manifest verification is required (pubkey configured)
-                    let require_manifest =
-                        std::env::var("EPHEMERALML_MODEL_SIGNING_PUBKEY").is_ok();
+                    // Determine if manifest verification is required (pubkey configured).
+                    // Empty strings from env vars are treated as unset.
+                    let require_manifest = std::env::var("EPHEMERALML_MODEL_SIGNING_PUBKEY")
+                        .map(|v| !v.is_empty())
+                        .unwrap_or(false);
 
                     // Parse manifest — fail-closed if pubkey is set
                     let manifest = match manifest_art {
@@ -817,9 +823,10 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
                         }
                     };
 
-                    // Verify manifest signature (fail-closed)
+                    // Verify manifest signature (fail-closed).
+                    // Empty env var is treated as unset (Dockerfile defaults set it to "").
                     if let Some(ref m) = manifest {
-                        if let Ok(pk_hex) = std::env::var("EPHEMERALML_MODEL_SIGNING_PUBKEY") {
+                        if let Some(pk_hex) = std::env::var("EPHEMERALML_MODEL_SIGNING_PUBKEY").ok().filter(|v| !v.is_empty()) {
                             let pk_bytes = hex::decode(&pk_hex).map_err(|e| {
                                 format!("EPHEMERALML_MODEL_SIGNING_PUBKEY: invalid hex: {}", e)
                             })?;

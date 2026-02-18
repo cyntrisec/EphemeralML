@@ -291,12 +291,14 @@ fn handle_direct_request<A: crate::AttestationProvider>(
     // Compute response bytes for receipt hash
     let output_bytes: Vec<u8> = output_tensor.iter().flat_map(|f| f.to_le_bytes()).collect();
 
-    // Build and sign receipt
+    // Build and sign receipt.
+    // Hash the full request bytes (not just input_data) so the client can verify
+    // SHA256(serialized_request) == receipt.request_hash.
     state.model_id = request.model_id.clone();
     let mut receipt = crate::receipt::ReceiptBuilder::build(
         state,
         attestation_provider,
-        &request.input_data,
+        bytes,
         &output_bytes,
         request.model_id.clone(),
         "1.0".to_string(),

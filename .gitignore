@@ -140,3 +140,6 @@ audit
 
 # Benchmark run log (local troubleshooting notes)
 benchmark_run_log.md
+
+# Hardware test reports (internal only)
+docs/GCP_HARDWARE_TEST_REPORT.md

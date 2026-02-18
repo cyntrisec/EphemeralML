@@ -287,6 +287,10 @@ METADATA="${METADATA},tee-env-EPHEMERALML_MODEL_FORMAT=${MODEL_FORMAT}"
 METADATA="${METADATA},tee-env-EPHEMERALML_LOG_FORMAT=json"
 METADATA="${METADATA},tee-env-EPHEMERALML_GCP_PROJECT=${PROJECT}"
 METADATA="${METADATA},tee-env-EPHEMERALML_GCP_LOCATION=${ZONE%-*}"
+# Confidential Space uses the Launcher JWT for attestation, not configfs-tsm.
+# configfs-tsm is not exposed inside CS containers, so transport-level synthetic
+# quotes are the expected path. The Launcher JWT is the real attestation root.
+METADATA="${METADATA},tee-env-EPHEMERALML_ALLOW_SYNTHETIC_TRANSPORT=true"
 # Inject GCS env vars for gcs and gcs-kms model sources
 if [[ "${MODEL_SOURCE}" == "gcs" || "${MODEL_SOURCE}" == "gcs-kms" ]]; then
     METADATA="${METADATA},tee-env-EPHEMERALML_GCS_BUCKET=${GCS_BUCKET}"
@@ -318,7 +322,7 @@ GCLOUD_ARGS=(
     --metadata="${METADATA}"
     --tags=ephemeralml
     --service-account="${SA_EMAIL}"
-    --scopes=https://www.googleapis.com/auth/devstorage.read_only,https://www.googleapis.com/auth/cloudkms,https://www.googleapis.com/auth/logging.write,https://www.googleapis.com/auth/monitoring.write
+    --scopes=cloud-platform
 )
 
 if $GPU; then
