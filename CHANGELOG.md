@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.2.4] - 2026-02-18
+
+### Fixed
+- **Clippy `--tests` warnings**: Fixed `clone_on_copy`, `useless_conversion`, `redundant_field_names`, `needless_borrows_for_generic_args` in enclave test code (`model_loader.rs`, `pipeline_integration_test.rs`)
+- **Dead code lint in test helpers**: Added `#[allow(dead_code)]` to `MockHttpServer` (used across modules but clippy `--tests` flags it)
+- **Stale doc references**: Removed remaining `--allow-synthetic-transport` / `ALLOW_SYNTHETIC_TRANSPORT` mentions from `docs/GCP_HARDWARE_TEST_REPORT.md`
+
+### Changed
+- **Version bump**: All crates from 0.2.2 to 0.2.4
+
 ## [0.2.2] - 2026-02-18
 
 ### Fixed
