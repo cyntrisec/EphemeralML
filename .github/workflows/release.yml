@@ -26,31 +26,37 @@ jobs:
             os: ubuntu-22.04
             target: x86_64-unknown-linux-gnu
             use_cross: false
+            vendor_openssl: false
             build_orchestrator: true
           - name: linux-arm64
             os: ubuntu-22.04
             target: aarch64-unknown-linux-gnu
             use_cross: true
+            vendor_openssl: true
             build_orchestrator: false
           - name: linux-amd64-musl
             os: ubuntu-22.04
             target: x86_64-unknown-linux-musl
             use_cross: true
+            vendor_openssl: true
             build_orchestrator: false
           - name: linux-arm64-musl
             os: ubuntu-22.04
             target: aarch64-unknown-linux-musl
             use_cross: true
+            vendor_openssl: true
             build_orchestrator: false
           - name: darwin-arm64
             os: macos-latest
             target: aarch64-apple-darwin
             use_cross: false
+            vendor_openssl: false
             build_orchestrator: false
           - name: darwin-amd64
             os: macos-14
             target: x86_64-apple-darwin
             use_cross: false
+            vendor_openssl: true
             build_orchestrator: false
     steps:
       - uses: actions/checkout@v6
@@ -74,17 +80,21 @@ jobs:
         if: matrix.use_cross
         uses: taiki-e/install-action@cross
 
-      - name: Set OpenSSL dir (macOS)
-        if: startsWith(matrix.os, 'macos')
+      - name: Set OpenSSL dir (macOS native)
+        if: startsWith(matrix.os, 'macos') && matrix.vendor_openssl == false
         run: |
           echo "OPENSSL_DIR=$(brew --prefix openssl@3)" >> "$GITHUB_ENV"
 
       - name: Build client binaries
         run: |
+          FEATURES=""
+          if [ "${{ matrix.vendor_openssl }}" = "true" ]; then
+            FEATURES="--features vendored-openssl"
+          fi
           if [ "${{ matrix.use_cross }}" = "true" ]; then
-            cross build --release --target ${{ matrix.target }} -p ephemeral-ml-client --features vendored-openssl
+            cross build --release --target ${{ matrix.target }} -p ephemeral-ml-client $FEATURES
           else
-            cargo build --release --target ${{ matrix.target }} -p ephemeral-ml-client
+            cargo build --release --target ${{ matrix.target }} -p ephemeral-ml-client $FEATURES
           fi
 
       - name: Build compliance binary
