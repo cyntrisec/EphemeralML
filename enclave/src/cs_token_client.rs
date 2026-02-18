@@ -195,7 +195,19 @@ impl CsTokenClient {
             )));
         }
 
-        let token = body.trim().to_string();
+        // Handle chunked Transfer-Encoding: the Launcher may return the token
+        // with chunked encoding (`<hex_size>\r\n<data>\r\n0\r\n`).
+        let is_chunked = headers
+            .to_ascii_lowercase()
+            .contains("transfer-encoding: chunked");
+
+        let decoded_body = if is_chunked {
+            decode_chunked(body)?
+        } else {
+            body.to_string()
+        };
+
+        let token = decoded_body.trim().to_string();
         if token.is_empty() {
             return Err(EnclaveError::Enclave(EphemeralError::NetworkError(
                 "Launcher returned empty token".to_string(),
@@ -286,6 +298,53 @@ where
     }
 
     deserializer.deserialize_any(StringOrVec)
+}
+
+/// Decode HTTP chunked transfer encoding.
+///
+/// Format: `<hex_size>\r\n<data>\r\n<hex_size>\r\n<data>\r\n...\r\n0\r\n`
+/// The Confidential Space Launcher uses chunked encoding for token responses.
+fn decode_chunked(body: &str) -> Result<String> {
+    let mut result = String::new();
+    let mut remaining = body;
+
+    loop {
+        // Find chunk size line
+        let (size_str, rest) = remaining.split_once("\r\n").unwrap_or((remaining, ""));
+        let size_str = size_str.trim();
+
+        if size_str.is_empty() {
+            break;
+        }
+
+        let chunk_size = usize::from_str_radix(size_str, 16).map_err(|e| {
+            EnclaveError::Enclave(EphemeralError::SerializationError(format!(
+                "Invalid chunk size '{}': {}",
+                size_str, e
+            )))
+        })?;
+
+        if chunk_size == 0 {
+            break; // Terminal chunk
+        }
+
+        if rest.len() < chunk_size {
+            // Take whatever is available (last chunk may lack trailing \r\n)
+            result.push_str(rest);
+            break;
+        }
+
+        result.push_str(&rest[..chunk_size]);
+
+        // Skip past chunk data and trailing \r\n
+        remaining = if rest.len() > chunk_size + 2 {
+            &rest[chunk_size + 2..] // skip data + \r\n
+        } else {
+            ""
+        };
+    }
+
+    Ok(result)
 }
 
 /// Base64url decode (no padding), as used in JWT.

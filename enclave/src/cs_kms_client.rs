@@ -109,6 +109,10 @@ impl CsKmsClient {
                 "urn:ietf:params:oauth:token-type:access_token",
             ),
             ("audience", &self.wip_audience),
+            (
+                "scope",
+                "https://www.googleapis.com/auth/cloud-platform",
+            ),
         ];
 
         let resp = self
