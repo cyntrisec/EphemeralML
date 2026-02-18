@@ -183,22 +183,18 @@ mod tests {
         let mut nonce_bytes = [0u8; 12];
         csprng.fill_bytes(&mut nonce_bytes);
         use chacha20poly1305::{Key as CKey, Nonce as CNonce};
-        use std::convert::TryInto;
-        let nonce_array: [u8; 12] = nonce_bytes.try_into().unwrap();
-        let nonce = CNonce::from_slice(&nonce_array);
-        let key_array: [u8; 32] = dek.try_into().unwrap();
-        let key = CKey::from_slice(&key_array);
+        let nonce = CNonce::from_slice(&nonce_bytes);
+        let key = CKey::from_slice(&dek);
         let cipher = ChaCha20Poly1305::new(key);
         let ciphertext = cipher.encrypt(nonce, plaintext_model.as_slice()).unwrap();
 
         let mut encrypted_artifact = nonce_bytes.to_vec();
         encrypted_artifact.extend_from_slice(&ciphertext);
 
-        let dek_clone = dek.clone();
+        let dek_clone = dek;
         let encrypted_artifact_clone = encrypted_artifact.clone();
 
-        // FIX: defined before tokio::spawn
-        let hpke_pk_bytes_clone = hpke_pk_bytes.clone();
+        let hpke_pk_bytes_clone = hpke_pk_bytes;
 
         // Start Mock KMS Server
         let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
@@ -285,7 +281,7 @@ mod tests {
         let mut manifest = ModelManifest {
             model_id: "test".to_string(),
             version: "v1".to_string(),
-            model_hash: model_hash,
+            model_hash,
             hash_algorithm: "sha256".to_string(),
             key_id: "key".to_string(),
             gcs_uris: Default::default(),
