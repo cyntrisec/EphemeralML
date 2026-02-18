@@ -67,6 +67,9 @@ jobs:
             target
           key: ${{ matrix.os }}-${{ matrix.target }}-cargo-release-${{ hashFiles('**/Cargo.lock') }}
 
+      - name: Ensure target is installed
+        run: rustup target add ${{ matrix.target }}
+
       - name: Install cross
         if: matrix.use_cross
         uses: taiki-e/install-action@cross
