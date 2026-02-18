@@ -129,14 +129,6 @@ struct Args {
     #[arg(long, env = "EPHEMERALML_MODEL_FORMAT", default_value = "safetensors")]
     model_format: String,
 
-    /// [DEV ONLY] Allow synthetic TDX quotes for transport in Confidential Space mode.
-    /// Default: false (fail-closed). CS deployments without configfs-tsm will refuse
-    /// to start unless this flag is set. The Launcher JWT still handles KMS attestation;
-    /// this only affects transport-level (SecureChannel handshake) attestation.
-    /// Production deployments should use configfs-tsm for real TDX quotes.
-    #[arg(long, env = "EPHEMERALML_ALLOW_SYNTHETIC_TRANSPORT")]
-    allow_synthetic_transport: bool,
-
     /// Direct mode: accept client SecureChannel on a single port (9000) and run
     /// inference immediately. No orchestrator needed. For GCP smoke/E2E testing.
     #[arg(long, env = "EPHEMERALML_DIRECT")]

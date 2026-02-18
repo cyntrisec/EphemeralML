@@ -803,7 +803,6 @@ impl Drop for FileWatchHandle {
 /// enhancements with minimal breaking changes. The root_public_key field can
 /// be extended to support multiple keys, and the verification logic can be
 /// enhanced to handle key rotation scenarios.
-
 #[cfg(test)]
 mod tests {
     use super::*;

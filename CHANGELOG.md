@@ -4,7 +4,7 @@
 
 ### Fixed
 - **GCP deploy scopes**: Changed from narrow scopes to `cloud-platform` (fixes 403 on Confidential Space)
-- **Fail-closed attestation on CS**: Added `EPHEMERALML_ALLOW_SYNTHETIC_TRANSPORT=true` to deploy.sh metadata (configfs-tsm is not exposed inside CS containers)
+- **Fail-closed attestation on CS**: CS mode now uses Launcher JWT via `CsTransportAttestationBridge` (configfs-tsm is not exposed inside CS containers)
 - **Empty env var crash**: Dockerfile `ENV=""` + clap `Option<String>` yielded `Some("")` not `None`, crashing on model hash and signing key checks
 - **Receipt request_hash mismatch**: Enclave now hashes full serialized request (matching client), not just `input_data` field
 - **CLI verify missing flags**: Added `--format`, `--expected-model`, `--measurement-type` to `ephemeralml verify`
@@ -21,12 +21,12 @@
 - **Prebuilt CLI binaries via GitHub Releases**: `ephemeralml`, `ephemeralml-verify`, `ephemeralml-compliance`, `ephemeralml-orchestrator` shipped as `ephemeralml-{tag}-linux-amd64.tar.gz` with SHA256SUMS
 - **GitHub Actions release workflow** (`.github/workflows/release.yml`): Triggered on `v*` tag push — builds Linux binaries, pushes Docker image to GHCR, creates GitHub Release
 - **MVP GPU E2E script** (`scripts/gcp/mvp_gpu_e2e.sh`): One-command 10-step golden path with GPU support, compliance bundle verification, and negative tests
-- **`--allow-synthetic-transport` flag**: Explicit opt-in required for synthetic TDX quotes in Confidential Space (fail-closed by default)
+- **`--allow-synthetic-transport` flag**: Added in 0.2.0, removed in 0.2.3 (dead code — CS mode uses Launcher JWT via `CsTransportAttestationBridge`, `--synthetic` controls TeeAttestationProvider)
 
 ### Changed
 - **Version bump**: All crates from 0.1.0 to 0.2.0
 - **QUICKSTART.md**: Restructured to lead with 30-second verify, 5-minute local demo, and full GCP GPU deployment
-- **Dockerfiles**: Added `EPHEMERALML_ALLOW_SYNTHETIC_TRANSPORT` env var and launch policy label
+- **Dockerfiles**: Added launch policy label
 
 ### Security
 - **Fail-closed attestation**: CS deployments without configfs-tsm now fail with a clear error instead of silently falling back to synthetic transport quotes. This closes a trust gap where a misconfigured Confidential Space deployment could silently serve unattested transport channels.

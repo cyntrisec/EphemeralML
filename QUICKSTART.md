@@ -165,12 +165,11 @@ EphemeralML defaults to **fail-closed** for all security-sensitive settings. Pro
 
 | Setting | Default | Dev override | What it controls |
 |---------|---------|-------------|-----------------|
-| TDX transport quotes | Required (configfs-tsm) | `--allow-synthetic-transport` | SecureChannel handshake attestation |
 | MRTD peer pinning | Required (`EPHEMERALML_EXPECTED_MRTD`) | `EPHEMERALML_REQUIRE_MRTD=false` | Client-side TDX measurement verification |
 | `--synthetic` flag | Rejected in release builds | Debug builds only | Entire attestation stack uses fake quotes |
 | KMS IAM binding | Image digest condition required | `--allow-broad-binding` in `setup_kms.sh` | Which containers can decrypt model keys |
 
-**Transport attestation vs KMS attestation**: These are separate trust anchors. The Launcher JWT (KMS attestation) is always hardware-backed in Confidential Space. Transport attestation (SecureChannel handshake) uses configfs-tsm TDX quotes. When configfs-tsm is unavailable inside a CS container, synthetic transport can be opted in for dev/test — but KMS attestation remains real.
+**Transport attestation vs KMS attestation**: These are separate trust anchors. The Launcher JWT (KMS attestation) is always hardware-backed in Confidential Space. Transport attestation (SecureChannel handshake) uses configfs-tsm TDX quotes when available, or the Launcher JWT via `CsTransportAttestationBridge` in Confidential Space containers where configfs-tsm is not exposed.
 
 ## GCP Architecture Differences
 
