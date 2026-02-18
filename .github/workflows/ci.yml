@@ -115,6 +115,28 @@ jobs:
       - run: cargo test -p ephemeral-ml-compliance
       - run: cargo test --test conformance_test
 
+  deps:
+    name: Dependency Drift
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/cache@v5
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-deps-${{ hashFiles('**/Cargo.lock') }}
+      - name: Check duplicate crate count
+        run: |
+          DUPES=$(cargo tree -d --workspace --depth 0 2>&1 | grep -c "^[a-z]" || true)
+          echo "Duplicate crate pairs: $DUPES"
+          if [ "$DUPES" -gt 75 ]; then
+            echo "::error::Duplicate crate count ($DUPES) exceeds threshold (75). Run 'cargo tree -d --workspace' to identify new duplicates."
+            exit 1
+          fi
+
   audit:
     name: Security Audit
     runs-on: ubuntu-latest
