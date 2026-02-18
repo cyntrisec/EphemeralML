@@ -48,6 +48,7 @@ rand = { workspace = true }
 
 [features]
 default = ["mock"]
+vendored-openssl = ["openssl/vendored"]
 mock = ["confidential-ml-transport/mock", "confidential-ml-transport/tcp"]
 production = ["confidential-ml-transport/tcp"]
 gcp = ["confidential-ml-transport/tdx", "confidential-ml-transport/tcp", "confidential-ml-transport/mock"]

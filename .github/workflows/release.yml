@@ -48,7 +48,7 @@ jobs:
             use_cross: false
             build_orchestrator: false
           - name: darwin-amd64
-            os: macos-13
+            os: macos-14
             target: x86_64-apple-darwin
             use_cross: false
             build_orchestrator: false
@@ -79,7 +79,7 @@ jobs:
       - name: Build client binaries
         run: |
           if [ "${{ matrix.use_cross }}" = "true" ]; then
-            cross build --release --target ${{ matrix.target }} -p ephemeral-ml-client
+            cross build --release --target ${{ matrix.target }} -p ephemeral-ml-client --features vendored-openssl
           else
             cargo build --release --target ${{ matrix.target }} -p ephemeral-ml-client
           fi
