@@ -354,29 +354,17 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
                 );
                 TeeAttestationProvider::new()?
             } else if cs_mode {
-                // Confidential Space detected. configfs-tsm may not be exposed
-                // inside the container, but the Launcher has already attested
-                // the workload. Require explicit opt-in for synthetic transport
-                // quotes — silent fallback is a security gap.
-                if !args.allow_synthetic_transport {
-                    return Err(
-                        "Confidential Space detected but configfs-tsm is not available.\n\
-                        \n  Why: Transport-level attestation (SecureChannel handshake) requires real \
-                        TDX quotes via configfs-tsm, which is not exposed in this CS container.\n\
-                        \n  KMS attestation is unaffected — the Launcher JWT handles that.\n\
-                        \n  To proceed (dev/test only):\n    \
-                        --allow-synthetic-transport\n    \
-                        or EPHEMERALML_ALLOW_SYNTHETIC_TRANSPORT=true\n\
-                        \n  For production: deploy on a CS image that exposes configfs-tsm."
-                            .into(),
-                    );
-                }
-                warn!(
+                // Confidential Space detected without configfs-tsm.
+                // Boot-time TDX measurements are unavailable without configfs-tsm,
+                // but the Launcher JWT provides equivalent attestation for transport.
+                // Use a synthetic TeeAttestationProvider for HPKE keypair generation
+                // and boot evidence; transport attestation uses the CS Launcher JWT
+                // bridge (set up in step 5 below).
+                info!(
                     step = "attestation",
-                    mode = "cs_synthetic_transport",
-                    "DEV ONLY: CS detected, configfs-tsm unavailable — using synthetic \
-                    transport quotes (explicit opt-in). KMS attestation via Launcher JWT \
-                    is still hardware-backed."
+                    mode = "cs_launcher",
+                    "Confidential Space detected (no configfs-tsm). Transport attestation \
+                    will use Launcher JWT. Boot evidence from synthetic provider."
                 );
                 TeeAttestationProvider::synthetic()
             } else {
@@ -974,32 +962,41 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
 
             // 5. Create transport attestation bridge (for SecureChannel handshake)
             // --synthetic already rejected in release builds at startup.
-            let bridge_provider = if args.synthetic {
-                warn!("Using synthetic TDX provider for transport bridge — NOT FOR PRODUCTION");
-                TeeAttestationProvider::synthetic()
-            } else if has_tsm {
-                TeeAttestationProvider::new()?
-            } else if cs_mode {
-                // CS mode without configfs-tsm: require explicit opt-in.
-                if !args.allow_synthetic_transport {
-                    return Err(
-                        "CS mode without configfs-tsm — transport bridge requires real TDX quotes.\n\
-                        \n  Set --allow-synthetic-transport (dev/test only) to use synthetic quotes."
-                            .into(),
+            let bridge: Box<dyn confidential_ml_transport::AttestationProvider + Send + Sync> =
+                if args.synthetic {
+                    warn!("Using synthetic TDX provider for transport bridge — NOT FOR PRODUCTION");
+                    let p = TeeAttestationProvider::synthetic();
+                    Box::new(TeeAttestationBridge::new(p, receipt_pk))
+                } else if has_tsm {
+                    let p = TeeAttestationProvider::new()?;
+                    Box::new(TeeAttestationBridge::new(p, receipt_pk))
+                } else if cs_mode {
+                    // CS mode without configfs-tsm: use Launcher JWT for transport attestation.
+                    // The WIP audience is needed for the JWT audience field.
+                    let wip_audience = args.gcp_wip_audience.as_deref().unwrap_or_default();
+                    if wip_audience.is_empty() {
+                        return Err(
+                            "CS mode transport attestation requires --gcp-wip-audience \
+                            (or EPHEMERALML_GCP_WIP_AUDIENCE) for the Launcher JWT audience."
+                                .into(),
+                        );
+                    }
+                    info!(
+                        step = "transport_bridge",
+                        mode = "cs_launcher_jwt",
+                        "Using Confidential Space Launcher JWT for transport attestation"
                     );
-                }
-                warn!(
-                    step = "transport_bridge",
-                    mode = "cs_synthetic_transport",
-                    "DEV ONLY: transport bridge using synthetic quotes (explicit opt-in)"
-                );
-                TeeAttestationProvider::synthetic()
-            } else {
-                return Err("No TDX attestation source for transport bridge.\n\
-                    \n  Deploy on a TDX CVM (configfs-tsm) or Confidential Space."
-                    .into());
-            };
-            let bridge = TeeAttestationBridge::new(bridge_provider, receipt_pk);
+                    Box::new(
+                        ephemeral_ml_enclave::cs_transport_bridge::CsTransportAttestationBridge::new(
+                            receipt_pk,
+                            wip_audience.to_string(),
+                        ),
+                    )
+                } else {
+                    return Err("No TDX attestation source for transport bridge.\n\
+                        \n  Deploy on a TDX CVM (configfs-tsm) or Confidential Space."
+                        .into());
+                };
 
             // Use TDX verifier for peer verification with measurement pinning.
             // Fail-closed: require MRTD in non-synthetic mode.
@@ -1037,7 +1034,7 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
                     tee_provider,
                     receipt_key,
                     "0.0.0.0:9000",
-                    &bridge,
+                    bridge.as_ref(),
                     &client_verifier,
                     boot_attestation_hash,
                 )
@@ -1080,7 +1077,7 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
                 &gcp_control,
                 &gcp_data_in,
                 gcp_data_out.parse()?,
-                &bridge,
+                bridge.as_ref(),
                 &verifier,
             )
             .await?;

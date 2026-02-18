@@ -40,6 +40,8 @@ pub mod cs_kms_client;
 #[cfg(feature = "gcp")]
 pub mod cs_token_client;
 #[cfg(feature = "gcp")]
+pub mod cs_transport_bridge;
+#[cfg(feature = "gcp")]
 pub mod gcp_kms_client;
 #[cfg(feature = "gcp")]
 pub mod gcs_loader;
