@@ -6,11 +6,11 @@ license = "Apache-2.0"
 
 [dependencies]
 # Workspace dependencies
-candle-core = { workspace = true }
-safetensors = { workspace = true }
 ephemeral-ml-common = { path = "../common", features = [] }
 
 # Benchmark dependencies (optional, behind "benchmark" feature)
+candle-core = { workspace = true, optional = true }
+safetensors = { workspace = true, optional = true }
 candle-nn = { workspace = true, optional = true }
 candle-transformers = { workspace = true, optional = true }
 tokenizers = { workspace = true, optional = true }
@@ -32,9 +32,6 @@ serde_bytes = "0.11"
 ed25519-dalek = { workspace = true }
 base64 = "0.22.1"
 async-trait = "0.1"
-hpke = { workspace = true, features = ["std", "x25519"] }
-zeroize = { workspace = true }
-x25519-dalek = { workspace = true }
 coset = { workspace = true }
 x509-parser = { workspace = true }
 openssl = { workspace = true }
@@ -53,6 +50,8 @@ mock = ["confidential-ml-transport/mock", "confidential-ml-transport/tcp"]
 production = ["confidential-ml-transport/tcp"]
 gcp = ["confidential-ml-transport/tdx", "confidential-ml-transport/tcp", "confidential-ml-transport/mock"]
 benchmark = [
+    "candle-core",
+    "safetensors",
     "candle-nn",
     "candle-transformers",
     "tokenizers",
