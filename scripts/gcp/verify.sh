@@ -165,7 +165,7 @@ if [[ -f "${RECEIPT_PATH}" ]]; then
         VERIFY_EXIT=$?
         RECEIPT_VERIFIED=true
     else
-        echo "  WARNING: Receipt file exists but could not extract public key from client output."
+        echo "  WARNING: Receipt file exists but no .pubkey file found at ${PUBKEY_FILE}."
         echo "  Receipt at: ${RECEIPT_PATH}"
         VERIFY_EXIT=1
     fi
