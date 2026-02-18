@@ -120,8 +120,11 @@ cargo build --release --no-default-features --features gcp \
 
 # The GCP-mode client reads EPHEMERALML_ENCLAVE_ADDR for the server address.
 # It connects to the data_in port (9001) where the enclave accepts inference traffic.
-# EPHEMERALML_REQUIRE_MRTD=false: verify.sh is a smoke test without pinned MRTD.
-# Production clients should set EPHEMERALML_EXPECTED_MRTD instead.
+#
+# SECURITY NOTE: EPHEMERALML_REQUIRE_MRTD=false is set here because verify.sh is a
+# post-deploy smoke test — the MRTD value is not known until after deployment.
+# Production clients MUST set EPHEMERALML_EXPECTED_MRTD=<96 hex chars> to pin the
+# TDX peer measurement. Without it, any TDX workload could impersonate the enclave.
 EPHEMERALML_ENCLAVE_ADDR="${IP}:${DATA_PORT}" \
     EPHEMERALML_REQUIRE_MRTD=false \
     cargo run --release --no-default-features --features gcp \

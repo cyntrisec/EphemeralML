@@ -62,7 +62,8 @@ struct Args {
     #[arg(long)]
     smoke_tdx: bool,
 
-    /// Use synthetic TDX quotes (no real hardware needed). Combine with --smoke-tdx.
+    /// [DEV ONLY] Use synthetic TDX quotes (no real hardware). Rejected in release builds.
+    /// For local development/testing with --smoke-tdx. Never use in production.
     #[arg(long)]
     synthetic: bool,
 
@@ -128,9 +129,11 @@ struct Args {
     #[arg(long, env = "EPHEMERALML_MODEL_FORMAT", default_value = "safetensors")]
     model_format: String,
 
-    /// Allow synthetic TDX quotes for transport in Confidential Space mode.
-    /// Without this flag, CS deployments without configfs-tsm will fail (fail-closed).
-    /// Set EPHEMERALML_ALLOW_SYNTHETIC_TRANSPORT=true or pass --allow-synthetic-transport.
+    /// [DEV ONLY] Allow synthetic TDX quotes for transport in Confidential Space mode.
+    /// Default: false (fail-closed). CS deployments without configfs-tsm will refuse
+    /// to start unless this flag is set. The Launcher JWT still handles KMS attestation;
+    /// this only affects transport-level (SecureChannel handshake) attestation.
+    /// Production deployments should use configfs-tsm for real TDX quotes.
     #[arg(long, env = "EPHEMERALML_ALLOW_SYNTHETIC_TRANSPORT")]
     allow_synthetic_transport: bool,
 
@@ -357,26 +360,33 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
                 // quotes — silent fallback is a security gap.
                 if !args.allow_synthetic_transport {
                     return Err(
-                        "Confidential Space detected but configfs-tsm is not available. \
-                        Transport-level attestation requires real TDX quotes. \
-                        Set --allow-synthetic-transport (or EPHEMERALML_ALLOW_SYNTHETIC_TRANSPORT=true) \
-                        to explicitly opt in to synthetic transport quotes. \
-                        The Launcher JWT still handles KMS attestation."
+                        "Confidential Space detected but configfs-tsm is not available.\n\
+                        \n  Why: Transport-level attestation (SecureChannel handshake) requires real \
+                        TDX quotes via configfs-tsm, which is not exposed in this CS container.\n\
+                        \n  KMS attestation is unaffected — the Launcher JWT handles that.\n\
+                        \n  To proceed (dev/test only):\n    \
+                        --allow-synthetic-transport\n    \
+                        or EPHEMERALML_ALLOW_SYNTHETIC_TRANSPORT=true\n\
+                        \n  For production: deploy on a CS image that exposes configfs-tsm."
                             .into(),
                     );
                 }
                 warn!(
                     step = "attestation",
-                    mode = "cs_launcher",
-                    "Confidential Space detected — TDX configfs-tsm not available, \
-                    using synthetic quotes for transport (explicit opt-in). \
-                    Launcher JWT handles KMS attestation."
+                    mode = "cs_synthetic_transport",
+                    "DEV ONLY: CS detected, configfs-tsm unavailable — using synthetic \
+                    transport quotes (explicit opt-in). KMS attestation via Launcher JWT \
+                    is still hardware-backed."
                 );
                 TeeAttestationProvider::synthetic()
             } else {
                 return Err(
-                    "No TDX attestation source available. Use --synthetic for local dev \
-                    (debug builds only), or deploy on a TDX CVM / Confidential Space."
+                    "No TDX attestation source available.\n\
+                    \n  Expected one of:\n    \
+                    - /sys/kernel/config/tsm/report (configfs-tsm on TDX CVM)\n    \
+                    - /run/container_launcher/teeserver.sock (Confidential Space)\n\
+                    \n  For local development: use --synthetic (debug builds only).\n  \
+                    For production: deploy on a TDX CVM or Confidential Space."
                         .into(),
                 );
             };
@@ -973,17 +983,20 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
                 // CS mode without configfs-tsm: require explicit opt-in.
                 if !args.allow_synthetic_transport {
                     return Err(
-                        "CS mode without configfs-tsm — transport bridge requires real TDX quotes. \
-                        Set --allow-synthetic-transport (or EPHEMERALML_ALLOW_SYNTHETIC_TRANSPORT=true) \
-                        to explicitly opt in to synthetic transport quotes."
+                        "CS mode without configfs-tsm — transport bridge requires real TDX quotes.\n\
+                        \n  Set --allow-synthetic-transport (dev/test only) to use synthetic quotes."
                             .into(),
                     );
                 }
-                warn!("CS mode without configfs-tsm — transport bridge uses synthetic quotes (explicit opt-in)");
+                warn!(
+                    step = "transport_bridge",
+                    mode = "cs_synthetic_transport",
+                    "DEV ONLY: transport bridge using synthetic quotes (explicit opt-in)"
+                );
                 TeeAttestationProvider::synthetic()
             } else {
-                return Err("No TDX attestation source for transport bridge. \
-                    Deploy on TDX CVM or Confidential Space."
+                return Err("No TDX attestation source for transport bridge.\n\
+                    \n  Deploy on a TDX CVM (configfs-tsm) or Confidential Space."
                     .into());
             };
             let bridge = TeeAttestationBridge::new(bridge_provider, receipt_pk);

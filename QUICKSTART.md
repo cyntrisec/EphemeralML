@@ -159,6 +159,19 @@ Expected output with Llama 3 8B Q4_K_M (4.6GB GGUF):
 
 See `infra/hello-enclave/HELLO_ENCLAVE_RUNBOOK.md` for a step-by-step guide to deploying on AWS Nitro Enclaves.
 
+## Security Defaults (Fail-Closed)
+
+EphemeralML defaults to **fail-closed** for all security-sensitive settings. Production deployments require real attestation; dev-only overrides must be explicitly opted in.
+
+| Setting | Default | Dev override | What it controls |
+|---------|---------|-------------|-----------------|
+| TDX transport quotes | Required (configfs-tsm) | `--allow-synthetic-transport` | SecureChannel handshake attestation |
+| MRTD peer pinning | Required (`EPHEMERALML_EXPECTED_MRTD`) | `EPHEMERALML_REQUIRE_MRTD=false` | Client-side TDX measurement verification |
+| `--synthetic` flag | Rejected in release builds | Debug builds only | Entire attestation stack uses fake quotes |
+| KMS IAM binding | Image digest condition required | `--allow-broad-binding` in `setup_kms.sh` | Which containers can decrypt model keys |
+
+**Transport attestation vs KMS attestation**: These are separate trust anchors. The Launcher JWT (KMS attestation) is always hardware-backed in Confidential Space. Transport attestation (SecureChannel handshake) uses configfs-tsm TDX quotes. When configfs-tsm is unavailable inside a CS container, synthetic transport can be opted in for dev/test — but KMS attestation remains real.
+
 ## GCP Architecture Differences
 
 | Aspect | AWS Nitro | GCP TDX CVM |
