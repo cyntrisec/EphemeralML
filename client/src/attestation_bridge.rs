@@ -108,6 +108,40 @@ fn verify_attestation_for_bridge(
     verifier.verify_attestation_skip_nonce(doc)
 }
 
+/// Policy pins for CS envelope verification.
+///
+/// When set, each field is validated against the corresponding JWT claim.
+/// Fail-closed: any mismatch causes verification to fail.
+#[cfg(feature = "gcp")]
+#[derive(Clone, Debug, Default)]
+pub struct CsPolicy {
+    /// Expected container image digest (e.g., "sha256:abc123...").
+    /// Validated against JWT claim `submods.container.image_digest`.
+    pub expected_image_digest: Option<String>,
+    /// Expected GCE project ID (e.g., "my-project-123").
+    /// Validated against JWT claim `submods.gce.project_id`.
+    pub expected_project: Option<String>,
+    /// Expected GCE zone (e.g., "us-central1-a").
+    /// Validated against JWT claim `submods.gce.zone`.
+    pub expected_zone: Option<String>,
+}
+
+#[cfg(feature = "gcp")]
+impl CsPolicy {
+    /// Load policy pins from environment variables.
+    ///
+    /// - `EPHEMERALML_EXPECTED_IMAGE_DIGEST` — container image digest
+    /// - `EPHEMERALML_EXPECTED_PROJECT` — GCE project ID
+    /// - `EPHEMERALML_EXPECTED_ZONE` — GCE zone
+    pub fn from_env() -> Self {
+        Self {
+            expected_image_digest: std::env::var("EPHEMERALML_EXPECTED_IMAGE_DIGEST").ok(),
+            expected_project: std::env::var("EPHEMERALML_EXPECTED_PROJECT").ok(),
+            expected_zone: std::env::var("EPHEMERALML_EXPECTED_ZONE").ok(),
+        }
+    }
+}
+
 /// Combined TDX + CS envelope verifier bridge for GCP Confidential Space.
 ///
 /// Handles two envelope formats:
@@ -117,11 +151,14 @@ fn verify_attestation_for_bridge(
 /// Falls back to plain TDX wire format if the document is not an envelope.
 ///
 /// Measurement pinning (TDX only): reads `EPHEMERALML_EXPECTED_MRTD` env var.
+/// CS policy pins: image digest, project, zone via `CsPolicy` or env vars.
 #[cfg(feature = "gcp")]
 pub struct TdxEnvelopeVerifierBridge {
     inner: confidential_ml_transport::attestation::tdx::TdxVerifier,
     /// Expected JWT issuer for CS envelopes.
     cs_expected_issuer: String,
+    /// Policy pins for CS envelope validation.
+    cs_policy: CsPolicy,
 }
 
 #[cfg(feature = "gcp")]
@@ -166,7 +203,14 @@ impl TdxEnvelopeVerifierBridge {
         Self {
             inner: confidential_ml_transport::attestation::tdx::TdxVerifier::new(mrtd),
             cs_expected_issuer: Self::CS_ISSUER.to_string(),
+            cs_policy: CsPolicy::from_env(),
         }
+    }
+
+    /// Set CS policy pins explicitly (overrides env vars).
+    pub fn with_cs_policy(mut self, policy: CsPolicy) -> Self {
+        self.cs_policy = policy;
+        self
     }
 
     /// Verify a CS transport attestation envelope.
@@ -226,7 +270,33 @@ impl TdxEnvelopeVerifierBridge {
             )));
         }
 
-        // 6. Build VerifiedAttestation
+        // 6. Validate policy pins (fail-closed on mismatch)
+        if let Some(ref expected) = self.cs_policy.expected_image_digest {
+            if claims.submods.container.image_digest != *expected {
+                return Err(AttestError::VerificationFailed(format!(
+                    "CS image digest mismatch: got '{}', expected '{}'",
+                    claims.submods.container.image_digest, expected
+                )));
+            }
+        }
+        if let Some(ref expected) = self.cs_policy.expected_project {
+            if claims.submods.gce.project_id != *expected {
+                return Err(AttestError::VerificationFailed(format!(
+                    "CS project mismatch: got '{}', expected '{}'",
+                    claims.submods.gce.project_id, expected
+                )));
+            }
+        }
+        if let Some(ref expected) = self.cs_policy.expected_zone {
+            if claims.submods.gce.zone != *expected {
+                return Err(AttestError::VerificationFailed(format!(
+                    "CS zone mismatch: got '{}', expected '{}'",
+                    claims.submods.gce.zone, expected
+                )));
+            }
+        }
+
+        // 7. Build VerifiedAttestation
         let document_hash = {
             use sha2::{Digest, Sha256};
             Sha256::digest(raw_bytes).into()
@@ -374,6 +444,37 @@ struct CsJwtClaims {
     exp: u64,
     #[serde(default, deserialize_with = "deserialize_string_or_vec")]
     eat_nonce: Vec<String>,
+    /// Submodule claims (container image, GCE instance, etc.).
+    #[serde(default)]
+    submods: CsJwtSubmods,
+}
+
+/// JWT submods claims for policy pin validation.
+#[cfg(feature = "gcp")]
+#[derive(serde::Deserialize, Debug, Default)]
+struct CsJwtSubmods {
+    #[serde(default)]
+    container: CsContainerClaims,
+    #[serde(default)]
+    gce: CsGceClaims,
+}
+
+/// Container-level JWT claims.
+#[cfg(feature = "gcp")]
+#[derive(serde::Deserialize, Debug, Default)]
+struct CsContainerClaims {
+    #[serde(default)]
+    image_digest: String,
+}
+
+/// GCE instance-level JWT claims.
+#[cfg(feature = "gcp")]
+#[derive(serde::Deserialize, Debug, Default)]
+struct CsGceClaims {
+    #[serde(default)]
+    project_id: String,
+    #[serde(default)]
+    zone: String,
 }
 
 /// Parse JWT claims from a JWT string (without signature verification).
@@ -488,6 +589,17 @@ mod tests {
     use ephemeral_ml_common::CsTransportAttestation;
 
     fn make_test_jwt(issuer: &str, exp: u64, nonces: &[&str]) -> String {
+        make_test_jwt_with_submods(issuer, exp, nonces, "", "", "")
+    }
+
+    fn make_test_jwt_with_submods(
+        issuer: &str,
+        exp: u64,
+        nonces: &[&str],
+        image_digest: &str,
+        project_id: &str,
+        zone: &str,
+    ) -> String {
         use base64::engine::general_purpose::URL_SAFE_NO_PAD;
         use base64::Engine;
 
@@ -499,8 +611,10 @@ mod tests {
             format!("[{}]", items.join(","))
         };
         let claims = format!(
-            "{{\"iss\":\"{}\",\"exp\":{},\"eat_nonce\":{},\"aud\":\"test\"}}",
-            issuer, exp, nonce_json
+            "{{\"iss\":\"{}\",\"exp\":{},\"eat_nonce\":{},\"aud\":\"test\",\
+             \"submods\":{{\"container\":{{\"image_digest\":\"{}\"}},\
+             \"gce\":{{\"project_id\":\"{}\",\"zone\":\"{}\"}}}}}}",
+            issuer, exp, nonce_json, image_digest, project_id, zone
         );
         let payload = URL_SAFE_NO_PAD.encode(claims.as_bytes());
         let sig = URL_SAFE_NO_PAD.encode(b"fake-signature");
@@ -660,5 +774,145 @@ mod tests {
     fn test_parse_jwt_claims_invalid() {
         assert!(parse_jwt_claims("not-a-jwt").is_err());
         assert!(parse_jwt_claims("a.b").is_err());
+    }
+
+    #[tokio::test]
+    async fn test_cs_policy_pin_image_digest_match() {
+        let nonce = b"nonce";
+        let nonce_hex = hex::encode(nonce);
+        let jwt = make_test_jwt_with_submods(
+            "https://confidentialcomputing.googleapis.com",
+            9999999999,
+            &[&nonce_hex],
+            "sha256:abc123",
+            "my-project",
+            "us-central1-a",
+        );
+        let envelope = make_cs_envelope(&jwt, nonce);
+        let cbor = envelope.to_cbor_deterministic().unwrap();
+
+        std::env::set_var("EPHEMERALML_REQUIRE_MRTD", "false");
+        let policy = CsPolicy {
+            expected_image_digest: Some("sha256:abc123".to_string()),
+            expected_project: Some("my-project".to_string()),
+            expected_zone: Some("us-central1-a".to_string()),
+        };
+        let verifier = TdxEnvelopeVerifierBridge::new(None).with_cs_policy(policy);
+
+        let doc = CmlAttestationDocument::new(cbor);
+        let result = verifier.verify(&doc).await;
+        assert!(result.is_ok(), "Expected OK, got: {:?}", result.err());
+    }
+
+    #[tokio::test]
+    async fn test_cs_policy_pin_image_digest_mismatch() {
+        let nonce = b"nonce";
+        let nonce_hex = hex::encode(nonce);
+        let jwt = make_test_jwt_with_submods(
+            "https://confidentialcomputing.googleapis.com",
+            9999999999,
+            &[&nonce_hex],
+            "sha256:wrong",
+            "my-project",
+            "us-central1-a",
+        );
+        let envelope = make_cs_envelope(&jwt, nonce);
+        let cbor = envelope.to_cbor_deterministic().unwrap();
+
+        std::env::set_var("EPHEMERALML_REQUIRE_MRTD", "false");
+        let policy = CsPolicy {
+            expected_image_digest: Some("sha256:abc123".to_string()),
+            ..Default::default()
+        };
+        let verifier = TdxEnvelopeVerifierBridge::new(None).with_cs_policy(policy);
+
+        let doc = CmlAttestationDocument::new(cbor);
+        let result = verifier.verify(&doc).await;
+        assert!(result.is_err());
+        let err = format!("{:?}", result.unwrap_err());
+        assert!(err.contains("image digest mismatch"), "Error: {}", err);
+    }
+
+    #[tokio::test]
+    async fn test_cs_policy_pin_project_mismatch() {
+        let nonce = b"nonce";
+        let nonce_hex = hex::encode(nonce);
+        let jwt = make_test_jwt_with_submods(
+            "https://confidentialcomputing.googleapis.com",
+            9999999999,
+            &[&nonce_hex],
+            "sha256:abc123",
+            "wrong-project",
+            "us-central1-a",
+        );
+        let envelope = make_cs_envelope(&jwt, nonce);
+        let cbor = envelope.to_cbor_deterministic().unwrap();
+
+        std::env::set_var("EPHEMERALML_REQUIRE_MRTD", "false");
+        let policy = CsPolicy {
+            expected_project: Some("my-project".to_string()),
+            ..Default::default()
+        };
+        let verifier = TdxEnvelopeVerifierBridge::new(None).with_cs_policy(policy);
+
+        let doc = CmlAttestationDocument::new(cbor);
+        let result = verifier.verify(&doc).await;
+        assert!(result.is_err());
+        let err = format!("{:?}", result.unwrap_err());
+        assert!(err.contains("project mismatch"), "Error: {}", err);
+    }
+
+    #[tokio::test]
+    async fn test_cs_policy_pin_zone_mismatch() {
+        let nonce = b"nonce";
+        let nonce_hex = hex::encode(nonce);
+        let jwt = make_test_jwt_with_submods(
+            "https://confidentialcomputing.googleapis.com",
+            9999999999,
+            &[&nonce_hex],
+            "",
+            "",
+            "europe-west1-b",
+        );
+        let envelope = make_cs_envelope(&jwt, nonce);
+        let cbor = envelope.to_cbor_deterministic().unwrap();
+
+        std::env::set_var("EPHEMERALML_REQUIRE_MRTD", "false");
+        let policy = CsPolicy {
+            expected_zone: Some("us-central1-a".to_string()),
+            ..Default::default()
+        };
+        let verifier = TdxEnvelopeVerifierBridge::new(None).with_cs_policy(policy);
+
+        let doc = CmlAttestationDocument::new(cbor);
+        let result = verifier.verify(&doc).await;
+        assert!(result.is_err());
+        let err = format!("{:?}", result.unwrap_err());
+        assert!(err.contains("zone mismatch"), "Error: {}", err);
+    }
+
+    #[tokio::test]
+    async fn test_cs_policy_no_pins_accepts_any() {
+        let nonce = b"nonce";
+        let nonce_hex = hex::encode(nonce);
+        let jwt = make_test_jwt_with_submods(
+            "https://confidentialcomputing.googleapis.com",
+            9999999999,
+            &[&nonce_hex],
+            "sha256:anything",
+            "any-project",
+            "any-zone",
+        );
+        let envelope = make_cs_envelope(&jwt, nonce);
+        let cbor = envelope.to_cbor_deterministic().unwrap();
+
+        std::env::set_var("EPHEMERALML_REQUIRE_MRTD", "false");
+        // No policy pins set — should accept any values
+        let verifier = TdxEnvelopeVerifierBridge::new(None)
+            .with_cs_policy(CsPolicy::default());
+
+        let doc = CmlAttestationDocument::new(cbor);
+        let result = verifier.verify(&doc).await;
+        assert!(result.is_ok(), "Expected OK, got: {:?}", result.err());
     }
 }
