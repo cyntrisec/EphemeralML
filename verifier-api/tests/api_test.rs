@@ -1,10 +1,43 @@
 use ephemeral_ml_common::receipt_signing::{
     AttestationReceipt, EnclaveMeasurements, ReceiptSigningKey, SecurityMode,
 };
+use ephemeralml_verifier_api::ServerConfig;
 
-/// Start the verifier on a random port and return the base URL.
+/// Start the verifier on a random port with no auth (for backward-compat tests).
 async fn start_server() -> String {
     let app = ephemeralml_verifier_api::build_router();
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    tokio::spawn(async move {
+        axum::serve(listener, app).await.unwrap();
+    });
+    format!("http://{}", addr)
+}
+
+/// Start the verifier with auth enabled.
+async fn start_server_with_auth(api_key: &str) -> String {
+    let config = ServerConfig {
+        api_key: Some(api_key.to_string()),
+        requests_per_minute: 0,
+        cors_origins: vec![],
+    };
+    let app = ephemeralml_verifier_api::build_router_with_config(&config);
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    tokio::spawn(async move {
+        axum::serve(listener, app).await.unwrap();
+    });
+    format!("http://{}", addr)
+}
+
+/// Start the verifier with rate limiting.
+async fn start_server_with_rate_limit(rpm: u32) -> String {
+    let config = ServerConfig {
+        api_key: None,
+        requests_per_minute: rpm,
+        cors_origins: vec![],
+    };
+    let app = ephemeralml_verifier_api::build_router_with_config(&config);
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
     tokio::spawn(async move {
@@ -33,6 +66,17 @@ fn make_signed_receipt(key: &ReceiptSigningKey) -> AttestationReceipt {
     receipt.sign(key).unwrap();
     receipt
 }
+
+fn verify_request_json(receipt: &AttestationReceipt, public_key_hex: &str) -> serde_json::Value {
+    serde_json::json!({
+        "receipt": serde_json::to_value(receipt).unwrap(),
+        "public_key": public_key_hex,
+    })
+}
+
+// ==========================================================================
+// Original backward-compatible tests
+// ==========================================================================
 
 #[tokio::test]
 async fn test_health() {
@@ -63,10 +107,7 @@ async fn test_verify_valid_receipt() {
     let client = reqwest::Client::new();
     let resp = client
         .post(format!("{}/api/v1/verify", base))
-        .json(&serde_json::json!({
-            "receipt": serde_json::to_value(&receipt).unwrap(),
-            "public_key": public_key_hex,
-        }))
+        .json(&verify_request_json(&receipt, &public_key_hex))
         .send()
         .await
         .unwrap();
@@ -85,7 +126,6 @@ async fn test_verify_invalid_signature() {
     let base = start_server().await;
     let key = ReceiptSigningKey::generate().unwrap();
     let mut receipt = make_signed_receipt(&key);
-    // Tamper with receipt
     receipt.receipt_id = "tampered".to_string();
 
     let public_key_hex = hex::encode(key.public_key_bytes());
@@ -93,10 +133,7 @@ async fn test_verify_invalid_signature() {
     let client = reqwest::Client::new();
     let resp = client
         .post(format!("{}/api/v1/verify", base))
-        .json(&serde_json::json!({
-            "receipt": serde_json::to_value(&receipt).unwrap(),
-            "public_key": public_key_hex,
-        }))
+        .json(&verify_request_json(&receipt, &public_key_hex))
         .send()
         .await
         .unwrap();
@@ -142,7 +179,6 @@ async fn test_verify_bad_json() {
         .await
         .unwrap();
 
-    // Axum returns 400 for malformed JSON bodies
     assert!(resp.status() == 400 || resp.status() == 422);
 }
 
@@ -151,7 +187,6 @@ async fn test_body_limit() {
     let base = start_server().await;
 
     let client = reqwest::Client::new();
-    // Send >2MB body
     let big_body = "x".repeat(3 * 1024 * 1024);
     let resp = client
         .post(format!("{}/api/v1/verify", base))
@@ -192,18 +227,17 @@ async fn test_verify_upload_multipart() {
     assert_eq!(body["verified"], true);
 }
 
-/// Upload endpoint applies policy options (expected_model) just like the JSON endpoint.
 #[tokio::test]
 async fn test_upload_applies_policy_options() {
     let base = start_server().await;
     let key = ReceiptSigningKey::generate().unwrap();
-    let receipt = make_signed_receipt(&key); // model_id = "minilm-l6-v2"
+    let receipt = make_signed_receipt(&key);
     let receipt_json = serde_json::to_vec(&receipt).unwrap();
     let public_key_hex = hex::encode(key.public_key_bytes());
 
     let client = reqwest::Client::new();
 
-    // Upload with wrong expected_model — must fail
+    // Wrong expected_model
     let form = reqwest::multipart::Form::new()
         .part(
             "receipt_file",
@@ -224,7 +258,7 @@ async fn test_upload_applies_policy_options() {
     assert_eq!(body["verified"], false);
     assert_eq!(body["checks"]["model_match"], "fail");
 
-    // Upload with correct expected_model — must pass
+    // Correct expected_model
     let form = reqwest::multipart::Form::new()
         .part(
             "receipt_file",
@@ -246,13 +280,11 @@ async fn test_upload_applies_policy_options() {
     assert_eq!(body["checks"]["model_match"], "pass");
 }
 
-/// Any Fail check (even measurements) must produce verified: false.
 #[tokio::test]
 async fn test_fail_check_means_not_verified() {
     let base = start_server().await;
     let key = ReceiptSigningKey::generate().unwrap();
 
-    // Receipt with invalid measurement lengths (32 bytes instead of 48)
     let measurements = EnclaveMeasurements::new(vec![1u8; 32], vec![2u8; 32], vec![3u8; 32]);
     let mut receipt = AttestationReceipt::new(
         "bad-meas".to_string(),
@@ -275,9 +307,192 @@ async fn test_fail_check_means_not_verified() {
     let client = reqwest::Client::new();
     let resp = client
         .post(format!("{}/api/v1/verify", base))
+        .json(&verify_request_json(&receipt, &public_key_hex))
+        .send()
+        .await
+        .unwrap();
+
+    assert_eq!(resp.status(), 200);
+    let body: serde_json::Value = resp.json().await.unwrap();
+    assert_eq!(body["verified"], false);
+    assert_eq!(body["checks"]["signature"], "pass");
+    assert_eq!(body["checks"]["measurements_present"], "fail");
+}
+
+// ==========================================================================
+// Auth tests
+// ==========================================================================
+
+#[tokio::test]
+async fn test_auth_success_bearer() {
+    let base = start_server_with_auth("test-secret-key-1234").await;
+    let key = ReceiptSigningKey::generate().unwrap();
+    let receipt = make_signed_receipt(&key);
+    let public_key_hex = hex::encode(key.public_key_bytes());
+
+    let client = reqwest::Client::new();
+    let resp = client
+        .post(format!("{}/api/v1/verify", base))
+        .header("authorization", "Bearer test-secret-key-1234")
+        .json(&verify_request_json(&receipt, &public_key_hex))
+        .send()
+        .await
+        .unwrap();
+
+    assert_eq!(resp.status(), 200);
+    let body: serde_json::Value = resp.json().await.unwrap();
+    assert_eq!(body["verified"], true);
+}
+
+#[tokio::test]
+async fn test_auth_success_x_api_key() {
+    let base = start_server_with_auth("test-secret-key-1234").await;
+    let key = ReceiptSigningKey::generate().unwrap();
+    let receipt = make_signed_receipt(&key);
+    let public_key_hex = hex::encode(key.public_key_bytes());
+
+    let client = reqwest::Client::new();
+    let resp = client
+        .post(format!("{}/api/v1/verify", base))
+        .header("x-api-key", "test-secret-key-1234")
+        .json(&verify_request_json(&receipt, &public_key_hex))
+        .send()
+        .await
+        .unwrap();
+
+    assert_eq!(resp.status(), 200);
+    let body: serde_json::Value = resp.json().await.unwrap();
+    assert_eq!(body["verified"], true);
+}
+
+#[tokio::test]
+async fn test_auth_failure_wrong_key() {
+    let base = start_server_with_auth("correct-key").await;
+    let key = ReceiptSigningKey::generate().unwrap();
+    let receipt = make_signed_receipt(&key);
+    let public_key_hex = hex::encode(key.public_key_bytes());
+
+    let client = reqwest::Client::new();
+    let resp = client
+        .post(format!("{}/api/v1/verify", base))
+        .header("authorization", "Bearer wrong-key")
+        .json(&verify_request_json(&receipt, &public_key_hex))
+        .send()
+        .await
+        .unwrap();
+
+    assert_eq!(resp.status(), 401);
+    let body: serde_json::Value = resp.json().await.unwrap();
+    assert!(body["error"].as_str().unwrap().contains("Invalid"));
+}
+
+#[tokio::test]
+async fn test_auth_failure_missing_key() {
+    let base = start_server_with_auth("correct-key").await;
+    let key = ReceiptSigningKey::generate().unwrap();
+    let receipt = make_signed_receipt(&key);
+    let public_key_hex = hex::encode(key.public_key_bytes());
+
+    let client = reqwest::Client::new();
+    let resp = client
+        .post(format!("{}/api/v1/verify", base))
+        .json(&verify_request_json(&receipt, &public_key_hex))
+        .send()
+        .await
+        .unwrap();
+
+    assert_eq!(resp.status(), 401);
+    let body: serde_json::Value = resp.json().await.unwrap();
+    assert!(body["error"].as_str().unwrap().contains("Missing"));
+}
+
+#[tokio::test]
+async fn test_auth_skips_health() {
+    let base = start_server_with_auth("secret").await;
+    // Health should work without auth
+    let resp = reqwest::get(format!("{}/health", base)).await.unwrap();
+    assert_eq!(resp.status(), 200);
+}
+
+#[tokio::test]
+async fn test_auth_skips_landing() {
+    let base = start_server_with_auth("secret").await;
+    // Landing page should work without auth
+    let resp = reqwest::get(format!("{}/", base)).await.unwrap();
+    assert_eq!(resp.status(), 200);
+}
+
+// ==========================================================================
+// Rate limiting tests
+// ==========================================================================
+
+#[tokio::test]
+async fn test_rate_limit_enforced() {
+    // Very low limit: 3 requests per minute
+    let base = start_server_with_rate_limit(3).await;
+
+    let client = reqwest::Client::new();
+    let key = ReceiptSigningKey::generate().unwrap();
+    let receipt = make_signed_receipt(&key);
+    let public_key_hex = hex::encode(key.public_key_bytes());
+    let body = verify_request_json(&receipt, &public_key_hex);
+
+    // First 3 requests should succeed
+    for i in 0..3 {
+        let resp = client
+            .post(format!("{}/api/v1/verify", base))
+            .json(&body)
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), 200, "Request {} should succeed", i + 1);
+    }
+
+    // 4th request should be rate limited
+    let resp = client
+        .post(format!("{}/api/v1/verify", base))
+        .json(&body)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 429);
+    let err: serde_json::Value = resp.json().await.unwrap();
+    assert!(err["error"].as_str().unwrap().contains("Rate limit"));
+}
+
+#[tokio::test]
+async fn test_rate_limit_skips_health() {
+    let base = start_server_with_rate_limit(1).await;
+
+    // Health endpoint should not be rate limited
+    for _ in 0..5 {
+        let resp = reqwest::get(format!("{}/health", base)).await.unwrap();
+        assert_eq!(resp.status(), 200);
+    }
+}
+
+// ==========================================================================
+// New policy field tests
+// ==========================================================================
+
+#[tokio::test]
+async fn test_new_policy_fields_accepted() {
+    let base = start_server().await;
+    let key = ReceiptSigningKey::generate().unwrap();
+    let receipt = make_signed_receipt(&key);
+    let public_key_hex = hex::encode(key.public_key_bytes());
+
+    let client = reqwest::Client::new();
+
+    // Request with new fields (attestation_source check should skip since
+    // the receipt doesn't have one set)
+    let resp = client
+        .post(format!("{}/api/v1/verify", base))
         .json(&serde_json::json!({
             "receipt": serde_json::to_value(&receipt).unwrap(),
             "public_key": public_key_hex,
+            "expected_attestation_source": "cs-tdx",
+            "expected_image_digest": "sha256:abc123",
         }))
         .send()
         .await
@@ -285,10 +500,89 @@ async fn test_fail_check_means_not_verified() {
 
     assert_eq!(resp.status(), 200);
     let body: serde_json::Value = resp.json().await.unwrap();
-    assert_eq!(
-        body["verified"], false,
-        "measurements_present=fail must make verified=false"
-    );
-    assert_eq!(body["checks"]["signature"], "pass");
-    assert_eq!(body["checks"]["measurements_present"], "fail");
+    // These should fail since the test receipt has no attestation_source/image_digest
+    assert_eq!(body["checks"]["attestation_source"], "fail");
+    assert_eq!(body["checks"]["image_digest"], "fail");
+}
+
+#[tokio::test]
+async fn test_new_policy_fields_skipped_when_absent() {
+    let base = start_server().await;
+    let key = ReceiptSigningKey::generate().unwrap();
+    let receipt = make_signed_receipt(&key);
+    let public_key_hex = hex::encode(key.public_key_bytes());
+
+    let client = reqwest::Client::new();
+
+    // Request without new fields — should skip those checks
+    let resp = client
+        .post(format!("{}/api/v1/verify", base))
+        .json(&verify_request_json(&receipt, &public_key_hex))
+        .send()
+        .await
+        .unwrap();
+
+    assert_eq!(resp.status(), 200);
+    let body: serde_json::Value = resp.json().await.unwrap();
+    assert_eq!(body["verified"], true);
+    assert_eq!(body["checks"]["attestation_source"], "skip");
+    assert_eq!(body["checks"]["image_digest"], "skip");
+}
+
+#[tokio::test]
+async fn test_upload_new_policy_fields() {
+    let base = start_server().await;
+    let key = ReceiptSigningKey::generate().unwrap();
+    let receipt = make_signed_receipt(&key);
+    let receipt_json = serde_json::to_vec(&receipt).unwrap();
+    let public_key_hex = hex::encode(key.public_key_bytes());
+
+    let client = reqwest::Client::new();
+    let form = reqwest::multipart::Form::new()
+        .part(
+            "receipt_file",
+            reqwest::multipart::Part::bytes(receipt_json).file_name("receipt.json"),
+        )
+        .text("public_key", public_key_hex)
+        .text("expected_attestation_source", "cs-tdx")
+        .text("expected_image_digest", "sha256:abc");
+
+    let resp = client
+        .post(format!("{}/api/v1/verify/upload", base))
+        .multipart(form)
+        .send()
+        .await
+        .unwrap();
+
+    assert_eq!(resp.status(), 200);
+    let body: serde_json::Value = resp.json().await.unwrap();
+    assert_eq!(body["checks"]["attestation_source"], "fail");
+    assert_eq!(body["checks"]["image_digest"], "fail");
+}
+
+#[tokio::test]
+async fn test_backward_compat_no_new_fields() {
+    // Old-style request with only the original fields should still work
+    let base = start_server().await;
+    let key = ReceiptSigningKey::generate().unwrap();
+    let receipt = make_signed_receipt(&key);
+    let public_key_hex = hex::encode(key.public_key_bytes());
+
+    let client = reqwest::Client::new();
+    let resp = client
+        .post(format!("{}/api/v1/verify", base))
+        .json(&serde_json::json!({
+            "receipt": serde_json::to_value(&receipt).unwrap(),
+            "public_key": public_key_hex,
+            "expected_model": "minilm-l6-v2",
+            "max_age_secs": 0,
+            "measurement_type": "any",
+        }))
+        .send()
+        .await
+        .unwrap();
+
+    assert_eq!(resp.status(), 200);
+    let body: serde_json::Value = resp.json().await.unwrap();
+    assert_eq!(body["verified"], true);
 }

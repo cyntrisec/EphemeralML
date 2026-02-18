@@ -1,6 +1,6 @@
 [package]
 name = "ephemeralml-verifier-api"
-version = "0.2.4"
+version = "0.2.5"
 edition = "2021"
 license = "Apache-2.0"
 description = "Hosted verification API for EphemeralML attested execution receipts"
@@ -32,7 +32,7 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
 # CLI
-clap = { version = "4.5", features = ["derive"] }
+clap = { version = "4.5", features = ["derive", "env"] }
 
 [dev-dependencies]
 reqwest = { version = "0.13", features = ["json", "multipart"] }
