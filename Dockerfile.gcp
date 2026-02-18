@@ -25,6 +25,13 @@ RUN apt-get update && apt-get install -y \
 WORKDIR /build
 COPY . .
 
+# Download MiniLM-L6-v2 model weights for smoke tests (gitignored, not in repo).
+# Production deployments fetch models from GCS at runtime.
+RUN if [ ! -f test_assets/minilm/model.safetensors ]; then \
+      curl -fsSL -o test_assets/minilm/model.safetensors \
+        https://huggingface.co/sentence-transformers/all-MiniLM-L6-v2/resolve/main/model.safetensors; \
+    fi
+
 RUN cargo build --release \
     --no-default-features --features gcp \
     -p ephemeral-ml-enclave
@@ -42,11 +49,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY --from=builder /build/target/release/ephemeral-ml-enclave /app/ephemeral-ml-enclave
 
 # Copy default model for smoke testing (override via GCS in production).
-# NOTE: model.safetensors must be a real file, not a symlink outside the build
-# context.  deploy.sh resolves the symlink before building.
 COPY test_assets/minilm/config.json     /app/model/config.json
 COPY test_assets/minilm/tokenizer.json  /app/model/tokenizer.json
-COPY test_assets/minilm/model.safetensors /app/model/model.safetensors
+COPY --from=builder /build/test_assets/minilm/model.safetensors /app/model/model.safetensors
 
 # GCP configuration (override via instance metadata tee-env-* or env).
 # Default: local model for smoke tests. Override EPHEMERALML_MODEL_SOURCE=gcs-kms for production.

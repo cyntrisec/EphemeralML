@@ -37,6 +37,13 @@ ENV PATH="/root/.cargo/bin:${PATH}"
 WORKDIR /build
 COPY . .
 
+# Download MiniLM-L6-v2 model weights for smoke tests (gitignored, not in repo).
+# Production GPU deployments fetch models from GCS at runtime.
+RUN if [ ! -f test_assets/minilm/model.safetensors ]; then \
+      curl -fsSL -o test_assets/minilm/model.safetensors \
+        https://huggingface.co/sentence-transformers/all-MiniLM-L6-v2/resolve/main/model.safetensors; \
+    fi
+
 # Build with GCP + CUDA features. CUDA_COMPUTE_CAP=90 ensures kernels are compiled
 # for H100. This is a long build (~10-15 min) due to CUDA kernel compilation.
 ENV CUDA_COMPUTE_CAP=90
@@ -62,7 +69,7 @@ COPY --from=builder /build/target/release/ephemeral-ml-enclave /app/ephemeral-ml
 # A small fallback model is included for smoke tests only.
 COPY test_assets/minilm/config.json     /app/model/config.json
 COPY test_assets/minilm/tokenizer.json  /app/model/tokenizer.json
-COPY test_assets/minilm/model.safetensors /app/model/model.safetensors
+COPY --from=builder /build/test_assets/minilm/model.safetensors /app/model/model.safetensors
 
 # GCP configuration (override via instance metadata tee-env-* or env).
 # Default: fetch Llama 3 8B Q4_K_M GGUF from GCS for GPU inference.
