@@ -261,31 +261,52 @@ impl TdxEnvelopeVerifierBridge {
     }
 
     /// Fetch JWKS keys from Google's OIDC discovery endpoint.
-    async fn fetch_jwks(&self) -> std::result::Result<HashMap<String, jsonwebtoken::DecodingKey>, AttestError> {
+    async fn fetch_jwks(
+        &self,
+    ) -> std::result::Result<HashMap<String, jsonwebtoken::DecodingKey>, AttestError> {
         // 1. OIDC discovery
         let discovery_url = format!("{}/.well-known/openid-configuration", Self::CS_ISSUER);
-        let discovery: serde_json::Value = self.http_client
+        let discovery: serde_json::Value = self
+            .http_client
             .get(&discovery_url)
             .send()
             .await
-            .map_err(|e| AttestError::VerificationFailed(format!("JWKS fetch failed: OIDC discovery request error: {}", e)))?
+            .map_err(|e| {
+                AttestError::VerificationFailed(format!(
+                    "JWKS fetch failed: OIDC discovery request error: {}",
+                    e
+                ))
+            })?
             .json()
             .await
-            .map_err(|e| AttestError::VerificationFailed(format!("JWKS fetch failed: OIDC discovery parse error: {}", e)))?;
+            .map_err(|e| {
+                AttestError::VerificationFailed(format!(
+                    "JWKS fetch failed: OIDC discovery parse error: {}",
+                    e
+                ))
+            })?;
 
-        let jwks_uri = discovery["jwks_uri"]
-            .as_str()
-            .ok_or_else(|| AttestError::VerificationFailed("JWKS fetch failed: no jwks_uri in OIDC discovery".to_string()))?;
+        let jwks_uri = discovery["jwks_uri"].as_str().ok_or_else(|| {
+            AttestError::VerificationFailed(
+                "JWKS fetch failed: no jwks_uri in OIDC discovery".to_string(),
+            )
+        })?;
 
         // 2. Fetch JWKS
-        let jwks: serde_json::Value = self.http_client
+        let jwks: serde_json::Value = self
+            .http_client
             .get(jwks_uri)
             .send()
             .await
             .map_err(|e| AttestError::VerificationFailed(format!("JWKS fetch failed: {}", e)))?
             .json()
             .await
-            .map_err(|e| AttestError::VerificationFailed(format!("JWKS fetch failed: JWKS parse error: {}", e)))?;
+            .map_err(|e| {
+                AttestError::VerificationFailed(format!(
+                    "JWKS fetch failed: JWKS parse error: {}",
+                    e
+                ))
+            })?;
 
         // 3. Parse RSA keys
         let mut keys = HashMap::new();
@@ -310,7 +331,9 @@ impl TdxEnvelopeVerifierBridge {
         }
 
         if keys.is_empty() {
-            return Err(AttestError::VerificationFailed("JWKS fetch failed: no usable RSA keys in JWKS".to_string()));
+            return Err(AttestError::VerificationFailed(
+                "JWKS fetch failed: no usable RSA keys in JWKS".to_string(),
+            ));
         }
 
         Ok(keys)
@@ -335,13 +358,21 @@ impl TdxEnvelopeVerifierBridge {
     /// Returns verified claims. Fetches JWKS on cache miss or staleness.
     /// On transient JWKS fetch failure, falls back to stale cache keys
     /// if the kid is present (graceful degradation).
-    async fn verify_jwt_signature(&self, jwt: &str) -> std::result::Result<CsJwtClaims, AttestError> {
+    async fn verify_jwt_signature(
+        &self,
+        jwt: &str,
+    ) -> std::result::Result<CsJwtClaims, AttestError> {
         // 1. Decode header to get kid
-        let header = jsonwebtoken::decode_header(jwt)
-            .map_err(|e| AttestError::VerificationFailed(format!("JWT signature verification failed: header decode: {}", e)))?;
+        let header = jsonwebtoken::decode_header(jwt).map_err(|e| {
+            AttestError::VerificationFailed(format!(
+                "JWT signature verification failed: header decode: {}",
+                e
+            ))
+        })?;
 
-        let kid = header.kid
-            .ok_or_else(|| AttestError::VerificationFailed("JWT header missing key ID (kid)".to_string()))?;
+        let kid = header.kid.ok_or_else(|| {
+            AttestError::VerificationFailed("JWT header missing key ID (kid)".to_string())
+        })?;
 
         let validation = self.jwt_validation();
 
@@ -353,7 +384,12 @@ impl TdxEnvelopeVerifierBridge {
             if !cache.is_stale() {
                 if let Some(key) = cache.keys.get(&kid) {
                     let token_data = jsonwebtoken::decode::<CsJwtClaims>(jwt, key, &validation)
-                        .map_err(|e| AttestError::VerificationFailed(format!("JWT signature verification failed: {}", e)))?;
+                        .map_err(|e| {
+                            AttestError::VerificationFailed(format!(
+                                "JWT signature verification failed: {}",
+                                e
+                            ))
+                        })?;
                     return Ok(token_data.claims);
                 }
             }
@@ -363,11 +399,19 @@ impl TdxEnvelopeVerifierBridge {
         match self.fetch_jwks().await {
             Ok(new_keys) => {
                 let key = new_keys.get(&kid).ok_or_else(|| {
-                    AttestError::VerificationFailed(format!("JWT key ID '{}' not found in JWKS", kid))
+                    AttestError::VerificationFailed(format!(
+                        "JWT key ID '{}' not found in JWKS",
+                        kid
+                    ))
                 })?;
 
                 let token_data = jsonwebtoken::decode::<CsJwtClaims>(jwt, key, &validation)
-                    .map_err(|e| AttestError::VerificationFailed(format!("JWT signature verification failed: {}", e)))?;
+                    .map_err(|e| {
+                        AttestError::VerificationFailed(format!(
+                            "JWT signature verification failed: {}",
+                            e
+                        ))
+                    })?;
 
                 // Update cache on successful fetch
                 if let Ok(mut cache) = self.jwks_cache.write() {
@@ -385,7 +429,12 @@ impl TdxEnvelopeVerifierBridge {
                 })?;
                 if let Some(key) = cache.keys.get(&kid) {
                     let token_data = jsonwebtoken::decode::<CsJwtClaims>(jwt, key, &validation)
-                        .map_err(|e| AttestError::VerificationFailed(format!("JWT signature verification failed: {}", e)))?;
+                        .map_err(|e| {
+                            AttestError::VerificationFailed(format!(
+                                "JWT signature verification failed: {}",
+                                e
+                            ))
+                        })?;
                     return Ok(token_data.claims);
                 }
                 // No stale key either — propagate the original fetch error
