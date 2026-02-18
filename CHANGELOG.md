@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.2.5] - 2026-02-18
+
+### Added
+- **API key authentication**: Verify endpoints require `Authorization: Bearer <key>` or `X-API-Key: <key>`. Fail-closed: startup fails without `--api-key` or `--insecure-no-auth`.
+- **Per-IP rate limiting**: 60 req/min/IP default via `--rate-limit`. Returns 429 when exceeded. Health endpoint exempt.
+- **CORS tightening**: With auth enabled, startup fails if no `--cors-origin` unless `--allow-permissive-cors` is set.
+- **New policy fields in verifier API**: `expected_attestation_source` and `expected_image_digest` on both JSON and multipart endpoints.
+- **Verifier API documentation**: `docs/verifier-api.md` with auth, rate limits, policy fields, curl examples.
+- **12 new tests**: Auth success/failure (Bearer + X-API-Key), rate limit enforcement, policy field acceptance/skip, backward compatibility, health/landing auth exemption.
+
+### Changed
+- **Version bump**: All crates from 0.2.4 to 0.2.5
+
+### Security
+- No silent insecure defaults. Auth, rate limiting, and CORS require explicit opt-out with loud warnings.
+- New env vars: `EPHEMERALML_VERIFIER_API_KEY`, `EPHEMERALML_VERIFIER_NO_AUTH`, `EPHEMERALML_VERIFIER_RATE_LIMIT`.
+- New CLI flags: `--api-key`, `--insecure-no-auth`, `--rate-limit`, `--allow-permissive-cors`.
+
 ## [0.2.4] - 2026-02-18
 
 ### Fixed

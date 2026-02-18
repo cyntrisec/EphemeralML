@@ -29,7 +29,8 @@ pub async fn verify_json(
         expected_model: body.expected_model,
         expected_measurement_type: Some(body.measurement_type),
         max_age_secs: body.max_age_secs,
-        ..Default::default()
+        expected_attestation_source: body.expected_attestation_source,
+        expected_image_digest: body.expected_image_digest,
     };
 
     let result = verify_receipt(&receipt, &public_key, &options);
@@ -48,6 +49,8 @@ pub async fn verify_upload(
     let mut expected_model: Option<String> = None;
     let mut measurement_type: String = "any".to_string();
     let mut max_age_secs: u64 = 0;
+    let mut expected_attestation_source: Option<String> = None;
+    let mut expected_image_digest: Option<String> = None;
 
     while let Ok(Some(field)) = multipart.next_field().await {
         let name = field.name().unwrap_or("").to_string();
@@ -100,6 +103,27 @@ pub async fn verify_upload(
                     .parse::<u64>()
                     .map_err(|_| bad_request("max_age_secs must be a non-negative integer"))?;
             }
+            "expected_attestation_source" => {
+                let text = field.text().await.map_err(|e| {
+                    bad_request(format!(
+                        "Failed to read expected_attestation_source field: {}",
+                        e
+                    ))
+                })?;
+                let trimmed = text.trim().to_string();
+                if !trimmed.is_empty() {
+                    expected_attestation_source = Some(trimmed);
+                }
+            }
+            "expected_image_digest" => {
+                let text = field.text().await.map_err(|e| {
+                    bad_request(format!("Failed to read expected_image_digest field: {}", e))
+                })?;
+                let trimmed = text.trim().to_string();
+                if !trimmed.is_empty() {
+                    expected_image_digest = Some(trimmed);
+                }
+            }
             _ => {} // ignore unknown fields
         }
     }
@@ -119,7 +143,8 @@ pub async fn verify_upload(
         expected_model,
         expected_measurement_type: Some(measurement_type),
         max_age_secs,
-        ..Default::default()
+        expected_attestation_source,
+        expected_image_digest,
     };
     let result = verify_receipt(&receipt, &public_key, &options);
     Ok(Json(ApiVerifyResponse::from_result(result)))

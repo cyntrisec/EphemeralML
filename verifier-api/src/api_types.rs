@@ -17,6 +17,12 @@ pub struct VerifyRequest {
     /// Expected measurement type. Default "any" (skip).
     #[serde(default = "default_measurement_type")]
     pub measurement_type: String,
+    /// Expected attestation source (e.g. "cs-tdx", "aws-nitro"). Optional.
+    #[serde(default)]
+    pub expected_attestation_source: Option<String>,
+    /// Expected container image digest (e.g. "sha256:abc123"). Optional.
+    #[serde(default)]
+    pub expected_image_digest: Option<String>,
 }
 
 fn default_measurement_type() -> String {
