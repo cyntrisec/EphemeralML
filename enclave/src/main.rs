@@ -368,15 +368,13 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
                 );
                 TeeAttestationProvider::synthetic()
             } else {
-                return Err(
-                    "No TDX attestation source available.\n\
+                return Err("No TDX attestation source available.\n\
                     \n  Expected one of:\n    \
                     - /sys/kernel/config/tsm/report (configfs-tsm on TDX CVM)\n    \
                     - /run/container_launcher/teeserver.sock (Confidential Space)\n\
                     \n  For local development: use --synthetic (debug builds only).\n  \
                     For production: deploy on a TDX CVM or Confidential Space."
-                        .into(),
-                );
+                    .into());
             };
 
             let receipt_key = ReceiptSigningKey::generate()?;
@@ -975,11 +973,9 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
                     // The WIP audience is needed for the JWT audience field.
                     let wip_audience = args.gcp_wip_audience.as_deref().unwrap_or_default();
                     if wip_audience.is_empty() {
-                        return Err(
-                            "CS mode transport attestation requires --gcp-wip-audience \
+                        return Err("CS mode transport attestation requires --gcp-wip-audience \
                             (or EPHEMERALML_GCP_WIP_AUDIENCE) for the Launcher JWT audience."
-                                .into(),
-                        );
+                            .into());
                     }
                     info!(
                         step = "transport_bridge",

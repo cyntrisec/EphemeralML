@@ -563,10 +563,7 @@ mod tests {
 
         let parsed: AttestationReceipt = serde_json::from_str(&json).unwrap();
         assert_eq!(parsed.attestation_source, Some("cs-tdx".to_string()));
-        assert_eq!(
-            parsed.cs_image_digest,
-            Some("sha256:deadbeef".to_string())
-        );
+        assert_eq!(parsed.cs_image_digest, Some("sha256:deadbeef".to_string()));
         assert_eq!(parsed.cs_claims_hash, Some([0xAA; 32]));
         assert!(parsed.verify_signature(&key.public_key).unwrap());
     }

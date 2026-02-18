@@ -415,13 +415,9 @@ impl TdxEnvelopeVerifierBridge {
                 "TDX envelope user_data is empty — cannot extract receipt signing key".to_string(),
             ));
         }
-        let ud =
-            serde_json::from_slice::<EphemeralUserData>(&envelope.user_data).map_err(|e| {
-                AttestError::VerificationFailed(format!(
-                    "TDX envelope user_data parse failed: {}",
-                    e
-                ))
-            })?;
+        let ud = serde_json::from_slice::<EphemeralUserData>(&envelope.user_data).map_err(|e| {
+            AttestError::VerificationFailed(format!("TDX envelope user_data parse failed: {}", e))
+        })?;
         let cbor = ud.to_cbor().map_err(|e| {
             AttestError::VerificationFailed(format!(
                 "TDX envelope user_data CBOR encode failed: {}",
@@ -485,7 +481,10 @@ struct CsGceClaims {
 fn parse_jwt_claims(jwt: &str) -> std::result::Result<CsJwtClaims, String> {
     let parts: Vec<&str> = jwt.split('.').collect();
     if parts.len() != 3 {
-        return Err(format!("Invalid JWT: expected 3 parts, got {}", parts.len()));
+        return Err(format!(
+            "Invalid JWT: expected 3 parts, got {}",
+            parts.len()
+        ));
     }
 
     use base64::engine::general_purpose::URL_SAFE_NO_PAD;
@@ -957,10 +956,7 @@ mod tests {
 
         // JWT with no `iss` field
         let header = URL_SAFE_NO_PAD.encode(b"{\"alg\":\"RS256\",\"typ\":\"JWT\"}");
-        let claims = format!(
-            "{{\"exp\":9999999999,\"eat_nonce\":\"{}\"}}",
-            nonce_hex
-        );
+        let claims = format!("{{\"exp\":9999999999,\"eat_nonce\":\"{}\"}}", nonce_hex);
         let payload = URL_SAFE_NO_PAD.encode(claims.as_bytes());
         let sig = URL_SAFE_NO_PAD.encode(b"fake");
         let jwt = format!("{}.{}.{}", header, payload, sig);
@@ -992,7 +988,8 @@ mod tests {
 
         // JWT with no `eat_nonce` field
         let header = URL_SAFE_NO_PAD.encode(b"{\"alg\":\"RS256\",\"typ\":\"JWT\"}");
-        let claims = "{\"iss\":\"https://confidentialcomputing.googleapis.com\",\"exp\":9999999999}";
+        let claims =
+            "{\"iss\":\"https://confidentialcomputing.googleapis.com\",\"exp\":9999999999}";
         let payload = URL_SAFE_NO_PAD.encode(claims.as_bytes());
         let sig = URL_SAFE_NO_PAD.encode(b"fake");
         let jwt = format!("{}.{}.{}", header, payload, sig);
@@ -1097,8 +1094,7 @@ mod tests {
 
         std::env::set_var("EPHEMERALML_REQUIRE_MRTD", "false");
         // No policy pins set — should accept any values
-        let verifier = TdxEnvelopeVerifierBridge::new(None)
-            .with_cs_policy(CsPolicy::default());
+        let verifier = TdxEnvelopeVerifierBridge::new(None).with_cs_policy(CsPolicy::default());
 
         let doc = CmlAttestationDocument::new(cbor);
         let result = verifier.verify(&doc).await;

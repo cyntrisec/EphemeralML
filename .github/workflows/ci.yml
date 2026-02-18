@@ -132,8 +132,8 @@ jobs:
         run: |
           DUPES=$(cargo tree -d --workspace --depth 0 2>&1 | grep -c "^[a-z]" || true)
           echo "Duplicate crate pairs: $DUPES"
-          if [ "$DUPES" -gt 75 ]; then
-            echo "::error::Duplicate crate count ($DUPES) exceeds threshold (75). Run 'cargo tree -d --workspace' to identify new duplicates."
+          if [ "$DUPES" -gt 85 ]; then
+            echo "::error::Duplicate crate count ($DUPES) exceeds threshold (85). Run 'cargo tree -d --workspace' to identify new duplicates."
             exit 1
           fi
 

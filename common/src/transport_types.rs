@@ -380,16 +380,15 @@ mod tests {
 
     #[test]
     fn test_cs_transport_attestation_deterministic_encoding() {
-        let att = CsTransportAttestation::new(
-            make_test_jwt(),
-            [0x11; 32],
-            vec![0x22; 32],
-            vec![0x33; 8],
-        );
+        let att =
+            CsTransportAttestation::new(make_test_jwt(), [0x11; 32], vec![0x22; 32], vec![0x33; 8]);
         // Encode twice — must produce identical bytes
         let cbor1 = att.to_cbor_deterministic().unwrap();
         let cbor2 = att.to_cbor_deterministic().unwrap();
-        assert_eq!(cbor1, cbor2, "deterministic CBOR must be identical across calls");
+        assert_eq!(
+            cbor1, cbor2,
+            "deterministic CBOR must be identical across calls"
+        );
 
         // Hash must also be deterministic
         let hash1 = att.document_hash().unwrap();
