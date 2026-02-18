@@ -10,6 +10,8 @@
 - **CLI verify missing flags**: Added `--format`, `--expected-model`, `--measurement-type` to `ephemeralml verify`
 
 ### Added
+- **Multi-platform release binaries**: Linux (amd64/arm64, glibc/musl) + macOS (arm64/amd64) — 6 targets via CI matrix
+- **Installer auto-detection**: `install.sh` detects OS, architecture, and libc variant (musl vs glibc)
 - **Installer script** (`scripts/install.sh`): `curl -fsSL .../install.sh | bash` installs CLI binaries to `~/.ephemeralml/bin/`
 - **JSON output for verify**: `ephemeralml verify --format json` returns machine-readable verification results
 

@@ -6,6 +6,7 @@
 #
 # Environment variables:
 #   EPHEMERALML_INSTALL_DIR  — override install directory (default: ~/.ephemeralml/bin)
+#   EPHEMERALML_VARIANT      — force libc variant: "musl" or "gnu" (default: auto-detect)
 
 set -eu
 
@@ -22,24 +23,62 @@ need_cmd() {
     command -v "$1" >/dev/null 2>&1 || die "required command not found: $1"
 }
 
+# Portable SHA-256 checksum: works on Linux (sha256sum) and macOS (shasum -a 256).
+# Usage: check_sha256 <file> <expected_hash>
+check_sha256() {
+    _file="$1"
+    _expected="$2"
+    if command -v sha256sum >/dev/null 2>&1; then
+        _actual=$(sha256sum "$_file" | cut -d' ' -f1)
+    elif command -v shasum >/dev/null 2>&1; then
+        _actual=$(shasum -a 256 "$_file" | cut -d' ' -f1)
+    else
+        die "no sha256sum or shasum found — cannot verify checksum"
+    fi
+    [ "$_actual" = "$_expected" ] || die "checksum mismatch for $_file (expected $_expected, got $_actual)"
+}
+
 # ── preflight checks ────────────────────────────────────────────────────────
 
 need_cmd curl
 need_cmd tar
-need_cmd sha256sum
+
+# ── detect platform ──────────────────────────────────────────────────────────
 
 OS="$(uname -s)"
 ARCH="$(uname -m)"
 
 case "$OS" in
     Linux)  OS_TAG="linux" ;;
-    *)      die "unsupported OS: $OS (only Linux is supported)" ;;
+    Darwin) OS_TAG="darwin" ;;
+    *)      die "unsupported OS: $OS (supported: Linux, macOS)" ;;
 esac
 
 case "$ARCH" in
-    x86_64|amd64) ARCH_TAG="amd64" ;;
-    *)            die "unsupported architecture: $ARCH (only x86_64/amd64 is supported)" ;;
+    x86_64|amd64)   ARCH_TAG="amd64" ;;
+    aarch64|arm64)   ARCH_TAG="arm64" ;;
+    *)               die "unsupported architecture: $ARCH (supported: x86_64/amd64, aarch64/arm64)" ;;
 esac
+
+# ── detect musl on Linux ─────────────────────────────────────────────────────
+
+VARIANT=""
+if [ "$OS_TAG" = "linux" ]; then
+    if [ "${EPHEMERALML_VARIANT:-}" = "musl" ]; then
+        VARIANT="-musl"
+    elif [ "${EPHEMERALML_VARIANT:-}" = "gnu" ] || [ "${EPHEMERALML_VARIANT:-}" = "" ]; then
+        # Auto-detect: check if ldd reports musl
+        if command -v ldd >/dev/null 2>&1; then
+            if ldd --version 2>&1 | grep -qi musl; then
+                VARIANT="-musl"
+            fi
+        fi
+        # Override: if EPHEMERALML_VARIANT is explicitly "gnu", keep empty
+    fi
+fi
+
+PLATFORM="${OS_TAG}-${ARCH_TAG}${VARIANT}"
+info "detect" "platform: $PLATFORM"
 
 # ── resolve latest release tag ───────────────────────────────────────────────
 
@@ -56,7 +95,7 @@ info "found" "$TAG"
 # ── download tarball + checksums ─────────────────────────────────────────────
 
 BASE_URL="https://github.com/${REPO}/releases/download/${TAG}"
-TARBALL="ephemeralml-${TAG}-${OS_TAG}-${ARCH_TAG}.tar.gz"
+TARBALL="ephemeralml-${TAG}-${PLATFORM}.tar.gz"
 
 TMPDIR=$(mktemp -d)
 trap 'rm -rf "$TMPDIR"' EXIT
@@ -72,15 +111,16 @@ curl -fsSL -o "${TMPDIR}/SHA256SUMS" "${BASE_URL}/SHA256SUMS" \
 # ── verify checksum ──────────────────────────────────────────────────────────
 
 info "verify" "checking SHA-256 checksum..."
-(cd "$TMPDIR" && sha256sum -c SHA256SUMS --ignore-missing) \
-    || die "checksum verification failed — download may be corrupted"
+EXPECTED_HASH=$(awk -v f="$TARBALL" '$2==f {print $1}' "${TMPDIR}/SHA256SUMS")
+[ -n "$EXPECTED_HASH" ] || die "tarball $TARBALL not found in SHA256SUMS"
+check_sha256 "${TMPDIR}/${TARBALL}" "$EXPECTED_HASH"
 
 # ── extract and install ──────────────────────────────────────────────────────
 
 info "extract" "unpacking tarball..."
 tar xzf "${TMPDIR}/${TARBALL}" -C "$TMPDIR"
 
-EXTRACTED_DIR="${TMPDIR}/ephemeralml-${TAG}-${OS_TAG}-${ARCH_TAG}"
+EXTRACTED_DIR="${TMPDIR}/ephemeralml-${TAG}-${PLATFORM}"
 [ -d "${EXTRACTED_DIR}/bin" ] || die "unexpected tarball layout — missing bin/ directory"
 
 mkdir -p "$INSTALL_DIR"

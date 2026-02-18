@@ -15,13 +15,49 @@ permissions:
   packages: write
 
 jobs:
-  build-linux:
-    name: Build Linux Binaries
-    runs-on: ubuntu-22.04
+  build:
+    name: Build (${{ matrix.name }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: linux-amd64
+            os: ubuntu-22.04
+            target: x86_64-unknown-linux-gnu
+            use_cross: false
+            build_orchestrator: true
+          - name: linux-arm64
+            os: ubuntu-22.04
+            target: aarch64-unknown-linux-gnu
+            use_cross: true
+            build_orchestrator: false
+          - name: linux-amd64-musl
+            os: ubuntu-22.04
+            target: x86_64-unknown-linux-musl
+            use_cross: true
+            build_orchestrator: false
+          - name: linux-arm64-musl
+            os: ubuntu-22.04
+            target: aarch64-unknown-linux-musl
+            use_cross: true
+            build_orchestrator: false
+          - name: darwin-arm64
+            os: macos-latest
+            target: aarch64-apple-darwin
+            use_cross: false
+            build_orchestrator: false
+          - name: darwin-amd64
+            os: macos-13
+            target: x86_64-apple-darwin
+            use_cross: false
+            build_orchestrator: false
     steps:
       - uses: actions/checkout@v6
 
       - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
 
       - uses: actions/cache@v5
         with:
@@ -29,49 +65,69 @@ jobs:
             ~/.cargo/registry
             ~/.cargo/git
             target
-          key: ubuntu-22.04-cargo-release-${{ hashFiles('**/Cargo.lock') }}
+          key: ${{ matrix.os }}-${{ matrix.target }}-cargo-release-${{ hashFiles('**/Cargo.lock') }}
 
-      - name: Build client binaries (ephemeralml, ephemeralml-verify)
-        run: cargo build --release -p ephemeral-ml-client
+      - name: Install cross
+        if: matrix.use_cross
+        uses: taiki-e/install-action@cross
+
+      - name: Set OpenSSL dir (macOS)
+        if: startsWith(matrix.os, 'macos')
+        run: |
+          echo "OPENSSL_DIR=$(brew --prefix openssl@3)" >> "$GITHUB_ENV"
+
+      - name: Build client binaries
+        run: |
+          if [ "${{ matrix.use_cross }}" = "true" ]; then
+            cross build --release --target ${{ matrix.target }} -p ephemeral-ml-client
+          else
+            cargo build --release --target ${{ matrix.target }} -p ephemeral-ml-client
+          fi
 
       - name: Build compliance binary
-        run: cargo build --release -p ephemeral-ml-compliance
+        run: |
+          if [ "${{ matrix.use_cross }}" = "true" ]; then
+            cross build --release --target ${{ matrix.target }} -p ephemeral-ml-compliance
+          else
+            cargo build --release --target ${{ matrix.target }} -p ephemeral-ml-compliance
+          fi
 
       - name: Build orchestrator binary
-        run: cargo build --release -p ephemeral-ml-enclave --bin ephemeralml-orchestrator
+        if: matrix.build_orchestrator
+        run: cargo build --release --target ${{ matrix.target }} -p ephemeral-ml-enclave --bin ephemeralml-orchestrator
 
       - name: Package release tarball
         run: |
           TAG="${GITHUB_REF_NAME}"
-          DIST="ephemeralml-${TAG}-linux-amd64"
+          DIST="ephemeralml-${TAG}-${{ matrix.name }}"
           mkdir -p "${DIST}/bin" "${DIST}/scripts/gcp"
 
-          cp target/release/ephemeralml         "${DIST}/bin/"
-          cp target/release/ephemeralml-verify  "${DIST}/bin/"
-          cp target/release/ephemeralml-compliance "${DIST}/bin/"
-          cp target/release/ephemeralml-orchestrator "${DIST}/bin/"
+          cp "target/${{ matrix.target }}/release/ephemeralml"           "${DIST}/bin/"
+          cp "target/${{ matrix.target }}/release/ephemeralml-verify"    "${DIST}/bin/"
+          cp "target/${{ matrix.target }}/release/ephemeralml-compliance" "${DIST}/bin/"
 
-          cp scripts/gcp/mvp_gpu_e2e.sh  "${DIST}/scripts/gcp/"
-          cp scripts/gcp/deploy.sh       "${DIST}/scripts/gcp/"
-          cp scripts/gcp/setup_kms.sh    "${DIST}/scripts/gcp/"
-          cp scripts/gcp/teardown.sh     "${DIST}/scripts/gcp/"
-          cp scripts/gcp/verify.sh       "${DIST}/scripts/gcp/"
-          cp scripts/gcp/package_model.sh "${DIST}/scripts/gcp/"
+          if [ "${{ matrix.build_orchestrator }}" = "true" ]; then
+            cp "target/${{ matrix.target }}/release/ephemeralml-orchestrator" "${DIST}/bin/"
+          fi
+
+          cp scripts/gcp/mvp_gpu_e2e.sh   "${DIST}/scripts/gcp/"
+          cp scripts/gcp/deploy.sh         "${DIST}/scripts/gcp/"
+          cp scripts/gcp/setup_kms.sh      "${DIST}/scripts/gcp/"
+          cp scripts/gcp/teardown.sh       "${DIST}/scripts/gcp/"
+          cp scripts/gcp/verify.sh         "${DIST}/scripts/gcp/"
+          cp scripts/gcp/package_model.sh  "${DIST}/scripts/gcp/"
 
           cp QUICKSTART.md "${DIST}/"
           cp LICENSE        "${DIST}/" 2>/dev/null || true
           cp CHANGELOG.md   "${DIST}/"
 
           tar czf "${DIST}.tar.gz" "${DIST}"
-          sha256sum "${DIST}.tar.gz" > SHA256SUMS
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: release-linux
-          path: |
-            ephemeralml-*.tar.gz
-            SHA256SUMS
+          name: release-${{ matrix.name }}
+          path: ephemeralml-*.tar.gz
 
   docker:
     name: Build & Push Docker Image
@@ -99,14 +155,18 @@ jobs:
   release:
     name: Create GitHub Release
     runs-on: ubuntu-latest
-    needs: [build-linux]
+    needs: [build, docker]
     steps:
       - uses: actions/checkout@v6
 
-      - name: Download artifacts
+      - name: Download all build artifacts
         uses: actions/download-artifact@v4
         with:
-          name: release-linux
+          pattern: release-*
+          merge-multiple: true
+
+      - name: Generate SHA256SUMS
+        run: sha256sum ephemeralml-*.tar.gz > SHA256SUMS
 
       - name: Copy install script
         run: cp scripts/install.sh .
