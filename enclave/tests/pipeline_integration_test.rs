@@ -37,7 +37,7 @@ impl ReceiptTestExecutor {
         let session_id = hex::encode(&receipt_pk[..16]);
         let attestation_hash = {
             use sha2::{Digest, Sha256};
-            let hash: [u8; 32] = Sha256::digest(&receipt_pk).into();
+            let hash: [u8; 32] = Sha256::digest(receipt_pk).into();
             hash
         };
         let state = ConnectionState::new(

@@ -12,6 +12,7 @@ use tokio::net::TcpListener;
 ///
 /// Responses are consumed in FIFO order: each incoming HTTP request
 /// receives the next `(status_code, body)` from the queue.
+#[allow(dead_code)]
 pub struct MockHttpServer {
     pub base_url: String,
     _handle: tokio::task::JoinHandle<()>,
@@ -21,6 +22,7 @@ impl MockHttpServer {
     /// Start a mock server that returns responses in order.
     ///
     /// Each element is `(HTTP status code, JSON response body)`.
+    #[allow(dead_code)]
     pub async fn start(responses: Vec<(u16, String)>) -> Self {
         let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
         let base_url = format!("http://{}", listener.local_addr().unwrap());
