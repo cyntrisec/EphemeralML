@@ -57,6 +57,15 @@ enum Commands {
         /// Path to the CBOR-encoded attestation document (optional).
         #[arg(long)]
         attestation: Option<String>,
+        /// Path to the model manifest JSON file (optional).
+        #[arg(long)]
+        manifest: Option<String>,
+        /// Strict mode: fail if any evidence type referenced by baseline rules is missing.
+        #[arg(long)]
+        strict: bool,
+        /// Auto-discover evidence files from a directory (*.json receipts, *.bin attestation, *.manifest.json).
+        #[arg(long)]
+        auto_discover: Option<String>,
         /// Output path for the bundle JSON.
         #[arg(long)]
         output: String,
@@ -94,8 +103,18 @@ fn main() {
         Commands::Collect {
             receipt,
             attestation,
+            manifest,
+            strict,
+            auto_discover,
             output,
-        } => run_collect(&receipt, attestation.as_deref(), &output),
+        } => run_collect(
+            &receipt,
+            attestation.as_deref(),
+            manifest.as_deref(),
+            strict,
+            auto_discover.as_deref(),
+            &output,
+        ),
         Commands::Export {
             bundle,
             profile,
@@ -282,7 +301,14 @@ fn run_verify(
     }
 }
 
-fn run_collect(receipt_path: &str, attestation_path: Option<&str>, output_path: &str) -> i32 {
+fn run_collect(
+    receipt_path: &str,
+    attestation_path: Option<&str>,
+    manifest_path: Option<&str>,
+    strict: bool,
+    auto_discover: Option<&str>,
+    output_path: &str,
+) -> i32 {
     let mut collector = EvidenceBundleCollector::new();
 
     // Add receipt
@@ -301,8 +327,40 @@ fn run_collect(receipt_path: &str, attestation_path: Option<&str>, output_path: 
         }
     };
 
-    // Add attestation if provided
-    if let Some(att_path) = attestation_path {
+    // Resolve attestation and manifest paths (explicit flags or auto-discover)
+    let mut att_path_resolved: Option<String> = attestation_path.map(|s| s.to_string());
+    let mut manifest_path_resolved: Option<String> = manifest_path.map(|s| s.to_string());
+
+    // Auto-discover evidence files from a directory
+    if let Some(dir) = auto_discover {
+        let dir_path = std::path::Path::new(dir);
+        if !dir_path.is_dir() {
+            eprintln!("Error: --auto-discover path is not a directory: {}", dir);
+            return 2;
+        }
+        if let Ok(entries) = std::fs::read_dir(dir_path) {
+            for entry in entries.flatten() {
+                let path = entry.path();
+                let name = path.file_name().unwrap_or_default().to_string_lossy();
+                if att_path_resolved.is_none() && name.ends_with(".bin") {
+                    att_path_resolved = Some(path.display().to_string());
+                    eprintln!("Auto-discovered attestation: {}", path.display());
+                }
+                if manifest_path_resolved.is_none()
+                    && (name.ends_with(".manifest.json")
+                        || name == "manifest.json"
+                        || name == "ephemeralml-manifest.json")
+                {
+                    manifest_path_resolved = Some(path.display().to_string());
+                    eprintln!("Auto-discovered manifest: {}", path.display());
+                }
+            }
+        }
+    }
+
+    // Add attestation if provided or discovered
+    let mut att_id_opt: Option<String> = None;
+    if let Some(att_path) = att_path_resolved.as_deref() {
         let att_data = match std::fs::read(att_path) {
             Ok(d) => d,
             Err(e) => {
@@ -318,6 +376,33 @@ fn run_collect(receipt_path: &str, attestation_path: Option<&str>, output_path: 
             }
         };
         collector.add_binding(&receipt_id, &att_id, "signing-key-attestation", None);
+        att_id_opt = Some(att_id);
+    }
+
+    // Add manifest if provided or discovered
+    let mut manifest_id_opt: Option<String> = None;
+    if let Some(m_path) = manifest_path_resolved.as_deref() {
+        let manifest_data = match std::fs::read(m_path) {
+            Ok(d) => d,
+            Err(e) => {
+                eprintln!("Error: cannot read manifest '{}': {}", m_path, e);
+                return 2;
+            }
+        };
+        let m_id = match collector.add_model_manifest(&manifest_data) {
+            Ok(id) => id,
+            Err(e) => {
+                eprintln!("Error: cannot add manifest: {}", e);
+                return 2;
+            }
+        };
+        collector.add_binding(&receipt_id, &m_id, "model-manifest-receipt", None);
+        manifest_id_opt = Some(m_id);
+    }
+
+    // Auto-create attestation-manifest binding if both present
+    if let (Some(ref att_id), Some(ref m_id)) = (&att_id_opt, &manifest_id_opt) {
+        collector.add_binding(att_id, m_id, "attestation-manifest", None);
     }
 
     // Build
@@ -328,6 +413,26 @@ fn run_collect(receipt_path: &str, attestation_path: Option<&str>, output_path: 
             return 2;
         }
     };
+
+    // Strict mode: verify all evidence types referenced by baseline rules are present
+    if strict {
+        let has_attestation = att_id_opt.is_some();
+        let has_manifest = manifest_id_opt.is_some();
+        let mut missing = Vec::new();
+        if !has_attestation {
+            missing.push("attestation (required by ATT-001, ATT-002, KEY-001)");
+        }
+        if !has_manifest {
+            missing.push("model manifest (required by MODEL-002)");
+        }
+        if !missing.is_empty() {
+            eprintln!("Error (--strict): missing evidence types:");
+            for m in &missing {
+                eprintln!("  - {}", m);
+            }
+            return 1;
+        }
+    }
 
     // Write
     let json = match serde_json::to_string_pretty(&bundle) {

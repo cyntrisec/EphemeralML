@@ -294,6 +294,23 @@ async fn run_infer(ui: &mut Ui, args: InferArgs) -> Result<()> {
         .with_context(|| format!("Failed to write {}", args.receipt.display()))?;
     ui.kv("Saved to", &args.receipt.display().to_string());
 
+    // Save sidecar evidence files alongside receipt
+    if let Some(ref att_b64) = result.boot_attestation_b64 {
+        use base64::Engine as _;
+        if let Ok(att_bytes) = base64::engine::general_purpose::STANDARD.decode(att_b64) {
+            let att_path = "/tmp/ephemeralml-attestation.bin";
+            fs::write(att_path, &att_bytes)
+                .with_context(|| format!("Failed to write {}", att_path))?;
+            ui.kv("Attestation", att_path);
+        }
+    }
+    if let Some(ref manifest_json) = result.model_manifest_json {
+        let manifest_path = "/tmp/ephemeralml-manifest.json";
+        fs::write(manifest_path, manifest_json)
+            .with_context(|| format!("Failed to write {}", manifest_path))?;
+        ui.kv("Manifest", manifest_path);
+    }
+
     ui.blank();
     ui.ghost(GhostState::Success);
     Ok(())

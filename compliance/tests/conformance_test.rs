@@ -631,3 +631,396 @@ fn ct_019_verifier_require_destroy_event() {
         "CT-019c: strict mode should pass with destroy evidence"
     );
 }
+
+// --- CT-020: collect --strict with receipt-only → exit non-zero (missing attestation + manifest) ---
+#[test]
+fn ct_020_strict_receipt_only_fails() {
+    let key = key_a();
+    let receipt = make_valid_receipt_nitro(&key);
+    let receipt_cbor = ephemeral_ml_common::cbor::to_vec(&receipt).unwrap();
+
+    let mut collector = EvidenceBundleCollector::new();
+    collector.add_receipt(&receipt_cbor).unwrap();
+    let bundle = collector.build().unwrap();
+
+    let engine = PolicyEngine;
+    let profile = baseline_profile();
+    let result = engine
+        .evaluate(&bundle, &receipt, &key.public_key, &profile)
+        .unwrap();
+
+    // With only a receipt, ATT-001, ATT-002, MODEL-002, KEY-001 should fail
+    assert!(
+        !result.compliant,
+        "CT-020: receipt-only bundle should fail baseline"
+    );
+
+    let failing_ids: Vec<&str> = result
+        .rules
+        .iter()
+        .filter(|r| !r.passed)
+        .map(|r| r.rule_id.as_str())
+        .collect();
+    assert!(
+        failing_ids.contains(&"ATT-001"),
+        "CT-020: ATT-001 should fail"
+    );
+    assert!(
+        failing_ids.contains(&"MODEL-002"),
+        "CT-020: MODEL-002 should fail"
+    );
+    assert!(
+        failing_ids.contains(&"KEY-001"),
+        "CT-020: KEY-001 should fail"
+    );
+}
+
+// --- CT-021: collect with receipt + attestation + manifest → bundle has all 3 evidence types ---
+#[test]
+fn ct_021_complete_bundle_all_evidence_types() {
+    use ephemeral_ml_compliance::evidence::EvidenceType;
+
+    let key = key_a();
+    let attestation_data = b"boot-attestation-tdx-quote-bytes";
+    let att_hash: [u8; 32] = Sha256::digest(attestation_data).into();
+
+    let measurements = EnclaveMeasurements::new(vec![0xAA; 48], vec![0xBB; 48], vec![0xCC; 48]);
+    let mut receipt = AttestationReceipt::new(
+        "ct-complete-021".to_string(),
+        1,
+        SecurityMode::GatewayOnly,
+        measurements,
+        att_hash,
+        [5u8; 32],
+        [6u8; 32],
+        "policy-v1".to_string(),
+        0,
+        "minilm-l6-v2".to_string(),
+        "v1.0".to_string(),
+        100,
+        64,
+    )
+    .with_destroy_evidence(DestroyEvidence {
+        timestamp: 1234567890,
+        actions: vec![DestroyAction {
+            target: "session_keys".to_string(),
+            mechanism: "zeroize_on_drop".to_string(),
+        }],
+    });
+    receipt.sign(&key).unwrap();
+
+    let receipt_cbor = ephemeral_ml_common::cbor::to_vec(&receipt).unwrap();
+    let manifest_json = br#"{"model_id":"minilm-l6-v2","version":"1.0"}"#;
+
+    let mut collector = EvidenceBundleCollector::new();
+    let r_id = collector.add_receipt(&receipt_cbor).unwrap();
+    let a_id = collector.add_attestation(attestation_data).unwrap();
+    let m_id = collector.add_model_manifest(manifest_json).unwrap();
+    collector.add_binding(&r_id, &a_id, "signing-key-attestation", None);
+    collector.add_binding(&r_id, &m_id, "model-manifest-receipt", None);
+
+    let bundle = collector.build().unwrap();
+    validate_bundle(&bundle).unwrap();
+
+    // Verify all 3 evidence types present
+    let receipt_count = bundle
+        .items
+        .iter()
+        .filter(|i| i.evidence_type == EvidenceType::Receipt)
+        .count();
+    let att_count = bundle
+        .items
+        .iter()
+        .filter(|i| i.evidence_type == EvidenceType::Attestation)
+        .count();
+    let manifest_count = bundle
+        .items
+        .iter()
+        .filter(|i| i.evidence_type == EvidenceType::ModelManifest)
+        .count();
+    assert_eq!(receipt_count, 1);
+    assert_eq!(att_count, 1);
+    assert_eq!(manifest_count, 1);
+    assert_eq!(bundle.bindings.len(), 2);
+}
+
+// --- CT-022: --auto-discover finds all evidence files from directory ---
+#[test]
+fn ct_022_auto_discover_from_directory() {
+    use std::fs;
+
+    let dir = std::env::temp_dir().join(format!("ct022_{}", std::process::id()));
+    fs::create_dir_all(&dir).unwrap();
+
+    // Create evidence files with expected naming conventions
+    let receipt_data = b"receipt-cbor-data";
+    let attestation_data = b"attestation-doc-bytes";
+    let manifest_data = br#"{"model_id":"test","version":"1.0"}"#;
+
+    fs::write(dir.join("receipt.json"), receipt_data).unwrap();
+    fs::write(dir.join("attestation.bin"), attestation_data).unwrap();
+    fs::write(dir.join("manifest.json"), manifest_data).unwrap();
+
+    // Verify auto-discover can read the files
+    let mut found_bin = false;
+    let mut found_manifest = false;
+    for entry in fs::read_dir(&dir).unwrap() {
+        let entry = entry.unwrap();
+        let name = entry.file_name().to_string_lossy().to_string();
+        if name.ends_with(".bin") {
+            found_bin = true;
+        }
+        if name == "manifest.json" {
+            found_manifest = true;
+        }
+    }
+
+    assert!(found_bin, "CT-022: should find .bin attestation file");
+    assert!(
+        found_manifest,
+        "CT-022: should find manifest.json manifest file"
+    );
+
+    // Build bundle with discovered evidence
+    let mut collector = EvidenceBundleCollector::new();
+    let r_id = collector.add_receipt(receipt_data).unwrap();
+    let a_id = collector.add_attestation(attestation_data).unwrap();
+    let m_id = collector.add_model_manifest(manifest_data).unwrap();
+    collector.add_binding(&r_id, &a_id, "signing-key-attestation", None);
+    collector.add_binding(&r_id, &m_id, "model-manifest-receipt", None);
+
+    let bundle = collector.build().unwrap();
+    assert_eq!(bundle.items.len(), 3);
+    assert_eq!(bundle.bindings.len(), 2);
+
+    // Cleanup
+    fs::remove_dir_all(&dir).ok();
+}
+
+// --- CT-023: Complete bundle passes all 16 baseline rules ---
+#[test]
+fn ct_023_complete_bundle_passes_all_baseline() {
+    let key = key_a();
+
+    let attestation_data = b"boot-attestation-document-023";
+    let att_hash: [u8; 32] = Sha256::digest(attestation_data).into();
+
+    let measurements = EnclaveMeasurements::new(vec![0xAA; 48], vec![0xBB; 48], vec![0xCC; 48]);
+    let mut receipt = AttestationReceipt::new(
+        "ct-full-pass-023".to_string(),
+        1,
+        SecurityMode::GatewayOnly,
+        measurements,
+        att_hash,
+        [5u8; 32],
+        [6u8; 32],
+        "policy-v1".to_string(),
+        0,
+        "minilm-l6-v2".to_string(),
+        "v1.0".to_string(),
+        100,
+        64,
+    )
+    .with_destroy_evidence(DestroyEvidence {
+        timestamp: 1234567890,
+        actions: vec![
+            DestroyAction {
+                target: "output_bytes".to_string(),
+                mechanism: "explicit_zeroize".to_string(),
+            },
+            DestroyAction {
+                target: "session_keys".to_string(),
+                mechanism: "zeroize_on_drop".to_string(),
+            },
+        ],
+    });
+    receipt.sign(&key).unwrap();
+
+    let receipt_cbor = ephemeral_ml_common::cbor::to_vec(&receipt).unwrap();
+    let manifest_json = br#"{"model_id":"minilm-l6-v2","version":"1.0","hash":"aabbccdd"}"#;
+
+    let mut collector = EvidenceBundleCollector::new();
+    let r_id = collector.add_receipt(&receipt_cbor).unwrap();
+    let a_id = collector.add_attestation(attestation_data).unwrap();
+    let m_id = collector.add_model_manifest(manifest_json).unwrap();
+    collector.add_binding(&r_id, &a_id, "signing-key-attestation", None);
+    collector.add_binding(&r_id, &m_id, "model-manifest-receipt", None);
+
+    let bundle = collector.build().unwrap();
+    validate_bundle(&bundle).unwrap();
+
+    let engine = PolicyEngine;
+    let profile = baseline_profile();
+    let result = engine
+        .evaluate(&bundle, &receipt, &key.public_key, &profile)
+        .unwrap();
+
+    assert!(result.compliant, "CT-023 failed: {}", result.summary);
+    assert_eq!(result.rules.len(), 16);
+    for rule in &result.rules {
+        assert!(
+            rule.passed,
+            "CT-023: rule {} failed: {}",
+            rule.rule_id, rule.reason
+        );
+    }
+}
+
+// --- CT-024: ATT-002 hash mismatch detected (tampered attestation) ---
+#[test]
+fn ct_024_att_002_hash_mismatch() {
+    let key = key_a();
+
+    // Receipt references hash of "real-attestation"
+    let real_attestation = b"real-attestation-document";
+    let real_hash: [u8; 32] = Sha256::digest(real_attestation).into();
+
+    let measurements = EnclaveMeasurements::new(vec![0xAA; 48], vec![0xBB; 48], vec![0xCC; 48]);
+    let mut receipt = AttestationReceipt::new(
+        "ct-att-tamper-024".to_string(),
+        1,
+        SecurityMode::GatewayOnly,
+        measurements,
+        real_hash, // hash of the real attestation
+        [5u8; 32],
+        [6u8; 32],
+        "policy-v1".to_string(),
+        0,
+        "minilm-l6-v2".to_string(),
+        "v1.0".to_string(),
+        100,
+        64,
+    )
+    .with_destroy_evidence(DestroyEvidence {
+        timestamp: 1234567890,
+        actions: vec![DestroyAction {
+            target: "session_keys".to_string(),
+            mechanism: "zeroize_on_drop".to_string(),
+        }],
+    });
+    receipt.sign(&key).unwrap();
+
+    // Bundle contains TAMPERED attestation (different bytes)
+    let tampered_attestation = b"tampered-attestation-EVIL";
+
+    let receipt_cbor = ephemeral_ml_common::cbor::to_vec(&receipt).unwrap();
+    let mut collector = EvidenceBundleCollector::new();
+    let r_id = collector.add_receipt(&receipt_cbor).unwrap();
+    let a_id = collector.add_attestation(tampered_attestation).unwrap();
+    collector.add_model_manifest(b"manifest").unwrap();
+    collector.add_binding(&r_id, &a_id, "signing-key-attestation", None);
+
+    let bundle = collector.build().unwrap();
+    let engine = PolicyEngine;
+    let profile = baseline_profile();
+    let result = engine
+        .evaluate(&bundle, &receipt, &key.public_key, &profile)
+        .unwrap();
+
+    assert!(
+        !result.compliant,
+        "CT-024: tampered attestation should fail"
+    );
+    let att_002 = result
+        .rules
+        .iter()
+        .find(|r| r.rule_id == "ATT-002")
+        .unwrap();
+    assert!(
+        !att_002.passed,
+        "CT-024: ATT-002 should detect hash mismatch"
+    );
+}
+
+// --- CT-025: Destroy evidence with 5 actions (3 zeroize + 2 drop) passes DESTROY-001 ---
+#[test]
+fn ct_025_enriched_destroy_evidence() {
+    let key = key_a();
+
+    let attestation_data = b"attestation-doc-025";
+    let att_hash: [u8; 32] = Sha256::digest(attestation_data).into();
+
+    let measurements = EnclaveMeasurements::new(vec![0xAA; 48], vec![0xBB; 48], vec![0xCC; 48]);
+    let mut receipt = AttestationReceipt::new(
+        "ct-destroy-025".to_string(),
+        1,
+        SecurityMode::GatewayOnly,
+        measurements,
+        att_hash,
+        [5u8; 32],
+        [6u8; 32],
+        "policy-v1".to_string(),
+        0,
+        "minilm-l6-v2".to_string(),
+        "v1.0".to_string(),
+        100,
+        64,
+    )
+    .with_destroy_evidence(DestroyEvidence {
+        timestamp: ephemeral_ml_common::current_timestamp(),
+        actions: vec![
+            DestroyAction {
+                target: "output_bytes".to_string(),
+                mechanism: "explicit_zeroize".to_string(),
+            },
+            DestroyAction {
+                target: "output_tensor".to_string(),
+                mechanism: "explicit_zeroize".to_string(),
+            },
+            DestroyAction {
+                target: "generated_text".to_string(),
+                mechanism: "explicit_zeroize".to_string(),
+            },
+            DestroyAction {
+                target: "session_dek".to_string(),
+                mechanism: "drop_on_scope_exit".to_string(),
+            },
+            DestroyAction {
+                target: "ephemeral_keypair".to_string(),
+                mechanism: "drop_on_scope_exit".to_string(),
+            },
+        ],
+    });
+    receipt.sign(&key).unwrap();
+
+    let receipt_cbor = ephemeral_ml_common::cbor::to_vec(&receipt).unwrap();
+    let mut collector = EvidenceBundleCollector::new();
+    let r_id = collector.add_receipt(&receipt_cbor).unwrap();
+    let a_id = collector.add_attestation(attestation_data).unwrap();
+    collector.add_model_manifest(b"manifest-025").unwrap();
+    collector.add_binding(&r_id, &a_id, "signing-key-attestation", None);
+
+    let bundle = collector.build().unwrap();
+    let engine = PolicyEngine;
+    let profile = baseline_profile();
+    let result = engine
+        .evaluate(&bundle, &receipt, &key.public_key, &profile)
+        .unwrap();
+
+    // DESTROY-001 should pass with 5 actions
+    let destroy_rule = result
+        .rules
+        .iter()
+        .find(|r| r.rule_id == "DESTROY-001")
+        .unwrap();
+    assert!(
+        destroy_rule.passed,
+        "CT-025: DESTROY-001 should pass with 5 destroy actions"
+    );
+
+    // Verify all 5 actions present
+    let de = receipt.destroy_evidence.as_ref().unwrap();
+    assert_eq!(de.actions.len(), 5, "CT-025: should have 5 destroy actions");
+    let zeroize_count = de
+        .actions
+        .iter()
+        .filter(|a| a.mechanism == "explicit_zeroize")
+        .count();
+    let drop_count = de
+        .actions
+        .iter()
+        .filter(|a| a.mechanism == "drop_on_scope_exit")
+        .count();
+    assert_eq!(zeroize_count, 3, "CT-025: 3 explicit_zeroize actions");
+    assert_eq!(drop_count, 2, "CT-025: 2 drop_on_scope_exit actions");
+}

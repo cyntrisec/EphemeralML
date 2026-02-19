@@ -1,0 +1,26 @@
+
+  ==============================================================
+  EphemeralML Receipt Verification
+  ==============================================================
+
+  Receipt:     68796942-19cf-4b60-a17c-91e5a0de8555
+  Model:       stage-0 v1.0
+  Platform:    tdx-mrtd-rtmr
+  Sequence:    #0
+
+  --------------------------------------------------------------
+  Checks:
+  --------------------------------------------------------------
+  Signature (Ed25519)         [PASS]
+  Model ID match              [SKIP]
+  Measurement type            [SKIP]
+  Timestamp freshness         [SKIP]
+  Measurements present        [PASS]
+  Attestation source          [SKIP]
+  Image digest                [SKIP]
+  Destroy evidence            [PASS]
+  --------------------------------------------------------------
+
+  VERIFIED
+
+  --------------------------------------------------------------

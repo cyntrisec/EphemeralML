@@ -1,0 +1,103 @@
+{
+  "compliant": true,
+  "profile_name": "baseline",
+  "rules": [
+    {
+      "rule_id": "SIG-001",
+      "rule_name": "Ed25519 signature verification",
+      "passed": true,
+      "reason": "Ed25519 signature verified (strict)"
+    },
+    {
+      "rule_id": "SIG-002",
+      "rule_name": "CBOR canonical round-trip determinism",
+      "passed": true,
+      "reason": "Canonical encoding is deterministic"
+    },
+    {
+      "rule_id": "ATT-001",
+      "rule_name": "Attestation document present",
+      "passed": true,
+      "reason": "Attestation evidence item found in bundle"
+    },
+    {
+      "rule_id": "ATT-002",
+      "rule_name": "Attestation hash matches receipt",
+      "passed": true,
+      "reason": "SHA-256(attestation) == receipt.attestation_doc_hash"
+    },
+    {
+      "rule_id": "MEAS-001",
+      "rule_name": "Measurements are 48 bytes",
+      "passed": true,
+      "reason": "All PCR/MRTD measurements are 48 bytes"
+    },
+    {
+      "rule_id": "MEAS-002",
+      "rule_name": "Recognized measurement type",
+      "passed": true,
+      "reason": "Measurement type 'tdx-mrtd-rtmr' is recognized"
+    },
+    {
+      "rule_id": "FRESH-001",
+      "rule_name": "Receipt within max age",
+      "passed": true,
+      "reason": "Receipt age 6s <= max 3600s"
+    },
+    {
+      "rule_id": "FRESH-002",
+      "rule_name": "Receipt not future-dated",
+      "passed": true,
+      "reason": "Receipt timestamp is not in the future"
+    },
+    {
+      "rule_id": "MODEL-001",
+      "rule_name": "Model ID present",
+      "passed": true,
+      "reason": "model_id = 'stage-0'"
+    },
+    {
+      "rule_id": "MODEL-002",
+      "rule_name": "Model manifest present in bundle",
+      "passed": true,
+      "reason": "ModelManifest evidence item found"
+    },
+    {
+      "rule_id": "CHAIN-001",
+      "rule_name": "Receipt chain hash valid",
+      "passed": true,
+      "reason": "No previous_receipt_hash (single receipt or first in chain)"
+    },
+    {
+      "rule_id": "CBOR-001",
+      "rule_name": "CBOR deterministic encoding",
+      "passed": true,
+      "reason": "CBOR canonical round-trip produces identical bytes"
+    },
+    {
+      "rule_id": "KEY-001",
+      "rule_name": "Signing key bound to attestation",
+      "passed": true,
+      "reason": "signing-key-attestation binding found"
+    },
+    {
+      "rule_id": "POLICY-001",
+      "rule_name": "Policy version present",
+      "passed": true,
+      "reason": "policy_version = 'v1-default'"
+    },
+    {
+      "rule_id": "SEQ-001",
+      "rule_name": "Sequence numbers increasing",
+      "passed": true,
+      "reason": "Single receipt with sequence_number=0"
+    },
+    {
+      "rule_id": "DESTROY-001",
+      "rule_name": "Destroy evidence present",
+      "passed": true,
+      "reason": "Destroy evidence present with 5 action(s)"
+    }
+  ],
+  "summary": "All 16 rules passed for profile 'baseline'"
+}

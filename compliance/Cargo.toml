@@ -1,6 +1,6 @@
 [package]
 name = "ephemeral-ml-compliance"
-version = "0.2.7"
+version = "0.2.8"
 edition = "2021"
 license = "Apache-2.0"
 description = "Compliance evidence bundle generation and verification for EphemeralML"

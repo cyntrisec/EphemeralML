@@ -37,6 +37,12 @@ pub struct InferenceHandlerOutput {
     /// Generated text (only present when generate=true on the server).
     #[serde(default)]
     pub generated_text: Option<String>,
+    /// Base64-encoded boot attestation document (raw TEE quote bytes).
+    #[serde(default)]
+    pub boot_attestation_b64: Option<String>,
+    /// Model manifest JSON string.
+    #[serde(default)]
+    pub model_manifest_json: Option<String>,
 }
 
 /// Result of an inference request, including the output tensor and the signed receipt.
@@ -45,6 +51,12 @@ pub struct InferenceResult {
     pub receipt: AttestationReceipt,
     /// Generated text (only present for text generation requests).
     pub generated_text: Option<String>,
+    /// Base64-encoded boot attestation document (raw TEE quote bytes).
+    /// Present when the server provides boot attestation evidence.
+    pub boot_attestation_b64: Option<String>,
+    /// Model manifest JSON string.
+    /// Present when the server provides a model manifest.
+    pub model_manifest_json: Option<String>,
 }
 
 /// Trait for secure client communication
@@ -395,6 +407,8 @@ impl SecureClient for SecureEnclaveClient {
             output_tensor: output.output_tensor,
             receipt: output.receipt,
             generated_text: None,
+            boot_attestation_b64: output.boot_attestation_b64,
+            model_manifest_json: output.model_manifest_json,
         })
     }
 
@@ -579,6 +593,8 @@ impl SecureClient for SecureEnclaveClient {
             output_tensor: output.output_tensor,
             receipt: output.receipt,
             generated_text: output.generated_text,
+            boot_attestation_b64: output.boot_attestation_b64,
+            model_manifest_json: output.model_manifest_json,
         })
     }
 
@@ -760,6 +776,8 @@ impl SecureClient for SecureEnclaveClient {
             output_tensor: output.output_tensor,
             receipt: output.receipt,
             generated_text: output.generated_text,
+            boot_attestation_b64: output.boot_attestation_b64,
+            model_manifest_json: output.model_manifest_json,
         })
     }
 }
@@ -843,6 +861,8 @@ mod tests {
                     output_tensor,
                     receipt: signed_receipt,
                     generated_text: None,
+                    boot_attestation_b64: None,
+                    model_manifest_json: None,
                 };
                 let response_bytes = serde_json::to_vec(&output).unwrap();
                 channel.send(Bytes::from(response_bytes)).await.unwrap();

@@ -1,0 +1,46 @@
+  ==============================================================
+  EphemeralML — Deploy to Confidential Space
+  ==============================================================
+
+  Project:      project-d3c20737-eec2-453d-8e5
+  Zone:         us-central1-a
+  Machine:      c3-standard-4
+  Image:        us-docker.pkg.dev/project-d3c20737-eec2-453d-8e5/ephemeralml/enclave:877c1ab
+  CS family:    confidential-space
+  Debug:        false
+  GPU:          false
+  Model src:    gcs-kms
+  Format:       safetensors
+  GCS bucket:   ephemeralml-models-project-d3c20737-eec2-453d-8e5
+  Model prefix: models/minilm
+  Model hash:   53aa51172d142c89d9012cce15ae4d6cc0ca6895895114379cacb4fab128d9db
+  KMS key:      projects/project-d3c20737-eec2-453d-8e5/locations/us-central1/keyRings/nonexistent/cryptoKeys/fake
+  WIP audience: //iam.googleapis.com/projects/324130315768/locations/global/workloadIdentityPools/ephemeralml-pool/providers/ephemeralml-tdx
+
+  [1/6] Skipping model preparation (--skip-build).
+  [2/6] Skipping Docker auth (--skip-build).
+  [3/6] Skipping Docker build (--skip-build).
+  [4/6] Skipping push (--skip-build). Using existing image: us-docker.pkg.dev/project-d3c20737-eec2-453d-8e5/ephemeralml/enclave:877c1ab
+
+  [5/6] Launching Confidential Space CVM...
+Created [https://www.googleapis.com/compute/v1/projects/project-d3c20737-eec2-453d-8e5/zones/us-central1-a/instances/ephemeralml-cvm].
+NAME             ZONE           MACHINE_TYPE   PREEMPTIBLE  INTERNAL_IP  EXTERNAL_IP     STATUS
+ephemeralml-cvm  us-central1-a  c3-standard-4               10.128.0.62  136.119.228.38  RUNNING
+  Instance 'ephemeralml-cvm' created.
+
+  [6/6] Waiting for instance to become RUNNING...
+
+  ==============================================================
+  Deployment complete
+  ==============================================================
+
+  Instance:     ephemeralml-cvm
+  Zone:         us-central1-a
+  Status:       RUNNING
+  External IP:  136.119.228.38
+  Ports:        9000 (control), 9001 (data_in), 9002 (data_out)
+
+
+  Note: The container takes ~30-60s to start after the VM is RUNNING.
+
+  Next: bash scripts/gcp/verify.sh

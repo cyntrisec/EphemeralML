@@ -80,6 +80,29 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                             }
                             Err(e) => eprintln!("Warning: failed to serialize receipt: {}", e),
                         }
+
+                        // Save sidecar evidence files alongside receipt
+                        if let Some(ref att_b64) = result.boot_attestation_b64 {
+                            use base64::Engine as _;
+                            if let Ok(att_bytes) =
+                                base64::engine::general_purpose::STANDARD.decode(att_b64)
+                            {
+                                let att_path = "/tmp/ephemeralml-attestation.bin";
+                                if let Err(e) = std::fs::write(att_path, &att_bytes) {
+                                    eprintln!("Warning: failed to save attestation: {}", e);
+                                } else {
+                                    println!("Attestation saved to {}", att_path);
+                                }
+                            }
+                        }
+                        if let Some(ref manifest_json) = result.model_manifest_json {
+                            let manifest_path = "/tmp/ephemeralml-manifest.json";
+                            if let Err(e) = std::fs::write(manifest_path, manifest_json) {
+                                eprintln!("Warning: failed to save manifest: {}", e);
+                            } else {
+                                println!("Manifest saved to {}", manifest_path);
+                            }
+                        }
                     }
                     Err(e) => {
                         eprintln!("Inference failed: {}", e);

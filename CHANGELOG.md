@@ -1,5 +1,27 @@
 # Changelog
 
+## [0.2.8] - 2026-02-19
+
+### Added
+- **Compliance evidence completeness**: Server now returns boot attestation bytes (base64) and model manifest JSON as sidecar fields in the inference response. Client saves them as `/tmp/ephemeralml-attestation.bin` and `/tmp/ephemeralml-manifest.json`.
+- **`collect --manifest`**: New flag to include model manifest JSON in compliance bundles.
+- **`collect --strict`**: Fail if attestation or manifest evidence is missing (required by ATT-001, ATT-002, MODEL-002, KEY-001).
+- **`collect --auto-discover`**: Scan a directory for `*.bin` attestation and `manifest.json` files, auto-adding them to the bundle.
+- **Enriched destroy evidence**: Receipts now include 5 destroy actions (3 `explicit_zeroize` + 2 `drop_on_scope_exit`) covering output bytes, output tensor, generated text, session DEK, and ephemeral keypair.
+- **6 new conformance tests**: CT-020 (strict receipt-only fails), CT-021 (complete bundle types), CT-022 (auto-discover), CT-023 (all 16 baseline rules pass), CT-024 (ATT-002 hash mismatch), CT-025 (enriched destroy evidence).
+- **E2E script**: Updated to copy sidecar evidence files and use `--strict`/`--manifest`/`--attestation` flags in compliance collect.
+
+### Changed
+- **Version bump**: All crates from 0.2.7 to 0.2.8
+- **`base64` dependency**: Now non-optional in enclave crate (was gcp-only) to support sidecar encoding in all modes.
+- **`DirectInferenceResponse`**: New optional fields `boot_attestation_b64` and `model_manifest_json`.
+- **`InferenceResult`/`InferenceHandlerOutput`**: Extended with the same optional fields on the client side.
+
+### Security
+- Boot attestation bytes are captured at boot time and passed immutably via `Arc<Vec<u8>>` — no copies or mutations after initial capture.
+- Sidecar fields are `Option<T>` — mock mode returns `None`, no synthetic evidence is generated.
+- `--strict` mode enforces fail-closed collection: bundles missing any evidence type referenced by baseline rules exit non-zero.
+
 ## [0.2.7] - 2026-02-19
 
 ### Added

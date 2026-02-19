@@ -95,6 +95,8 @@ async fn direct_mode_happy_path() {
             &transport_provider,
             &transport_verifier,
             [0u8; 32],
+            None,
+            None,
         )
         .await
     });
@@ -224,6 +226,8 @@ async fn direct_mode_malformed_json_no_crash() {
             &transport_provider,
             &transport_verifier,
             [0u8; 32],
+            None,
+            None,
         )
         .await
     });
@@ -318,6 +322,8 @@ async fn setup_direct_server(
             &transport_provider,
             &transport_verifier,
             [0u8; 32],
+            None,
+            None,
         )
         .await
     });

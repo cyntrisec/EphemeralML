@@ -59,6 +59,14 @@ struct DirectInferenceResponse {
     /// Generated text (only present when generate=true).
     #[serde(skip_serializing_if = "Option::is_none")]
     generated_text: Option<String>,
+    /// Base64-encoded boot attestation document (raw TEE quote bytes).
+    /// Present when the server has boot attestation evidence to provide.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    boot_attestation_b64: Option<String>,
+    /// Model manifest JSON string.
+    /// Present when the server loaded a signed model manifest.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    model_manifest_json: Option<String>,
 }
 
 /// Accept a single client SecureChannel on `listen_addr` and serve inference
@@ -66,6 +74,7 @@ struct DirectInferenceResponse {
 ///
 /// Intended for GCP smoke / E2E testing where a client connects with
 /// `SecureChannel::connect_with_attestation()` on a single port.
+#[allow(clippy::too_many_arguments)]
 pub async fn run_direct_tcp<A: crate::AttestationProvider + Send + Sync>(
     engine: crate::CandleInferenceEngine,
     attestation_provider: A,
@@ -74,6 +83,8 @@ pub async fn run_direct_tcp<A: crate::AttestationProvider + Send + Sync>(
     transport_provider: &(dyn confidential_ml_transport::AttestationProvider + Sync),
     transport_verifier: &(dyn confidential_ml_transport::AttestationVerifier + Sync),
     boot_attestation_hash: [u8; 32],
+    boot_attestation_bytes: Option<std::sync::Arc<Vec<u8>>>,
+    model_manifest_json: Option<std::sync::Arc<String>>,
 ) -> std::result::Result<(), Box<dyn std::error::Error + Send + Sync>> {
     use bytes::Bytes;
     use confidential_ml_transport::session::channel::Message;
@@ -167,7 +178,14 @@ pub async fn run_direct_tcp<A: crate::AttestationProvider + Send + Sync>(
 
         match msg {
             Message::Data(bytes) => {
-                match handle_direct_request(&bytes, &engine, &attestation_provider, &mut state) {
+                match handle_direct_request(
+                    &bytes,
+                    &engine,
+                    &attestation_provider,
+                    &mut state,
+                    boot_attestation_bytes.as_deref(),
+                    model_manifest_json.as_deref(),
+                ) {
                     Ok(result) => {
                         channel.send(Bytes::from(result.response_json)).await?;
                         println!(
@@ -216,6 +234,8 @@ fn handle_direct_request<A: crate::AttestationProvider>(
     engine: &crate::CandleInferenceEngine,
     attestation_provider: &A,
     state: &mut ephemeral_ml_common::transport_types::ConnectionState,
+    boot_attestation_bytes: Option<&Vec<u8>>,
+    model_manifest_json: Option<&String>,
 ) -> std::result::Result<DirectResult, Box<dyn std::error::Error + Send + Sync>> {
     let request: DirectInferenceRequest =
         serde_json::from_slice(bytes).map_err(|e| format!("Bad request JSON: {}", e))?;
@@ -324,6 +344,14 @@ fn handle_direct_request<A: crate::AttestationProvider>(
                 target: "generated_text".to_string(),
                 mechanism: "explicit_zeroize".to_string(),
             },
+            ephemeral_ml_common::DestroyAction {
+                target: "session_dek".to_string(),
+                mechanism: "drop_on_scope_exit".to_string(),
+            },
+            ephemeral_ml_common::DestroyAction {
+                target: "ephemeral_keypair".to_string(),
+                mechanism: "drop_on_scope_exit".to_string(),
+            },
         ],
     });
 
@@ -331,10 +359,14 @@ fn handle_direct_request<A: crate::AttestationProvider>(
 
     let seq = receipt.sequence_number;
     let n_floats = output_tensor.len();
+    use base64::Engine as _;
     let response = DirectInferenceResponse {
         output_tensor,
         receipt,
         generated_text,
+        boot_attestation_b64: boot_attestation_bytes
+            .map(|b| base64::engine::general_purpose::STANDARD.encode(b)),
+        model_manifest_json: model_manifest_json.cloned(),
     };
     let response_json = serde_json::to_vec(&response)?;
 

@@ -1,0 +1,545 @@
+{
+  "bundle": {
+    "schema_version": "0.1",
+    "bundle_id": "bundle-ac4cb63d-af75-42f9-9fcc-2be85a053640",
+    "created_at": "2026-02-19T14:09:55.831937753+00:00",
+    "items": [
+      {
+        "item_id": "receipt-2150be2d-0fdd-4685-890a-e2482eef9a30",
+        "evidence_type": "Receipt",
+        "data": "7b0a202022726563656970745f6964223a202236383739363934322d313963662d346236302d613137632d393165356130646538353535222c0a20202270726f746f636f6c5f76657273696f6e223a20312c0a20202273656375726974795f6d6f6465223a2022476174657761794f6e6c79222c0a202022656e636c6176655f6d6561737572656d656e7473223a207b0a202020202270637230223a205b0a2020202020203137302c0a2020202020203137302c0a2020202020203137302c0a2020202020203137302c0a2020202020203137302c0a2020202020203137302c0a2020202020203137302c0a2020202020203137302c0a2020202020203137302c0a2020202020203137302c0a2020202020203137302c0a2020202020203137302c0a2020202020203137302c0a2020202020203137302c0a2020202020203137302c0a2020202020203137302c0a2020202020203137302c0a2020202020203137302c0a2020202020203137302c0a2020202020203137302c0a2020202020203137302c0a2020202020203137302c0a2020202020203137302c0a2020202020203137302c0a2020202020203137302c0a2020202020203137302c0a2020202020203137302c0a2020202020203137302c0a2020202020203137302c0a2020202020203137302c0a2020202020203137302c0a2020202020203137302c0a2020202020203137302c0a2020202020203137302c0a2020202020203137302c0a2020202020203137302c0a2020202020203137302c0a2020202020203137302c0a2020202020203137302c0a2020202020203137302c0a2020202020203137302c0a2020202020203137302c0a2020202020203137302c0a2020202020203137302c0a2020202020203137302c0a2020202020203137302c0a2020202020203137302c0a2020202020203137300a202020205d2c0a202020202270637231223a205b0a2020202020203138372c0a2020202020203138372c0a2020202020203138372c0a2020202020203138372c0a2020202020203138372c0a2020202020203138372c0a2020202020203138372c0a2020202020203138372c0a2020202020203138372c0a2020202020203138372c0a2020202020203138372c0a2020202020203138372c0a2020202020203138372c0a2020202020203138372c0a2020202020203138372c0a2020202020203138372c0a2020202020203138372c0a2020202020203138372c0a2020202020203138372c0a2020202020203138372c0a2020202020203138372c0a2020202020203138372c0a2020202020203138372c0a2020202020203138372c0a2020202020203138372c0a2020202020203138372c0a2020202020203138372c0a2020202020203138372c0a2020202020203138372c0a2020202020203138372c0a2020202020203138372c0a2020202020203138372c0a2020202020203138372c0a2020202020203138372c0a2020202020203138372c0a2020202020203138372c0a2020202020203138372c0a2020202020203138372c0a2020202020203138372c0a2020202020203138372c0a2020202020203138372c0a2020202020203138372c0a2020202020203138372c0a2020202020203138372c0a2020202020203138372c0a2020202020203138372c0a2020202020203138372c0a2020202020203138370a202020205d2c0a202020202270637232223a205b0a2020202020203230342c0a2020202020203230342c0a2020202020203230342c0a2020202020203230342c0a2020202020203230342c0a2020202020203230342c0a2020202020203230342c0a2020202020203230342c0a2020202020203230342c0a2020202020203230342c0a2020202020203230342c0a2020202020203230342c0a2020202020203230342c0a2020202020203230342c0a2020202020203230342c0a2020202020203230342c0a2020202020203230342c0a2020202020203230342c0a2020202020203230342c0a2020202020203230342c0a2020202020203230342c0a2020202020203230342c0a2020202020203230342c0a2020202020203230342c0a2020202020203230342c0a2020202020203230342c0a2020202020203230342c0a2020202020203230342c0a2020202020203230342c0a2020202020203230342c0a2020202020203230342c0a2020202020203230342c0a2020202020203230342c0a2020202020203230342c0a2020202020203230342c0a2020202020203230342c0a2020202020203230342c0a2020202020203230342c0a2020202020203230342c0a2020202020203230342c0a2020202020203230342c0a2020202020203230342c0a2020202020203230342c0a2020202020203230342c0a2020202020203230342c0a2020202020203230342c0a2020202020203230342c0a2020202020203230340a202020205d2c0a202020202270637238223a206e756c6c2c0a20202020226d6561737572656d656e745f74797065223a20227464782d6d7274642d72746d72220a20207d2c0a2020226174746573746174696f6e5f646f635f68617368223a205b0a202020203231352c0a2020202037362c0a202020203230342c0a2020202033382c0a202020203130352c0a202020203137382c0a202020203234352c0a20202020372c0a202020203231332c0a202020203130372c0a202020203135322c0a2020202033362c0a202020203134302c0a2020202034302c0a202020203136392c0a202020203136392c0a2020202037332c0a202020203234392c0a20202020362c0a202020203231392c0a202020203130322c0a2020202039382c0a202020203134302c0a2020202035352c0a202020203134332c0a202020203134302c0a202020203134302c0a2020202031332c0a2020202036342c0a202020203230342c0a202020203133362c0a202020203138320a20205d2c0a202022726571756573745f68617368223a205b0a202020203234342c0a202020203136362c0a202020203133372c0a202020203130332c0a202020203131362c0a2020202035392c0a202020203130322c0a202020203135302c0a202020203130322c0a2020202038312c0a202020203130372c0a202020203233352c0a2020202037382c0a202020203235312c0a202020203231322c0a202020203230312c0a202020203137392c0a2020202034382c0a2020202033372c0a202020203136302c0a2020202033332c0a2020202038322c0a2020202038372c0a202020203131352c0a2020202037362c0a2020202033342c0a2020202039312c0a202020203135312c0a202020203132322c0a2020202033362c0a202020203232312c0a202020203137360a20205d2c0a202022726573706f6e73655f68617368223a205b0a202020203138362c0a202020203137322c0a202020203135312c0a202020203135322c0a202020203231332c0a202020203138352c0a2020202036362c0a202020203133302c0a202020203231332c0a202020203136392c0a202020203132362c0a202020203234322c0a202020203233302c0a202020203131392c0a202020203133372c0a202020203231322c0a202020203231332c0a202020203230372c0a2020202038302c0a202020203133392c0a2020202039322c0a2020202037372c0a202020203232352c0a2020202037382c0a202020203233352c0a202020203136382c0a2020202039382c0a202020203231332c0a202020203234342c0a2020202034362c0a202020203230332c0a2020202037330a20205d2c0a202022706f6c6963795f76657273696f6e223a202276312d64656661756c74222c0a20202273657175656e63655f6e756d626572223a20302c0a202022657865637574696f6e5f74696d657374616d70223a20313737313531303138392c0a2020226d6f64656c5f6964223a202273746167652d30222c0a2020226d6f64656c5f76657273696f6e223a2022312e30222c0a202022657865637574696f6e5f74696d655f6d73223a2037302c0a2020226d656d6f72795f7065616b5f6d62223a20302c0a2020227369676e6174757265223a205b0a20202020392c0a202020203135392c0a202020203133312c0a202020203231392c0a202020203130342c0a2020202038332c0a202020203131312c0a202020203130312c0a202020203232352c0a2020202032362c0a202020203235342c0a202020203139392c0a2020202035372c0a2020202032392c0a202020203233302c0a202020203130372c0a2020202034392c0a202020203235352c0a2020202037332c0a202020203231332c0a2020202039332c0a2020202032332c0a202020203234322c0a202020203234322c0a2020202037382c0a2020202036392c0a202020203233332c0a2020202032392c0a2020202034302c0a2020202038392c0a202020203135342c0a202020203231302c0a202020203233342c0a202020203233342c0a202020203231392c0a2020202034332c0a2020202033352c0a202020203234322c0a202020203231392c0a202020203230372c0a202020203235312c0a202020203131352c0a202020203235322c0a2020202033312c0a202020203139372c0a2020202036392c0a2020202036302c0a202020203132332c0a202020203132372c0a202020203138352c0a2020202038342c0a202020203234332c0a2020202037362c0a202020203130342c0a202020203137332c0a202020203233382c0a202020203138352c0a2020202039322c0a2020202038352c0a202020203131362c0a202020203138372c0a2020202034322c0a202020203232332c0a20202020380a20205d2c0a20202264657374726f795f65766964656e6365223a207b0a202020202274696d657374616d70223a20313737313531303138392c0a2020202022616374696f6e73223a205b0a2020202020207b0a202020202020202022746172676574223a20226f75747075745f6279746573222c0a2020202020202020226d656368616e69736d223a20226578706c696369745f7a65726f697a65220a2020202020207d2c0a2020202020207b0a202020202020202022746172676574223a20226f75747075745f74656e736f72222c0a2020202020202020226d656368616e69736d223a20226578706c696369745f7a65726f697a65220a2020202020207d2c0a2020202020207b0a202020202020202022746172676574223a202267656e6572617465645f74657874222c0a2020202020202020226d656368616e69736d223a20226578706c696369745f7a65726f697a65220a2020202020207d2c0a2020202020207b0a202020202020202022746172676574223a202273657373696f6e5f64656b222c0a2020202020202020226d656368616e69736d223a202264726f705f6f6e5f73636f70655f65786974220a2020202020207d2c0a2020202020207b0a202020202020202022746172676574223a2022657068656d6572616c5f6b657970616972222c0a2020202020202020226d656368616e69736d223a202264726f705f6f6e5f73636f70655f65786974220a2020202020207d0a202020205d0a20207d0a7d",
+        "hash": [
+          223,
+          76,
+          53,
+          154,
+          199,
+          24,
+          7,
+          93,
+          239,
+          41,
+          133,
+          15,
+          103,
+          144,
+          135,
+          76,
+          87,
+          138,
+          121,
+          182,
+          128,
+          199,
+          209,
+          141,
+          166,
+          70,
+          60,
+          251,
+          111,
+          158,
+          164,
+          127
+        ],
+        "description": "Attested Execution Receipt"
+      },
+      {
+        "item_id": "attestation-1c249dd3-2b45-404e-9696-14cc92772f1a",
+        "evidence_type": "Attestation",
+        "data": "04000200810000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee41dc1d6847cb7945861ff8493d7b774e7f6b1ac2d4b71af280320c810df0b4a000000000000000000000000000000000000000000000000000000000000000080000000dbad0153efb1e8049cc079d9aee773b3aa5ec6d171904526f15cbc1c9063e59b036b16a5e40a3010548945bc15c6dac8042a2ed4e07924b3d9847948ab679bb32153110cd7fae955275cbc71d198c4f8511e41844bf6b2fdec4de66882a21eb5574e2761a9fcc7261c8adf845b42c90230d916276ed76dc713c830a111088bc1",
+        "hash": [
+          215,
+          76,
+          204,
+          38,
+          105,
+          178,
+          245,
+          7,
+          213,
+          107,
+          152,
+          36,
+          140,
+          40,
+          169,
+          169,
+          73,
+          249,
+          6,
+          219,
+          102,
+          98,
+          140,
+          55,
+          143,
+          140,
+          140,
+          13,
+          64,
+          204,
+          136,
+          182
+        ],
+        "description": "Attestation document"
+      },
+      {
+        "item_id": "manifest-51a29102-5dcc-4e57-9dbf-f9616d6bb624",
+        "evidence_type": "ModelManifest",
+        "data": "7b0a2020226d6f64656c5f6964223a20226d696e696c6d2d6c362d7632222c0a20202276657273696f6e223a202276312e302e30222c0a2020226d6f64656c5f68617368223a205b0a2020202038332c0a202020203137302c0a2020202038312c0a2020202032332c0a2020202034352c0a2020202032302c0a2020202034342c0a202020203133372c0a202020203231372c0a20202020312c0a2020202034342c0a202020203230362c0a2020202032312c0a202020203137342c0a2020202037372c0a202020203130382c0a202020203139322c0a202020203230322c0a202020203130342c0a202020203134392c0a202020203133372c0a2020202038312c0a2020202032302c0a2020202035352c0a202020203135362c0a202020203137322c0a202020203138302c0a202020203235302c0a202020203137372c0a2020202034302c0a202020203231372c0a202020203231390a20205d2c0a202022686173685f616c676f726974686d223a2022736861323536222c0a2020226b65795f6964223a202270726f6a656374732f70726f6a6563742d64336332303733372d656563322d343533642d3865352f6c6f636174696f6e732f75732d63656e7472616c312f6b657952696e67732f657068656d6572616c6d6c2f63727970746f4b6579732f6d6f64656c2d64656b222c0a2020226763735f75726973223a207b0a2020202022636f6e666967223a202267733a2f2f657068656d6572616c6d6c2d6d6f64656c732d70726f6a6563742d64336332303733372d656563322d343533642d3865352f6d6f64656c732f6d696e696c6d2f636f6e6669672e6a736f6e222c0a2020202022746f6b656e697a6572223a202267733a2f2f657068656d6572616c6d6c2d6d6f64656c732d70726f6a6563742d64336332303733372d656563322d343533642d3865352f6d6f64656c732f6d696e696c6d2f746f6b656e697a65722e6a736f6e222c0a2020202022776569676874735f656e63223a202267733a2f2f657068656d6572616c6d6c2d6d6f64656c732d70726f6a6563742d64336332303733372d656563322d343533642d3865352f6d6f64656c732f6d696e696c6d2f6d6f64656c2e7361666574656e736f72732e656e63222c0a2020202022777261707065645f64656b223a202267733a2f2f657068656d6572616c6d6c2d6d6f64656c732d70726f6a6563742d64336332303733372d656563322d343533642d3865352f6d6f64656c732f6d696e696c6d2f777261707065645f64656b2e62696e220a20207d2c0a202022637265617465645f6174223a2022323032362d30322d31395431343a30333a34305a222c0a2020227369676e6174757265223a205b0a202020203135372c0a202020203230332c0a202020203136332c0a202020203135392c0a2020202033362c0a202020203233302c0a202020203230352c0a202020203231312c0a2020202033382c0a202020203233322c0a202020203231342c0a202020203233312c0a20202020342c0a202020203235312c0a202020203230392c0a2020202038362c0a2020202032362c0a2020202036392c0a202020203231362c0a202020203137382c0a2020202032352c0a202020203131342c0a202020203234362c0a2020202035352c0a2020202035372c0a202020203134382c0a2020202037382c0a202020203234362c0a2020202039382c0a202020203130372c0a2020202037322c0a202020203133372c0a2020202035372c0a2020202039372c0a202020203133322c0a202020203138352c0a202020203137362c0a20202020342c0a2020202034352c0a2020202033342c0a2020202031342c0a2020202035332c0a2020202034372c0a2020202034342c0a202020203130312c0a2020202036372c0a202020203232382c0a202020203134342c0a2020202037362c0a202020203130322c0a202020203130342c0a202020203139302c0a202020203232332c0a202020203132392c0a202020203139322c0a2020202031312c0a202020203138332c0a202020203131322c0a202020203132392c0a202020203132302c0a202020203135382c0a202020203138382c0a2020202036362c0a2020202031340a20205d0a7d",
+        "hash": [
+          83,
+          60,
+          41,
+          44,
+          31,
+          39,
+          35,
+          84,
+          36,
+          70,
+          108,
+          3,
+          252,
+          137,
+          142,
+          178,
+          79,
+          236,
+          215,
+          211,
+          71,
+          215,
+          104,
+          125,
+          192,
+          167,
+          243,
+          163,
+          118,
+          110,
+          90,
+          233
+        ],
+        "description": "Model manifest"
+      }
+    ],
+    "bindings": [
+      {
+        "source_item_id": "receipt-2150be2d-0fdd-4685-890a-e2482eef9a30",
+        "target_item_id": "attestation-1c249dd3-2b45-404e-9696-14cc92772f1a",
+        "binding_type": "signing-key-attestation",
+        "binding_hash": null
+      },
+      {
+        "source_item_id": "receipt-2150be2d-0fdd-4685-890a-e2482eef9a30",
+        "target_item_id": "manifest-51a29102-5dcc-4e57-9dbf-f9616d6bb624",
+        "binding_type": "model-manifest-receipt",
+        "binding_hash": null
+      },
+      {
+        "source_item_id": "attestation-1c249dd3-2b45-404e-9696-14cc92772f1a",
+        "target_item_id": "manifest-51a29102-5dcc-4e57-9dbf-f9616d6bb624",
+        "binding_type": "attestation-manifest",
+        "binding_hash": null
+      }
+    ]
+  },
+  "policy_result": {
+    "compliant": true,
+    "profile_name": "baseline",
+    "rules": [
+      {
+        "rule_id": "SIG-001",
+        "rule_name": "Ed25519 signature verification",
+        "passed": true,
+        "reason": "Ed25519 signature verified (strict)"
+      },
+      {
+        "rule_id": "SIG-002",
+        "rule_name": "CBOR canonical round-trip determinism",
+        "passed": true,
+        "reason": "Canonical encoding is deterministic"
+      },
+      {
+        "rule_id": "ATT-001",
+        "rule_name": "Attestation document present",
+        "passed": true,
+        "reason": "Attestation evidence item found in bundle"
+      },
+      {
+        "rule_id": "ATT-002",
+        "rule_name": "Attestation hash matches receipt",
+        "passed": true,
+        "reason": "SHA-256(attestation) == receipt.attestation_doc_hash"
+      },
+      {
+        "rule_id": "MEAS-001",
+        "rule_name": "Measurements are 48 bytes",
+        "passed": true,
+        "reason": "All PCR/MRTD measurements are 48 bytes"
+      },
+      {
+        "rule_id": "MEAS-002",
+        "rule_name": "Recognized measurement type",
+        "passed": true,
+        "reason": "Measurement type 'tdx-mrtd-rtmr' is recognized"
+      },
+      {
+        "rule_id": "FRESH-001",
+        "rule_name": "Receipt within max age",
+        "passed": true,
+        "reason": "Receipt age 6s <= max 3600s"
+      },
+      {
+        "rule_id": "FRESH-002",
+        "rule_name": "Receipt not future-dated",
+        "passed": true,
+        "reason": "Receipt timestamp is not in the future"
+      },
+      {
+        "rule_id": "MODEL-001",
+        "rule_name": "Model ID present",
+        "passed": true,
+        "reason": "model_id = 'stage-0'"
+      },
+      {
+        "rule_id": "MODEL-002",
+        "rule_name": "Model manifest present in bundle",
+        "passed": true,
+        "reason": "ModelManifest evidence item found"
+      },
+      {
+        "rule_id": "CHAIN-001",
+        "rule_name": "Receipt chain hash valid",
+        "passed": true,
+        "reason": "No previous_receipt_hash (single receipt or first in chain)"
+      },
+      {
+        "rule_id": "CBOR-001",
+        "rule_name": "CBOR deterministic encoding",
+        "passed": true,
+        "reason": "CBOR canonical round-trip produces identical bytes"
+      },
+      {
+        "rule_id": "KEY-001",
+        "rule_name": "Signing key bound to attestation",
+        "passed": true,
+        "reason": "signing-key-attestation binding found"
+      },
+      {
+        "rule_id": "POLICY-001",
+        "rule_name": "Policy version present",
+        "passed": true,
+        "reason": "policy_version = 'v1-default'"
+      },
+      {
+        "rule_id": "SEQ-001",
+        "rule_name": "Sequence numbers increasing",
+        "passed": true,
+        "reason": "Single receipt with sequence_number=0"
+      },
+      {
+        "rule_id": "DESTROY-001",
+        "rule_name": "Destroy evidence present",
+        "passed": true,
+        "reason": "Destroy evidence present with 5 action(s)"
+      }
+    ],
+    "summary": "All 16 rules passed for profile 'baseline'"
+  },
+  "control_results": [
+    {
+      "control": {
+        "control_id": "EML-SIG-001",
+        "name": "Receipt signature verification",
+        "description": "Ed25519 verify_strict on every attested execution receipt",
+        "regulation": "EphemeralML Baseline",
+        "section": "Signature"
+      },
+      "satisfied": true,
+      "supporting_rules": [
+        "SIG-001"
+      ],
+      "evidence_refs": []
+    },
+    {
+      "control": {
+        "control_id": "EML-SIG-002",
+        "name": "CBOR canonical determinism",
+        "description": "Receipt canonical encoding produces identical bytes across invocations",
+        "regulation": "EphemeralML Baseline",
+        "section": "Signature"
+      },
+      "satisfied": true,
+      "supporting_rules": [
+        "SIG-002"
+      ],
+      "evidence_refs": []
+    },
+    {
+      "control": {
+        "control_id": "EML-ATT-001",
+        "name": "Attestation document present",
+        "description": "Evidence bundle contains a raw attestation document",
+        "regulation": "EphemeralML Baseline",
+        "section": "Attestation"
+      },
+      "satisfied": true,
+      "supporting_rules": [
+        "ATT-001"
+      ],
+      "evidence_refs": []
+    },
+    {
+      "control": {
+        "control_id": "EML-ATT-002",
+        "name": "Attestation hash binding",
+        "description": "SHA-256 of attestation matches receipt.attestation_doc_hash",
+        "regulation": "EphemeralML Baseline",
+        "section": "Attestation"
+      },
+      "satisfied": true,
+      "supporting_rules": [
+        "ATT-002"
+      ],
+      "evidence_refs": []
+    },
+    {
+      "control": {
+        "control_id": "EML-MEAS-001",
+        "name": "Measurement length validation",
+        "description": "PCR/MRTD measurements are 48 bytes (SHA-384)",
+        "regulation": "EphemeralML Baseline",
+        "section": "Measurements"
+      },
+      "satisfied": true,
+      "supporting_rules": [
+        "MEAS-001"
+      ],
+      "evidence_refs": []
+    },
+    {
+      "control": {
+        "control_id": "EML-MEAS-002",
+        "name": "Recognized measurement type",
+        "description": "Measurement type is a recognized TEE platform (nitro-pcr or tdx-mrtd-rtmr)",
+        "regulation": "EphemeralML Baseline",
+        "section": "Measurements"
+      },
+      "satisfied": true,
+      "supporting_rules": [
+        "MEAS-002"
+      ],
+      "evidence_refs": []
+    },
+    {
+      "control": {
+        "control_id": "EML-FRESH-001",
+        "name": "Receipt freshness",
+        "description": "Receipt is within the maximum allowed age",
+        "regulation": "EphemeralML Baseline",
+        "section": "Freshness"
+      },
+      "satisfied": true,
+      "supporting_rules": [
+        "FRESH-001"
+      ],
+      "evidence_refs": []
+    },
+    {
+      "control": {
+        "control_id": "EML-FRESH-002",
+        "name": "Receipt not future-dated",
+        "description": "Receipt timestamp is not in the future",
+        "regulation": "EphemeralML Baseline",
+        "section": "Freshness"
+      },
+      "satisfied": true,
+      "supporting_rules": [
+        "FRESH-002"
+      ],
+      "evidence_refs": []
+    },
+    {
+      "control": {
+        "control_id": "EML-MODEL-001",
+        "name": "Model ID present",
+        "description": "Receipt contains a non-empty model_id",
+        "regulation": "EphemeralML Baseline",
+        "section": "Model"
+      },
+      "satisfied": true,
+      "supporting_rules": [
+        "MODEL-001"
+      ],
+      "evidence_refs": []
+    },
+    {
+      "control": {
+        "control_id": "EML-MODEL-002",
+        "name": "Model manifest present",
+        "description": "Evidence bundle contains a ModelManifest evidence item",
+        "regulation": "EphemeralML Baseline",
+        "section": "Model"
+      },
+      "satisfied": true,
+      "supporting_rules": [
+        "MODEL-002"
+      ],
+      "evidence_refs": []
+    },
+    {
+      "control": {
+        "control_id": "EML-CHAIN-001",
+        "name": "Receipt chain hash",
+        "description": "If previous_receipt_hash is present, it is a valid 32-byte non-zero hash",
+        "regulation": "EphemeralML Baseline",
+        "section": "Chain"
+      },
+      "satisfied": true,
+      "supporting_rules": [
+        "CHAIN-001"
+      ],
+      "evidence_refs": []
+    },
+    {
+      "control": {
+        "control_id": "EML-CBOR-001",
+        "name": "CBOR deterministic encoding",
+        "description": "CBOR canonical round-trip produces identical bytes",
+        "regulation": "EphemeralML Baseline",
+        "section": "Encoding"
+      },
+      "satisfied": true,
+      "supporting_rules": [
+        "CBOR-001"
+      ],
+      "evidence_refs": []
+    },
+    {
+      "control": {
+        "control_id": "EML-KEY-001",
+        "name": "Signing key attestation binding",
+        "description": "Evidence bundle contains a signing-key-attestation binding",
+        "regulation": "EphemeralML Baseline",
+        "section": "Key Binding"
+      },
+      "satisfied": true,
+      "supporting_rules": [
+        "KEY-001"
+      ],
+      "evidence_refs": []
+    },
+    {
+      "control": {
+        "control_id": "EML-POLICY-001",
+        "name": "Policy version present",
+        "description": "Receipt contains a non-empty policy_version",
+        "regulation": "EphemeralML Baseline",
+        "section": "Policy"
+      },
+      "satisfied": true,
+      "supporting_rules": [
+        "POLICY-001"
+      ],
+      "evidence_refs": []
+    },
+    {
+      "control": {
+        "control_id": "EML-SEQ-001",
+        "name": "Sequence number ordering",
+        "description": "Sequence numbers are strictly increasing across receipts",
+        "regulation": "EphemeralML Baseline",
+        "section": "Sequencing"
+      },
+      "satisfied": true,
+      "supporting_rules": [
+        "SEQ-001"
+      ],
+      "evidence_refs": []
+    },
+    {
+      "control": {
+        "control_id": "EML-DESTROY-001",
+        "name": "Destroy evidence present",
+        "description": "Receipt contains destroy evidence with at least one cleanup action",
+        "regulation": "EphemeralML Baseline",
+        "section": "Destruction"
+      },
+      "satisfied": true,
+      "supporting_rules": [
+        "DESTROY-001"
+      ],
+      "evidence_refs": []
+    }
+  ],
+  "exported_at": "2026-02-19T14:09:55.849968893+00:00",
+  "signature": [
+    129,
+    239,
+    25,
+    101,
+    18,
+    116,
+    104,
+    173,
+    13,
+    40,
+    195,
+    78,
+    154,
+    148,
+    223,
+    10,
+    169,
+    97,
+    164,
+    146,
+    227,
+    24,
+    38,
+    42,
+    71,
+    192,
+    33,
+    7,
+    60,
+    119,
+    26,
+    37,
+    222,
+    20,
+    2,
+    51,
+    166,
+    34,
+    197,
+    229,
+    13,
+    9,
+    25,
+    141,
+    67,
+    46,
+    144,
+    206,
+    226,
+    215,
+    246,
+    195,
+    153,
+    240,
+    169,
+    55,
+    86,
+    238,
+    244,
+    95,
+    96,
+    120,
+    238,
+    10
+  ]
+}

@@ -1,6 +1,6 @@
 [package]
 name = "ephemeral-ml-enclave"
-version = "0.2.7"
+version = "0.2.8"
 edition = "2021"
 license = "Apache-2.0"
 default-run = "ephemeral-ml-enclave"
@@ -41,7 +41,7 @@ aws-sdk-kms = { version = "1.100.0", optional = true }
 aws-config = { version = "1.8.14", optional = true }
 byteorder = "1.5.0"
 reqwest = { version = "0.12", features = ["json"], optional = true }
-base64 = { version = "0.22", optional = true }
+base64 = "0.22"
 confidential-ml-transport = { workspace = true }
 confidential-ml-pipeline = { workspace = true }
 bytes = { workspace = true }
@@ -59,7 +59,7 @@ default = ["mock"]
 mock = ["confidential-ml-transport/mock", "confidential-ml-transport/tcp", "confidential-ml-pipeline/mock", "confidential-ml-pipeline/tcp"]
 production = ["aws-nitro-enclaves-nsm-api", "aws-sdk-kms", "aws-config", "tokio-vsock", "confidential-ml-transport/vsock", "confidential-ml-transport/nitro", "confidential-ml-pipeline/vsock", "confidential-ml-transport/tcp", "confidential-ml-pipeline/tcp"]
 tdx = ["openssl", "confidential-ml-transport/tdx"]
-gcp = ["tdx", "reqwest", "base64", "confidential-ml-transport/tcp", "confidential-ml-transport/mock", "confidential-ml-pipeline/tcp"]
+gcp = ["tdx", "reqwest", "confidential-ml-transport/tcp", "confidential-ml-transport/mock", "confidential-ml-pipeline/tcp"]
 cuda = ["candle-core/cuda", "candle-nn/cuda", "candle-transformers/cuda"]
 
 [[bin]]

@@ -199,14 +199,24 @@ else
     step_fail "verify.sh exit code ${VERIFY_EXIT}"
 fi
 
-# Copy receipt and pubkey artifacts (verify.sh no longer deletes them)
+# Copy receipt, pubkey, and sidecar evidence artifacts
 RECEIPT_PATH="/tmp/ephemeralml-receipt.json"
 PUBKEY_PATH="${RECEIPT_PATH}.pubkey"
+ATTESTATION_PATH="/tmp/ephemeralml-attestation.bin"
+MANIFEST_PATH="/tmp/ephemeralml-manifest.json"
 if [[ -f "${RECEIPT_PATH}" ]]; then
     cp "${RECEIPT_PATH}" "${EVIDENCE_DIR}/receipt.json"
 fi
 if [[ -f "${PUBKEY_PATH}" ]]; then
     cp "${PUBKEY_PATH}" "${EVIDENCE_DIR}/receipt.pubkey"
+fi
+if [[ -f "${ATTESTATION_PATH}" ]]; then
+    cp "${ATTESTATION_PATH}" "${EVIDENCE_DIR}/attestation.bin"
+    echo "  Copied attestation sidecar: ${EVIDENCE_DIR}/attestation.bin"
+fi
+if [[ -f "${MANIFEST_PATH}" ]]; then
+    cp "${MANIFEST_PATH}" "${EVIDENCE_DIR}/manifest.json"
+    echo "  Copied manifest sidecar: ${EVIDENCE_DIR}/manifest.json"
 fi
 # Extract public key hex from the pubkey file (client writes hex text)
 PK_HEX=""
@@ -228,6 +238,7 @@ if [[ -f "${EVIDENCE_DIR}/receipt.json" ]] && [[ -x "${VERIFY_BIN}" ]] && [[ -n 
     if "${VERIFY_BIN}" "${EVIDENCE_DIR}/receipt.json" \
         --public-key "${PK_HEX}" \
         --max-age 0 \
+        --require-destroy-event \
         2>&1 | tee "${EVIDENCE_DIR}/receipt_verify_log.txt"; then
         step_pass
     else
@@ -248,13 +259,27 @@ if [[ ! -x "${COMPLIANCE_BIN}" ]]; then
 fi
 
 # Compliance CLI contract (compliance_cli.rs):
-#   collect --receipt PATH --output PATH [--attestation PATH]
+#   collect --receipt PATH --output PATH [--attestation PATH] [--manifest PATH] [--strict]
 #   verify  BUNDLE --public-key HEX [--profile NAME]
 #   export  --bundle PATH --receipt-public-key HEX --signing-key HEX --output PATH [--profile NAME]
+COLLECT_ARGS=(
+    collect
+    --receipt "${EVIDENCE_DIR}/receipt.json"
+    --output "${EVIDENCE_DIR}/compliance-bundle.json"
+)
+# Include attestation sidecar if present
+if [[ -f "${EVIDENCE_DIR}/attestation.bin" ]]; then
+    COLLECT_ARGS+=(--attestation "${EVIDENCE_DIR}/attestation.bin")
+fi
+# Include manifest sidecar if present
+if [[ -f "${EVIDENCE_DIR}/manifest.json" ]]; then
+    COLLECT_ARGS+=(--manifest "${EVIDENCE_DIR}/manifest.json")
+fi
+# Always require complete evidence
+COLLECT_ARGS+=(--strict)
+
 if [[ -x "${COMPLIANCE_BIN}" ]] && [[ -f "${EVIDENCE_DIR}/receipt.json" ]]; then
-    if "${COMPLIANCE_BIN}" collect \
-        --receipt "${EVIDENCE_DIR}/receipt.json" \
-        --output "${EVIDENCE_DIR}/compliance-bundle.json" \
+    if "${COMPLIANCE_BIN}" "${COLLECT_ARGS[@]}" \
         2>&1 | tee "${EVIDENCE_DIR}/compliance_collect_log.txt"; then
         step_pass
     else
@@ -411,7 +436,7 @@ IMAGE_DIGEST="$(gcloud artifacts docker images list \
 
 cat > "${EVIDENCE_DIR}/metadata.json" << EOF
 {
-  "version": "0.2.0",
+  "version": "0.2.8",
   "project": "${PROJECT}",
   "zone": "${ZONE}",
   "machine_type": "${MACHINE_TYPE}",

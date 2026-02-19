@@ -410,6 +410,10 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
             #[allow(unused_assignments)]
             let mut loaded_model_hash: Option<[u8; 32]> = None;
 
+            // Track model manifest JSON for client sidecar evidence.
+            #[allow(unused_assignments)]
+            let mut captured_manifest_json: Option<String> = None;
+
             match model_source {
                 "local" => {
                     if !args.model_dir.exists() {
@@ -573,6 +577,9 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
                             match ephemeral_ml_common::ModelManifest::from_json(&art.bytes) {
                                 Ok(m) => {
                                     info!(step = "manifest", model_id = %m.model_id, version = %m.version, "Manifest found");
+                                    // Capture raw manifest JSON for client sidecar evidence
+                                    captured_manifest_json =
+                                        String::from_utf8(art.bytes.clone()).ok();
                                     Some(m)
                                 }
                                 Err(e) => {
@@ -786,6 +793,9 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
                             match ephemeral_ml_common::ModelManifest::from_json(&art.bytes) {
                                 Ok(m) => {
                                     info!(step = "manifest", model_id = %m.model_id, version = %m.version, "Manifest found");
+                                    // Capture raw manifest JSON for client sidecar evidence
+                                    captured_manifest_json =
+                                        String::from_utf8(art.bytes.clone()).ok();
                                     Some(m)
                                 }
                                 Err(e) => {
@@ -921,8 +931,9 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
                 }
             }
 
-            // 4. Emit trust evidence bundle and capture boot attestation hash
+            // 4. Emit trust evidence bundle and capture boot attestation hash + raw bytes
             let boot_attestation_hash: [u8; 32];
+            let boot_attestation_bytes: std::sync::Arc<Vec<u8>>;
             {
                 use ephemeral_ml_enclave::tee_provider::TeeAttestationEnvelope;
                 use ephemeral_ml_enclave::trust_evidence::TrustEvidenceBundle;
@@ -948,6 +959,8 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
 
                 // Capture quote hash for binding receipts to TDX attestation
                 boot_attestation_hash = bundle.quote_hash;
+                // Store raw attestation bytes for client sidecar evidence
+                boot_attestation_bytes = std::sync::Arc::new(raw_quote.to_vec());
             }
 
             // 5. Create transport attestation bridge (for SecureChannel handshake)
@@ -1017,6 +1030,7 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
                     "Direct mode: accepting client connections on 0.0.0.0:9000"
                 );
                 let client_verifier = confidential_ml_transport::MockVerifier::new();
+                let manifest_arc = captured_manifest_json.map(std::sync::Arc::new);
                 run_direct_tcp(
                     engine,
                     tee_provider,
@@ -1025,6 +1039,8 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
                     bridge.as_ref(),
                     &client_verifier,
                     boot_attestation_hash,
+                    Some(boot_attestation_bytes),
+                    manifest_arc,
                 )
                 .await
                 .map_err(|e| -> Box<dyn std::error::Error> { e })?;
@@ -1186,6 +1202,8 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
                 &mock_transport,
                 &client_verifier,
                 mock_attestation_hash,
+                None,
+                None,
             )
             .await
             .map_err(|e| -> Box<dyn std::error::Error> { e })?;

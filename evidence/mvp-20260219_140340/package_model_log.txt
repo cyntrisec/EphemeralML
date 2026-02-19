@@ -1,0 +1,52 @@
+=== EphemeralML Model Packaging ===
+  Model dir:   /home/tsyrulb/vsock/EphemeralML-cyntrisec/test_assets/minilm
+  Model ID:    minilm-l6-v2
+  Version:     v1.0.0
+  Format:      safetensors
+  GCS target:  gs://ephemeralml-models-project-d3c20737-eec2-453d-8e5/models/minilm/
+  KMS key:     projects/project-d3c20737-eec2-453d-8e5/locations/us-central1/keyRings/ephemeralml/cryptoKeys/model-dek
+  Dry run:     false
+
+[1/6] Computing model hash...
+  SHA-256: 53aa51172d142c89d9012cce15ae4d6cc0ca6895895114379cacb4fab128d9db
+[2/6] Generating DEK...
+  DEK generated (32 bytes)
+[3/6] Encrypting model weights...
+  Encrypted: 90868404 bytes (86.7 MB)
+[4/6] Wrapping DEK with Cloud KMS...
+  Wrapped DEK: 113 bytes
+[5/6] Generating signed manifest...
+  Reusing existing signing key from /home/tsyrulb/vsock/EphemeralML-cyntrisec/test_assets/minilm/.signing_key.hex
+  Public key (EPHEMERALML_MODEL_SIGNING_PUBKEY): 3f0d9e23f512bdafda6d90d0dae88c75dfe8be3e02d07ae874a4d7cc60eb6786
+  Manifest written (64 byte signature)
+[6/6] Uploading to GCS...
+Copying file:///home/tsyrulb/vsock/EphemeralML-cyntrisec/test_assets/minilm/config.json to gs://ephemeralml-models-project-d3c20737-eec2-453d-8e5/models/minilm/config.json
+  
+...
+Copying file:///home/tsyrulb/vsock/EphemeralML-cyntrisec/test_assets/minilm/tokenizer.json to gs://ephemeralml-models-project-d3c20737-eec2-453d-8e5/models/minilm/tokenizer.json
+  
+........
+Copying file:///tmp/tmp.rCo3yKC7wy/model.safetensors.enc to gs://ephemeralml-models-project-d3c20737-eec2-453d-8e5/models/minilm/model.safetensors.enc
+  
+................................
+
+Average throughput: 24.0MiB/s
+Copying file:///tmp/tmp.rCo3yKC7wy/wrapped_dek.bin to gs://ephemeralml-models-project-d3c20737-eec2-453d-8e5/models/minilm/wrapped_dek.bin
+  
+....
+Copying file:///tmp/tmp.rCo3yKC7wy/manifest.json to gs://ephemeralml-models-project-d3c20737-eec2-453d-8e5/models/minilm/manifest.json
+  
+.....
+
+=== Packaging Complete ===
+
+Model hash (for --expected-model-hash):
+  53aa51172d142c89d9012cce15ae4d6cc0ca6895895114379cacb4fab128d9db
+
+Server command:
+  sudo ./ephemeral-ml-enclave --gcp --direct --model-source gcs-kms \
+      --model-format safetensors \
+      --gcp-bucket ephemeralml-models-project-d3c20737-eec2-453d-8e5 --gcp-model-prefix models/minilm \
+      --gcp-kms-key projects/project-d3c20737-eec2-453d-8e5/locations/us-central1/keyRings/ephemeralml/cryptoKeys/model-dek \
+      --gcp-wip-audience ${GCP_WIP_AUDIENCE} \
+      --expected-model-hash 53aa51172d142c89d9012cce15ae4d6cc0ca6895895114379cacb4fab128d9db

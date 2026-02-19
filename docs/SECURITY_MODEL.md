@@ -21,12 +21,36 @@
 | Network | End-to-end encrypted channel (HPKE + ChaCha20-Poly1305) between client and enclave |
 | Model supply chain | Manifest signature + SHA-256 hash pins the exact model loaded |
 
+## Complete Evidence Chain
+
+Starting in v0.2.8, the server returns all evidence artifacts needed for a complete
+compliance bundle. The evidence chain is:
+
+```
+Receipt (signed, per-inference)
+  ├── attestation_doc_hash → SHA-256 of boot attestation bytes
+  ├── model_id / model_version → matches model manifest
+  └── destroy_evidence → 5 cleanup actions documented
+Boot Attestation (raw TDX quote, captured at boot)
+  └── Binding: signing-key-attestation (receipt → attestation)
+Model Manifest (JSON, from GCS/local)
+  └── Binding: model-manifest-receipt (receipt → manifest)
+```
+
+The client receives all three artifacts:
+- `receipt.json` — signed attestation receipt
+- `ephemeralml-attestation.bin` — raw boot attestation bytes
+- `ephemeralml-manifest.json` — model manifest JSON
+
+The `compliance collect --strict` command verifies all evidence types are present
+before building the bundle.
+
 ## Data Lifecycle
 
 1. **Client sends request** over SecureChannel (HPKE key exchange + ChaCha20-Poly1305)
 2. **Enclave processes** request in TDX-protected memory
 3. **Inference runs** on the loaded model (pre-verified hash)
-4. **Response + receipt** returned to client over the same encrypted channel
+4. **Response + receipt + evidence sidecars** returned to client over the same encrypted channel
 5. **Session keys** are zeroized after the connection closes
 6. **CVM teardown** terminates the instance; TDX memory encryption keys are destroyed
 

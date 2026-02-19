@@ -151,6 +151,8 @@ impl SecureClient for MockSecureClient {
             output_tensor,
             receipt,
             generated_text: None,
+            boot_attestation_b64: None,
+            model_manifest_json: None,
         })
     }
 
@@ -184,6 +186,8 @@ impl SecureClient for MockSecureClient {
             output_tensor,
             receipt,
             generated_text: None,
+            boot_attestation_b64: None,
+            model_manifest_json: None,
         })
     }
 
@@ -222,6 +226,8 @@ impl SecureClient for MockSecureClient {
             output_tensor,
             receipt,
             generated_text: Some(generated_text),
+            boot_attestation_b64: None,
+            model_manifest_json: None,
         })
     }
 }

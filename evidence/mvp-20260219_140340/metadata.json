@@ -1,0 +1,16 @@
+{
+  "version": "0.2.8",
+  "project": "project-d3c20737-eec2-453d-8e5",
+  "zone": "us-central1-a",
+  "machine_type": "c3-standard-4",
+  "model_format": "safetensors",
+  "timestamp": "20260219_140340",
+  "image_digest": "sha256:068c3cdf32e2c09a263858094e079955c3abb384af3749700a7047c53e88d302",
+  "model_hash": "53aa51172d142c89d9012cce15ae4d6cc0ca6895895114379cacb4fab128d9db",
+  "kms_key": "projects/project-d3c20737-eec2-453d-8e5/locations/us-central1/keyRings/ephemeralml/cryptoKeys/model-dek",
+  "verify_exit": 0,
+  "negative_tests_passed": 2,
+  "negative_tests_total": 2,
+  "steps_passed": 10,
+  "steps_total": 10
+}

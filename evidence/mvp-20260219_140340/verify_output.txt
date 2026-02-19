@@ -1,0 +1,72 @@
+  ==============================================================
+  EphemeralML — Verify Deployment
+  ==============================================================
+
+  [1/4] Resolving instance IP...
+  Instance IP:  136.119.228.38
+
+  [2/4] Waiting for 136.119.228.38:9000 to be reachable (max 180s)...
+  Waiting... [5/180s]  Waiting... [10/180s]  Waiting... [15/180s]  Waiting... [20/180s]  Waiting... [25/180s]  Waiting... [30/180s]  Waiting... [35/180s]  Waiting... [40/180s]  Port 9000 is reachable.
+
+  [3/4] Running inference against 136.119.228.38:9000...
+  Text:         "Verify EphemeralML on Confidential Space"
+  Mode:         gcp (TDX attestation + handshake)
+
+[3/4] Building GCP client...  [OK] Building GCP client (1s)          
+    Finished `release` profile [optimized] target(s) in 0.22s
+     Running `target/release/ephemeral-ml-client`
+EphemeralML Client (GCP Mode)
+[client] WARNING: No expected MRTD configured (EPHEMERALML_REQUIRE_MRTD=false). TDX peer measurements are NOT pinned. This is unsafe for production.
+Secure channel established with GCP enclave
+Receipt public key saved to /tmp/ephemeralml-receipt.json.pubkey
+Inference succeeded: 384 floats returned
+First 5 values: [0.3414222, 0.75955707, 0.071208954, 0.2389017, -0.15010944]
+Receipt saved to /tmp/ephemeralml-receipt.json
+Receipt ID: 68796942-19cf-4b60-a17c-91e5a0de8555
+Attestation saved to /tmp/ephemeralml-attestation.bin
+Manifest saved to /tmp/ephemeralml-manifest.json
+
+  Inference completed successfully.
+
+  [4/4] Verifying receipt...
+  Receipt:      /tmp/ephemeralml-receipt.json
+  Public key:   36ed52ddd3882f3788b931c952a39e318c55b2441a2be4ad1767e776a738667b
+
+    Finished `release` profile [optimized] target(s) in 0.51s
+     Running `target/release/ephemeralml-verify /tmp/ephemeralml-receipt.json --public-key 36ed52ddd3882f3788b931c952a39e318c55b2441a2be4ad1767e776a738667b --max-age 0 --format text`
+
+  ==============================================================
+  EphemeralML Receipt Verification
+  ==============================================================
+
+  Receipt:     68796942-19cf-4b60-a17c-91e5a0de8555
+  Model:       stage-0 v1.0
+  Platform:    tdx-mrtd-rtmr
+  Sequence:    #0
+
+  --------------------------------------------------------------
+  Checks:
+  --------------------------------------------------------------
+  Signature (Ed25519)         [PASS]
+  Model ID match              [SKIP]
+  Measurement type            [SKIP]
+  Timestamp freshness         [SKIP]
+  Measurements present        [PASS]
+  Attestation source          [SKIP]
+  Image digest                [SKIP]
+  Destroy evidence            [SKIP]
+  --------------------------------------------------------------
+
+  VERIFIED
+
+  --------------------------------------------------------------
+
+  ==============================================================
+  PASS — Inference + receipt verification succeeded
+  ==============================================================
+
+  Instance:     ephemeralml-cvm (136.119.228.38)
+  Client:       exit 0
+  Receipt:      VERIFIED
+
+  Next: bash scripts/gcp/teardown.sh

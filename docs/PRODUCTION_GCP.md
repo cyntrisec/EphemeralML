@@ -149,6 +149,34 @@ The verifier checks:
 - Attestation hash chains to boot evidence
 - Sequence number monotonicity
 
+## Step 8b: Compliance Bundle (v0.2.8+)
+
+After inference, the client saves sidecar evidence files alongside the receipt:
+- `/tmp/ephemeralml-attestation.bin` (boot attestation bytes)
+- `/tmp/ephemeralml-manifest.json` (model manifest)
+- `/tmp/ephemeralml-receipt.json` (signed receipt)
+
+Collect a complete compliance bundle:
+
+```bash
+ephemeralml-compliance collect \
+    --receipt /tmp/ephemeralml-receipt.json \
+    --attestation /tmp/ephemeralml-attestation.bin \
+    --manifest /tmp/ephemeralml-manifest.json \
+    --strict \
+    --output compliance-bundle.json
+```
+
+Verify against baseline profile:
+
+```bash
+ephemeralml-compliance verify compliance-bundle.json \
+    --public-key "$(cat /tmp/ephemeralml-receipt.json.pubkey | tr -d '[:space:]')" \
+    --profile baseline
+```
+
+The `--strict` flag ensures all evidence types referenced by baseline rules (ATT-001, ATT-002, MODEL-002, KEY-001) are present. Use `--auto-discover <dir>` to scan a directory for evidence files automatically.
+
 ## Step 9: Negative Test
 
 Test that hash mismatch is detected:
