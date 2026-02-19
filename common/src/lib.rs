@@ -32,8 +32,8 @@ pub use kms_proxy::{
 pub use model_manifest::ModelManifest;
 
 pub use receipt_signing::{
-    AttestationReceipt, AttestationUserData, DestroyAction, DestroyEvidence,
-    EnclaveMeasurements, ReceiptBinding, ReceiptSigningKey, ReceiptVerifier, SecurityMode,
+    AttestationReceipt, AttestationUserData, DestroyAction, DestroyEvidence, EnclaveMeasurements,
+    ReceiptBinding, ReceiptSigningKey, ReceiptVerifier, SecurityMode,
 };
 
 pub use transport_types::{

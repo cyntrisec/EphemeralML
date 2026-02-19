@@ -482,7 +482,10 @@ fn ct_017_missing_destroy_evidence_fail() {
         .evaluate(&bundle, &receipt, &key.public_key, &profile)
         .unwrap();
 
-    assert!(!result.compliant, "CT-017: should fail without destroy evidence");
+    assert!(
+        !result.compliant,
+        "CT-017: should fail without destroy evidence"
+    );
     let destroy_rule = result
         .rules
         .iter()
@@ -539,7 +542,10 @@ fn ct_018_empty_destroy_actions_fail() {
         .evaluate(&bundle, &receipt, &key.public_key, &profile)
         .unwrap();
 
-    assert!(!result.compliant, "CT-018: should fail with empty destroy actions");
+    assert!(
+        !result.compliant,
+        "CT-018: should fail with empty destroy actions"
+    );
     let destroy_rule = result
         .rules
         .iter()
@@ -578,7 +584,10 @@ fn ct_019_verifier_require_destroy_event() {
         ..Default::default()
     };
     let result_lax = verify_receipt(&receipt_no_destroy, &key.public_key, &opts_lax);
-    assert!(result_lax.verified, "CT-019a: lax mode should pass without destroy evidence");
+    assert!(
+        result_lax.verified,
+        "CT-019a: lax mode should pass without destroy evidence"
+    );
 
     // With require_destroy_evidence=true, should fail
     let opts_strict = VerifyOptions {
@@ -586,7 +595,10 @@ fn ct_019_verifier_require_destroy_event() {
         ..Default::default()
     };
     let result_strict = verify_receipt(&receipt_no_destroy, &key.public_key, &opts_strict);
-    assert!(!result_strict.verified, "CT-019b: strict mode should fail without destroy evidence");
+    assert!(
+        !result_strict.verified,
+        "CT-019b: strict mode should fail without destroy evidence"
+    );
 
     // Receipt WITH destroy evidence + require_destroy_evidence=true should pass
     let mut receipt_with_destroy = AttestationReceipt::new(
@@ -614,5 +626,8 @@ fn ct_019_verifier_require_destroy_event() {
     receipt_with_destroy.sign(&key).unwrap();
 
     let result_with = verify_receipt(&receipt_with_destroy, &key.public_key, &opts_strict);
-    assert!(result_with.verified, "CT-019c: strict mode should pass with destroy evidence");
+    assert!(
+        result_with.verified,
+        "CT-019c: strict mode should pass with destroy evidence"
+    );
 }
