@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.2.9] - 2026-02-19
+
+### Added
+- **`--count` load test flag**: `ephemeralml infer --count N` sends N inference requests over a single encrypted channel, with per-request timing and p50/p95/p99/RPS summary output.
+- **Milestone report**: `docs/MILESTONE_v0.2.9_REPORT.md` with CPU load test results, compliance overhead measurements, and encrypted model reuse validation.
+
+### Validated
+- **CPU 300-request sustained load**: 100+200 sequential requests over GCP TDX Confidential Space (c3-standard-4), zero failures, ~4 RPS, p50=230ms.
+- **GPU 100-request load test**: a3-highgpu-1g (H100 CC, Spot), zero failures, 3.43 RPS, p50=270ms.
+- **Encrypted model reuse**: 5 fresh CVM deployments, each independently obtaining attestation + KMS key + model decrypt, all successful, GCS objects immutable.
+- **Compliance overhead**: Receipt verify 3-4ms, compliance collect+verify 4-5ms (<2% of inference).
+- **Mock-mode hardening**: `verify_receipt` exit codes (0=VERIFIED, 1=INVALID, 2=ERROR), error hint gating behind `cfg!(feature = "mock")`, CI mock-gate job.
+
+### Changed
+- **Version bump**: All crates from 0.2.8 to 0.2.9.
+
 ## [0.2.8] - 2026-02-19
 
 ### Added
