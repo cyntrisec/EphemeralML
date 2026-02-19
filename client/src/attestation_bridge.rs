@@ -15,9 +15,9 @@ use confidential_ml_transport::attestation::types::{
 };
 use confidential_ml_transport::error::AttestError;
 use confidential_ml_transport::AttestationVerifier as CmlAttestationVerifier;
+use ephemeral_ml_common::transport_types::EphemeralUserData;
 #[cfg(feature = "gcp")]
 use ephemeral_ml_common::EphemeralError;
-use ephemeral_ml_common::transport_types::EphemeralUserData;
 use ephemeral_ml_common::PcrMeasurements;
 use std::collections::BTreeMap;
 #[cfg(feature = "gcp")]
