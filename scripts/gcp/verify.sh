@@ -6,8 +6,9 @@
 # as the enclave.
 #
 # Usage:
-#   bash scripts/gcp/verify.sh                         # auto-detect IP from gcloud
-#   bash scripts/gcp/verify.sh --ip 34.72.100.50       # explicit IP
+#   bash scripts/gcp/verify.sh                              # auto-detect IP; requires GCP_WIP_AUDIENCE
+#   bash scripts/gcp/verify.sh --ip 34.72.100.50            # explicit IP
+#   bash scripts/gcp/verify.sh --allow-unpinned-audience     # skip audience pin (dev only)
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -130,12 +131,11 @@ run_step 3 4 "Building GCP client" \
 # - EPHEMERALML_EXPECTED_AUDIENCE is set from GCP_WIP_AUDIENCE (setup_kms.sh output)
 #   so that audience pinning is enforced. If GCP_WIP_AUDIENCE is not set, the script
 #   fails unless --allow-unpinned-audience is explicitly passed (development only).
-AUDIENCE_ENV=""
 if [[ -n "${GCP_WIP_AUDIENCE:-}" ]]; then
-    AUDIENCE_ENV="EPHEMERALML_EXPECTED_AUDIENCE=${GCP_WIP_AUDIENCE}"
+    export EPHEMERALML_EXPECTED_AUDIENCE="${GCP_WIP_AUDIENCE}"
 elif $ALLOW_UNPINNED_AUDIENCE; then
     ui_warn "WARNING: --allow-unpinned-audience passed. JWT audience is NOT validated."
-    AUDIENCE_ENV="EPHEMERALML_ALLOW_UNPINNED_AUDIENCE=true"
+    export EPHEMERALML_ALLOW_UNPINNED_AUDIENCE=true
 else
     ui_fail "ERROR: GCP_WIP_AUDIENCE not set and audience pinning is required."
     ui_info "Set GCP_WIP_AUDIENCE (from setup_kms.sh output) or pass --allow-unpinned-audience."
@@ -144,7 +144,6 @@ fi
 
 EPHEMERALML_ENCLAVE_ADDR="${IP}:${DATA_PORT}" \
     EPHEMERALML_REQUIRE_MRTD=false \
-    ${AUDIENCE_ENV} \
     cargo run --release --no-default-features --features gcp \
     -p ephemeral-ml-client --bin ephemeral-ml-client 2>&1 | tee ${VERIFY_OUTPUT}
 
