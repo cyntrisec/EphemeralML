@@ -161,7 +161,7 @@ impl SecureClient for SecureEnclaveClient {
         #[cfg(feature = "mock")]
         let verifier = crate::attestation_bridge::MockVerifierBridge::new();
         #[cfg(feature = "gcp")]
-        let verifier = crate::attestation_bridge::TdxEnvelopeVerifierBridge::new(None);
+        let verifier = crate::attestation_bridge::TdxEnvelopeVerifierBridge::new(None)?;
         #[cfg(not(any(feature = "mock", feature = "gcp")))]
         let verifier =
             crate::attestation_bridge::CoseVerifierBridge::new(self.policy_manager.clone());

@@ -7,12 +7,16 @@
 //! `MockVerifierBridge` delegates to cml-transport's `MockVerifier` for mock mode.
 
 #[cfg(feature = "gcp")]
+use crate::error::ClientError;
+#[cfg(feature = "gcp")]
 use ciborium::Value as CborValue;
 use confidential_ml_transport::attestation::types::{
     AttestationDocument as CmlAttestationDocument, VerifiedAttestation,
 };
 use confidential_ml_transport::error::AttestError;
 use confidential_ml_transport::AttestationVerifier as CmlAttestationVerifier;
+#[cfg(feature = "gcp")]
+use ephemeral_ml_common::EphemeralError;
 use ephemeral_ml_common::transport_types::EphemeralUserData;
 use ephemeral_ml_common::PcrMeasurements;
 use std::collections::BTreeMap;
@@ -211,7 +215,9 @@ impl TdxEnvelopeVerifierBridge {
     ///
     /// If `expected_mrtd` is `None`, also checks the `EPHEMERALML_EXPECTED_MRTD`
     /// environment variable (hex-encoded, 48 bytes = 96 hex chars).
-    pub fn new(expected_mrtd: Option<Vec<u8>>) -> Self {
+    ///
+    /// Returns `Err(ClientError)` if required security pins are missing.
+    pub fn new(expected_mrtd: Option<Vec<u8>>) -> std::result::Result<Self, ClientError> {
         let mrtd = expected_mrtd.or_else(|| {
             std::env::var("EPHEMERALML_EXPECTED_MRTD")
                 .ok()
@@ -226,11 +232,12 @@ impl TdxEnvelopeVerifierBridge {
                 .map(|v| !(v == "0" || v.eq_ignore_ascii_case("false")))
                 .unwrap_or(true);
             if require {
-                panic!(
+                return Err(ClientError::Client(EphemeralError::ConfigurationError(
                     "No expected MRTD configured and MRTD pinning is required (default). \
                      Set EPHEMERALML_EXPECTED_MRTD (96 hex chars) for production use, \
                      or set EPHEMERALML_REQUIRE_MRTD=false for development."
-                );
+                        .to_string(),
+                )));
             }
             eprintln!(
                 "[client] WARNING: No expected MRTD configured (EPHEMERALML_REQUIRE_MRTD=false). \
@@ -247,11 +254,12 @@ impl TdxEnvelopeVerifierBridge {
                 .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
                 .unwrap_or(false);
             if !allow_unpinned {
-                panic!(
+                return Err(ClientError::Client(EphemeralError::ConfigurationError(
                     "No expected audience configured and audience pinning is required (default). \
                      Set EPHEMERALML_EXPECTED_AUDIENCE to the WIP audience URI for production use, \
                      or set EPHEMERALML_ALLOW_UNPINNED_AUDIENCE=true for development."
-                );
+                        .to_string(),
+                )));
             }
             eprintln!(
                 "[client] WARNING: No expected audience configured \
@@ -260,13 +268,13 @@ impl TdxEnvelopeVerifierBridge {
             );
         }
 
-        Self {
+        Ok(Self {
             inner: confidential_ml_transport::attestation::tdx::TdxVerifier::new(mrtd),
             cs_expected_issuer: Self::CS_ISSUER.to_string(),
             cs_policy,
             jwks_cache: RwLock::new(JwksCache::new()),
             http_client: reqwest::Client::new(),
-        }
+        })
     }
 
     /// Set CS policy pins explicitly (overrides env vars).
@@ -872,7 +880,9 @@ mod tests {
     fn make_verifier(decoding_key: jsonwebtoken::DecodingKey) -> TdxEnvelopeVerifierBridge {
         std::env::set_var("EPHEMERALML_REQUIRE_MRTD", "false");
         std::env::set_var("EPHEMERALML_ALLOW_UNPINNED_AUDIENCE", "true");
-        TdxEnvelopeVerifierBridge::new(None).with_jwks_cache(test_jwks_cache(decoding_key))
+        TdxEnvelopeVerifierBridge::new(None)
+            .unwrap()
+            .with_jwks_cache(test_jwks_cache(decoding_key))
     }
 
     #[tokio::test]

@@ -346,14 +346,10 @@ fn decode_chunked(body: &str) -> Result<String> {
 
         // After chunk data, expect \r\n separator before next chunk.
         let after_data = &rest[chunk_size..];
-        if after_data.is_empty() {
-            // End of body right after data — acceptable for last chunk before terminal 0.
-            break;
-        }
         if !after_data.starts_with("\r\n") {
             return Err(EnclaveError::Enclave(EphemeralError::SerializationError(
                 format!(
-                    "Chunked encoding: missing CRLF after chunk data, got {:?}",
+                    "Chunked encoding: missing CRLF after chunk data (got {:?})",
                     &after_data[..after_data.len().min(10)]
                 ),
             )));
@@ -679,11 +675,16 @@ mod tests {
 
     #[test]
     fn chunked_data_ends_without_terminal() {
-        // Single chunk where data ends right after the chunk bytes (no terminal "0\r\n").
-        // The parser hits the empty after_data check and breaks — result is non-empty → Ok.
+        // Single chunk where data ends right after chunk bytes (no terminal "0\r\n").
+        // Strict mode: must have \r\n after chunk data, so this is an error.
         let input = "5\r\nhello";
-        let result = decode_chunked(input).unwrap();
-        assert_eq!(result, "hello");
+        let err = decode_chunked(input).unwrap_err();
+        let msg = format!("{:?}", err);
+        assert!(
+            msg.contains("missing CRLF after chunk data"),
+            "Error: {}",
+            msg
+        );
     }
 
     #[test]

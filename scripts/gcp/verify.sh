@@ -40,6 +40,7 @@ PROJECT="${EPHEMERALML_GCP_PROJECT:-}"
 ZONE="us-central1-a"
 IP=""
 GPU=false
+ALLOW_UNPINNED_AUDIENCE=false
 
 # Parse args
 while [[ $# -gt 0 ]]; do
@@ -48,6 +49,7 @@ while [[ $# -gt 0 ]]; do
         --zone)    ZONE="$2"; shift 2 ;;
         --project) PROJECT="$2"; shift 2 ;;
         --gpu)     GPU=true; shift ;;
+        --allow-unpinned-audience) ALLOW_UNPINNED_AUDIENCE=true; shift ;;
         *) echo "Unknown option: $1"; exit 1 ;;
     esac
 done
@@ -126,15 +128,18 @@ run_step 3 4 "Building GCP client" \
 #   test — the MRTD value is not known until after deployment. Production clients
 #   MUST set EPHEMERALML_EXPECTED_MRTD=<96 hex chars> to pin the TDX peer measurement.
 # - EPHEMERALML_EXPECTED_AUDIENCE is set from GCP_WIP_AUDIENCE (setup_kms.sh output)
-#   so that audience pinning is enforced. If GCP_WIP_AUDIENCE is not set,
-#   EPHEMERALML_ALLOW_UNPINNED_AUDIENCE=true allows the smoke test to proceed
-#   without audience validation (development only).
+#   so that audience pinning is enforced. If GCP_WIP_AUDIENCE is not set, the script
+#   fails unless --allow-unpinned-audience is explicitly passed (development only).
 AUDIENCE_ENV=""
 if [[ -n "${GCP_WIP_AUDIENCE:-}" ]]; then
     AUDIENCE_ENV="EPHEMERALML_EXPECTED_AUDIENCE=${GCP_WIP_AUDIENCE}"
-else
-    ui_warn "WARNING: GCP_WIP_AUDIENCE not set. Audience pinning disabled for this smoke test."
+elif $ALLOW_UNPINNED_AUDIENCE; then
+    ui_warn "WARNING: --allow-unpinned-audience passed. JWT audience is NOT validated."
     AUDIENCE_ENV="EPHEMERALML_ALLOW_UNPINNED_AUDIENCE=true"
+else
+    ui_fail "ERROR: GCP_WIP_AUDIENCE not set and audience pinning is required."
+    ui_info "Set GCP_WIP_AUDIENCE (from setup_kms.sh output) or pass --allow-unpinned-audience."
+    exit 1
 fi
 
 EPHEMERALML_ENCLAVE_ADDR="${IP}:${DATA_PORT}" \
