@@ -94,9 +94,13 @@ fn main() -> Result<()> {
         attestation_authentic: false,
         attestation_verification_skipped: {
             #[cfg(feature = "mock")]
-            { args.unsafe_skip_attestation_verification }
+            {
+                args.unsafe_skip_attestation_verification
+            }
             #[cfg(not(feature = "mock"))]
-            { false }
+            {
+                false
+            }
         },
         signature_valid: false,
         attestation_binding_valid: false,
@@ -128,10 +132,9 @@ fn main() -> Result<()> {
                 } else {
                     ""
                 };
-                report.errors.push(format!(
-                    "Attestation verification failed{}: {}",
-                    hint, e
-                ));
+                report
+                    .errors
+                    .push(format!("Attestation verification failed{}: {}", hint, e));
                 output_report(&report, &args)?;
                 std::process::exit(1);
             }
@@ -213,8 +216,7 @@ fn main() -> Result<()> {
     }
 
     // Compute overall validity: attestation MUST be verified (or explicitly skipped)
-    report.overall_valid = (report.attestation_authentic
-        || skip_attestation)
+    report.overall_valid = (report.attestation_authentic || skip_attestation)
         && report.signature_valid
         && report.attestation_binding_valid
         && report.pcr_measurements_valid.unwrap_or(true)
