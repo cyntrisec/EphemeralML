@@ -304,23 +304,27 @@ where
 ///
 /// Format: `<hex_size>\r\n<data>\r\n<hex_size>\r\n<data>\r\n...\r\n0\r\n`
 /// The Confidential Space Launcher uses chunked encoding for token responses.
+///
+/// Returns an error on malformed framing (missing CRLF, invalid hex, truncated data).
 fn decode_chunked(body: &str) -> Result<String> {
     let mut result = String::new();
     let mut remaining = body;
 
     loop {
-        // Find chunk size line
-        let (size_str, rest) = remaining.split_once("\r\n").unwrap_or((remaining, ""));
+        // Find chunk size line — CRLF is mandatory per HTTP/1.1 (RFC 7230 §4.1).
+        let (size_str, rest) = remaining.split_once("\r\n").ok_or_else(|| {
+            EnclaveError::Enclave(EphemeralError::SerializationError(format!(
+                "Chunked encoding: missing CRLF after chunk size, remaining: {:?}",
+                &remaining[..remaining.len().min(40)]
+            )))
+        })?;
         let size_str = size_str.trim();
-
-        if size_str.is_empty() {
-            break;
-        }
 
         let chunk_size = usize::from_str_radix(size_str, 16).map_err(|e| {
             EnclaveError::Enclave(EphemeralError::SerializationError(format!(
-                "Invalid chunk size '{}': {}",
-                size_str, e
+                "Chunked encoding: invalid hex chunk size '{}': {}",
+                &size_str[..size_str.len().min(20)],
+                e
             )))
         })?;
 
@@ -329,19 +333,38 @@ fn decode_chunked(body: &str) -> Result<String> {
         }
 
         if rest.len() < chunk_size {
-            // Take whatever is available (last chunk may lack trailing \r\n)
-            result.push_str(rest);
-            break;
+            return Err(EnclaveError::Enclave(EphemeralError::SerializationError(
+                format!(
+                    "Chunked encoding: truncated chunk data (expected {} bytes, got {})",
+                    chunk_size,
+                    rest.len()
+                ),
+            )));
         }
 
         result.push_str(&rest[..chunk_size]);
 
-        // Skip past chunk data and trailing \r\n
-        remaining = if rest.len() > chunk_size + 2 {
-            &rest[chunk_size + 2..] // skip data + \r\n
-        } else {
-            ""
-        };
+        // After chunk data, expect \r\n separator before next chunk.
+        let after_data = &rest[chunk_size..];
+        if after_data.is_empty() {
+            // End of body right after data — acceptable for last chunk before terminal 0.
+            break;
+        }
+        if !after_data.starts_with("\r\n") {
+            return Err(EnclaveError::Enclave(EphemeralError::SerializationError(
+                format!(
+                    "Chunked encoding: missing CRLF after chunk data, got {:?}",
+                    &after_data[..after_data.len().min(10)]
+                ),
+            )));
+        }
+        remaining = &after_data[2..]; // skip \r\n
+    }
+
+    if result.is_empty() {
+        return Err(EnclaveError::Enclave(EphemeralError::SerializationError(
+            "Chunked encoding: decoded body is empty".to_string(),
+        )));
     }
 
     Ok(result)
@@ -570,6 +593,105 @@ mod tests {
 
         let _ = std::fs::remove_file(&socket_path);
         let _ = std::fs::remove_dir(&dir);
+    }
+
+    // ---------------------------------------------------------------
+    // decode_chunked() unit tests
+    // ---------------------------------------------------------------
+
+    #[test]
+    fn chunked_single_chunk() {
+        // Single chunk: "5\r\nhello\r\n0\r\n"
+        let input = "5\r\nhello\r\n0\r\n";
+        let result = decode_chunked(input).unwrap();
+        assert_eq!(result, "hello");
+    }
+
+    #[test]
+    fn chunked_multi_chunk() {
+        // Two chunks: "5\r\nhello\r\n6\r\n world\r\n0\r\n"
+        let input = "5\r\nhello\r\n6\r\n world\r\n0\r\n";
+        let result = decode_chunked(input).unwrap();
+        assert_eq!(result, "hello world");
+    }
+
+    #[test]
+    fn chunked_realistic_jwt() {
+        // Simulates what the CS Launcher actually sends: a large JWT in one chunk.
+        let jwt = "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJhdWQiOiJ0ZXN0In0.c2lnbmF0dXJl";
+        let hex_len = format!("{:x}", jwt.len());
+        let input = format!("{}\r\n{}\r\n0\r\n", hex_len, jwt);
+        let result = decode_chunked(&input).unwrap();
+        assert_eq!(result, jwt);
+    }
+
+    #[test]
+    fn chunked_invalid_hex_size() {
+        let input = "ZZ\r\ndata\r\n0\r\n";
+        let err = decode_chunked(input).unwrap_err();
+        let msg = format!("{:?}", err);
+        assert!(msg.contains("invalid hex chunk size"), "Error: {}", msg);
+    }
+
+    #[test]
+    fn chunked_truncated_data() {
+        // Claim 10 bytes but only provide 3.
+        let input = "a\r\nabc\r\n0\r\n";
+        let err = decode_chunked(input).unwrap_err();
+        let msg = format!("{:?}", err);
+        assert!(msg.contains("truncated chunk data"), "Error: {}", msg);
+    }
+
+    #[test]
+    fn chunked_missing_crlf_after_size() {
+        // No CRLF at all — just raw data.
+        let input = "5hello";
+        let err = decode_chunked(input).unwrap_err();
+        let msg = format!("{:?}", err);
+        assert!(
+            msg.contains("missing CRLF after chunk size"),
+            "Error: {}",
+            msg
+        );
+    }
+
+    #[test]
+    fn chunked_missing_crlf_after_data() {
+        // Chunk data not followed by \r\n — has wrong separator.
+        let input = "5\r\nhelloXY3\r\nfoo\r\n0\r\n";
+        let err = decode_chunked(input).unwrap_err();
+        let msg = format!("{:?}", err);
+        assert!(
+            msg.contains("missing CRLF after chunk data"),
+            "Error: {}",
+            msg
+        );
+    }
+
+    #[test]
+    fn chunked_terminal_zero_only() {
+        // Just a terminal chunk with no data — should error (empty body).
+        let input = "0\r\n";
+        let err = decode_chunked(input).unwrap_err();
+        let msg = format!("{:?}", err);
+        assert!(msg.contains("empty"), "Error: {}", msg);
+    }
+
+    #[test]
+    fn chunked_data_ends_without_terminal() {
+        // Single chunk where data ends right after the chunk bytes (no terminal "0\r\n").
+        // The parser hits the empty after_data check and breaks — result is non-empty → Ok.
+        let input = "5\r\nhello";
+        let result = decode_chunked(input).unwrap();
+        assert_eq!(result, "hello");
+    }
+
+    #[test]
+    fn chunked_uppercase_hex() {
+        // Hex sizes may be uppercase (RFC 7230 allows case-insensitive hex).
+        let input = "A\r\n0123456789\r\n0\r\n";
+        let result = decode_chunked(input).unwrap();
+        assert_eq!(result, "0123456789");
     }
 
     /// Helper: base64url encode without padding.

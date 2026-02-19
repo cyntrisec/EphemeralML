@@ -238,10 +238,32 @@ impl TdxEnvelopeVerifierBridge {
             );
         }
 
+        let cs_policy = CsPolicy::from_env();
+
+        // Audience pinning: fail-closed by default in GCP mode.
+        // Opt out for development by setting EPHEMERALML_ALLOW_UNPINNED_AUDIENCE=true.
+        if cs_policy.expected_audience.is_none() {
+            let allow_unpinned = std::env::var("EPHEMERALML_ALLOW_UNPINNED_AUDIENCE")
+                .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
+                .unwrap_or(false);
+            if !allow_unpinned {
+                panic!(
+                    "No expected audience configured and audience pinning is required (default). \
+                     Set EPHEMERALML_EXPECTED_AUDIENCE to the WIP audience URI for production use, \
+                     or set EPHEMERALML_ALLOW_UNPINNED_AUDIENCE=true for development."
+                );
+            }
+            eprintln!(
+                "[client] WARNING: No expected audience configured \
+                 (EPHEMERALML_ALLOW_UNPINNED_AUDIENCE=true). \
+                 JWT audience is NOT validated. This is unsafe for production."
+            );
+        }
+
         Self {
             inner: confidential_ml_transport::attestation::tdx::TdxVerifier::new(mrtd),
             cs_expected_issuer: Self::CS_ISSUER.to_string(),
-            cs_policy: CsPolicy::from_env(),
+            cs_policy,
             jwks_cache: RwLock::new(JwksCache::new()),
             http_client: reqwest::Client::new(),
         }
@@ -849,6 +871,7 @@ mod tests {
 
     fn make_verifier(decoding_key: jsonwebtoken::DecodingKey) -> TdxEnvelopeVerifierBridge {
         std::env::set_var("EPHEMERALML_REQUIRE_MRTD", "false");
+        std::env::set_var("EPHEMERALML_ALLOW_UNPINNED_AUDIENCE", "true");
         TdxEnvelopeVerifierBridge::new(None).with_jwks_cache(test_jwks_cache(decoding_key))
     }
 

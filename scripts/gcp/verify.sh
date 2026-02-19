@@ -121,12 +121,25 @@ run_step 3 4 "Building GCP client" \
 # The GCP-mode client reads EPHEMERALML_ENCLAVE_ADDR for the server address.
 # It connects to the data_in port (9001) where the enclave accepts inference traffic.
 #
-# SECURITY NOTE: EPHEMERALML_REQUIRE_MRTD=false is set here because verify.sh is a
-# post-deploy smoke test — the MRTD value is not known until after deployment.
-# Production clients MUST set EPHEMERALML_EXPECTED_MRTD=<96 hex chars> to pin the
-# TDX peer measurement. Without it, any TDX workload could impersonate the enclave.
+# SECURITY NOTES:
+# - EPHEMERALML_REQUIRE_MRTD=false is set because verify.sh is a post-deploy smoke
+#   test — the MRTD value is not known until after deployment. Production clients
+#   MUST set EPHEMERALML_EXPECTED_MRTD=<96 hex chars> to pin the TDX peer measurement.
+# - EPHEMERALML_EXPECTED_AUDIENCE is set from GCP_WIP_AUDIENCE (setup_kms.sh output)
+#   so that audience pinning is enforced. If GCP_WIP_AUDIENCE is not set,
+#   EPHEMERALML_ALLOW_UNPINNED_AUDIENCE=true allows the smoke test to proceed
+#   without audience validation (development only).
+AUDIENCE_ENV=""
+if [[ -n "${GCP_WIP_AUDIENCE:-}" ]]; then
+    AUDIENCE_ENV="EPHEMERALML_EXPECTED_AUDIENCE=${GCP_WIP_AUDIENCE}"
+else
+    ui_warn "WARNING: GCP_WIP_AUDIENCE not set. Audience pinning disabled for this smoke test."
+    AUDIENCE_ENV="EPHEMERALML_ALLOW_UNPINNED_AUDIENCE=true"
+fi
+
 EPHEMERALML_ENCLAVE_ADDR="${IP}:${DATA_PORT}" \
     EPHEMERALML_REQUIRE_MRTD=false \
+    ${AUDIENCE_ENV} \
     cargo run --release --no-default-features --features gcp \
     -p ephemeral-ml-client --bin ephemeral-ml-client 2>&1 | tee ${VERIFY_OUTPUT}
 
