@@ -37,7 +37,8 @@ coset = { workspace = true }
 x509-parser = { workspace = true }
 openssl = { workspace = true }
 rand = { workspace = true }
-confidential-ml-transport = { workspace = true }
+# Client always needs transport mock (client is not in a TEE) and tcp.
+confidential-ml-transport = { workspace = true, features = ["mock", "tcp"] }
 bytes = { workspace = true }
 
 [dev-dependencies]
@@ -45,11 +46,13 @@ proptest = { workspace = true }
 rand = { workspace = true }
 
 [features]
-default = ["mock"]
+default = []
 vendored-openssl = ["openssl/vendored"]
-mock = ["confidential-ml-transport/mock", "confidential-ml-transport/tcp"]
-production = ["confidential-ml-transport/tcp"]
-gcp = ["confidential-ml-transport/tdx", "confidential-ml-transport/tcp", "confidential-ml-transport/mock", "jsonwebtoken"]
+# Application-level mock: MockSecureClient, --allow-mock flag, mock attestation bridge.
+# Transport-level mock (MockProvider for client handshake) is always available via base dep.
+mock = []
+production = []
+gcp = ["confidential-ml-transport/tdx", "jsonwebtoken"]
 benchmark = [
     "candle-core",
     "safetensors",

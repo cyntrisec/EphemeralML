@@ -77,6 +77,8 @@ struct Args {
 
     /// Allow verification of mock/plain-CBOR attestation documents without
     /// cryptographic verification. DANGEROUS: only for local testing.
+    /// Only available when built with `--features mock`.
+    #[cfg(feature = "mock")]
     #[arg(long)]
     allow_mock: bool,
 
@@ -182,7 +184,13 @@ fn resolve_public_key(args: &Args) -> Result<VerifyingKey> {
         VerifyingKey::from_bytes(&arr).context("Invalid Ed25519 public key")
     } else if let Some(ref att_path) = args.attestation {
         let att_bytes = fs::read(att_path).context("Failed to read attestation file")?;
-        extract_key_from_attestation(&att_bytes, args.allow_mock)
+        extract_key_from_attestation(
+            &att_bytes,
+            #[cfg(feature = "mock")]
+            args.allow_mock,
+            #[cfg(not(feature = "mock"))]
+            false,
+        )
     } else {
         bail!("Must provide one of: --public-key, --public-key-file, or --attestation");
     }

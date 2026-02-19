@@ -85,11 +85,11 @@ jobs:
         run: |
           echo "OPENSSL_DIR=$(brew --prefix openssl@3)" >> "$GITHUB_ENV"
 
-      - name: Build client binaries
+      - name: Build client binaries (no mock features)
         run: |
-          FEATURES=""
+          FEATURES="--no-default-features"
           if [ "${{ matrix.vendor_openssl }}" = "true" ]; then
-            FEATURES="--features vendored-openssl"
+            FEATURES="$FEATURES --features vendored-openssl"
           fi
           if [ "${{ matrix.use_cross }}" = "true" ]; then
             cross build --release --target ${{ matrix.target }} -p ephemeral-ml-client $FEATURES
@@ -97,17 +97,17 @@ jobs:
             cargo build --release --target ${{ matrix.target }} -p ephemeral-ml-client $FEATURES
           fi
 
-      - name: Build compliance binary
+      - name: Build compliance binary (no mock features)
         run: |
           if [ "${{ matrix.use_cross }}" = "true" ]; then
-            cross build --release --target ${{ matrix.target }} -p ephemeral-ml-compliance
+            cross build --release --target ${{ matrix.target }} --no-default-features -p ephemeral-ml-compliance
           else
-            cargo build --release --target ${{ matrix.target }} -p ephemeral-ml-compliance
+            cargo build --release --target ${{ matrix.target }} --no-default-features -p ephemeral-ml-compliance
           fi
 
-      - name: Build orchestrator binary
+      - name: Build orchestrator binary (no mock features)
         if: matrix.build_orchestrator
-        run: cargo build --release --target ${{ matrix.target }} -p ephemeral-ml-enclave --bin ephemeralml-orchestrator
+        run: cargo build --release --target ${{ matrix.target }} --no-default-features -p ephemeral-ml-enclave --bin ephemeralml-orchestrator
 
       - name: Package release tarball
         run: |

@@ -181,6 +181,11 @@ async fn run_infer(ui: &mut Ui, args: InferArgs) -> Result<()> {
         "COSE-verified (Nitro)"
     };
 
+    if cfg!(feature = "mock") {
+        ui.warn("WARNING: Running in MOCK mode. Attestation is NOT verified.");
+        ui.warn("This build is for local development only. Do NOT use for production.");
+    }
+
     ui.kv("Attestation", attestation_label);
     ui.kv("Encryption", "HPKE-X25519-ChaCha20Poly1305");
     ui.kv("Channel", "established");

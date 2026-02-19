@@ -1,5 +1,6 @@
 #[cfg(feature = "mock")]
 use ephemeral_ml_client::mock::MockSecureClient;
+#[cfg(any(feature = "mock", feature = "gcp"))]
 use ephemeral_ml_client::secure_client::SecureClient;
 
 #[tokio::main]

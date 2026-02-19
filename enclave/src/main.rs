@@ -1101,6 +1101,11 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
 
     #[cfg(feature = "mock")]
     {
+        warn!("==================================================");
+        warn!("  MOCK MODE — NO ATTESTATION, NO ENCRYPTION");
+        warn!("  This build is for local development only.");
+        warn!("  Do NOT use for production.");
+        warn!("==================================================");
         info!("EphemeralML Enclave (Mock Mode)");
 
         // Load model weights

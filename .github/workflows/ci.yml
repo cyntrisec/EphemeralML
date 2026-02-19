@@ -36,7 +36,7 @@ jobs:
             ~/.cargo/git
             target
           key: ${{ runner.os }}-cargo-clippy-${{ hashFiles('**/Cargo.lock') }}
-      - run: cargo clippy --workspace -- -D warnings
+      - run: cargo clippy --workspace --features mock -- -D warnings
       - run: cargo clippy --no-default-features --features gcp -p ephemeral-ml-enclave -- -D warnings
       - run: cargo clippy --no-default-features --features gcp -p ephemeral-ml-client -- -D warnings
 
@@ -53,8 +53,41 @@ jobs:
             ~/.cargo/git
             target
           key: ${{ runner.os }}-cargo-test-${{ hashFiles('**/Cargo.lock') }}
-      - run: cargo test --workspace
+      - run: cargo test --workspace --features mock
       - run: cargo test --no-default-features --features gcp -p ephemeral-ml-enclave
+
+  mock-gate:
+    name: Mock gate (no mock in default build)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/cache@v5
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-release-gate-${{ hashFiles('**/Cargo.lock') }}
+      - name: Verify default build has no mock
+        run: |
+          # Build client with default features (should have NO mock)
+          cargo build --release -p ephemeral-ml-client 2>&1
+          # Verify --allow-mock flag is NOT available
+          if cargo run --release -p ephemeral-ml-client --bin ephemeralml-verify -- --help 2>&1 | grep -q -- '--allow-mock'; then
+            echo "FAIL: --allow-mock is available in default build (mock feature leaked)"
+            exit 1
+          fi
+          echo "PASS: --allow-mock not available in default build"
+      - name: Verify mock build works when explicit
+        run: |
+          cargo build --release --features mock -p ephemeral-ml-client 2>&1
+          if cargo run --release --features mock -p ephemeral-ml-client --bin ephemeralml-verify -- --help 2>&1 | grep -q -- '--allow-mock'; then
+            echo "PASS: --allow-mock available in mock build"
+          else
+            echo "FAIL: --allow-mock should be available in mock build"
+            exit 1
+          fi
 
   build-gcp:
     name: Build (GCP Production)
@@ -166,7 +199,7 @@ jobs:
     name: Release Gate (GCP)
     runs-on: ubuntu-latest
     if: github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/heads/release/')
-    needs: [fmt, clippy, test, build-gcp, smoke, compliance]
+    needs: [fmt, clippy, test, build-gcp, smoke, compliance, mock-gate]
     steps:
       - uses: actions/checkout@v6
       - uses: dtolnay/rust-toolchain@stable

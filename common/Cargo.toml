@@ -22,7 +22,7 @@ zeroize = { version = "1.7", features = ["zeroize_derive"] }
 ciborium = "0.2"
 
 # Confidential ML transport
-confidential-ml-transport = { workspace = true, features = ["mock", "tcp"] }
+confidential-ml-transport = { workspace = true, features = ["tcp"] }
 bytes = { workspace = true }
 async-trait = { workspace = true }
 tokio = { version = "1.0", features = ["io-util"] }

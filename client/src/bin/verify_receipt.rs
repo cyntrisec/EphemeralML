@@ -38,7 +38,9 @@ struct Args {
     #[arg(long, default_value = "3600")]
     max_age_secs: u64,
 
-    /// Skip COSE_Sign1 attestation signature verification (UNSAFE: allows forged attestations)
+    /// Skip COSE_Sign1 attestation signature verification (UNSAFE: allows forged attestations).
+    /// Only available when built with `--features mock`.
+    #[cfg(feature = "mock")]
     #[arg(long)]
     unsafe_skip_attestation_verification: bool,
 
@@ -90,7 +92,12 @@ fn main() -> Result<()> {
         model_id: receipt.model_id.clone(),
         model_version: receipt.model_version.clone(),
         attestation_authentic: false,
-        attestation_verification_skipped: args.unsafe_skip_attestation_verification,
+        attestation_verification_skipped: {
+            #[cfg(feature = "mock")]
+            { args.unsafe_skip_attestation_verification }
+            #[cfg(not(feature = "mock"))]
+            { false }
+        },
         signature_valid: false,
         attestation_binding_valid: false,
         pcr_measurements_valid: None,
@@ -101,7 +108,11 @@ fn main() -> Result<()> {
     };
 
     // Step 1: Verify attestation document authenticity (COSE_Sign1 signature + cert chain)
-    if args.unsafe_skip_attestation_verification {
+    #[cfg(feature = "mock")]
+    let skip_attestation = args.unsafe_skip_attestation_verification;
+    #[cfg(not(feature = "mock"))]
+    let skip_attestation = false;
+    if skip_attestation {
         report.warnings.push(
             "UNSAFE: Attestation verification skipped -- receipt key trust is unverified"
                 .to_string(),
@@ -112,12 +123,17 @@ fn main() -> Result<()> {
                 report.attestation_authentic = true;
             }
             Err(e) => {
+                let hint = if cfg!(feature = "mock") {
+                    " (use --unsafe-skip-attestation-verification to bypass)"
+                } else {
+                    ""
+                };
                 report.errors.push(format!(
-                    "Attestation verification failed (use --unsafe-skip-attestation-verification to bypass): {}",
-                    e
+                    "Attestation verification failed{}: {}",
+                    hint, e
                 ));
                 output_report(&report, &args)?;
-                return Ok(());
+                std::process::exit(1);
             }
         }
     }
@@ -130,7 +146,7 @@ fn main() -> Result<()> {
                 .errors
                 .push(format!("Failed to extract user data: {}", e));
             output_report(&report, &args)?;
-            return Ok(());
+            std::process::exit(2);
         }
     };
 
@@ -198,7 +214,7 @@ fn main() -> Result<()> {
 
     // Compute overall validity: attestation MUST be verified (or explicitly skipped)
     report.overall_valid = (report.attestation_authentic
-        || args.unsafe_skip_attestation_verification)
+        || skip_attestation)
         && report.signature_valid
         && report.attestation_binding_valid
         && report.pcr_measurements_valid.unwrap_or(true)
