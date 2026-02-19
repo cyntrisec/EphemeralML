@@ -4,7 +4,8 @@
 //! evaluate controls, export, and sign.
 
 use ephemeral_ml_common::receipt_signing::{
-    AttestationReceipt, EnclaveMeasurements, ReceiptSigningKey, SecurityMode,
+    AttestationReceipt, DestroyAction, DestroyEvidence, EnclaveMeasurements, ReceiptSigningKey,
+    SecurityMode,
 };
 use ephemeral_ml_compliance::controls::baseline::baseline_registry;
 use ephemeral_ml_compliance::controls::hipaa::hipaa_registry;
@@ -44,7 +45,14 @@ fn make_test_receipt_and_attestation() -> (AttestationReceipt, ReceiptSigningKey
         "v1.0".to_string(),
         100,
         64,
-    );
+    )
+    .with_destroy_evidence(DestroyEvidence {
+        timestamp: 1234567890,
+        actions: vec![DestroyAction {
+            target: "session_keys".to_string(),
+            mechanism: "zeroize_on_drop".to_string(),
+        }],
+    });
     receipt.sign(&signing_key).unwrap();
 
     (receipt, signing_key, attestation_data.to_vec())
@@ -82,12 +90,12 @@ fn test_full_baseline_pipeline() {
         "Expected compliant but got: {}",
         policy_result.summary
     );
-    assert_eq!(policy_result.rules.len(), 15);
+    assert_eq!(policy_result.rules.len(), 16);
 
     // 4. Evaluate controls
     let registry = baseline_registry();
     let control_results = registry.evaluate(&policy_result);
-    assert_eq!(control_results.len(), 15);
+    assert_eq!(control_results.len(), 16);
     assert!(control_results.iter().all(|c| c.satisfied));
 
     // 5. Export

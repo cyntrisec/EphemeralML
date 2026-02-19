@@ -1,8 +1,8 @@
-//! Baseline control definitions: EML-SIG-001 through EML-SEQ-001.
+//! Baseline control definitions: EML-SIG-001 through EML-DESTROY-001.
 
 use super::{ControlDefinition, ControlRegistry};
 
-/// Create a `ControlRegistry` with all 15 baseline controls and their
+/// Create a `ControlRegistry` with all 16 baseline controls and their
 /// rule-to-control mappings.
 pub fn baseline_registry() -> ControlRegistry {
     let mappings = vec![
@@ -165,6 +165,17 @@ pub fn baseline_registry() -> ControlRegistry {
             },
             vec!["SEQ-001".to_string()],
         ),
+        (
+            ControlDefinition {
+                control_id: "EML-DESTROY-001".to_string(),
+                name: "Destroy evidence present".to_string(),
+                description: "Receipt contains destroy evidence with at least one cleanup action"
+                    .to_string(),
+                regulation: "EphemeralML Baseline".to_string(),
+                section: "Destruction".to_string(),
+            },
+            vec!["DESTROY-001".to_string()],
+        ),
     ];
 
     ControlRegistry::new(mappings)
@@ -192,6 +203,7 @@ mod tests {
             "KEY-001",
             "POLICY-001",
             "SEQ-001",
+            "DESTROY-001",
         ];
         let rules = rule_ids
             .iter()
@@ -216,7 +228,7 @@ mod tests {
         let registry = baseline_registry();
         let policy = all_passing_policy();
         let results = registry.evaluate(&policy);
-        assert_eq!(results.len(), 15);
+        assert_eq!(results.len(), 16);
         assert!(results.iter().all(|r| r.satisfied));
     }
 
@@ -239,6 +251,6 @@ mod tests {
             .iter()
             .filter(|r| r.control.control_id != "EML-SIG-001" && r.satisfied)
             .count();
-        assert_eq!(other_count, 14);
+        assert_eq!(other_count, 15);
     }
 }

@@ -323,6 +323,34 @@ pub fn check_cbor_001(receipt: &AttestationReceipt) -> RuleResult {
 }
 
 // ---------------------------------------------------------------------------
+// Destroy evidence rule
+// ---------------------------------------------------------------------------
+
+/// DESTROY-001: Receipt contains destroy evidence with at least one action.
+pub fn check_destroy_001(receipt: &AttestationReceipt) -> RuleResult {
+    let (passed, reason) = match &receipt.destroy_evidence {
+        Some(ev) if !ev.actions.is_empty() => (
+            true,
+            format!(
+                "Destroy evidence present with {} action(s)",
+                ev.actions.len()
+            ),
+        ),
+        Some(_) => (
+            false,
+            "Destroy evidence present but contains no actions".to_string(),
+        ),
+        None => (false, "No destroy evidence in receipt".to_string()),
+    };
+    RuleResult {
+        rule_id: "DESTROY-001".to_string(),
+        rule_name: "Destroy evidence present".to_string(),
+        passed,
+        reason,
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Key binding rule
 // ---------------------------------------------------------------------------
 
@@ -616,5 +644,41 @@ mod tests {
     fn test_seq_001_empty() {
         let result = check_seq_001(&[]);
         assert!(!result.passed);
+    }
+
+    #[test]
+    fn test_destroy_001_present_with_actions() {
+        use ephemeral_ml_common::receipt_signing::{DestroyAction, DestroyEvidence};
+        let mut receipt = make_receipt("model", 0);
+        receipt.destroy_evidence = Some(DestroyEvidence {
+            timestamp: 1234567890,
+            actions: vec![DestroyAction {
+                target: "dek".to_string(),
+                mechanism: "explicit_zeroize".to_string(),
+            }],
+        });
+        let result = check_destroy_001(&receipt);
+        assert!(result.passed);
+    }
+
+    #[test]
+    fn test_destroy_001_missing() {
+        let receipt = make_receipt("model", 0);
+        let result = check_destroy_001(&receipt);
+        assert!(!result.passed);
+        assert!(result.reason.contains("No destroy evidence"));
+    }
+
+    #[test]
+    fn test_destroy_001_empty_actions() {
+        use ephemeral_ml_common::receipt_signing::DestroyEvidence;
+        let mut receipt = make_receipt("model", 0);
+        receipt.destroy_evidence = Some(DestroyEvidence {
+            timestamp: 1234567890,
+            actions: vec![],
+        });
+        let result = check_destroy_001(&receipt);
+        assert!(!result.passed);
+        assert!(result.reason.contains("no actions"));
     }
 }

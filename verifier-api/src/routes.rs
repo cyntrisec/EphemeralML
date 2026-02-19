@@ -31,6 +31,7 @@ pub async fn verify_json(
         max_age_secs: body.max_age_secs,
         expected_attestation_source: body.expected_attestation_source,
         expected_image_digest: body.expected_image_digest,
+        require_destroy_evidence: false,
     };
 
     let result = verify_receipt(&receipt, &public_key, &options);
@@ -145,6 +146,7 @@ pub async fn verify_upload(
         max_age_secs,
         expected_attestation_source,
         expected_image_digest,
+        require_destroy_evidence: false,
     };
     let result = verify_receipt(&receipt, &public_key, &options);
     Ok(Json(ApiVerifyResponse::from_result(result)))

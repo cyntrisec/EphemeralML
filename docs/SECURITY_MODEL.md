@@ -30,15 +30,45 @@
 5. **Session keys** are zeroized after the connection closes
 6. **CVM teardown** terminates the instance; TDX memory encryption keys are destroyed
 
-### Ephemeral Guarantees
+### Data Destruction: Guaranteed vs Best-Effort
 
-- **Session TTL**: Each connection has a bounded lifetime
-- **Key zeroization**: Session keys and DEK are zeroized (using the `zeroize` crate) after use
-- **CVM termination**: `tee-restart-policy=Never` ensures the VM is not restarted after the workload exits
+EphemeralML provides layered data destruction. Some guarantees are enforced by
+hardware and cryptographic mechanisms; others are best-effort software measures.
 
-**Note**: We claim key/session zeroization and short-lived processing. We do NOT claim
-cryptographic proof that data is irrecoverably gone — that would require proving negative
-(data non-existence), which is not possible with current technology.
+#### Guaranteed (hardware/crypto-enforced)
+
+| What | Mechanism | Evidence |
+|------|-----------|----------|
+| Session key destruction | `zeroize` crate (`ZeroizeOnDrop`) on `SymmetricKey`, `SealingContext`, `OpeningContext` | Source: `confidential-ml-transport/src/crypto/` |
+| Receipt signing key destruction | `ZeroizeOnDrop` on `ReceiptSigningKey` | Source: `common/src/receipt_signing.rs` |
+| Ephemeral HPKE key pair destruction | `ZeroizeOnDrop` on `EphemeralKeyPair` | Source: `enclave/src/attestation.rs` |
+| CVM memory encryption key destruction | Intel TDX: VM termination destroys the hardware memory encryption key | Hardware guarantee — no software evidence possible |
+| CVM non-restart | `tee-restart-policy=Never` in instance metadata; CS Launcher enforces | Verifiable via instance metadata |
+| DEK zeroization | `Zeroizing<Vec<u8>>` wrapper on decrypted DEK bytes | Source: `enclave/src/model_loader.rs` |
+| Inference buffer zeroization | `zeroize()` on request input, output tensor, and response buffers | Source: `enclave/src/server.rs` |
+
+#### Best-effort (software, not independently verifiable)
+
+| What | Limitation | Why |
+|------|-----------|-----|
+| Model weights in memory | Weights are loaded into `candle` tensor storage; no `zeroize` on candle's internal buffers | candle does not expose memory management hooks |
+| GPU memory (H100 CC-mode) | NVIDIA CC-mode clears GPU memory on context destroy, but we cannot independently verify this | Depends on NVIDIA firmware correctness |
+| Plaintext in transport buffers | `BytesMut`/`Bytes` from the `bytes` crate use ref-counted allocations that do not implement `Zeroize` | Transport-layer tensors use `Bytes`; wiped where ownership allows |
+| OS page cache / swap | TDX encrypts memory, but the guest OS may page data to encrypted swap | No swap is configured in the CS image, but this is not enforced by EphemeralML |
+| Cloud Logging | CS debug images write container stdout/stderr to Cloud Logging; production images do not | Use `confidential-space` (not `-debug`) image for production |
+| GCS model artifacts | Encrypted model + wrapped DEK persist in GCS after inference | Caller must delete GCS objects if post-inference cleanup is required |
+| Receipt persistence | Receipts are saved to the client filesystem and are not auto-deleted | Receipts are designed to persist — they are the audit trail |
+
+#### What we do NOT claim
+
+- **Cryptographic proof of data deletion**: Proving that data no longer exists anywhere is
+  not possible with current technology. We provide *evidence of cleanup actions taken*
+  (destroy evidence event in the receipt), not proof of data non-existence.
+- **GPU memory scrubbing**: NVIDIA H100 CC-mode provides memory isolation and encryption,
+  but EphemeralML cannot independently verify that GPU memory is scrubbed on release.
+- **Compiler/allocator residuals**: The Rust allocator (`jemalloc` or system) may retain
+  freed memory in thread-local caches. `zeroize` overwrites the buffer before free, but
+  the allocator may still hold the freed page.
 
 ## Threat Model
 

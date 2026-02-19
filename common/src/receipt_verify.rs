@@ -37,6 +37,7 @@ pub struct CheckResults {
     pub measurements_present: CheckStatus,
     pub attestation_source: CheckStatus,
     pub image_digest: CheckStatus,
+    pub destroy_evidence: CheckStatus,
 }
 
 /// Full verification result with metadata.
@@ -73,6 +74,9 @@ pub struct VerifyOptions {
     pub expected_attestation_source: Option<String>,
     /// If set, the receipt's `cs_image_digest` must match this value.
     pub expected_image_digest: Option<String>,
+    /// If true, the receipt must contain a `destroy_evidence` field with at
+    /// least one action. Fail-closed: missing destroy evidence is a hard failure.
+    pub require_destroy_evidence: bool,
 }
 
 /// Run the five verification checks on a receipt.
@@ -209,6 +213,23 @@ pub fn verify_receipt(
         CheckStatus::Skip
     };
 
+    // 8. Destroy evidence (if required)
+    let destroy_status = if options.require_destroy_evidence {
+        match &receipt.destroy_evidence {
+            Some(ev) if !ev.actions.is_empty() => CheckStatus::Pass,
+            Some(_) => {
+                errors.push("Destroy evidence present but contains no actions".to_string());
+                CheckStatus::Fail
+            }
+            None => {
+                errors.push("Destroy evidence required but not present in receipt".to_string());
+                CheckStatus::Fail
+            }
+        }
+    } else {
+        CheckStatus::Skip
+    };
+
     // Any Fail check must produce verified: false. We check all statuses
     // rather than relying solely on errors.is_empty(), as a defense against
     // future checks that might accidentally populate only warnings.
@@ -218,7 +239,8 @@ pub fn verify_receipt(
         || matches!(ts_status, CheckStatus::Fail)
         || matches!(meas_status, CheckStatus::Fail)
         || matches!(att_src_status, CheckStatus::Fail)
-        || matches!(img_digest_status, CheckStatus::Fail);
+        || matches!(img_digest_status, CheckStatus::Fail)
+        || matches!(destroy_status, CheckStatus::Fail);
     let verified = !any_fail;
 
     VerifyResult {
@@ -239,6 +261,7 @@ pub fn verify_receipt(
             measurements_present: meas_status,
             attestation_source: att_src_status,
             image_digest: img_digest_status,
+            destroy_evidence: destroy_status,
         },
         errors,
         warnings,
@@ -566,5 +589,72 @@ mod tests {
         assert_eq!(parsed.cs_image_digest, Some("sha256:deadbeef".to_string()));
         assert_eq!(parsed.cs_claims_hash, Some([0xAA; 32]));
         assert!(parsed.verify_signature(&key.public_key).unwrap());
+    }
+
+    #[test]
+    fn test_destroy_evidence_required_and_present() {
+        use crate::receipt_signing::{DestroyAction, DestroyEvidence};
+        let key = ReceiptSigningKey::generate().unwrap();
+        let mut receipt = make_signed_receipt("model", &key);
+        receipt.destroy_evidence = Some(DestroyEvidence {
+            timestamp: crate::current_timestamp(),
+            actions: vec![DestroyAction {
+                target: "dek".to_string(),
+                mechanism: "explicit_zeroize".to_string(),
+            }],
+        });
+        receipt.sign(&key).unwrap();
+
+        let options = VerifyOptions {
+            require_destroy_evidence: true,
+            ..Default::default()
+        };
+        let result = verify_receipt(&receipt, &key.public_key, &options);
+        assert!(result.verified);
+        assert_eq!(result.checks.destroy_evidence, CheckStatus::Pass);
+    }
+
+    #[test]
+    fn test_destroy_evidence_required_but_missing() {
+        let key = ReceiptSigningKey::generate().unwrap();
+        let receipt = make_signed_receipt("model", &key);
+        // destroy_evidence is None
+
+        let options = VerifyOptions {
+            require_destroy_evidence: true,
+            ..Default::default()
+        };
+        let result = verify_receipt(&receipt, &key.public_key, &options);
+        assert!(!result.verified);
+        assert_eq!(result.checks.destroy_evidence, CheckStatus::Fail);
+    }
+
+    #[test]
+    fn test_destroy_evidence_required_but_empty_actions() {
+        use crate::receipt_signing::DestroyEvidence;
+        let key = ReceiptSigningKey::generate().unwrap();
+        let mut receipt = make_signed_receipt("model", &key);
+        receipt.destroy_evidence = Some(DestroyEvidence {
+            timestamp: crate::current_timestamp(),
+            actions: vec![],
+        });
+        receipt.sign(&key).unwrap();
+
+        let options = VerifyOptions {
+            require_destroy_evidence: true,
+            ..Default::default()
+        };
+        let result = verify_receipt(&receipt, &key.public_key, &options);
+        assert!(!result.verified);
+        assert_eq!(result.checks.destroy_evidence, CheckStatus::Fail);
+    }
+
+    #[test]
+    fn test_destroy_evidence_not_required_skips() {
+        let key = ReceiptSigningKey::generate().unwrap();
+        let receipt = make_signed_receipt("model", &key);
+        let options = VerifyOptions::default();
+        let result = verify_receipt(&receipt, &key.public_key, &options);
+        assert_eq!(result.checks.destroy_evidence, CheckStatus::Skip);
     }
 }

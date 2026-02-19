@@ -7,7 +7,8 @@
 
 use ed25519_dalek::SigningKey;
 use ephemeral_ml_common::receipt_signing::{
-    AttestationReceipt, EnclaveMeasurements, ReceiptSigningKey, SecurityMode,
+    AttestationReceipt, DestroyAction, DestroyEvidence, EnclaveMeasurements, ReceiptSigningKey,
+    SecurityMode,
 };
 use ephemeral_ml_common::receipt_verify::{verify_receipt, CheckStatus, VerifyOptions};
 use ephemeral_ml_compliance::evidence::collector::EvidenceBundleCollector;
@@ -353,7 +354,14 @@ fn ct_014_baseline_compliance_pass() {
         "v1.0".to_string(),
         100,
         64,
-    );
+    )
+    .with_destroy_evidence(DestroyEvidence {
+        timestamp: 1234567890,
+        actions: vec![DestroyAction {
+            target: "session_keys".to_string(),
+            mechanism: "zeroize_on_drop".to_string(),
+        }],
+    });
     receipt.sign(&key).unwrap();
 
     let receipt_cbor = ephemeral_ml_common::cbor::to_vec(&receipt).unwrap();
@@ -373,7 +381,7 @@ fn ct_014_baseline_compliance_pass() {
         .unwrap();
 
     assert!(result.compliant, "CT-014 failed: {}", result.summary);
-    assert_eq!(result.rules.len(), 15);
+    assert_eq!(result.rules.len(), 16);
     assert!(result.rules.iter().all(|r| r.passed));
 }
 
@@ -430,4 +438,181 @@ fn ct_016_tampered_receipt_compliance_fail() {
         .find(|r| r.rule_id == "SIG-001")
         .unwrap();
     assert!(!sig_rule.passed);
+}
+
+// --- CT-017: Missing destroy evidence fails DESTROY-001 ---
+#[test]
+fn ct_017_missing_destroy_evidence_fail() {
+    let key = key_a();
+
+    // Create receipt without destroy evidence
+    let attestation_data = b"mock-attestation-bytes-017";
+    let att_hash: [u8; 32] = Sha256::digest(attestation_data).into();
+
+    let measurements = EnclaveMeasurements::new(vec![0xAA; 48], vec![0xBB; 48], vec![0xCC; 48]);
+    let mut receipt = AttestationReceipt::new(
+        "ct-no-destroy-017".to_string(),
+        1,
+        SecurityMode::GatewayOnly,
+        measurements,
+        att_hash,
+        [5u8; 32],
+        [6u8; 32],
+        "policy-v1".to_string(),
+        0,
+        "minilm-l6-v2".to_string(),
+        "v1.0".to_string(),
+        100,
+        64,
+    );
+    // Deliberately omit .with_destroy_evidence(...)
+    receipt.sign(&key).unwrap();
+
+    let receipt_cbor = ephemeral_ml_common::cbor::to_vec(&receipt).unwrap();
+    let mut collector = EvidenceBundleCollector::new();
+    let r_id = collector.add_receipt(&receipt_cbor).unwrap();
+    let a_id = collector.add_attestation(attestation_data).unwrap();
+    collector.add_model_manifest(b"manifest").unwrap();
+    collector.add_binding(&r_id, &a_id, "signing-key-attestation", None);
+
+    let bundle = collector.build().unwrap();
+    let engine = PolicyEngine;
+    let profile = baseline_profile();
+    let result = engine
+        .evaluate(&bundle, &receipt, &key.public_key, &profile)
+        .unwrap();
+
+    assert!(!result.compliant, "CT-017: should fail without destroy evidence");
+    let destroy_rule = result
+        .rules
+        .iter()
+        .find(|r| r.rule_id == "DESTROY-001")
+        .unwrap();
+    assert!(!destroy_rule.passed);
+
+    // All other 15 rules should pass
+    let passing_count = result.rules.iter().filter(|r| r.passed).count();
+    assert_eq!(passing_count, 15);
+}
+
+// --- CT-018: Empty destroy actions fails DESTROY-001 ---
+#[test]
+fn ct_018_empty_destroy_actions_fail() {
+    let key = key_a();
+
+    let attestation_data = b"mock-attestation-bytes-018";
+    let att_hash: [u8; 32] = Sha256::digest(attestation_data).into();
+
+    let measurements = EnclaveMeasurements::new(vec![0xAA; 48], vec![0xBB; 48], vec![0xCC; 48]);
+    let mut receipt = AttestationReceipt::new(
+        "ct-empty-destroy-018".to_string(),
+        1,
+        SecurityMode::GatewayOnly,
+        measurements,
+        att_hash,
+        [5u8; 32],
+        [6u8; 32],
+        "policy-v1".to_string(),
+        0,
+        "minilm-l6-v2".to_string(),
+        "v1.0".to_string(),
+        100,
+        64,
+    )
+    .with_destroy_evidence(DestroyEvidence {
+        timestamp: 1234567890,
+        actions: vec![], // empty actions
+    });
+    receipt.sign(&key).unwrap();
+
+    let receipt_cbor = ephemeral_ml_common::cbor::to_vec(&receipt).unwrap();
+    let mut collector = EvidenceBundleCollector::new();
+    let r_id = collector.add_receipt(&receipt_cbor).unwrap();
+    let a_id = collector.add_attestation(attestation_data).unwrap();
+    collector.add_model_manifest(b"manifest").unwrap();
+    collector.add_binding(&r_id, &a_id, "signing-key-attestation", None);
+
+    let bundle = collector.build().unwrap();
+    let engine = PolicyEngine;
+    let profile = baseline_profile();
+    let result = engine
+        .evaluate(&bundle, &receipt, &key.public_key, &profile)
+        .unwrap();
+
+    assert!(!result.compliant, "CT-018: should fail with empty destroy actions");
+    let destroy_rule = result
+        .rules
+        .iter()
+        .find(|r| r.rule_id == "DESTROY-001")
+        .unwrap();
+    assert!(!destroy_rule.passed);
+}
+
+// --- CT-019: Verifier require-destroy-event flag ---
+#[test]
+fn ct_019_verifier_require_destroy_event() {
+    let key = key_a();
+
+    // Receipt WITHOUT destroy evidence
+    let measurements = EnclaveMeasurements::new(vec![0xAA; 48], vec![0xBB; 48], vec![0xCC; 48]);
+    let mut receipt_no_destroy = AttestationReceipt::new(
+        "ct-verifier-destroy-019a".to_string(),
+        1,
+        SecurityMode::GatewayOnly,
+        measurements.clone(),
+        [4u8; 32],
+        [5u8; 32],
+        [6u8; 32],
+        "policy-v1".to_string(),
+        0,
+        "minilm-l6-v2".to_string(),
+        "v1.0".to_string(),
+        100,
+        64,
+    );
+    receipt_no_destroy.sign(&key).unwrap();
+
+    // With require_destroy_evidence=false, should pass
+    let opts_lax = VerifyOptions {
+        require_destroy_evidence: false,
+        ..Default::default()
+    };
+    let result_lax = verify_receipt(&receipt_no_destroy, &key.public_key, &opts_lax);
+    assert!(result_lax.verified, "CT-019a: lax mode should pass without destroy evidence");
+
+    // With require_destroy_evidence=true, should fail
+    let opts_strict = VerifyOptions {
+        require_destroy_evidence: true,
+        ..Default::default()
+    };
+    let result_strict = verify_receipt(&receipt_no_destroy, &key.public_key, &opts_strict);
+    assert!(!result_strict.verified, "CT-019b: strict mode should fail without destroy evidence");
+
+    // Receipt WITH destroy evidence + require_destroy_evidence=true should pass
+    let mut receipt_with_destroy = AttestationReceipt::new(
+        "ct-verifier-destroy-019c".to_string(),
+        1,
+        SecurityMode::GatewayOnly,
+        measurements,
+        [4u8; 32],
+        [5u8; 32],
+        [6u8; 32],
+        "policy-v1".to_string(),
+        0,
+        "minilm-l6-v2".to_string(),
+        "v1.0".to_string(),
+        100,
+        64,
+    )
+    .with_destroy_evidence(DestroyEvidence {
+        timestamp: 1234567890,
+        actions: vec![DestroyAction {
+            target: "session_keys".to_string(),
+            mechanism: "zeroize_on_drop".to_string(),
+        }],
+    });
+    receipt_with_destroy.sign(&key).unwrap();
+
+    let result_with = verify_receipt(&receipt_with_destroy, &key.public_key, &opts_strict);
+    assert!(result_with.verified, "CT-019c: strict mode should pass with destroy evidence");
 }

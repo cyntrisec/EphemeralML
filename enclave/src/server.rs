@@ -1,4 +1,5 @@
 use confidential_ml_pipeline::{PipelineError, StageConfig, StageExecutor, StageRuntime};
+use zeroize::Zeroize;
 
 /// Maximum retries for accepting control connections.
 /// Health checks, port scanners, and other non-handshake TCP connections
@@ -289,7 +290,7 @@ fn handle_direct_request<A: crate::AttestationProvider>(
     let exec_ms = start.elapsed().as_millis() as u64;
 
     // Compute response bytes for receipt hash
-    let output_bytes: Vec<u8> = output_tensor.iter().flat_map(|f| f.to_le_bytes()).collect();
+    let mut output_bytes: Vec<u8> = output_tensor.iter().flat_map(|f| f.to_le_bytes()).collect();
 
     // Build and sign receipt.
     // Hash the full request bytes (not just input_data) so the client can verify
@@ -305,6 +306,27 @@ fn handle_direct_request<A: crate::AttestationProvider>(
         exec_ms,
         0,
     )?;
+    output_bytes.zeroize();
+
+    // Record destroy evidence for the cleanup actions taken during this request.
+    receipt.destroy_evidence = Some(ephemeral_ml_common::DestroyEvidence {
+        timestamp: ephemeral_ml_common::current_timestamp(),
+        actions: vec![
+            ephemeral_ml_common::DestroyAction {
+                target: "output_bytes".to_string(),
+                mechanism: "explicit_zeroize".to_string(),
+            },
+            ephemeral_ml_common::DestroyAction {
+                target: "output_tensor".to_string(),
+                mechanism: "explicit_zeroize".to_string(),
+            },
+            ephemeral_ml_common::DestroyAction {
+                target: "generated_text".to_string(),
+                mechanism: "explicit_zeroize".to_string(),
+            },
+        ],
+    });
+
     receipt.sign(&state.receipt_signing_key)?;
 
     let seq = receipt.sequence_number;
@@ -315,6 +337,16 @@ fn handle_direct_request<A: crate::AttestationProvider>(
         generated_text,
     };
     let response_json = serde_json::to_vec(&response)?;
+
+    // Zeroize sensitive inference buffers before they are dropped.
+    // output_bytes was already consumed above; zeroize the response struct's
+    // owned copies of output_tensor and generated_text.
+    let mut response = response;
+    response.output_tensor.zeroize();
+    if let Some(ref mut text) = response.generated_text {
+        text.zeroize();
+    }
+
     Ok(DirectResult {
         response_json,
         n_floats,

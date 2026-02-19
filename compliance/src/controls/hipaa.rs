@@ -2,7 +2,7 @@
 //!
 //! Maps HIPAA technical safeguard sections to EphemeralML rules:
 //! - 164.312(a)(1) Access control: EML-ATT-001, EML-ATT-002, EML-MEAS-001
-//! - 164.312(b) Audit controls: EML-SIG-001, EML-SEQ-001, EML-CHAIN-001
+//! - 164.312(b) Audit controls: EML-SIG-001, EML-SEQ-001, EML-CHAIN-001, DESTROY-001
 //! - 164.312(c)(1) Integrity: EML-MODEL-001, EML-MODEL-002, EML-CBOR-001
 //! - 164.312(e)(1) Transmission security: EML-KEY-001, EML-ATT-002
 
@@ -43,6 +43,7 @@ pub fn hipaa_registry() -> ControlRegistry {
                 "SIG-001".to_string(),
                 "SEQ-001".to_string(),
                 "CHAIN-001".to_string(),
+                "DESTROY-001".to_string(),
             ],
         ),
         (
@@ -102,6 +103,7 @@ mod tests {
             "KEY-001",
             "POLICY-001",
             "SEQ-001",
+            "DESTROY-001",
         ];
         let rules = rule_ids
             .iter()

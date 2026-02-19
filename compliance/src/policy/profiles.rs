@@ -15,7 +15,7 @@ pub struct ComplianceProfile {
     pub max_receipt_age_secs: u64,
 }
 
-/// All 15 rule IDs in evaluation order.
+/// All 16 rule IDs in evaluation order.
 fn all_rule_ids() -> Vec<String> {
     vec![
         "SIG-001".to_string(),
@@ -33,25 +33,26 @@ fn all_rule_ids() -> Vec<String> {
         "KEY-001".to_string(),
         "POLICY-001".to_string(),
         "SEQ-001".to_string(),
+        "DESTROY-001".to_string(),
     ]
 }
 
-/// Baseline compliance profile: all 15 rules, 1-hour max receipt age.
+/// Baseline compliance profile: all 16 rules, 1-hour max receipt age.
 pub fn baseline_profile() -> ComplianceProfile {
     ComplianceProfile {
         name: "baseline".to_string(),
-        description: "EphemeralML baseline compliance profile covering all 15 verification rules"
+        description: "EphemeralML baseline compliance profile covering all 16 verification rules"
             .to_string(),
         rule_ids: all_rule_ids(),
         max_receipt_age_secs: 3600,
     }
 }
 
-/// HIPAA-aligned compliance profile: all 15 rules, 1-hour max receipt age.
+/// HIPAA-aligned compliance profile: all 16 rules, 1-hour max receipt age.
 ///
 /// Maps to HIPAA 164.312 technical safeguard controls:
 /// - 164.312(a)(1) Access control: ATT-001, ATT-002, MEAS-001
-/// - 164.312(b) Audit controls: SIG-001, SEQ-001, CHAIN-001
+/// - 164.312(b) Audit controls: SIG-001, SEQ-001, CHAIN-001, DESTROY-001
 /// - 164.312(c)(1) Integrity: MODEL-001, MODEL-002, CBOR-001
 /// - 164.312(e)(1) Transmission security: KEY-001, ATT-002
 pub fn hipaa_profile() -> ComplianceProfile {
@@ -83,7 +84,7 @@ mod tests {
     fn test_baseline_profile() {
         let p = baseline_profile();
         assert_eq!(p.name, "baseline");
-        assert_eq!(p.rule_ids.len(), 15);
+        assert_eq!(p.rule_ids.len(), 16);
         assert_eq!(p.max_receipt_age_secs, 3600);
     }
 
@@ -91,7 +92,7 @@ mod tests {
     fn test_hipaa_profile() {
         let p = hipaa_profile();
         assert_eq!(p.name, "hipaa");
-        assert_eq!(p.rule_ids.len(), 15);
+        assert_eq!(p.rule_ids.len(), 16);
         assert!(p.description.contains("HIPAA"));
     }
 

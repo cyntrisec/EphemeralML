@@ -91,6 +91,11 @@ struct Args {
     /// Disable ghost mascot
     #[arg(long)]
     no_mascot: bool,
+
+    /// Require destroy evidence in the receipt. Fails if the receipt does not
+    /// contain a destroy_evidence field with at least one action.
+    #[arg(long)]
+    require_destroy_event: bool,
 }
 
 fn main() -> Result<()> {
@@ -127,6 +132,7 @@ fn main() -> Result<()> {
         max_age_secs: args.max_age,
         expected_attestation_source: args.expected_attestation_source.clone(),
         expected_image_digest: args.expected_image_digest.clone(),
+        require_destroy_evidence: args.require_destroy_event,
     };
 
     // 4. Run verification
@@ -309,6 +315,11 @@ fn print_text_report(
         &result.checks.attestation_source,
     );
     ui.check_explained("Image digest", "image_digest", &result.checks.image_digest);
+    ui.check_explained(
+        "Destroy evidence",
+        "destroy_evidence",
+        &result.checks.destroy_evidence,
+    );
     ui.divider();
 
     ui.blank();

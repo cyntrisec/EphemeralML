@@ -6,6 +6,7 @@ use chacha20poly1305::{ChaCha20Poly1305, Key, KeyInit, Nonce};
 use ephemeral_ml_common::ModelManifest;
 use safetensors::SafeTensors;
 use sha2::{Digest, Sha256};
+use zeroize::Zeroize;
 
 pub struct ModelLoader<A: AttestationProvider> {
     kms_client: KmsClient<A>,
@@ -53,12 +54,13 @@ impl<A: AttestationProvider> ModelLoader<A> {
             ("model_id".to_string(), manifest.model_id.clone()),
             ("version".to_string(), manifest.version.clone()),
         ]));
-        let dek_bytes = self
+        let mut dek_bytes = self
             .kms_client
             .decrypt(wrapped_dek, encryption_context)
             .await?;
 
         if dek_bytes.len() != 32 {
+            dek_bytes.zeroize();
             return Err(EnclaveError::Enclave(EphemeralError::KmsError(format!(
                 "Invalid DEK length: expected 32, got {}",
                 dek_bytes.len()
@@ -67,6 +69,7 @@ impl<A: AttestationProvider> ModelLoader<A> {
 
         // 3. Decrypt Artifact
         if encrypted_artifact.len() < 12 + 16 {
+            dek_bytes.zeroize();
             return Err(EnclaveError::Enclave(EphemeralError::DecryptionError(
                 "Artifact too short".to_string(),
             )));
@@ -74,11 +77,17 @@ impl<A: AttestationProvider> ModelLoader<A> {
 
         let (nonce_bytes, ciphertext) = encrypted_artifact.split_at(12);
         use std::convert::TryInto;
-        let key_array: [u8; 32] = dek_bytes.as_slice().try_into().map_err(|_| {
+        let mut key_array: [u8; 32] = dek_bytes.as_slice().try_into().map_err(|_| {
             EnclaveError::Enclave(EphemeralError::KmsError("Invalid DEK length".to_string()))
         })?;
+        // DEK heap copy no longer needed — zeroize immediately.
+        dek_bytes.zeroize();
+
         let key: &Key = (&key_array).into();
         let cipher = ChaCha20Poly1305::new(key);
+        // DEK stack copy no longer needed — zeroize after cipher construction.
+        key_array.zeroize();
+
         let nonce_array: [u8; 12] = nonce_bytes.try_into().map_err(|_| {
             EnclaveError::Enclave(EphemeralError::DecryptionError(
                 "Invalid nonce length".to_string(),

@@ -181,6 +181,24 @@ bash scripts/gcp/teardown.sh --delete-image
 # Then manually: delete KMS key, SA, AR repo, firewall rule
 ```
 
+## Data Destruction Checklist
+
+For production deployments, verify each layer of data destruction:
+
+| Layer | Action | How to Verify |
+|-------|--------|--------------|
+| Session keys | Automatic (`ZeroizeOnDrop`) | Included in destroy evidence receipt event |
+| DEK | Automatic (`Zeroizing<Vec<u8>>`) | Included in destroy evidence receipt event |
+| Inference buffers | Automatic (`.zeroize()` on request/response) | Included in destroy evidence receipt event |
+| CVM termination | Run `teardown.sh` | `gcloud compute instances list` shows no instance |
+| CS image | Use `confidential-space` (NOT `-debug`) | `--image-family=confidential-space` in deploy.sh |
+| Cloud Logging | Production CS image: no container stdout in Cloud Logging | Verify no log entries in Cloud Console |
+| GCS artifacts | Delete after deployment if model rotation is not needed | `gsutil rm -r gs://BUCKET/models/` |
+
+**Important**: Always use the production Confidential Space image (`confidential-space`),
+not the debug image (`confidential-space-debug`). The debug image enables SSH and Cloud
+Logging of container output, which may expose inference data.
+
 ## Supported Configuration
 
 | Component | CPU Value | GPU Value |
