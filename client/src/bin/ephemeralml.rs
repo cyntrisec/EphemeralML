@@ -78,6 +78,11 @@ struct InferArgs {
     /// Maximum number of tokens to generate (only used with --generate)
     #[arg(long, default_value = "256")]
     max_tokens: usize,
+
+    /// Number of inference requests to send over the same channel (for load testing).
+    /// Must be >= 1.
+    #[arg(long, default_value = "1", value_parser = clap::value_parser!(u32).range(1..))]
+    count: u32,
 }
 
 #[derive(Parser)]
@@ -208,112 +213,175 @@ async fn run_infer(ui: &mut Ui, args: InferArgs) -> Result<()> {
     ui.info(&format!("Input ({} bytes):", text.len()));
     ui.info(&format!("  \"{}\"", preview_display));
 
-    // Inference
-    ui.blank();
-    if args.generate {
-        ui.section("Text Generation");
-    } else {
-        ui.section("Inference");
-    }
+    // Inference loop (--count N sends N requests over the same channel)
+    let total_count = args.count as usize;
+    let mut latencies_ms: Vec<u128> = Vec::with_capacity(total_count);
 
-    let start = Instant::now();
-    let result = if args.generate {
-        client
-            .execute_inference_generate(&args.model, &text, args.max_tokens)
-            .await
-            .context("Text generation failed")?
-    } else {
-        client
-            .execute_inference_text(&args.model, &text)
-            .await
-            .context("Inference failed")?
-    };
-    let elapsed = start.elapsed();
+    for req_i in 0..total_count {
+        if total_count > 1 && req_i == 0 {
+            ui.blank();
+            ui.section(&format!("Load test: {} requests", total_count));
+        } else if total_count == 1 {
+            ui.blank();
+            if args.generate {
+                ui.section("Text Generation");
+            } else {
+                ui.section("Inference");
+            }
+        }
 
-    ui.kv("Model", &args.model);
-    ui.kv("Time", &format!("{}ms", elapsed.as_millis()));
-
-    if args.generate {
-        ui.kv(
-            "Tokens",
-            &format!("{} generated", result.output_tensor.len()),
-        );
-        ui.blank();
-        ui.section("Generated Text");
-        if let Some(ref gen_text) = result.generated_text {
-            ui.info(gen_text);
+        let start = Instant::now();
+        let result = if args.generate {
+            client
+                .execute_inference_generate(&args.model, &text, args.max_tokens)
+                .await
+                .context("Text generation failed")?
         } else {
-            ui.info("(no text returned)");
+            client
+                .execute_inference_text(&args.model, &text)
+                .await
+                .context("Inference failed")?
+        };
+        let elapsed = start.elapsed();
+        latencies_ms.push(elapsed.as_millis());
+
+        if total_count == 1 {
+            // Single request: verbose output
+            ui.kv("Model", &args.model);
+            ui.kv("Time", &format!("{}ms", elapsed.as_millis()));
+
+            if args.generate {
+                ui.kv(
+                    "Tokens",
+                    &format!("{} generated", result.output_tensor.len()),
+                );
+                ui.blank();
+                ui.section("Generated Text");
+                if let Some(ref gen_text) = result.generated_text {
+                    ui.info(gen_text);
+                } else {
+                    ui.info("(no text returned)");
+                }
+            } else {
+                ui.kv(
+                    "Output",
+                    &format!("{}-dim embedding", result.output_tensor.len()),
+                );
+
+                let first_n: Vec<String> = result
+                    .output_tensor
+                    .iter()
+                    .take(5)
+                    .map(|v| format!("{:.4}", v))
+                    .collect();
+                ui.kv("Values[0..5]", &format!("[{}]", first_n.join(", ")));
+
+                let l2: f64 = result
+                    .output_tensor
+                    .iter()
+                    .map(|v| (*v as f64) * (*v as f64))
+                    .sum::<f64>()
+                    .sqrt();
+                ui.kv("L2 norm", &format!("{:.4}", l2));
+            }
+
+            // Receipt
+            ui.blank();
+            ui.section("Receipt");
+            ui.kv("ID", &result.receipt.receipt_id);
+            ui.kv(
+                "Platform",
+                &result.receipt.enclave_measurements.measurement_type,
+            );
+
+            // Inline signature verification
+            let sig_status = if let Some(pk_bytes) = client.server_receipt_signing_key() {
+                match VerifyingKey::from_bytes(&pk_bytes) {
+                    Ok(vk) => match result.receipt.verify_signature(&vk) {
+                        Ok(true) => CheckStatus::Pass,
+                        Ok(false) => CheckStatus::Fail,
+                        Err(_) => CheckStatus::Fail,
+                    },
+                    Err(_) => CheckStatus::Fail,
+                }
+            } else {
+                CheckStatus::Skip
+            };
+            ui.check("Signature (Ed25519)", &sig_status);
+
+            // Save receipt as JSON
+            let receipt_json = serde_json::to_string_pretty(&result.receipt)
+                .context("Failed to serialize receipt")?;
+            fs::write(&args.receipt, &receipt_json)
+                .with_context(|| format!("Failed to write {}", args.receipt.display()))?;
+            ui.kv("Saved to", &args.receipt.display().to_string());
+
+            // Save sidecar evidence files alongside receipt
+            if let Some(ref att_b64) = result.boot_attestation_b64 {
+                use base64::Engine as _;
+                if let Ok(att_bytes) = base64::engine::general_purpose::STANDARD.decode(att_b64) {
+                    let att_path = "/tmp/ephemeralml-attestation.bin";
+                    fs::write(att_path, &att_bytes)
+                        .with_context(|| format!("Failed to write {}", att_path))?;
+                    ui.kv("Attestation", att_path);
+                }
+            }
+            if let Some(ref manifest_json) = result.model_manifest_json {
+                let manifest_path = "/tmp/ephemeralml-manifest.json";
+                fs::write(manifest_path, manifest_json)
+                    .with_context(|| format!("Failed to write {}", manifest_path))?;
+                ui.kv("Manifest", manifest_path);
+            }
+        } else {
+            // Multi-request: compact per-request line
+            ui.info(&format!(
+                "  [{}/{}] {}ms  receipt={}",
+                req_i + 1,
+                total_count,
+                elapsed.as_millis(),
+                &result.receipt.receipt_id[..8],
+            ));
+
+            // Save last receipt
+            if req_i == total_count - 1 {
+                let receipt_json = serde_json::to_string_pretty(&result.receipt)
+                    .context("Failed to serialize receipt")?;
+                fs::write(&args.receipt, &receipt_json)
+                    .with_context(|| format!("Failed to write {}", args.receipt.display()))?;
+            }
         }
-    } else {
+    }
+
+    // Summary for multi-request mode
+    if total_count > 1 {
+        latencies_ms.sort();
+        let total_ms: u128 = latencies_ms.iter().sum();
+        let p50 = latencies_ms[latencies_ms.len() / 2];
+        let p95 = latencies_ms[(latencies_ms.len() as f64 * 0.95) as usize];
+        let p99 = latencies_ms[(latencies_ms.len() as f64 * 0.99) as usize];
+        let rps = if total_ms > 0 {
+            (total_count as f64) / (total_ms as f64 / 1000.0)
+        } else {
+            0.0
+        };
+
+        ui.blank();
+        ui.section("Load test summary");
+        ui.kv("Requests", &format!("{}/{} OK", total_count, total_count));
+        ui.kv("Total", &format!("{}ms", total_ms));
+        ui.kv("RPS", &format!("{:.2}", rps));
         ui.kv(
-            "Output",
-            &format!("{}-dim embedding", result.output_tensor.len()),
+            "Latency",
+            &format!(
+                "p50={}ms  p95={}ms  p99={}ms  min={}ms  max={}ms",
+                p50,
+                p95,
+                p99,
+                latencies_ms[0],
+                latencies_ms[latencies_ms.len() - 1]
+            ),
         );
-
-        let first_n: Vec<String> = result
-            .output_tensor
-            .iter()
-            .take(5)
-            .map(|v| format!("{:.4}", v))
-            .collect();
-        ui.kv("Values[0..5]", &format!("[{}]", first_n.join(", ")));
-
-        let l2: f64 = result
-            .output_tensor
-            .iter()
-            .map(|v| (*v as f64) * (*v as f64))
-            .sum::<f64>()
-            .sqrt();
-        ui.kv("L2 norm", &format!("{:.4}", l2));
-    }
-
-    // Receipt
-    ui.blank();
-    ui.section("Receipt");
-    ui.kv("ID", &result.receipt.receipt_id);
-    ui.kv(
-        "Platform",
-        &result.receipt.enclave_measurements.measurement_type,
-    );
-
-    // Inline signature verification
-    let sig_status = if let Some(pk_bytes) = client.server_receipt_signing_key() {
-        match VerifyingKey::from_bytes(&pk_bytes) {
-            Ok(vk) => match result.receipt.verify_signature(&vk) {
-                Ok(true) => CheckStatus::Pass,
-                Ok(false) => CheckStatus::Fail,
-                Err(_) => CheckStatus::Fail,
-            },
-            Err(_) => CheckStatus::Fail,
-        }
-    } else {
-        CheckStatus::Skip
-    };
-    ui.check("Signature (Ed25519)", &sig_status);
-
-    // Save receipt as JSON
-    let receipt_json =
-        serde_json::to_string_pretty(&result.receipt).context("Failed to serialize receipt")?;
-    fs::write(&args.receipt, &receipt_json)
-        .with_context(|| format!("Failed to write {}", args.receipt.display()))?;
-    ui.kv("Saved to", &args.receipt.display().to_string());
-
-    // Save sidecar evidence files alongside receipt
-    if let Some(ref att_b64) = result.boot_attestation_b64 {
-        use base64::Engine as _;
-        if let Ok(att_bytes) = base64::engine::general_purpose::STANDARD.decode(att_b64) {
-            let att_path = "/tmp/ephemeralml-attestation.bin";
-            fs::write(att_path, &att_bytes)
-                .with_context(|| format!("Failed to write {}", att_path))?;
-            ui.kv("Attestation", att_path);
-        }
-    }
-    if let Some(ref manifest_json) = result.model_manifest_json {
-        let manifest_path = "/tmp/ephemeralml-manifest.json";
-        fs::write(manifest_path, manifest_json)
-            .with_context(|| format!("Failed to write {}", manifest_path))?;
-        ui.kv("Manifest", manifest_path);
+        ui.kv("Last receipt", &args.receipt.display().to_string());
     }
 
     ui.blank();
