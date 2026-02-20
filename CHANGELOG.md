@@ -1,5 +1,15 @@
 # Changelog
 
+## [Unreleased]
+
+### Added
+- **CLI auto-chain**: `ephemeralml gcp setup-kms` now automatically persists KMS outputs (`EPHEMERALML_GCS_BUCKET`, `EPHEMERALML_GCP_KMS_KEY`, `EPHEMERALML_GCP_WIP_AUDIENCE` + `GCP_*` aliases) to `.env.gcp` so downstream commands pick them up without manual export.
+- **Receipt model_id from manifest**: In direct mode, receipts now use the manifest's `model_id` and `version` when a signed manifest is loaded, instead of defaulting to the client request's model_id.
+
+### Security
+- **Fail-closed `.env.gcp` persistence**: `setup-kms` now fails if `.env.gcp` update fails, instead of warning and continuing. Operators see the failure before proceeding to downstream commands.
+- **Fail-closed manifest parse**: If manifest JSON is present but fails to parse, the server rejects the request instead of silently falling back to the client's model_id. Preserves receipt integrity semantics.
+
 ## [0.2.9] - 2026-02-19
 
 ### Added
