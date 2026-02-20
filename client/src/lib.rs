@@ -19,6 +19,7 @@ pub mod attestation_bridge;
 pub mod attestation_verifier;
 pub mod error;
 pub mod freshness;
+pub mod gcp;
 pub mod model_validation;
 pub mod policy;
 pub mod secure_client;

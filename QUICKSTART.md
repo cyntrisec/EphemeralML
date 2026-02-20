@@ -26,6 +26,10 @@ This builds everything in mock mode, loads MiniLM-L6-v2 (22.7M params), runs inf
 ## Full GCP GPU Deployment (one command)
 
 ```bash
+# Via CLI (recommended):
+ephemeralml gcp e2e --project your-project
+
+# Or via script:
 export EPHEMERALML_GCP_PROJECT=your-project
 bash scripts/gcp/mvp_gpu_e2e.sh --project $EPHEMERALML_GCP_PROJECT
 ```
@@ -36,7 +40,7 @@ This runs the complete 10-step golden path: KMS setup, model packaging, GPU depl
 
 ## Prerequisites
 
-> **Tip**: Run `bash scripts/doctor.sh` to validate your environment before getting started.
+> **Tip**: Run `ephemeralml gcp doctor` (or `bash scripts/doctor.sh`) to validate your environment before getting started.
 
 1. **Install Rust**: Visit [rustup.rs](https://rustup.rs/) and follow the installation instructions.
 2. **AWS CLI & Nitro CLI**: (For AWS production) Required to build EIF and run on Nitro instances.
@@ -113,16 +117,32 @@ cargo run --release --features mock --bin ephemeral-ml-host
 
 ### Deploy with KMS-Gated Model (Recommended)
 
+**Via CLI (recommended):**
 ```bash
-# 1. Setup infrastructure
-bash scripts/gcp/setup.sh
-bash scripts/gcp/setup_kms.sh
+# 1. Initialize config + setup infrastructure
+ephemeralml gcp init --project my-project
+ephemeralml gcp setup --project my-project
+ephemeralml gcp setup-kms --project my-project --allow-broad-binding
 
 # 2. Package model (encrypts, signs manifest, uploads to GCS)
-bash scripts/gcp/package_model.sh test_assets/minilm models/minilm \
-    --model-id minilm-l6-v2 --version v1.0.0
+ephemeralml gcp package-model --model-dir test_assets/minilm \
+    --model-id minilm-l6-v2 --model-version v1.0.0
 
 # 3. Deploy to Confidential Space
+ephemeralml gcp deploy \
+    --model-source gcs-kms \
+    --kms-key "$EPHEMERALML_GCP_KMS_KEY" \
+    --wip-audience "$EPHEMERALML_GCP_WIP_AUDIENCE" \
+    --model-hash "$EXPECTED_MODEL_HASH"
+```
+
+**Via scripts** (fallback):
+```bash
+bash scripts/init_gcp.sh
+bash scripts/gcp/setup.sh
+bash scripts/gcp/setup_kms.sh
+bash scripts/gcp/package_model.sh test_assets/minilm models/minilm \
+    --model-id minilm-l6-v2 --version v1.0.0
 bash scripts/gcp/deploy.sh \
     --model-source gcs-kms \
     --kms-key "$EPHEMERALML_GCP_KMS_KEY" \
@@ -141,9 +161,8 @@ docker tag ephemeral-ml-gpu "$REGION-docker.pkg.dev/$PROJECT/ephemeralml/ephemer
 docker push "$REGION-docker.pkg.dev/$PROJECT/ephemeralml/ephemeral-ml-gpu:latest"
 
 # 3. Deploy with GPU flag
-bash scripts/gcp/deploy.sh --gpu \
-    --model-source gcs \
-    --model-format gguf
+ephemeralml gcp deploy --gpu --model-source gcs --model-format gguf
+# Or: bash scripts/gcp/deploy.sh --gpu --model-source gcs --model-format gguf
 ```
 
 Boot timeline: ~3.5 min (image pull -> cos-gpu-installer -> model fetch from GCS).
