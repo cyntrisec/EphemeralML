@@ -41,7 +41,8 @@ Client
 ## Step 1: Doctor Preflight
 
 ```bash
-bash scripts/doctor.sh
+ephemeralml gcp doctor
+# Or: bash scripts/doctor.sh
 ```
 
 Expected: all checks pass. Fix any missing tools before proceeding.
@@ -50,25 +51,28 @@ Expected: all checks pass. Fix any missing tools before proceeding.
 
 Interactive mode:
 ```bash
-bash scripts/init_gcp.sh
+ephemeralml gcp init
+# Or: bash scripts/init_gcp.sh
 ```
 
-CI / non-interactive mode:
+Non-interactive mode (CI):
 ```bash
-EPHEMERALML_GCP_PROJECT=my-project \
-EPHEMERALML_MODEL_SOURCE=gcs-kms \
-EPHEMERALML_GCP_KMS_KEY=projects/my-project/locations/global/keyRings/ephemeralml/cryptoKeys/model-key \
-EPHEMERALML_GCP_WIP_AUDIENCE="//iam.googleapis.com/projects/123456/locations/global/workloadIdentityPools/ephemeralml-pool/providers/ephemeralml-provider" \
-  bash scripts/init_gcp.sh --non-interactive
+ephemeralml gcp init --non-interactive \
+    --project my-project \
+    --zone us-central1-a \
+    --region us-central1
+# Or with env vars:
+# EPHEMERALML_GCP_PROJECT=my-project bash scripts/init_gcp.sh --non-interactive
 ```
 
-This generates `.env.gcp` with all configuration.
+All shared flags (`--project`, `--zone`, `--region`, `--bucket`, etc.) are forwarded as
+environment variables to the init script. This generates `.env.gcp` with all configuration.
 
 ## Step 3: Setup GCP Infrastructure
 
 ```bash
-source .env.gcp
-bash scripts/gcp/setup.sh
+ephemeralml gcp setup --project my-project
+# Or: source .env.gcp && bash scripts/gcp/setup.sh
 ```
 
 Creates:
@@ -80,8 +84,18 @@ Creates:
 ## Step 4: Setup KMS
 
 ```bash
-bash scripts/gcp/setup_kms.sh
+# Development (pool-wide decrypt, no image pin):
+ephemeralml gcp setup-kms --project my-project --allow-broad-binding
+
+# Production (pin KMS decrypt to a specific container image):
+ephemeralml gcp setup-kms --project my-project --image-digest sha256:YOUR_DIGEST
+
+# Script fallback:
+# bash scripts/gcp/setup_kms.sh PROJECT REGION --allow-broad-binding
 ```
+
+One of `--image-digest` or `--allow-broad-binding` is required. The CLI validates this
+before invoking the script.
 
 Creates:
 - Cloud KMS key ring and crypto key
@@ -91,8 +105,10 @@ Creates:
 ## Step 5: Package Model
 
 ```bash
-bash scripts/gcp/package_model.sh test_assets/minilm models/minilm \
-    --model-id minilm-l6-v2 --version v1.0.0
+ephemeralml gcp package-model --model-dir test_assets/minilm \
+    --model-id minilm-l6-v2 --model-version v1.0.0
+# Or: bash scripts/gcp/package_model.sh test_assets/minilm models/minilm \
+#     --model-id minilm-l6-v2 --version v1.0.0
 ```
 
 This:
@@ -107,16 +123,21 @@ Save the printed `--expected-model-hash` value.
 ## Step 6: Deploy
 
 ```bash
-bash scripts/gcp/deploy.sh \
+ephemeralml gcp deploy \
     --model-source gcs-kms \
     --kms-key "$EPHEMERALML_GCP_KMS_KEY" \
     --wip-audience "$EPHEMERALML_GCP_WIP_AUDIENCE" \
     --model-hash "$EXPECTED_MODEL_HASH"
+# Or: bash scripts/gcp/deploy.sh \
+#     --model-source gcs-kms \
+#     --kms-key "$EPHEMERALML_GCP_KMS_KEY" \
+#     --wip-audience "$EPHEMERALML_GCP_WIP_AUDIENCE" \
+#     --model-hash "$EXPECTED_MODEL_HASH"
 ```
 
 CI mode:
 ```bash
-bash scripts/gcp/deploy.sh --yes \
+ephemeralml gcp deploy --yes \
     --model-source gcs-kms \
     --kms-key "$EPHEMERALML_GCP_KMS_KEY" \
     --wip-audience "$EPHEMERALML_GCP_WIP_AUDIENCE" \
@@ -197,15 +218,16 @@ Expected: `E1003: Input validation failed` or model hash mismatch error.
 ## Step 10: Teardown
 
 ```bash
-bash scripts/gcp/teardown.sh
-# Or for CI: bash scripts/gcp/teardown.sh --yes
+ephemeralml gcp teardown
+# Or for CI: ephemeralml gcp teardown --yes
+# Script equivalent: bash scripts/gcp/teardown.sh [--yes]
 ```
 
 Deletes the CVM instance. Preserves reusable infrastructure (AR, SA, firewall).
 
 To delete everything:
 ```bash
-bash scripts/gcp/teardown.sh --delete-image
+ephemeralml gcp teardown --delete-image
 # Then manually: delete KMS key, SA, AR repo, firewall rule
 ```
 
@@ -299,9 +321,8 @@ docker push \
 ### Deploy
 
 ```bash
-bash scripts/gcp/deploy.sh --gpu \
-    --model-source gcs \
-    --model-format gguf
+ephemeralml gcp deploy --gpu --model-source gcs --model-format gguf
+# Or: bash scripts/gcp/deploy.sh --gpu --model-source gcs --model-format gguf
 ```
 
 The `--gpu` flag selects:
@@ -336,3 +357,23 @@ With Llama 3 8B Q4_K_M (4.6GB GGUF from GCS):
 - 50 tokens generated in ~12s (241ms/token)
 - TDX attestation confirms `nvidia_gpu.cc_mode: ON`
 - Ed25519-signed receipt returned to client with model hash, attestation hash, and I/O hashes
+
+## CLI Quick Reference
+
+All GCP operations are available through `ephemeralml gcp <subcommand>`:
+
+| Command | Description |
+|---------|-------------|
+| `ephemeralml gcp doctor` | Run preflight checks (gcloud, docker, disk, auth) |
+| `ephemeralml gcp init` | Initialize GCP configuration (generates `.env.gcp`) |
+| `ephemeralml gcp setup` | One-time GCP infrastructure setup |
+| `ephemeralml gcp setup-kms` | Cloud KMS + Workload Identity Pool setup |
+| `ephemeralml gcp package-model` | Encrypt, sign, upload model to GCS |
+| `ephemeralml gcp deploy` | Build container + launch Confidential Space CVM |
+| `ephemeralml gcp deploy --gpu` | GPU deployment (a3-highgpu-1g + H100 CC) |
+| `ephemeralml gcp verify` | Smoke test deployed CVM |
+| `ephemeralml gcp teardown` | Delete the CVM |
+| `ephemeralml gcp e2e` | Full end-to-end pipeline |
+| `ephemeralml gcp release-gate` | Pre-release validation gate |
+
+Config resolution: CLI flags > env vars > `.env.gcp` file > defaults. Use `--dry-run` on any command to preview without executing. Use `--help` on any subcommand for full options.

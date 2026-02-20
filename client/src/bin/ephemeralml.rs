@@ -9,6 +9,7 @@
 use anyhow::{bail, Context, Result};
 use clap::{Parser, Subcommand};
 use ed25519_dalek::VerifyingKey;
+use ephemeral_ml_client::gcp::{self, GcpArgs, GcpCommand};
 use ephemeral_ml_client::{AttestationReceipt, SecureClient, SecureEnclaveClient};
 use ephemeral_ml_common::receipt_verify::CheckStatus;
 use ephemeral_ml_common::ui::{GhostState, Ui, UiConfig};
@@ -47,6 +48,8 @@ enum Commands {
     Infer(InferArgs),
     /// Verify a pipeline proof bundle (chained stage receipts)
     VerifyPipeline(VerifyPipelineArgs),
+    /// GCP deployment and management commands
+    Gcp(GcpArgs),
 }
 
 #[derive(Parser)]
@@ -151,6 +154,7 @@ async fn main() -> Result<()> {
     match cli.command {
         Commands::Infer(args) => run_infer(&mut ui, args).await,
         Commands::VerifyPipeline(args) => run_verify_pipeline(&mut ui, args),
+        Commands::Gcp(gcp_args) => run_gcp(&mut ui, gcp_args),
     }
 }
 
@@ -636,6 +640,22 @@ fn parse_public_key_file(path: &Path) -> Result<VerifyingKey> {
         "{} must contain either 32 raw bytes or 64-char hex key text",
         path.display()
     );
+}
+
+fn run_gcp(ui: &mut Ui, args: GcpArgs) -> Result<()> {
+    use gcp::commands::*;
+    match args.command {
+        GcpCommand::Doctor => cmd_doctor(ui),
+        GcpCommand::Init(a) => cmd_init(ui, (&a).into()),
+        GcpCommand::Setup(a) => cmd_setup(ui, (&a).into()),
+        GcpCommand::SetupKms(a) => cmd_setup_kms(ui, (&a).into()),
+        GcpCommand::PackageModel(a) => cmd_package_model(ui, (&a).into()),
+        GcpCommand::Deploy(a) => cmd_deploy(ui, (&a).into()),
+        GcpCommand::Verify(a) => cmd_verify(ui, (&a).into()),
+        GcpCommand::Teardown(a) => cmd_teardown(ui, (&a).into()),
+        GcpCommand::E2e(a) => cmd_e2e(ui, (&a).into()),
+        GcpCommand::ReleaseGate(a) => cmd_release_gate(ui, (&a).into()),
+    }
 }
 
 #[cfg(test)]
