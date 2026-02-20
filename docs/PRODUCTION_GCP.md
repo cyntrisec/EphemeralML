@@ -102,6 +102,15 @@ Creates:
 - Workload Identity Pool and Provider
 - IAM binding: WIP → KMS decrypter role
 
+**Auto-chain**: After successful setup, the CLI automatically persists KMS outputs to
+`.env.gcp` so downstream commands (`package-model`, `deploy`, `verify`) pick them up
+without manual `export`:
+- `EPHEMERALML_GCS_BUCKET` / `GCP_BUCKET`
+- `EPHEMERALML_GCP_KMS_KEY` / `GCP_KMS_KEY`
+- `EPHEMERALML_GCP_WIP_AUDIENCE` / `GCP_WIP_AUDIENCE`
+
+Updates are idempotent — re-running setup-kms will not create duplicates.
+
 ## Step 5: Package Model
 
 ```bash
@@ -115,32 +124,41 @@ This:
 1. Computes SHA-256 of plaintext weights
 2. Generates DEK, encrypts with ChaCha20-Poly1305
 3. Wraps DEK with Cloud KMS
-4. Generates and signs `manifest.json`
+4. Generates and signs `manifest.json` (includes `model_id` and `version`)
 5. Uploads 5 files to GCS
 
 Save the printed `--expected-model-hash` value.
 
+**Model ID alignment**: The `--model-id` and `--model-version` you pass here are written
+into `manifest.json`. When the server loads this manifest (GCS/GCS-KMS mode), inference
+receipts will use the manifest's `model_id` and `version` — not the generic `stage-0`
+default. This ensures receipts are auditable against the signed manifest.
+
 ## Step 6: Deploy
 
+If you ran `setup-kms` via the CLI, `EPHEMERALML_GCP_KMS_KEY` and
+`EPHEMERALML_GCP_WIP_AUDIENCE` are already in `.env.gcp` (auto-chained).
+You only need to supply the model hash:
+
+```bash
+ephemeralml gcp deploy \
+    --model-source gcs-kms \
+    --model-hash "$EXPECTED_MODEL_HASH"
+```
+
+Or with explicit flags (overrides `.env.gcp`):
 ```bash
 ephemeralml gcp deploy \
     --model-source gcs-kms \
     --kms-key "$EPHEMERALML_GCP_KMS_KEY" \
     --wip-audience "$EPHEMERALML_GCP_WIP_AUDIENCE" \
     --model-hash "$EXPECTED_MODEL_HASH"
-# Or: bash scripts/gcp/deploy.sh \
-#     --model-source gcs-kms \
-#     --kms-key "$EPHEMERALML_GCP_KMS_KEY" \
-#     --wip-audience "$EPHEMERALML_GCP_WIP_AUDIENCE" \
-#     --model-hash "$EXPECTED_MODEL_HASH"
 ```
 
 CI mode:
 ```bash
 ephemeralml gcp deploy --yes \
     --model-source gcs-kms \
-    --kms-key "$EPHEMERALML_GCP_KMS_KEY" \
-    --wip-audience "$EPHEMERALML_GCP_WIP_AUDIENCE" \
     --model-hash "$EXPECTED_MODEL_HASH"
 ```
 

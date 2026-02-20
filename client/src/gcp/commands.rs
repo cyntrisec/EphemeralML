@@ -2,7 +2,7 @@ use anyhow::Result;
 
 use ephemeral_ml_common::ui::Ui;
 
-use super::config::{find_project_dir, GcpConfig, GcpFlags};
+use super::config::{find_project_dir, update_env_file, GcpConfig, GcpFlags};
 use super::doctor::run_doctor;
 use super::preflight::run_preflight;
 use super::runner::ScriptRunner;
@@ -180,6 +180,97 @@ pub(crate) fn build_setup_kms_args(config: &GcpConfig) -> Result<Vec<String>> {
     Ok(args)
 }
 
+/// Derive KMS output values from config + gcloud project number.
+///
+/// Returns `(bucket, kms_key, wip_audience)` computed from the same formulas
+/// as `setup_kms.sh`. Requires `gcloud` to resolve the project number.
+pub(crate) fn derive_kms_outputs(config: &GcpConfig) -> Result<(String, String, String)> {
+    use anyhow::{bail, Context};
+    use std::process::Command;
+
+    let project = config.require_project()?;
+    let region = &config.region;
+
+    let bucket = format!("ephemeralml-models-{}", project);
+    let kms_key = format!(
+        "projects/{}/locations/{}/keyRings/ephemeralml/cryptoKeys/model-dek",
+        project, region
+    );
+
+    // Get project number via gcloud
+    let output = Command::new("gcloud")
+        .args([
+            "projects",
+            "describe",
+            project,
+            "--format=value(projectNumber)",
+        ])
+        .output()
+        .context("Failed to run gcloud to resolve project number")?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        bail!(
+            "gcloud projects describe failed (exit {}): {}",
+            output.status.code().unwrap_or(-1),
+            stderr.trim()
+        );
+    }
+
+    let project_number = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    if project_number.is_empty() {
+        bail!("gcloud returned empty project number for '{}'", project);
+    }
+
+    let wip_audience = format!(
+        "//iam.googleapis.com/projects/{}/locations/global/workloadIdentityPools/ephemeralml-pool/providers/ephemeralml-tdx",
+        project_number
+    );
+
+    Ok((bucket, kms_key, wip_audience))
+}
+
+/// Persist KMS outputs to `.env.gcp`, idempotently.
+///
+/// Writes both canonical (`EPHEMERALML_*`) and compatibility alias (`GCP_*`) keys.
+fn persist_kms_outputs(
+    ui: &mut Ui,
+    project_dir: &std::path::Path,
+    config: &GcpConfig,
+) -> Result<()> {
+    let (bucket, kms_key, wip_audience) = derive_kms_outputs(config)?;
+
+    let env_path = project_dir.join(".env.gcp");
+
+    let updates: Vec<(&str, &str)> = vec![
+        ("EPHEMERALML_GCS_BUCKET", &bucket),
+        ("EPHEMERALML_GCP_KMS_KEY", &kms_key),
+        ("EPHEMERALML_GCP_WIP_AUDIENCE", &wip_audience),
+        // Compatibility aliases used by scripts
+        ("GCP_BUCKET", &bucket),
+        ("GCP_KMS_KEY", &kms_key),
+        ("GCP_WIP_AUDIENCE", &wip_audience),
+    ];
+
+    if config.dry_run {
+        ui.info("[dry-run] Would update .env.gcp with:");
+        for (key, value) in &updates {
+            ui.info(&format!("  export {}=\"{}\"", key, value));
+        }
+        return Ok(());
+    }
+
+    update_env_file(&env_path, &updates)?;
+
+    ui.blank();
+    ui.info("KMS outputs persisted to .env.gcp:");
+    ui.info(&format!("  EPHEMERALML_GCS_BUCKET={}", bucket));
+    ui.info(&format!("  EPHEMERALML_GCP_KMS_KEY={}", kms_key));
+    ui.info(&format!("  EPHEMERALML_GCP_WIP_AUDIENCE={}", wip_audience));
+
+    Ok(())
+}
+
 /// Run `ephemeralml gcp setup-kms`.
 pub fn cmd_setup_kms(ui: &mut Ui, flags: GcpFlags) -> Result<()> {
     let project_dir = find_project_dir()?;
@@ -188,7 +279,7 @@ pub fn cmd_setup_kms(ui: &mut Ui, flags: GcpFlags) -> Result<()> {
 
     let args = build_setup_kms_args(&config)?;
 
-    let runner = ScriptRunner::new(project_dir);
+    let runner = ScriptRunner::new(project_dir.clone());
     let args_refs: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
 
     ui.info("Setting up Cloud KMS + Workload Identity Pool...");
@@ -199,6 +290,14 @@ pub fn cmd_setup_kms(ui: &mut Ui, flags: GcpFlags) -> Result<()> {
     ui.blank();
     let result = runner.run("setup_kms.sh", &args_refs, &config, config.dry_run);
     if result.is_ok() {
+        // Persist KMS outputs to .env.gcp so downstream commands pick them up
+        if let Err(e) = persist_kms_outputs(ui, &project_dir, &config) {
+            ui.warn(&format!(
+                "Setup succeeded but failed to auto-update .env.gcp: {}",
+                e
+            ));
+            ui.warn("You can manually export the values printed above.");
+        }
         json_status(&config, "setup-kms", true, "KMS and WIP configured");
         next_step(
             ui,

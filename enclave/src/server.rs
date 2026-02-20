@@ -312,17 +312,30 @@ fn handle_direct_request<A: crate::AttestationProvider>(
     // Compute response bytes for receipt hash
     let mut output_bytes: Vec<u8> = output_tensor.iter().flat_map(|f| f.to_le_bytes()).collect();
 
+    // Resolve receipt model_id: prefer manifest (authoritative) over client request.
+    // When a signed manifest is loaded (GCS/GCS-KMS flow), the manifest's model_id
+    // is the ground truth. In local/non-manifest mode, use the client request's value.
+    let (receipt_model_id, receipt_model_version) = if let Some(manifest_json) = model_manifest_json
+    {
+        match serde_json::from_str::<ephemeral_ml_common::ModelManifest>(manifest_json) {
+            Ok(m) => (m.model_id, m.version),
+            Err(_) => (request.model_id.clone(), "1.0".to_string()),
+        }
+    } else {
+        (request.model_id.clone(), "1.0".to_string())
+    };
+
     // Build and sign receipt.
     // Hash the full request bytes (not just input_data) so the client can verify
     // SHA256(serialized_request) == receipt.request_hash.
-    state.model_id = request.model_id.clone();
+    state.model_id = receipt_model_id.clone();
     let mut receipt = crate::receipt::ReceiptBuilder::build(
         state,
         attestation_provider,
         bytes,
         &output_bytes,
-        request.model_id.clone(),
-        "1.0".to_string(),
+        receipt_model_id,
+        receipt_model_version,
         exec_ms,
         0,
     )?;

@@ -302,9 +302,21 @@ async fn setup_direct_server(
     SecureChannel<tokio::net::TcpStream>,
     tokio::task::JoinHandle<Result<(), Box<dyn std::error::Error + Send + Sync>>>,
 )> {
+    setup_direct_server_with_manifest(model_id, None).await
+}
+
+/// Like `setup_direct_server` but optionally provides a model manifest.
+async fn setup_direct_server_with_manifest(
+    model_id: &str,
+    manifest_json: Option<String>,
+) -> Option<(
+    SecureChannel<tokio::net::TcpStream>,
+    tokio::task::JoinHandle<Result<(), Box<dyn std::error::Error + Send + Sync>>>,
+)> {
     let engine = create_engine_with_model(model_id)?;
     let receipt_key = ReceiptSigningKey::generate().unwrap();
     let mock_provider = MockAttestationProvider::new();
+    let manifest_arc = manifest_json.map(std::sync::Arc::new);
 
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
@@ -323,7 +335,7 @@ async fn setup_direct_server(
             &transport_verifier,
             [0u8; 32],
             None,
-            None,
+            manifest_arc,
         )
         .await
     });
@@ -461,6 +473,116 @@ async fn direct_mode_absent_generate_params_use_defaults() {
     assert_eq!(response.output_tensor.len(), 384);
     assert!(response.generated_text.is_none());
     assert!(response.receipt.signature.is_some());
+
+    channel.shutdown().await.ok();
+    let _ = tokio::time::timeout(std::time::Duration::from_secs(2), server_handle).await;
+}
+
+#[tokio::test]
+async fn direct_mode_manifest_model_id_in_receipt() {
+    // When a manifest is provided, the receipt should use the manifest's model_id
+    // and version, not the client request's model_id.
+    let engine_model_id = "stage-0"; // Engine registration key
+    let manifest_model_id = "minilm-l6-v2";
+    let manifest_version = "v1.0.0";
+
+    // Build a minimal manifest JSON (signature verification is not done in this path)
+    let sig_bytes = vec![0u8; 64];
+    let manifest_json = serde_json::json!({
+        "model_id": manifest_model_id,
+        "version": manifest_version,
+        "model_hash": [1, 2, 3],
+        "hash_algorithm": "sha256",
+        "key_id": "projects/test/locations/us/keyRings/kr/cryptoKeys/k",
+        "signature": sig_bytes,
+    })
+    .to_string();
+
+    let (mut channel, server_handle) =
+        match setup_direct_server_with_manifest(engine_model_id, Some(manifest_json)).await {
+            Some(v) => v,
+            None => {
+                println!("Skipping test: model assets not found");
+                return;
+            }
+        };
+
+    // Client sends model_id "stage-0" (engine lookup key)
+    let request = InferenceRequest {
+        model_id: engine_model_id.to_string(),
+        input_data: b"Manifest alignment test".to_vec(),
+        input_shape: None,
+        generate: None,
+        max_tokens: None,
+        temperature: None,
+        top_p: None,
+    };
+    let request_bytes = serde_json::to_vec(&request).unwrap();
+    channel.send(Bytes::from(request_bytes)).await.unwrap();
+
+    let msg = channel.recv().await.unwrap();
+    let response_bytes = match msg {
+        Message::Data(data) => data,
+        other => panic!("Expected Data, got {:?}", other),
+    };
+
+    let response: InferenceResponse = serde_json::from_slice(&response_bytes).unwrap();
+    assert_eq!(response.output_tensor.len(), 384);
+
+    // Key assertion: receipt uses manifest's model_id, NOT the request's
+    assert_eq!(
+        response.receipt.model_id, manifest_model_id,
+        "Receipt model_id should come from manifest, not request"
+    );
+    assert_eq!(
+        response.receipt.model_version, manifest_version,
+        "Receipt model_version should come from manifest"
+    );
+
+    channel.shutdown().await.ok();
+    let _ = tokio::time::timeout(std::time::Duration::from_secs(2), server_handle).await;
+}
+
+#[tokio::test]
+async fn direct_mode_no_manifest_uses_request_model_id() {
+    // Without a manifest, the receipt should use the client request's model_id.
+    let model_id = "stage-0";
+    let (mut channel, server_handle) = match setup_direct_server(model_id).await {
+        Some(v) => v,
+        None => {
+            println!("Skipping test: model assets not found");
+            return;
+        }
+    };
+
+    let request = InferenceRequest {
+        model_id: model_id.to_string(),
+        input_data: b"No manifest test".to_vec(),
+        input_shape: None,
+        generate: None,
+        max_tokens: None,
+        temperature: None,
+        top_p: None,
+    };
+    let request_bytes = serde_json::to_vec(&request).unwrap();
+    channel.send(Bytes::from(request_bytes)).await.unwrap();
+
+    let msg = channel.recv().await.unwrap();
+    let response_bytes = match msg {
+        Message::Data(data) => data,
+        other => panic!("Expected Data, got {:?}", other),
+    };
+
+    let response: InferenceResponse = serde_json::from_slice(&response_bytes).unwrap();
+    // Without manifest, receipt should use request's model_id
+    assert_eq!(
+        response.receipt.model_id, model_id,
+        "Without manifest, receipt should use request model_id"
+    );
+    assert_eq!(
+        response.receipt.model_version, "1.0",
+        "Without manifest, receipt model_version should default to 1.0"
+    );
 
     channel.shutdown().await.ok();
     let _ = tokio::time::timeout(std::time::Duration::from_secs(2), server_handle).await;

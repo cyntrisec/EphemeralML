@@ -280,6 +280,62 @@ pub fn parse_env_file(path: &Path) -> HashMap<String, String> {
     map
 }
 
+/// Update a `.env.gcp` file with key-value pairs, idempotently.
+///
+/// For each `(key, value)` in `updates`:
+/// - If a line `KEY=...` or `export KEY=...` already exists, replaces it in place.
+/// - Otherwise, appends the line at the end.
+///
+/// Creates the file if it doesn't exist. Preserves comments and unrelated lines.
+/// Uses `export KEY="VALUE"` format for consistency with `init_gcp.sh`.
+pub fn update_env_file(path: &Path, updates: &[(&str, &str)]) -> Result<()> {
+    let content = std::fs::read_to_string(path).unwrap_or_default();
+    let mut lines: Vec<String> = content.lines().map(|l| l.to_string()).collect();
+    let mut matched = vec![false; updates.len()];
+
+    for line in &mut lines {
+        let trimmed = line.trim().to_string();
+        if trimmed.is_empty() || trimmed.starts_with('#') {
+            continue;
+        }
+        // Extract the key from this line (strip optional `export ` prefix)
+        let assignment = if let Some(rest) = trimmed.strip_prefix("export ") {
+            rest.trim()
+        } else {
+            trimmed.as_str()
+        };
+        if let Some((existing_key, _)) = assignment.split_once('=') {
+            let existing_key = existing_key.trim();
+            for (i, (key, value)) in updates.iter().enumerate() {
+                if existing_key == *key {
+                    *line = format!("export {}=\"{}\"", key, value);
+                    matched[i] = true;
+                }
+            }
+        }
+    }
+
+    // Append any keys that weren't found
+    for (i, (key, value)) in updates.iter().enumerate() {
+        if !matched[i] {
+            lines.push(format!("export {}=\"{}\"", key, value));
+        }
+    }
+
+    // Ensure trailing newline
+    let mut output = lines.join("\n");
+    if !output.ends_with('\n') {
+        output.push('\n');
+    }
+
+    // Create parent directory if needed
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    std::fs::write(path, output)?;
+    Ok(())
+}
+
 /// Find the project root directory by searching for Cargo.toml upward from the current dir.
 pub fn find_project_dir() -> Result<PathBuf> {
     let mut dir = std::env::current_dir()?;

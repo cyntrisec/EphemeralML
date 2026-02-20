@@ -123,16 +123,16 @@ cargo run --release --features mock --bin ephemeral-ml-host
 ephemeralml gcp init --project my-project
 ephemeralml gcp setup --project my-project
 ephemeralml gcp setup-kms --project my-project --allow-broad-binding
+# ^ Auto-persists KMS_KEY, WIP_AUDIENCE, BUCKET to .env.gcp
 
 # 2. Package model (encrypts, signs manifest, uploads to GCS)
+#    The --model-id here flows into the signed manifest and into inference receipts.
 ephemeralml gcp package-model --model-dir test_assets/minilm \
     --model-id minilm-l6-v2 --model-version v1.0.0
 
-# 3. Deploy to Confidential Space
+# 3. Deploy to Confidential Space (KMS/WIP values loaded from .env.gcp)
 ephemeralml gcp deploy \
     --model-source gcs-kms \
-    --kms-key "$EPHEMERALML_GCP_KMS_KEY" \
-    --wip-audience "$EPHEMERALML_GCP_WIP_AUDIENCE" \
     --model-hash "$EXPECTED_MODEL_HASH"
 ```
 
