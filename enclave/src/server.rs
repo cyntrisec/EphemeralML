@@ -319,7 +319,14 @@ fn handle_direct_request<A: crate::AttestationProvider>(
     {
         match serde_json::from_str::<ephemeral_ml_common::ModelManifest>(manifest_json) {
             Ok(m) => (m.model_id, m.version),
-            Err(_) => (request.model_id.clone(), "1.0".to_string()),
+            Err(e) => {
+                return Err(format!(
+                    "Manifest JSON present but failed to parse: {}. \
+                     Refusing to fall back to request model_id for receipt integrity.",
+                    e
+                )
+                .into());
+            }
         }
     } else {
         (request.model_id.clone(), "1.0".to_string())

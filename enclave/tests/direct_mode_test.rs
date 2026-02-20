@@ -587,3 +587,59 @@ async fn direct_mode_no_manifest_uses_request_model_id() {
     channel.shutdown().await.ok();
     let _ = tokio::time::timeout(std::time::Duration::from_secs(2), server_handle).await;
 }
+
+#[tokio::test]
+async fn direct_mode_malformed_manifest_fails_request() {
+    // When a manifest is present but malformed, the server must reject the request
+    // (fail-closed) rather than silently falling back to the request's model_id.
+    let model_id = "stage-0";
+    let bad_manifest = "{\"not_a_valid\": \"manifest\"}".to_string();
+
+    let (mut channel, server_handle) =
+        match setup_direct_server_with_manifest(model_id, Some(bad_manifest)).await {
+            Some(v) => v,
+            None => {
+                println!("Skipping test: model assets not found");
+                return;
+            }
+        };
+
+    let request = InferenceRequest {
+        model_id: model_id.to_string(),
+        input_data: b"Bad manifest test".to_vec(),
+        input_shape: None,
+        generate: None,
+        max_tokens: None,
+        temperature: None,
+        top_p: None,
+    };
+    let request_bytes = serde_json::to_vec(&request).unwrap();
+    channel.send(Bytes::from(request_bytes)).await.unwrap();
+
+    // The server should reject the request and send an error response (not a valid inference result).
+    let result = tokio::time::timeout(std::time::Duration::from_secs(10), channel.recv()).await;
+    match result {
+        Ok(Ok(Message::Data(data))) => {
+            // Server sends a JSON error, not a valid InferenceResponse with receipt
+            let parsed: std::result::Result<InferenceResponse, _> = serde_json::from_slice(&data);
+            assert!(
+                parsed.is_err(),
+                "Malformed manifest should not produce a valid InferenceResponse"
+            );
+            // Verify it's actually an error payload
+            let err_val: serde_json::Value = serde_json::from_slice(&data).unwrap();
+            assert!(
+                err_val.get("error").is_some(),
+                "Expected error JSON, got: {}",
+                err_val
+            );
+        }
+        Ok(Err(_)) | Err(_) => {
+            // Connection closed or timeout — also acceptable fail-closed behavior
+        }
+        _ => {}
+    }
+
+    channel.shutdown().await.ok();
+    let _ = tokio::time::timeout(std::time::Duration::from_secs(2), server_handle).await;
+}

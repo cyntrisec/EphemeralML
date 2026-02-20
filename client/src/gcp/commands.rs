@@ -290,14 +290,9 @@ pub fn cmd_setup_kms(ui: &mut Ui, flags: GcpFlags) -> Result<()> {
     ui.blank();
     let result = runner.run("setup_kms.sh", &args_refs, &config, config.dry_run);
     if result.is_ok() {
-        // Persist KMS outputs to .env.gcp so downstream commands pick them up
-        if let Err(e) = persist_kms_outputs(ui, &project_dir, &config) {
-            ui.warn(&format!(
-                "Setup succeeded but failed to auto-update .env.gcp: {}",
-                e
-            ));
-            ui.warn("You can manually export the values printed above.");
-        }
+        // Persist KMS outputs to .env.gcp so downstream commands pick them up.
+        // Fail-closed: if we can't persist, the operator must know before proceeding.
+        persist_kms_outputs(ui, &project_dir, &config)?;
         json_status(&config, "setup-kms", true, "KMS and WIP configured");
         next_step(
             ui,
