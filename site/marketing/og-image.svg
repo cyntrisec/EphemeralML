@@ -1,0 +1,80 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630">
+  <defs>
+    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#050505"/>
+      <stop offset="100%" stop-color="#0a0a0a"/>
+    </linearGradient>
+    <linearGradient id="ghostGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#00d4ff" stop-opacity="0.8"/>
+      <stop offset="100%" stop-color="#00cc88" stop-opacity="0.4"/>
+    </linearGradient>
+    <filter id="glow">
+      <feGaussianBlur stdDeviation="3" result="coloredBlur"/>
+      <feMerge><feMergeNode in="coloredBlur"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+  </defs>
+
+  <!-- Background -->
+  <rect width="1200" height="630" fill="url(#bgGrad)"/>
+  <rect x="0" y="0" width="1200" height="3" fill="url(#ghostGrad)"/>
+
+  <!-- Ghost mascot -->
+  <g transform="translate(540, 80) scale(2.5)" filter="url(#glow)">
+    <path d="M20 4C11.16 4 4 11.16 4 20v16l4-4 4 4 4-4 4 4 4-4 4 4 4-4 4 4V20C36 11.16 28.84 4 20 4z"
+          stroke="url(#ghostGrad)" stroke-width="1.5" fill="none"/>
+    <circle cx="14" cy="19" r="2" fill="#00d4ff" opacity="0.7"/>
+    <circle cx="26" cy="19" r="2" fill="#00d4ff" opacity="0.7"/>
+  </g>
+
+  <!-- Title -->
+  <text x="600" y="310" text-anchor="middle" font-family="Inter, -apple-system, sans-serif"
+        font-size="52" font-weight="700" fill="#ffffff" letter-spacing="-1">
+    Confidential AI Inference
+  </text>
+
+  <!-- Subtitle -->
+  <text x="600" y="370" text-anchor="middle" font-family="Inter, -apple-system, sans-serif"
+        font-size="26" fill="#888888">
+    Hardware-proven security. Cryptographic receipts.
+  </text>
+
+  <!-- Stats bar -->
+  <g transform="translate(200, 420)">
+    <rect x="0" y="0" width="800" height="70" rx="8" fill="#111111" stroke="#1e1e1e" stroke-width="1"/>
+
+    <text x="100" y="30" text-anchor="middle" font-family="'JetBrains Mono', monospace"
+          font-size="22" font-weight="700" fill="#ffffff">12.6%</text>
+    <text x="100" y="52" text-anchor="middle" font-family="Inter, sans-serif"
+          font-size="11" fill="#555555">Overhead</text>
+
+    <line x1="200" y1="12" x2="200" y2="58" stroke="#1e1e1e" stroke-width="1"/>
+    <text x="300" y="30" text-anchor="middle" font-family="'JetBrains Mono', monospace"
+          font-size="22" font-weight="700" fill="#ffffff">$4.72</text>
+    <text x="300" y="52" text-anchor="middle" font-family="Inter, sans-serif"
+          font-size="11" fill="#555555">Per 1M Inferences</text>
+
+    <line x1="400" y1="12" x2="400" y2="58" stroke="#1e1e1e" stroke-width="1"/>
+    <text x="500" y="30" text-anchor="middle" font-family="'JetBrains Mono', monospace"
+          font-size="22" font-weight="700" fill="#ffffff">386</text>
+    <text x="500" y="52" text-anchor="middle" font-family="Inter, sans-serif"
+          font-size="11" fill="#555555">Tests Passing</text>
+
+    <line x1="600" y1="12" x2="600" y2="58" stroke="#1e1e1e" stroke-width="1"/>
+    <text x="700" y="30" text-anchor="middle" font-family="'JetBrains Mono', monospace"
+          font-size="22" font-weight="700" fill="#ffffff">16</text>
+    <text x="700" y="52" text-anchor="middle" font-family="Inter, sans-serif"
+          font-size="11" fill="#555555">Compliance Rules</text>
+  </g>
+
+  <!-- Brand -->
+  <text x="600" y="560" text-anchor="middle" font-family="'JetBrains Mono', monospace"
+        font-size="18" font-weight="600" fill="#555555" letter-spacing="2">
+    CYNTRISEC
+  </text>
+
+  <!-- URL -->
+  <text x="600" y="590" text-anchor="middle" font-family="'JetBrains Mono', monospace"
+        font-size="14" fill="#00d4ff" opacity="0.6">
+    cyntrisec.com
+  </text>
+</svg>

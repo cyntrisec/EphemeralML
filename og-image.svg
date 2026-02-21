@@ -1,0 +1,92 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630">
+  <defs>
+    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#050505"/>
+      <stop offset="100%" stop-color="#0a0a0a"/>
+    </linearGradient>
+    <linearGradient id="ghostGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#00d4ff" stop-opacity="0.8"/>
+      <stop offset="100%" stop-color="#00cc88" stop-opacity="0.4"/>
+    </linearGradient>
+    <filter id="glow">
+      <feGaussianBlur stdDeviation="3" result="coloredBlur"/>
+      <feMerge><feMergeNode in="coloredBlur"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+  </defs>
+
+  <!-- Background -->
+  <rect width="1200" height="630" fill="url(#bgGrad)"/>
+  <rect x="0" y="0" width="1200" height="3" fill="url(#ghostGrad)"/>
+
+  <!-- Ghost mascot -->
+  <g transform="translate(540, 60) scale(2.2)" filter="url(#glow)">
+    <path d="M20 4C11.16 4 4 11.16 4 20v16l4-4 4 4 4-4 4 4 4-4 4 4 4-4 4 4V20C36 11.16 28.84 4 20 4z"
+          stroke="url(#ghostGrad)" stroke-width="1.5" fill="none"/>
+    <circle cx="14" cy="19" r="2" fill="#00d4ff" opacity="0.7"/>
+    <circle cx="26" cy="19" r="2" fill="#00d4ff" opacity="0.7"/>
+  </g>
+
+  <!-- Title -->
+  <text x="600" y="290" text-anchor="middle" font-family="Inter, -apple-system, sans-serif"
+        font-size="48" font-weight="700" fill="#ffffff" letter-spacing="-1">
+    EphemeralML
+  </text>
+
+  <!-- Subtitle -->
+  <text x="600" y="340" text-anchor="middle" font-family="Inter, -apple-system, sans-serif"
+        font-size="24" fill="#888888">
+    Confidential AI Inference with Cryptographic Proof
+  </text>
+
+  <!-- Tech stack pills -->
+  <g transform="translate(230, 390)">
+    <rect x="0" y="0" width="100" height="32" rx="4" fill="#0f0f0f" stroke="#1e1e1e"/>
+    <text x="50" y="21" text-anchor="middle" font-family="'JetBrains Mono', monospace"
+          font-size="12" fill="#555555">Rust</text>
+
+    <rect x="115" y="0" width="100" height="32" rx="4" fill="#0f0f0f" stroke="#1e1e1e"/>
+    <text x="165" y="21" text-anchor="middle" font-family="'JetBrains Mono', monospace"
+          font-size="12" fill="#555555">Intel TDX</text>
+
+    <rect x="230" y="0" width="100" height="32" rx="4" fill="#0f0f0f" stroke="#1e1e1e"/>
+    <text x="280" y="21" text-anchor="middle" font-family="'JetBrains Mono', monospace"
+          font-size="12" fill="#555555">HPKE</text>
+
+    <rect x="345" y="0" width="100" height="32" rx="4" fill="#0f0f0f" stroke="#1e1e1e"/>
+    <text x="395" y="21" text-anchor="middle" font-family="'JetBrains Mono', monospace"
+          font-size="12" fill="#555555">Ed25519</text>
+
+    <rect x="460" y="0" width="130" height="32" rx="4" fill="#0f0f0f" stroke="#1e1e1e"/>
+    <text x="525" y="21" text-anchor="middle" font-family="'JetBrains Mono', monospace"
+          font-size="12" fill="#555555">COSE / CBOR</text>
+
+    <rect x="605" y="0" width="110" height="32" rx="4" fill="#0f0f0f" stroke="#1e1e1e"/>
+    <text x="660" y="21" text-anchor="middle" font-family="'JetBrains Mono', monospace"
+          font-size="12" fill="#555555">Candle ML</text>
+  </g>
+
+  <!-- Terminal-style receipt snippet -->
+  <g transform="translate(300, 450)">
+    <rect x="0" y="0" width="600" height="110" rx="8" fill="#111111" stroke="#1e1e1e" stroke-width="1"/>
+    <rect x="0" y="0" width="600" height="24" rx="8" fill="#181818"/>
+    <rect x="0" y="16" width="600" height="8" fill="#181818"/>
+    <circle cx="16" cy="12" r="4" fill="#2a2a2a"/>
+    <circle cx="30" cy="12" r="4" fill="#2a2a2a"/>
+    <circle cx="44" cy="12" r="4" fill="#2a2a2a"/>
+    <text x="300" y="15" text-anchor="middle" font-family="'JetBrains Mono', monospace"
+          font-size="9" fill="#555555">ephemeralml-verify receipt.json</text>
+    <text x="20" y="48" font-family="'JetBrains Mono', monospace" font-size="11" fill="#555555">Signature (Ed25519)</text>
+    <text x="500" y="48" font-family="'JetBrains Mono', monospace" font-size="11" fill="#00cc88">[PASS]</text>
+    <text x="20" y="66" font-family="'JetBrains Mono', monospace" font-size="11" fill="#555555">Measurements present</text>
+    <text x="500" y="66" font-family="'JetBrains Mono', monospace" font-size="11" fill="#00cc88">[PASS]</text>
+    <text x="20" y="84" font-family="'JetBrains Mono', monospace" font-size="11" fill="#555555">Destroy evidence</text>
+    <text x="500" y="84" font-family="'JetBrains Mono', monospace" font-size="11" fill="#00cc88">[PASS]</text>
+    <text x="20" y="102" font-family="'JetBrains Mono', monospace" font-size="12" font-weight="600" fill="#00cc88">VERIFIED</text>
+  </g>
+
+  <!-- Brand -->
+  <text x="600" y="600" text-anchor="middle" font-family="'JetBrains Mono', monospace"
+        font-size="14" fill="#00d4ff" opacity="0.6">
+    ephemeralml.cyntrisec.com
+  </text>
+</svg>

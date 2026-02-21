@@ -1,5 +1,4 @@
 User-agent: *
 Allow: /
 
-# Sitemap
-# Sitemap: https://cyntrisec.com/sitemap.xml
+Sitemap: https://cyntrisec.com/sitemap.xml
