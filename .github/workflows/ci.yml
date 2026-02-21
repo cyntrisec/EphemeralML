@@ -181,6 +181,11 @@ jobs:
       - uses: rustsec/audit-check@v2.0.0
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
+          # RUSTSEC-2023-0071: rsa 0.9.10 Marvin timing attack (CVSS 5.9).
+          # No upstream patch available. Mitigated via decrypt_blinded() in
+          # enclave/src/attestation.rs and enclave/src/mock.rs.
+          # Tracking: https://github.com/RustCrypto/RSA/issues/19
+          # TODO(security): Re-evaluate on 2026-05-21 or when rsa 0.10 ships.
           ignore: RUSTSEC-2023-0071
 
   shell-lint:
@@ -189,9 +194,18 @@ jobs:
     steps:
       - uses: actions/checkout@v6
       - name: Syntax check
-        run: bash -n scripts/lib/ui.sh scripts/gcp/*.sh
+        run: |
+          bash -n scripts/lib/ui.sh scripts/gcp/*.sh
+          if compgen -G "scripts/security/*.sh" > /dev/null; then
+            bash -n scripts/security/*.sh
+          fi
       - name: ShellCheck (ui.sh)
         run: shellcheck scripts/lib/ui.sh
+      - name: ShellCheck (security scripts)
+        run: |
+          if compgen -G "scripts/security/*.sh" > /dev/null; then
+            shellcheck scripts/security/*.sh
+          fi
       - name: ShellCheck (gcp scripts, advisory)
         run: shellcheck scripts/gcp/*.sh || true
 
