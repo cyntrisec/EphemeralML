@@ -1,0 +1,60 @@
+/* ================================================================
+   EPHEMERALML / CYNTRISEC — SHARED DESIGN TOKENS
+   Imported by both ephemeralml.cyntrisec.com and cyntrisec.com
+   ================================================================ */
+
+@import url("https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap");
+
+:root {
+  /* ---- Backgrounds ---- */
+  --black:       #000000;
+  --bg-0:        #050505;
+  --bg-1:        #0a0a0a;
+  --bg-2:        #111111;
+  --bg-3:        #181818;
+  --bg-card:     #0f0f0f;
+
+  /* ---- Borders ---- */
+  --border:      #1e1e1e;
+  --border-hi:   #2a2a2a;
+  --border-focus:#3a3a3a;
+
+  /* ---- Text ---- */
+  --text-0:      #ffffff;
+  --text-1:      #e0e0e0;
+  --text-2:      #888888;
+  --text-3:      #555555;
+
+  /* ---- Accent ---- */
+  --accent:      #00d4ff;
+  --accent-dim:  rgba(0, 212, 255, 0.08);
+  --accent-mid:  rgba(0, 212, 255, 0.15);
+
+  /* ---- Semantic ---- */
+  --green:       #00cc88;
+  --green-dim:   rgba(0, 204, 136, 0.10);
+  --red:         #ff3355;
+  --red-dim:     rgba(255, 51, 85, 0.10);
+  --amber:       #ffaa00;
+
+  /* ---- Typography ---- */
+  --font-sans:   "Inter", -apple-system, BlinkMacSystemFont, sans-serif;
+  --font-mono:   "JetBrains Mono", "Fira Code", monospace;
+
+  /* ---- Layout ---- */
+  --max-w:       1080px;
+
+  /* ---- Spacing scale ---- */
+  --space-xs:    0.25rem;
+  --space-sm:    0.5rem;
+  --space-md:    1rem;
+  --space-lg:    2rem;
+  --space-xl:    4rem;
+  --space-2xl:   6rem;
+  --space-3xl:   8rem;
+
+  /* ---- Radii ---- */
+  --radius-sm:   4px;
+  --radius-md:   8px;
+  --radius-lg:   12px;
+}

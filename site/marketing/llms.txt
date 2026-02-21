@@ -1,0 +1,49 @@
+# Cyntrisec — Confidential AI Infrastructure
+
+## EphemeralML
+
+> AI Clean Room for Inference.
+> Per-request cryptographic proof that your data was processed inside a hardware-isolated environment — and nowhere else.
+
+### Overview
+EphemeralML produces signed receipts (proof bundles) for every AI inference request. Each receipt contains the model hash, input/output hashes, attestation evidence, and an Ed25519 signature. Human-readable. Machine-verifiable.
+
+Models run inside hardware Trusted Execution Environments (Intel TDX, AMD SEV-SNP, AWS Nitro). The cloud operator cannot access data during processing — verified by hardware attestation.
+
+### Key Features
+- **Proof Bundle**: Every inference produces a signed receipt with model hash, I/O hashes, attestation evidence, Ed25519 signature.
+- **Hardware Isolation**: Intel TDX, AMD SEV-SNP, AWS Nitro Enclaves. Verified by hardware attestation.
+- **Encrypted Transport**: Attestation-bound X25519 + ChaCha20-Poly1305. 170ns frame encoding, sub-8us per 4KB.
+- **GPU Inference**: Llama 3 8B on NVIDIA H100 Confidential Computing. Quantized GGUF models.
+- **Multi-Cloud**: GCP Confidential Space (TDX), AWS Nitro Enclaves, Azure DCads_v5 (SEV-SNP).
+- **Open Source**: Rust. Published on crates.io. Apache 2.0 licensed.
+
+### HIPAA Compliance Mapping
+- 164.312(a) Access Control → Enclave isolation proof
+- 164.312(b) Audit Controls → The receipt itself
+- 164.312(c) Integrity → Model hash + attestation signature
+- 164.312(e) Transmission Security → AEAD encryption proof
+
+### Links
+- **GitHub**: https://github.com/cyntrisec/EphemeralML
+- **Transport Library (crates.io)**: https://crates.io/crates/confidential-ml-transport
+
+---
+
+## Cyntrisec CLI
+
+> AWS Security Graph — Attack path discovery optimized for LLMs.
+
+### Installation
+```bash
+pip install cyntrisec
+```
+
+### Features
+- **Graph Analysis**: Builds a full capability graph of IAM, network, and dependencies.
+- **Agentic Interface**: Native MCP server. Connect Claude Desktop or other agents.
+- **Read-Only**: Scans via AssumeRole without modifying infrastructure. No SaaS backend.
+
+### Links
+- **GitHub**: https://github.com/cyntrisec/cyntrisec-cli
+- **PyPI**: https://pypi.org/project/cyntrisec/

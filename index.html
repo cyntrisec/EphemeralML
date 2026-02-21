@@ -4,6 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>EphemeralML - Confidential AI Inference with Cryptographic Proof</title>
+    <meta name="description" content="Run AI inference inside hardware-isolated enclaves. Get a signed receipt covering model identity, data hashes, and session destroy-evidence events." />
 
     <!-- Favicon -->
     <link rel="icon" type="image/svg+xml" href="favicon.svg" />
@@ -13,60 +14,24 @@
     <!-- Content Security Policy -->
     <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'" />
 
+    <!-- Canonical -->
+    <link rel="canonical" href="https://ephemeralml.cyntrisec.com" />
+
     <!-- Open Graph -->
     <meta property="og:title" content="EphemeralML - Confidential AI Inference with Cryptographic Proof" />
     <meta property="og:description" content="Run AI inference inside hardware-isolated enclaves. Get a signed receipt covering model identity, data hashes, and session destroy-evidence events." />
     <meta property="og:type" content="website" />
-    <meta property="og:image" content="favicon.svg" />
-    <meta name="twitter:card" content="summary_large_image" />
+    <meta property="og:url" content="https://ephemeralml.cyntrisec.com" />
+    <meta property="og:image" content="https://ephemeralml.cyntrisec.com/favicon.svg" />
+    <meta name="twitter:card" content="summary" />
+    <meta name="twitter:site" content="@cyntrisec" />
+    <meta name="twitter:creator" content="@cyntrisec" />
+    <meta name="twitter:title" content="EphemeralML - Confidential AI Inference" />
+    <meta name="twitter:description" content="Run AI inside hardware-isolated enclaves. Every inference produces a signed receipt." />
+    <meta name="twitter:image" content="https://ephemeralml.cyntrisec.com/favicon.svg" />
 
     <style>
-      @import url("https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap");
-
-      /* ================================================================
-         DESIGN TOKENS
-         ================================================================ */
-      :root {
-        --black:       #000000;
-        --bg-0:        #050505;
-        --bg-1:        #0a0a0a;
-        --bg-2:        #111111;
-        --bg-3:        #181818;
-        --bg-card:     #0f0f0f;
-        --border:      #1e1e1e;
-        --border-hi:   #2a2a2a;
-        --border-focus:#3a3a3a;
-
-        --text-0:      #ffffff;
-        --text-1:      #e0e0e0;
-        --text-2:      #888888;
-        --text-3:      #555555;
-
-        --accent:      #00d4ff;
-        --accent-dim:  rgba(0, 212, 255, 0.08);
-        --accent-mid:  rgba(0, 212, 255, 0.15);
-        --green:       #00cc88;
-        --green-dim:   rgba(0, 204, 136, 0.10);
-        --red:         #ff3355;
-        --red-dim:     rgba(255, 51, 85, 0.10);
-        --amber:       #ffaa00;
-
-        --font-sans:   "Inter", -apple-system, BlinkMacSystemFont, sans-serif;
-        --font-mono:   "JetBrains Mono", "Fira Code", monospace;
-
-        --max-w:       1080px;
-        --space-xs:    0.25rem;
-        --space-sm:    0.5rem;
-        --space-md:    1rem;
-        --space-lg:    2rem;
-        --space-xl:    4rem;
-        --space-2xl:   6rem;
-        --space-3xl:   8rem;
-
-        --radius-sm:   4px;
-        --radius-md:   8px;
-        --radius-lg:   12px;
-      }
+      @import url("site/shared/brand.css");
 
       /* ================================================================
          RESET & BASE
@@ -162,7 +127,7 @@
          ================================================================ */
       header {
         position: fixed;
-        top: 0;
+        top: 28px;
         width: 100%;
         z-index: 100;
         background: rgba(5, 5, 5, 0.9);
@@ -301,7 +266,7 @@
          HERO
          ================================================================ */
       .hero {
-        padding-top: calc(56px + var(--space-3xl));
+        padding-top: calc(56px + 28px + var(--space-3xl));
         padding-bottom: var(--space-2xl);
         text-align: center;
         position: relative;
@@ -311,7 +276,7 @@
       .hero::before {
         content: "";
         position: absolute;
-        top: 56px;
+        top: 84px;
         left: 50%;
         transform: translateX(-50%);
         width: 600px;
@@ -917,7 +882,7 @@
          ================================================================ */
       @media (max-width: 768px) {
         .hero h1 { font-size: 2rem; }
-        .hero { padding-top: calc(56px + var(--space-xl)); }
+        .hero { padding-top: calc(56px + 28px + var(--space-xl)); }
         .nav-links { display: none; }
         .grid-2, .grid-3 { grid-template-columns: 1fr; }
         .stats-row { grid-template-columns: repeat(2, 1fr); }
@@ -938,6 +903,13 @@
     </style>
   </head>
   <body>
+
+    <!-- ============================================================
+         CROSS-LINK BANNER
+         ============================================================ -->
+    <div style="text-align: center; padding: 0.6rem var(--space-md); background: var(--bg-2); border-bottom: 1px solid var(--border); font-family: var(--font-mono); font-size: 0.72rem; color: var(--text-3);">
+      Looking for business overview? &rarr; <a href="https://cyntrisec.com" style="color: var(--accent); transition: color 0.15s;">cyntrisec.com</a>
+    </div>
 
     <!-- ============================================================
          GHOST MASCOT (corner float)
@@ -992,9 +964,9 @@
           Run AI inside hardware-isolated enclaves. Every inference produces a signed receipt covering model identity, data hashes, and session destroy-evidence events.
         </p>
         <div class="hero-actions anim-fade anim-delay-3">
-          <a href="mailto:contact@cyntrisec.com" class="btn btn-primary">Request a Pilot</a>
+          <a href="https://github.com/cyntrisec/EphemeralML/blob/main/QUICKSTART.md" class="btn btn-primary">Start Integration</a>
           <a href="#security" class="btn btn-ghost">Security Model</a>
-          <a href="https://github.com/cyntrisec/EphemeralML" class="btn btn-ghost">Source Code</a>
+          <a href="https://github.com/cyntrisec/EphemeralML" class="btn btn-ghost">View Docs</a>
         </div>
         <div class="anim-fade anim-delay-4" style="display: flex; justify-content: center;">
           <button class="install-block" type="button" aria-label="Copy install command" onclick="navigator.clipboard.writeText('curl -fsSL https://github.com/cyntrisec/EphemeralML/releases/latest/download/install.sh | bash')">
@@ -1013,7 +985,7 @@
       <div class="wrap">
         <div class="stats-row anim-fade anim-delay-5">
           <div class="stat">
-            <div class="stat-val">341</div>
+            <div class="stat-val">386</div>
             <div class="stat-lbl">Tests Passing</div>
           </div>
           <div class="stat">
@@ -1305,10 +1277,10 @@
             <circle cx="14" cy="19" r="2" fill="currentColor" opacity="0.5"/>
             <circle cx="26" cy="19" r="2" fill="currentColor" opacity="0.5"/>
           </svg>
-          <h2>Deploy confidential AI</h2>
-          <p class="sub">If you run AI in a high-assurance environment and need verifiable confidentiality, EphemeralML is built for you.</p>
+          <h2>Start building with EphemeralML</h2>
+          <p class="sub">Integrate confidential AI inference into your stack. Check the quickstart guide, explore the source, or grab the latest release.</p>
           <div class="cta-btns">
-            <a href="mailto:contact@cyntrisec.com" class="btn btn-primary">Get in Touch</a>
+            <a href="https://github.com/cyntrisec/EphemeralML/blob/main/QUICKSTART.md" class="btn btn-primary">Start Integration</a>
             <a href="https://github.com/cyntrisec/EphemeralML/releases/tag/v0.2.8" class="btn btn-ghost">Latest Release</a>
             <a href="https://github.com/cyntrisec/EphemeralML" class="btn btn-ghost">GitHub</a>
           </div>
