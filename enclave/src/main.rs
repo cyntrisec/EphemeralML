@@ -1,7 +1,7 @@
 use ephemeral_ml_enclave::candle_engine::CandleInferenceEngine;
 #[cfg(any(feature = "mock", feature = "gcp"))]
 use ephemeral_ml_enclave::server::run_direct_tcp;
-#[cfg(feature = "mock")]
+#[cfg(any(feature = "mock", feature = "gcp"))]
 use ephemeral_ml_enclave::server::run_stage_tcp;
 use ephemeral_ml_enclave::stage_executor::EphemeralStageExecutor;
 
@@ -1243,12 +1243,10 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
         // --direct is not yet supported in Nitro production (requires VSock direct-mode server).
         // Fail fast with a clear message rather than silently ignoring.
         if args.direct {
-            return Err(
-                "--direct is not supported in Nitro production mode. \
+            return Err("--direct is not supported in Nitro production mode. \
                  Use pipeline mode (default) with the host orchestrator. \
                  Direct mode is available in GCP (--gcp --direct) and mock (--direct) modes."
-                    .into(),
-            );
+                .into());
         }
 
         let attestation_provider = DefaultAttestationProvider::new()?;
@@ -1347,13 +1345,17 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
 
         // Parse VSock ports from CLI args (format: "CID:PORT" or just "PORT").
         // Fail fast on malformed values — silent defaults are dangerous in production.
-        fn parse_vsock_port(arg: &str, label: &str) -> std::result::Result<u32, Box<dyn std::error::Error>> {
+        fn parse_vsock_port(
+            arg: &str,
+            label: &str,
+        ) -> std::result::Result<u32, Box<dyn std::error::Error>> {
             let port_str = arg.split(':').last().unwrap_or(arg);
             port_str.parse::<u32>().map_err(|e| {
                 format!(
                     "Failed to parse {} port from '{}': {}. Expected format: CID:PORT or PORT.",
                     label, arg, e
-                ).into()
+                )
+                .into()
             })
         }
         let control_port = parse_vsock_port(&args.control_addr, "control")?;

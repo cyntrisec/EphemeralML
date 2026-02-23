@@ -5,9 +5,9 @@ use confidential_ml_pipeline::{
     ActivationDType, ActivationSpec, OrchestratorConfig, PortSpec, ShardManifest, StageEndpoint,
     StageSpec,
 };
+use confidential_ml_transport::{DType, OwnedTensor};
 #[cfg(feature = "mock")]
 use confidential_ml_transport::{MockProvider, MockVerifier};
-use confidential_ml_transport::{DType, OwnedTensor};
 use ephemeral_ml_common::AttestationReceipt;
 use std::collections::BTreeMap;
 
@@ -150,7 +150,10 @@ struct ProdArgs {
     data_out_port: u32,
 
     /// Input text for inference
-    #[arg(long, default_value = "Confidential AI inference with cryptographic proof")]
+    #[arg(
+        long,
+        default_value = "Confidential AI inference with cryptographic proof"
+    )]
     text: String,
 
     /// Sequence length for the pipeline
@@ -158,10 +161,7 @@ struct ProdArgs {
     seq_len: u32,
 
     /// Model name for the manifest
-    #[arg(
-        long,
-        default_value = "sentence-transformers/all-MiniLM-L6-v2"
-    )]
+    #[arg(long, default_value = "sentence-transformers/all-MiniLM-L6-v2")]
     model_name: String,
 
     /// Model version
@@ -403,9 +403,18 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         // 3. Bind orchestrator's data_out VSock listener.
         //    The enclave stage will connect to this after the control phase.
         let data_out_listener =
-            VsockListener::bind(VsockAddr::new(VMADDR_CID_ANY, args.data_out_port))
-                .map_err(|e| format!("Failed to bind VSock data_out listener on port {}: {}", args.data_out_port, e))?;
-        info!(port = args.data_out_port, "Orchestrator data_out VSock listener bound");
+            VsockListener::bind(VsockAddr::new(VMADDR_CID_ANY, args.data_out_port)).map_err(
+                |e| {
+                    format!(
+                        "Failed to bind VSock data_out listener on port {}: {}",
+                        args.data_out_port, e
+                    )
+                },
+            )?;
+        info!(
+            port = args.data_out_port,
+            "Orchestrator data_out VSock listener bound"
+        );
 
         // 4. Initialize orchestrator — connects to enclave stage via VSock.
         info!("Connecting to enclave stage worker...");

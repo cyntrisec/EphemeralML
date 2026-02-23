@@ -65,8 +65,8 @@ async fn main() -> Result<()> {
             event = "init",
             mode = "production"
         );
-        let listener =
-            VsockListener::bind(VsockAddr::new(VMADDR_CID_ANY, vsock_port)).context("Failed to bind VSock listener")?;
+        let listener = VsockListener::bind(VsockAddr::new(VMADDR_CID_ANY, vsock_port))
+            .context("Failed to bind VSock listener")?;
         info!(
             message = "listening",
             event = "listen",
