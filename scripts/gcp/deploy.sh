@@ -289,6 +289,10 @@ fi
 # KMS-specific env vars only for gcs-kms
 if [[ "${MODEL_SOURCE}" == "gcs-kms" ]]; then
     METADATA="${METADATA},tee-env-EPHEMERALML_GCP_KMS_KEY=${KMS_KEY}"
+fi
+# WIP audience is needed for CS transport attestation (Launcher JWT) regardless of
+# model source. Pass it whenever available.
+if [[ -n "${WIP_AUDIENCE}" ]]; then
     METADATA="${METADATA},tee-env-EPHEMERALML_GCP_WIP_AUDIENCE=${WIP_AUDIENCE}"
 fi
 # Signing pubkey applies to both gcs and gcs-kms model sources

@@ -25,6 +25,24 @@ use tokio_vsock::{VsockAddr, VsockListener, VMADDR_CID_ANY};
 #[cfg(feature = "production")]
 use tracing::{error, info, warn};
 
+/// Save receipt JSON to disk. Returns Ok(()) if path is None (no-op).
+fn save_receipt(receipt: &AttestationReceipt, path: Option<&str>) -> Result<(), std::io::Error> {
+    let Some(path) = path else { return Ok(()) };
+    let json = serde_json::to_string_pretty(receipt)
+        .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
+    std::fs::write(path, &json)?;
+    println!("  Receipt saved to {}", path);
+    Ok(())
+}
+
+/// Save raw receipt tensor bytes (wire format) to disk. Returns Ok(()) if path is None.
+fn save_receipt_raw(raw_bytes: &[u8], path: Option<&str>) -> Result<(), std::io::Error> {
+    let Some(path) = path else { return Ok(()) };
+    std::fs::write(path, raw_bytes)?;
+    println!("  Raw receipt ({} bytes) saved to {}", raw_bytes.len(), path);
+    Ok(())
+}
+
 fn print_receipt(receipt: &AttestationReceipt) {
     println!();
     println!("========================================================");
@@ -180,6 +198,15 @@ struct ProdArgs {
     /// Only use for development/debugging, never in production.
     #[arg(long, default_value = "false")]
     allow_unpinned: bool,
+
+    /// Save the attestation receipt to a JSON file at this path.
+    #[arg(long, env = "EPHEMERALML_RECEIPT_OUTPUT")]
+    receipt_output: Option<String>,
+
+    /// Save the raw __receipt__ tensor bytes (CBOR/JSON wire format) to this path.
+    /// Preserves the exact on-wire encoding for canonical verification.
+    #[arg(long, env = "EPHEMERALML_RECEIPT_OUTPUT_RAW")]
+    receipt_output_raw: Option<String>,
 }
 
 #[tokio::main]
@@ -189,6 +216,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     #[cfg(feature = "mock")]
     {
         println!("EphemeralML Host (Mock Mode)");
+
+        let mock_receipt_output = std::env::var("EPHEMERALML_RECEIPT_OUTPUT").ok();
+        let mock_receipt_output_raw = std::env::var("EPHEMERALML_RECEIPT_OUTPUT_RAW").ok();
 
         // 1. Start KMS proxy in background
         let kms_handle = tokio::spawn(async move {
@@ -279,6 +309,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         for (i, tensors) in result.outputs.iter().enumerate() {
             for t in tensors {
                 if t.name == "__receipt__" {
+                    // Save raw wire-format bytes before parsing
+                    if let Err(e) = save_receipt_raw(&t.data, mock_receipt_output_raw.as_deref()) {
+                        eprintln!("Warning: failed to save raw receipt: {}", e);
+                    }
                     // Try CBOR first (canonical format), fall back to JSON
                     match ephemeral_ml_common::cbor::from_slice::<AttestationReceipt>(&t.data)
                         .or_else(|_| {
@@ -287,6 +321,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         }) {
                         Ok(receipt) => {
                             print_receipt(&receipt);
+                            if let Err(e) = save_receipt(&receipt, mock_receipt_output.as_deref()) {
+                                eprintln!("Warning: failed to save receipt: {}", e);
+                            }
                         }
                         Err(e) => {
                             eprintln!("Failed to parse receipt: {}", e);
@@ -466,6 +503,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         for (i, tensors) in result.outputs.iter().enumerate() {
             for t in tensors {
                 if t.name == "__receipt__" {
+                    // Save raw wire-format bytes before parsing
+                    if let Err(e) = save_receipt_raw(&t.data, args.receipt_output_raw.as_deref()) {
+                        error!(error = %e, "Failed to save raw receipt");
+                    }
                     match ephemeral_ml_common::cbor::from_slice::<AttestationReceipt>(&t.data)
                         .or_else(|_| {
                             serde_json::from_slice::<AttestationReceipt>(&t.data)
@@ -473,6 +514,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         }) {
                         Ok(receipt) => {
                             print_receipt(&receipt);
+                            if let Err(e) = save_receipt(&receipt, args.receipt_output.as_deref()) {
+                                error!(error = %e, "Failed to save receipt");
+                            }
                         }
                         Err(e) => {
                             error!(error = %e, "Failed to parse receipt");
@@ -500,4 +544,112 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn sample_receipt() -> AttestationReceipt {
+        AttestationReceipt {
+            receipt_id: "test-id".into(),
+            model_id: "test-model".into(),
+            model_version: "1.0".into(),
+            sequence_number: 1,
+            security_mode: ephemeral_ml_common::SecurityMode::GatewayOnly,
+            protocol_version: 1,
+            policy_version: "1.0".into(),
+            request_hash: [0u8; 32],
+            response_hash: [0u8; 32],
+            attestation_doc_hash: [0u8; 32],
+            enclave_measurements: ephemeral_ml_common::EnclaveMeasurements {
+                pcr0: vec![0u8; 48],
+                pcr1: vec![0u8; 48],
+                pcr2: vec![0u8; 48],
+                pcr8: None,
+                measurement_type: "nitro-pcr".into(),
+            },
+            signature: None,
+            execution_timestamp: 0,
+            execution_time_ms: 42,
+            memory_peak_mb: 10,
+            previous_receipt_hash: None,
+            attestation_source: None,
+            cs_image_digest: None,
+            cs_claims_hash: None,
+            destroy_evidence: None,
+        }
+    }
+
+    #[test]
+    fn save_receipt_none_path_is_noop() {
+        let receipt = sample_receipt();
+        assert!(save_receipt(&receipt, None).is_ok());
+    }
+
+    #[test]
+    fn save_receipt_writes_valid_json() {
+        let dir = std::env::temp_dir().join("ephemeralml-test-receipt");
+        let path = dir.join("receipt.json");
+        std::fs::create_dir_all(&dir).unwrap();
+
+        let receipt = sample_receipt();
+        save_receipt(&receipt, Some(path.to_str().unwrap())).unwrap();
+
+        let contents = std::fs::read_to_string(&path).unwrap();
+        let parsed: serde_json::Value = serde_json::from_str(&contents).unwrap();
+        assert_eq!(parsed["receipt_id"], "test-id");
+        assert_eq!(parsed["execution_time_ms"], 42);
+
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn save_receipt_bad_path_returns_error() {
+        let receipt = sample_receipt();
+        let result = save_receipt(&receipt, Some("/nonexistent/deeply/nested/receipt.json"));
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn save_receipt_raw_none_path_is_noop() {
+        assert!(save_receipt_raw(b"hello", None).is_ok());
+    }
+
+    #[test]
+    fn save_receipt_raw_writes_exact_bytes() {
+        let dir = std::env::temp_dir().join("ephemeralml-test-raw");
+        let path = dir.join("receipt.raw");
+        std::fs::create_dir_all(&dir).unwrap();
+
+        let raw = b"\x82\xa1\x63foo\x63bar";
+        save_receipt_raw(raw, Some(path.to_str().unwrap())).unwrap();
+
+        let contents = std::fs::read(&path).unwrap();
+        assert_eq!(contents, raw);
+
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn save_receipt_raw_bad_path_returns_error() {
+        let result = save_receipt_raw(b"data", Some("/nonexistent/deeply/nested/receipt.raw"));
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert_eq!(err.kind(), std::io::ErrorKind::NotFound);
+    }
+
+    #[test]
+    fn save_receipt_raw_empty_bytes() {
+        let dir = std::env::temp_dir().join("ephemeralml-test-raw-empty");
+        let path = dir.join("receipt.raw");
+        std::fs::create_dir_all(&dir).unwrap();
+
+        save_receipt_raw(b"", Some(path.to_str().unwrap())).unwrap();
+
+        let contents = std::fs::read(&path).unwrap();
+        assert!(contents.is_empty());
+
+        std::fs::remove_dir_all(&dir).ok();
+    }
 }

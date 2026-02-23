@@ -25,6 +25,7 @@ INSTANCE_NAME="ephemeralml-cvm"
 DATA_PORT=9000            # direct mode: client connects to single port (9000)
 CONTROL_PORT=9000         # used only for the reachability probe
 RECEIPT_PATH="/tmp/ephemeralml-receipt.json"
+TIMING_PATH="/tmp/ephemeralml-timing.json"
 VERIFY_OUTPUT="$(mktemp /tmp/ephemeralml-verify-output.XXXXXX.txt)"
 MAX_WAIT=180              # seconds to wait for port reachability
 INFERENCE_TEXT="Verify EphemeralML on Confidential Space"
@@ -118,8 +119,10 @@ ui_blank
 cd "${PROJECT_DIR}"
 
 # Build client with gcp feature — must match the enclave's TDX handshake stack
+CLIENT_BUILD_START=$(date +%s%N)
 run_step 3 4 "Building GCP client" \
     cargo build --release --no-default-features --features gcp -p ephemeral-ml-client
+CLIENT_BUILD_END=$(date +%s%N)
 
 # The GCP-mode client reads EPHEMERALML_ENCLAVE_ADDR for the server address.
 # It connects to the data_in port (9001) where the enclave accepts inference traffic.
@@ -142,12 +145,14 @@ else
     exit 1
 fi
 
+INFERENCE_START=$(date +%s%N)
 EPHEMERALML_ENCLAVE_ADDR="${IP}:${DATA_PORT}" \
     EPHEMERALML_REQUIRE_MRTD=false \
     cargo run --release --no-default-features --features gcp \
     -p ephemeral-ml-client --bin ephemeral-ml-client 2>&1 | tee ${VERIFY_OUTPUT}
 
 CLIENT_EXIT=${PIPESTATUS[0]}
+INFERENCE_END=$(date +%s%N)
 
 if [[ ${CLIENT_EXIT} -ne 0 ]]; then
     ui_blank
@@ -179,6 +184,7 @@ if [[ -f "${RECEIPT_PATH}" ]]; then
         ui_kv "Public key" "${PK_HEX}"
         ui_blank
 
+        VERIFY_START=$(date +%s%N)
         cargo run --release --no-default-features --features gcp \
             --bin ephemeralml-verify -- \
             "${RECEIPT_PATH}" \
@@ -186,6 +192,7 @@ if [[ -f "${RECEIPT_PATH}" ]]; then
             --max-age 0 \
             --format text
         VERIFY_EXIT=$?
+        VERIFY_END=$(date +%s%N)
         RECEIPT_VERIFIED=true
     else
         ui_warn "WARNING: Receipt file exists but no .pubkey file found at ${PUBKEY_FILE}."
@@ -198,6 +205,79 @@ else
     VERIFY_EXIT=1
 fi
 ui_blank
+
+# ---------------------------------------------------------------------------
+# Generate timing.json
+# ---------------------------------------------------------------------------
+# Compute durations in milliseconds (nanosecond timestamps / 1000000).
+# Extract execution_time_ms from receipt if available (enclave-measured inference time).
+_client_build_ms=$(( (CLIENT_BUILD_END - CLIENT_BUILD_START) / 1000000 ))
+_e2e_client_ms=$(( (INFERENCE_END - INFERENCE_START) / 1000000 ))
+_verify_ms=0
+if [[ -n "${VERIFY_END:-}" && -n "${VERIFY_START:-}" ]]; then
+    _verify_ms=$(( (VERIFY_END - VERIFY_START) / 1000000 ))
+fi
+_port_wait_ms=$(( WAITED * 1000 ))
+
+# Try to extract enclave-reported execution_time_ms from receipt JSON
+_exec_time_ms="null"
+if [[ -f "${RECEIPT_PATH}" ]]; then
+    _exec_time_ms=$(python3 -c "
+import json, sys
+try:
+    r = json.load(open('${RECEIPT_PATH}'))
+    print(r.get('execution_time_ms', 'null'))
+except Exception:
+    print('null')
+" 2>/dev/null || echo "null")
+fi
+
+cat > "${TIMING_PATH}" << TIMINGEOF
+{
+  "schema_version": 1,
+  "client_build_ms": ${_client_build_ms},
+  "port_wait_ms": ${_port_wait_ms},
+  "e2e_client_ms": ${_e2e_client_ms},
+  "enclave_execution_time_ms": ${_exec_time_ms},
+  "receipt_verify_ms": ${_verify_ms},
+  "client_exit_code": ${CLIENT_EXIT},
+  "receipt_verified": ${RECEIPT_VERIFIED},
+  "instance": "${INSTANCE_NAME}",
+  "ip": "${IP}",
+  "timestamp": "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+}
+TIMINGEOF
+
+ui_kv "Timing" "${TIMING_PATH}"
+
+# ---------------------------------------------------------------------------
+# Generate artifact manifest
+# ---------------------------------------------------------------------------
+MANIFEST_PATH="/tmp/ephemeralml-artifact_manifest.json"
+{
+    echo '{'
+    echo '  "schema_version": 1,'
+    echo "  \"generated\": \"$(date -u +%Y-%m-%dT%H:%M:%SZ)\","
+    echo '  "artifacts": ['
+    _first=true
+    for _f in "${RECEIPT_PATH}" "${RECEIPT_PATH}.pubkey" "/tmp/ephemeralml-attestation.bin" \
+              "/tmp/ephemeralml-manifest.json" "${TIMING_PATH}"; do
+        [ -f "$_f" ] || continue
+        _basename="$(basename "$_f")"
+        _hash=$(sha256sum "$_f" | cut -d' ' -f1)
+        _size=$(stat --printf='%s' "$_f" 2>/dev/null || stat -f'%z' "$_f" 2>/dev/null)
+        if [ "$_first" = true ]; then
+            _first=false
+        else
+            echo ','
+        fi
+        printf '    {"file": "%s", "sha256": "%s", "bytes": %s}' "$_basename" "$_hash" "$_size"
+    done
+    echo ''
+    echo '  ]'
+    echo '}'
+} > "${MANIFEST_PATH}"
+ui_kv "Manifest" "${MANIFEST_PATH}"
 
 # ---------------------------------------------------------------------------
 # Summary

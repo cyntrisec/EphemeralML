@@ -101,6 +101,16 @@ pub trait AttestationProvider: Send + Sync {
     /// Default implementation ignores the handshake key and falls back to
     /// `generate_attestation()`. Providers that support key binding (e.g. NSM)
     /// should override this.
+    ///
+    /// # Testing note
+    ///
+    /// The actual HPKE key binding into the attestation document's `public_key`
+    /// field only happens on real hardware (NSM IOCTL on Nitro, Launcher JWT on
+    /// GCP). Mock providers test the bridge contract (user_data embedding,
+    /// receipt key propagation, error forwarding) but cannot verify that the
+    /// hardware attestation document contains the correct HPKE key. This must
+    /// be validated via E2E tests on real TEE hardware (see `nitro_e2e.sh`,
+    /// `scripts/gcp/verify.sh`).
     fn generate_attestation_for_transport(
         &self,
         nonce: &[u8],

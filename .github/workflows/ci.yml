@@ -226,6 +226,8 @@ jobs:
           fi
       - name: ShellCheck (gcp scripts, advisory)
         run: shellcheck scripts/gcp/*.sh || true
+      - name: Deploy metadata regression test
+        run: bash scripts/test_deploy_metadata.sh
 
   release-gate:
     name: Release Gate (GCP)

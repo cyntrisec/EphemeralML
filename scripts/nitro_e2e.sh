@@ -299,6 +299,8 @@ set +e
     --data-in-port 5001 \
     --data-out-port 5002 \
     --text "$INPUT_TEXT" \
+    --receipt-output "$EVIDENCE_DIR/receipt.json" \
+    --receipt-output-raw "$EVIDENCE_DIR/receipt.raw" \
     2>&1 | tee "$EVIDENCE_DIR/host_output.log"
 HOST_EXIT=${PIPESTATUS[0]}
 set -e
@@ -309,11 +311,26 @@ INFER_MS=$(( (INFER_END - INFER_START) / 1000000 ))
 log "Host orchestrator exited with code: $HOST_EXIT"
 log "Total E2E time: ${INFER_MS}ms"
 
+# Extract enclave-reported execution_time_ms from receipt if available
+EXEC_TIME_MS="null"
+if [ -f "$EVIDENCE_DIR/receipt.json" ]; then
+    EXEC_TIME_MS=$(python3 -c "
+import json, sys
+try:
+    r = json.load(open('$EVIDENCE_DIR/receipt.json'))
+    print(r.get('execution_time_ms', 'null'))
+except Exception:
+    print('null')
+" 2>/dev/null || echo "null")
+fi
+
 # Save timing
 cat > "$EVIDENCE_DIR/timing.json" << TIMEOF
 {
-  "total_e2e_ms": $INFER_MS,
-  "host_exit_code": $HOST_EXIT,
+  "schema_version": 1,
+  "e2e_client_ms": $INFER_MS,
+  "enclave_execution_time_ms": $EXEC_TIME_MS,
+  "client_exit_code": $HOST_EXIT,
   "input_text": "$(echo "$INPUT_TEXT" | sed 's/"/\\"/g')",
   "timestamp": "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 }
@@ -337,6 +354,35 @@ fi
 # Terminate enclave
 log "Terminating enclave..."
 nitro-cli terminate-enclave --all 2>/dev/null || true
+
+# Generate artifact manifest (SHA-256 of all evidence files)
+log "Generating artifact manifest..."
+MANIFEST="$EVIDENCE_DIR/artifact_manifest.json"
+{
+    echo '{'
+    echo '  "schema_version": 1,'
+    echo "  \"generated\": \"$(date -u +%Y-%m-%dT%H:%M:%SZ)\","
+    echo '  "artifacts": ['
+    FIRST=true
+    for f in "$EVIDENCE_DIR"/*; do
+        [ -f "$f" ] || continue
+        BASENAME="$(basename "$f")"
+        # Skip the manifest itself
+        [ "$BASENAME" = "artifact_manifest.json" ] && continue
+        HASH=$(sha256sum "$f" | cut -d' ' -f1)
+        SIZE=$(stat --printf='%s' "$f" 2>/dev/null || stat -f'%z' "$f" 2>/dev/null)
+        if [ "$FIRST" = true ]; then
+            FIRST=false
+        else
+            echo ','
+        fi
+        printf '    {"file": "%s", "sha256": "%s", "bytes": %s}' "$BASENAME" "$HASH" "$SIZE"
+    done
+    echo ''
+    echo '  ]'
+    echo '}'
+} > "$MANIFEST"
+log "Artifact manifest: $MANIFEST"
 
 # Summary
 echo ""
