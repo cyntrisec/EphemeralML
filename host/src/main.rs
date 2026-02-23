@@ -1,14 +1,29 @@
+#[cfg(feature = "mock")]
 use ephemeral_ml_host::mock::MockKmsProxyServer;
 
-use confidential_ml_pipeline::tcp::init_orchestrator_tcp;
 use confidential_ml_pipeline::{
     ActivationDType, ActivationSpec, OrchestratorConfig, PortSpec, ShardManifest, StageEndpoint,
     StageSpec,
 };
-use confidential_ml_transport::{DType, MockProvider, MockVerifier, OwnedTensor};
+#[cfg(feature = "mock")]
+use confidential_ml_transport::{MockProvider, MockVerifier};
+use confidential_ml_transport::{DType, OwnedTensor};
 use ephemeral_ml_common::AttestationReceipt;
 use std::collections::BTreeMap;
-use tokio::net::TcpListener;
+
+#[cfg(feature = "mock")]
+use confidential_ml_pipeline::tcp::init_orchestrator_tcp;
+
+#[cfg(feature = "production")]
+use clap::Parser;
+#[cfg(feature = "production")]
+use confidential_ml_pipeline::vsock::init_orchestrator_vsock;
+#[cfg(feature = "production")]
+use confidential_ml_transport::{MockProvider as HostMockProvider, NitroVerifier};
+#[cfg(feature = "production")]
+use tokio_vsock::{VsockAddr, VsockListener, VMADDR_CID_ANY};
+#[cfg(feature = "production")]
+use tracing::{error, info, warn};
 
 fn print_receipt(receipt: &AttestationReceipt) {
     println!();
@@ -110,11 +125,63 @@ fn print_embeddings(data: &[u8], shape: &[u32]) {
     println!();
 }
 
+/// CLI arguments for production (Nitro) host orchestrator.
+#[cfg(feature = "production")]
+#[derive(Parser, Debug)]
+#[command(
+    name = "ephemeral-ml-host",
+    about = "EphemeralML Host Orchestrator (AWS Nitro Production)"
+)]
+struct ProdArgs {
+    /// CID of the Nitro enclave (from `nitro-cli describe-enclaves`)
+    #[arg(long, env = "EPHEMERALML_ENCLAVE_CID", default_value = "16")]
+    enclave_cid: u32,
+
+    /// Control channel VSock port on the enclave
+    #[arg(long, env = "EPHEMERALML_CONTROL_PORT", default_value = "5000")]
+    control_port: u32,
+
+    /// Data-in VSock port on the enclave
+    #[arg(long, env = "EPHEMERALML_DATA_IN_PORT", default_value = "5001")]
+    data_in_port: u32,
+
+    /// Data-out VSock port (orchestrator binds, enclave connects)
+    #[arg(long, env = "EPHEMERALML_DATA_OUT_PORT", default_value = "5002")]
+    data_out_port: u32,
+
+    /// Input text for inference
+    #[arg(long, default_value = "Confidential AI inference with cryptographic proof")]
+    text: String,
+
+    /// Sequence length for the pipeline
+    #[arg(long, default_value = "16")]
+    seq_len: u32,
+
+    /// Model name for the manifest
+    #[arg(
+        long,
+        default_value = "sentence-transformers/all-MiniLM-L6-v2"
+    )]
+    model_name: String,
+
+    /// Model version
+    #[arg(long, default_value = "1.0")]
+    model_version: String,
+
+    /// Total layers in the model
+    #[arg(long, default_value = "6")]
+    total_layers: usize,
+
+    /// Embedding hidden dimension
+    #[arg(long, default_value = "384")]
+    hidden_dim: u32,
+}
+
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("EphemeralML Host v2.0");
 
-    #[cfg(not(feature = "production"))]
+    #[cfg(feature = "mock")]
     {
         println!("EphemeralML Host (Mock Mode)");
 
@@ -157,7 +224,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         };
 
         // 3. Bind orchestrator's data_out listener (stage connects here)
-        let orch_dout_lis = TcpListener::bind("127.0.0.1:9002").await?;
+        let orch_dout_lis = tokio::net::TcpListener::bind("127.0.0.1:9002").await?;
         println!("Orchestrator data_out listener bound on 127.0.0.1:9002");
 
         // 4. Wait briefly for enclave stage to start, then initialize orchestrator
@@ -242,11 +309,186 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     #[cfg(feature = "production")]
     {
-        eprintln!("ERROR: The main host binary is for pipeline orchestration only.");
-        eprintln!(
-            "For production KMS proxy, run: cargo run --features production --bin kms_proxy_host"
+        // Initialize structured logging
+        tracing_subscriber::fmt()
+            .with_env_filter(
+                tracing_subscriber::EnvFilter::from_default_env()
+                    .add_directive(tracing::Level::INFO.into()),
+            )
+            .init();
+
+        info!("EphemeralML Host (Production Mode — AWS Nitro)");
+
+        let args = ProdArgs::parse();
+
+        info!(
+            enclave_cid = args.enclave_cid,
+            control_port = args.control_port,
+            data_in_port = args.data_in_port,
+            data_out_port = args.data_out_port,
+            "Connecting to Nitro enclave via VSock"
         );
-        std::process::exit(1);
+
+        // 1. Build NitroVerifier with expected PCR measurements for enclave verification.
+        //    Load from environment: EPHEMERALML_EXPECTED_PCR0, _PCR1, _PCR2 (hex).
+        let mut expected_pcrs: BTreeMap<usize, Vec<u8>> = BTreeMap::new();
+        for i in 0..3u16 {
+            if let Ok(hex_str) = std::env::var(format!("EPHEMERALML_EXPECTED_PCR{}", i)) {
+                match hex::decode(&hex_str) {
+                    Ok(bytes) if bytes.len() == 48 => {
+                        expected_pcrs.insert(i as usize, bytes);
+                        info!(pcr = i, prefix = &hex_str[..16], "Pinned enclave PCR");
+                    }
+                    Ok(bytes) => {
+                        warn!(
+                            pcr = i,
+                            len = bytes.len(),
+                            "EPHEMERALML_EXPECTED_PCR has wrong length (need 48 bytes), ignoring"
+                        );
+                    }
+                    Err(e) => {
+                        warn!(pcr = i, error = %e, "EPHEMERALML_EXPECTED_PCR invalid hex, ignoring");
+                    }
+                }
+            }
+        }
+        if expected_pcrs.is_empty() {
+            warn!("No EPHEMERALML_EXPECTED_PCR0/1/2 set. Enclave Nitro attestation measurements are NOT pinned.");
+        }
+
+        let verifier = NitroVerifier::new(expected_pcrs)?;
+
+        // Host is not inside a TEE — use MockProvider for the mutual handshake.
+        // The enclave uses MockVerifier for the host side (one-way attestation model:
+        // only the enclave is cryptographically attested; host is trusted as same EC2 instance).
+        let provider = HostMockProvider::new();
+
+        // 2. Build single-stage VSock manifest.
+        //    The enclave binds control/data_in on VSock. The orchestrator binds data_out
+        //    on the host side and the enclave connects to it.
+        let manifest = ShardManifest {
+            model_name: args.model_name.clone(),
+            model_version: args.model_version.clone(),
+            total_layers: args.total_layers,
+            stages: vec![StageSpec {
+                stage_idx: 0,
+                layer_start: 0,
+                layer_end: args.total_layers,
+                weight_hashes: vec![],
+                expected_measurements: BTreeMap::new(),
+                endpoint: StageEndpoint {
+                    control: PortSpec::VSock {
+                        cid: args.enclave_cid,
+                        port: args.control_port,
+                    },
+                    data_in: PortSpec::VSock {
+                        cid: args.enclave_cid,
+                        port: args.data_in_port,
+                    },
+                    // data_out: orchestrator listens; enclave connects to host CID 3.
+                    // The manifest entry is used by the orchestrator to know where to bind.
+                    data_out: PortSpec::VSock {
+                        cid: VMADDR_CID_ANY,
+                        port: args.data_out_port,
+                    },
+                },
+            }],
+            activation_spec: ActivationSpec {
+                dtype: ActivationDType::F32,
+                hidden_dim: args.hidden_dim,
+                max_seq_len: 512,
+            },
+        };
+
+        // 3. Bind orchestrator's data_out VSock listener.
+        //    The enclave stage will connect to this after the control phase.
+        let data_out_listener =
+            VsockListener::bind(VsockAddr::new(VMADDR_CID_ANY, args.data_out_port))
+                .map_err(|e| format!("Failed to bind VSock data_out listener on port {}: {}", args.data_out_port, e))?;
+        info!(port = args.data_out_port, "Orchestrator data_out VSock listener bound");
+
+        // 4. Initialize orchestrator — connects to enclave stage via VSock.
+        info!("Connecting to enclave stage worker...");
+        let mut orch = init_orchestrator_vsock(
+            OrchestratorConfig::default(),
+            manifest,
+            data_out_listener,
+            &verifier,
+            &provider,
+        )
+        .await
+        .map_err(|e| {
+            error!(error = %e, "Failed to initialize orchestrator");
+            e
+        })?;
+
+        info!("Pipeline initialized successfully");
+
+        // 5. Health check
+        orch.health_check().await.map_err(|e| {
+            error!(error = %e, "Health check failed");
+            e
+        })?;
+        info!("Health check passed");
+
+        // 6. Run inference
+        let input_bytes = args.text.as_bytes();
+        let input = vec![vec![OwnedTensor {
+            name: "input".to_string(),
+            dtype: DType::U8,
+            shape: vec![input_bytes.len() as u32],
+            data: bytes::Bytes::copy_from_slice(input_bytes),
+        }]];
+
+        info!(input_len = input_bytes.len(), "Running inference...");
+        let infer_start = std::time::Instant::now();
+        let result = orch.infer(input, args.seq_len).await.map_err(|e| {
+            error!(error = %e, "Inference failed");
+            e
+        })?;
+        let infer_elapsed = infer_start.elapsed();
+
+        info!(
+            elapsed_ms = infer_elapsed.as_secs_f64() * 1000.0,
+            batches = result.outputs.len(),
+            "Inference complete"
+        );
+
+        // 7. Extract outputs
+        for (i, tensors) in result.outputs.iter().enumerate() {
+            for t in tensors {
+                if t.name == "__receipt__" {
+                    match ephemeral_ml_common::cbor::from_slice::<AttestationReceipt>(&t.data)
+                        .or_else(|_| {
+                            serde_json::from_slice::<AttestationReceipt>(&t.data)
+                                .map_err(|e| ephemeral_ml_common::cbor::CborError(e.to_string()))
+                        }) {
+                        Ok(receipt) => {
+                            print_receipt(&receipt);
+                        }
+                        Err(e) => {
+                            error!(error = %e, "Failed to parse receipt");
+                        }
+                    }
+                } else {
+                    print_embeddings(&t.data, &t.shape);
+                    println!(
+                        "  Output tensor [batch {}]: name={}, shape={:?}, {} bytes",
+                        i,
+                        t.name,
+                        t.shape,
+                        t.data.len()
+                    );
+                }
+            }
+        }
+
+        // 8. Shutdown
+        orch.shutdown().await.map_err(|e| {
+            error!(error = %e, "Shutdown failed");
+            e
+        })?;
+        info!("Pipeline shut down gracefully");
     }
 
     Ok(())

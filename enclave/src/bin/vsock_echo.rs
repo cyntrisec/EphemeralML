@@ -1,11 +1,11 @@
 #[cfg(feature = "production")]
 mod inner {
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
-    use tokio_vsock::{VsockListener, VsockStream};
+    use tokio_vsock::{VsockAddr, VsockListener, VsockStream, VMADDR_CID_ANY};
 
     pub async fn run() -> std::result::Result<(), Box<dyn std::error::Error>> {
         let port = 8083;
-        let mut listener = VsockListener::bind(libc::VMADDR_CID_ANY, port)
+        let listener = VsockListener::bind(VsockAddr::new(VMADDR_CID_ANY, port))
             .map_err(|e| format!("Failed to bind VSock: {}", e))?;
 
         println!("[vsock-echo] Listening on port {}", port);

@@ -1,13 +1,13 @@
 use ephemeral_ml_enclave::candle_engine::CandleInferenceEngine;
+#[cfg(any(feature = "mock", feature = "gcp"))]
 use ephemeral_ml_enclave::server::run_direct_tcp;
+#[cfg(feature = "mock")]
 use ephemeral_ml_enclave::server::run_stage_tcp;
 use ephemeral_ml_enclave::stage_executor::EphemeralStageExecutor;
 
 use confidential_ml_pipeline::StageConfig;
 #[cfg(feature = "mock")]
 use confidential_ml_transport::MockVerifier;
-#[cfg(feature = "production")]
-use confidential_ml_transport::NitroVerifier;
 use ephemeral_ml_common::ReceiptSigningKey;
 
 use clap::Parser;
@@ -1240,6 +1240,17 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
     {
         info!("EphemeralML Enclave (Production Mode)");
 
+        // --direct is not yet supported in Nitro production (requires VSock direct-mode server).
+        // Fail fast with a clear message rather than silently ignoring.
+        if args.direct {
+            return Err(
+                "--direct is not supported in Nitro production mode. \
+                 Use pipeline mode (default) with the host orchestrator. \
+                 Direct mode is available in GCP (--gcp --direct) and mock (--direct) modes."
+                    .into(),
+            );
+        }
+
         let attestation_provider = DefaultAttestationProvider::new()?;
         let engine = CandleInferenceEngine::new()?;
 
@@ -1247,120 +1258,132 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
         let receipt_key = ReceiptSigningKey::generate()?;
         let receipt_pk = receipt_key.public_key_bytes();
 
-        // Connectivity health check
-        info!(step = "health_check", "Starting connectivity health check");
-        use ephemeral_ml_enclave::kms_client::KmsClient;
-        use ephemeral_ml_enclave::model_loader::ModelLoader;
+        // Load model from --model-dir (required for production).
+        // Full KMS/S3 model loading is available via the GCP path; this path
+        // supports local model files bundled in the enclave Docker image.
+        let model_format = args.model_format.as_str();
+        if !args.model_dir.exists() {
+            return Err(format!(
+                "Model directory does not exist: {}. \
+                 Bundle model files in the enclave Docker image or mount via --model-dir.",
+                args.model_dir.display()
+            )
+            .into());
+        }
 
-        let kms_client = KmsClient::new(attestation_provider.clone(), receipt_pk);
+        let load_start = std::time::Instant::now();
+        info!(
+            step = "model_load",
+            source = "local",
+            format = model_format,
+            path = %args.model_dir.display(),
+            "Loading model from local directory"
+        );
 
-        // Load trusted model signing public key from environment (hex-encoded Ed25519 public key)
-        let trusted_signing_key: [u8; 32] = {
-            let key_hex = std::env::var("EPHEMERALML_MODEL_SIGNING_PUBKEY").unwrap_or_else(|_| {
-                // Default to the policy root public key (same trust anchor)
-                "12740b4f2ff1f9dac52cac6db77f3a57950fb15134c8580295c98bd809673444".to_string()
-            });
-            let key_bytes = hex::decode(&key_hex).map_err(|e| {
-                format!("EPHEMERALML_MODEL_SIGNING_PUBKEY must be valid hex: {}", e)
-            })?;
-            if key_bytes.len() != 32 || key_bytes.iter().all(|&b| b == 0) {
-                return Err("Model signing key must be 32 non-zero bytes".into());
-            }
-            let mut arr = [0u8; 32];
-            arr.copy_from_slice(&key_bytes);
-            arr
-        };
-        let loader = ModelLoader::new(kms_client, trusted_signing_key);
+        let tokenizer_bytes = std::fs::read(args.model_dir.join("tokenizer.json"))
+            .map_err(|e| format!("Failed to read tokenizer.json: {}", e))?;
 
-        let expected_encrypted_hash =
-            hex::decode("542c469d0d4c936b05fc57e64e0f5acd1048f186c4705801dcddf718cfde9b74")
-                .unwrap();
+        if model_format == "gguf" {
+            let gguf_bytes = std::fs::read(args.model_dir.join("model.gguf"))
+                .map_err(|e| format!("Failed to read model.gguf: {}", e))?;
+
+            info!(
+                step = "model_load",
+                size_mb = gguf_bytes.len() as f64 / (1024.0 * 1024.0),
+                "GGUF model file loaded into memory"
+            );
+
+            engine.register_model_gguf(&args.model_id, &gguf_bytes, &tokenizer_bytes)?;
+        } else if model_format == "safetensors" {
+            let config_bytes = std::fs::read(args.model_dir.join("config.json"))
+                .map_err(|e| format!("Failed to read config.json: {}", e))?;
+            let weights_bytes = std::fs::read(args.model_dir.join("model.safetensors"))
+                .map_err(|e| format!("Failed to read model.safetensors: {}", e))?;
+
+            info!(
+                step = "model_load",
+                size_mb = weights_bytes.len() as f64 / (1024.0 * 1024.0),
+                "Safetensors model files loaded into memory"
+            );
+
+            engine.register_model(
+                &args.model_id,
+                &config_bytes,
+                &weights_bytes,
+                &tokenizer_bytes,
+            )?;
+        } else {
+            return Err(format!(
+                "Unknown --model-format '{}'. Valid: safetensors, gguf",
+                model_format
+            )
+            .into());
+        }
 
         info!(
             step = "model_load",
-            source = "s3",
-            "Fetching test-model-001 from S3 via Host Proxy"
+            model_id = %args.model_id,
+            format = model_format,
+            elapsed_ms = load_start.elapsed().as_secs_f64() * 1000.0,
+            "Model registered successfully"
         );
-        let proxy = loader.kms_client().proxy_client();
-        match proxy.fetch_model("test-model-001").await {
-            Ok(bytes) => {
-                info!(
-                    step = "model_load",
-                    bytes = bytes.len(),
-                    "Fetched model from S3"
-                );
-                use sha2::{Digest, Sha256};
-                let mut hasher = Sha256::new();
-                hasher.update(&bytes);
-                let hash = hasher.finalize();
-                if hash.as_slice() == expected_encrypted_hash.as_slice() {
-                    info!(step = "hash_verify", "Encrypted artifact hash matches");
-                } else {
-                    error!(step = "hash_verify", expected = %hex::encode(&expected_encrypted_hash), actual = %hex::encode(&hash), "Hash mismatch");
-                }
-            }
-            Err(e) => warn!(
-                step = "model_load",
-                error = ?e,
-                "S3 fetch failed (expected if model not uploaded)"
-            ),
-        }
 
-        // Start stage worker
+        // Build stage executor and attestation bridge
         let executor =
             EphemeralStageExecutor::new(engine, attestation_provider.clone(), receipt_key, None);
         let bridge = AttestationBridge::new(attestation_provider, receipt_pk);
 
-        // Build NitroVerifier with expected PCR measurements for peer verification.
-        // In single-stage mode this verifies pipeline orchestrator connections.
-        // PCRs are loaded from environment: EPHEMERALML_EXPECTED_PCR0, _PCR1, _PCR2 (hex).
-        let mut expected_pcrs = std::collections::BTreeMap::new();
-        for i in 0..3u16 {
-            if let Ok(hex_str) = std::env::var(format!("EPHEMERALML_EXPECTED_PCR{}", i)) {
-                match hex::decode(&hex_str) {
-                    Ok(bytes) if bytes.len() == 48 => {
-                        expected_pcrs.insert(i as usize, bytes);
-                        info!(
-                            step = "pcr_pin",
-                            pcr = i,
-                            prefix = &hex_str[..16],
-                            "Pinned PCR"
-                        );
-                    }
-                    Ok(bytes) => {
-                        warn!(
-                            step = "pcr_pin",
-                            pcr = i,
-                            len = bytes.len(),
-                            "EPHEMERALML_EXPECTED_PCR has wrong length, ignoring"
-                        );
-                    }
-                    Err(e) => {
-                        warn!(step = "pcr_pin", pcr = i, error = %e, "EPHEMERALML_EXPECTED_PCR invalid hex, ignoring");
-                    }
-                }
-            }
+        // Use MockVerifier for host connections: the host orchestrator is NOT inside a
+        // TEE and cannot produce Nitro attestation. This is a one-way attestation model —
+        // the enclave attests to the host (via NSM COSE_Sign1), but the host is accepted
+        // without attestation verification (it's on the same EC2 instance).
+        // For multi-enclave pipelines, switch to NitroVerifier with PCR pinning.
+        let verifier = confidential_ml_transport::MockVerifier::new();
+        info!(
+            step = "verifier",
+            mode = "mock",
+            "Using MockVerifier for host connections (one-way attestation model)"
+        );
+
+        // Parse VSock ports from CLI args (format: "CID:PORT" or just "PORT").
+        // Fail fast on malformed values — silent defaults are dangerous in production.
+        fn parse_vsock_port(arg: &str, label: &str) -> std::result::Result<u32, Box<dyn std::error::Error>> {
+            let port_str = arg.split(':').last().unwrap_or(arg);
+            port_str.parse::<u32>().map_err(|e| {
+                format!(
+                    "Failed to parse {} port from '{}': {}. Expected format: CID:PORT or PORT.",
+                    label, arg, e
+                ).into()
+            })
         }
-        if expected_pcrs.is_empty() {
-            warn!(step = "pcr_pin", "No EPHEMERALML_EXPECTED_PCR0/1/2 set. Peer Nitro attestation measurements are NOT pinned.");
-        }
-        let verifier =
-            NitroVerifier::new(expected_pcrs).expect("Failed to initialize NitroVerifier");
+        let control_port = parse_vsock_port(&args.control_addr, "control")?;
+        let data_in_port = parse_vsock_port(&args.data_in_addr, "data_in")?;
+        let data_out_port = parse_vsock_port(&args.data_out_target, "data_out")?;
+
+        // Host CID is always 3 from the enclave's perspective.
+        const HOST_CID: u32 = 3;
 
         info!(
             step = "pipeline",
-            control = "127.0.0.1:5000",
-            data_in = "127.0.0.1:5001",
-            data_out = "127.0.0.1:5002",
-            "Production stage worker starting"
+            control_port = control_port,
+            data_in_port = data_in_port,
+            data_out_host_cid = HOST_CID,
+            data_out_port = data_out_port,
+            "Production stage worker starting on VSock"
         );
 
-        run_stage_tcp(
+        // Bind stage listeners and run pipeline over VSock.
+        let (ctrl_listener, din_listener) =
+            confidential_ml_pipeline::vsock::bind_stage_listeners_vsock(control_port, data_in_port)
+                .map_err(|e| format!("Failed to bind VSock stage listeners: {}", e))?;
+
+        confidential_ml_pipeline::vsock::run_stage_with_listeners_vsock(
             executor,
             StageConfig::default(),
-            "127.0.0.1:5000",
-            "127.0.0.1:5001",
-            "127.0.0.1:5002".parse()?,
+            ctrl_listener,
+            din_listener,
+            HOST_CID,
+            data_out_port,
             &bridge,
             &verifier,
         )

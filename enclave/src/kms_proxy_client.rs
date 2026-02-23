@@ -138,7 +138,7 @@ impl KmsProxyClient {
         #[cfg(feature = "production")]
         let mut stream = tokio::time::timeout(
             self.timeouts.connect.min(remaining(self.timeouts.overall)),
-            tokio_vsock::VsockStream::connect(self.cid, self.port),
+            tokio_vsock::VsockStream::connect(tokio_vsock::VsockAddr::new(self.cid, self.port)),
         )
         .await
         .map_err(|_| {

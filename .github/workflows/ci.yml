@@ -104,6 +104,24 @@ jobs:
           key: ${{ runner.os }}-cargo-gcp-${{ hashFiles('**/Cargo.lock') }}
       - run: cargo build --no-default-features --features gcp -p ephemeral-ml-enclave
 
+  build-aws-prod:
+    name: Build (AWS Nitro Production)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/cache@v5
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-aws-prod-${{ hashFiles('**/Cargo.lock') }}
+      - name: Check enclave production build
+        run: cargo check --no-default-features --features production -p ephemeral-ml-enclave
+      - name: Check host production build
+        run: cargo check --no-default-features --features production -p ephemeral-ml-host
+
   smoke:
     name: Smoke Test
     runs-on: ubuntu-latest

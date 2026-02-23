@@ -33,6 +33,7 @@ zeroize = { workspace = true }
 confidential-ml-transport = { workspace = true }
 confidential-ml-pipeline = { workspace = true }
 bytes = { workspace = true }
+clap = { version = "4.5", features = ["derive", "env"] }
 
 # Observability (v1)
 tracing = "0.1"
@@ -48,5 +49,5 @@ proptest = { workspace = true }
 [features]
 default = ["mock"]
 mock = ["confidential-ml-transport/mock", "confidential-ml-transport/tcp", "confidential-ml-pipeline/mock", "confidential-ml-pipeline/tcp"]
-production = ["tokio-vsock", "confidential-ml-transport/vsock", "confidential-ml-transport/nitro", "confidential-ml-pipeline/vsock", "confidential-ml-transport/tcp", "confidential-ml-pipeline/tcp"]
+production = ["tokio-vsock", "confidential-ml-transport/vsock", "confidential-ml-transport/nitro", "confidential-ml-transport/mock", "confidential-ml-pipeline/vsock", "confidential-ml-transport/tcp", "confidential-ml-pipeline/tcp"]
 gcp = ["confidential-ml-transport/tdx", "confidential-ml-transport/tcp", "confidential-ml-pipeline/tcp"]

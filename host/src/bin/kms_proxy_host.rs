@@ -15,7 +15,7 @@ use tracing::{error, info, warn};
 use tracing_subscriber::{fmt, EnvFilter};
 
 #[cfg(feature = "production")]
-use tokio_vsock::VsockListener;
+use tokio_vsock::{VsockAddr, VsockListener, VMADDR_CID_ANY};
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -35,9 +35,8 @@ async fn main() -> Result<()> {
         .ok()
         .and_then(|v| v.parse().ok())
         .unwrap_or(8082);
-    let cid = 3;
     #[cfg(not(feature = "production"))]
-    let _ = (cid, vsock_port);
+    let _ = vsock_port;
     #[cfg(feature = "production")]
     let _ = tcp_port;
 
@@ -66,8 +65,8 @@ async fn main() -> Result<()> {
             event = "init",
             mode = "production"
         );
-        let mut listener =
-            VsockListener::bind(cid, vsock_port).context("Failed to bind VSock listener")?;
+        let listener =
+            VsockListener::bind(VsockAddr::new(VMADDR_CID_ANY, vsock_port)).context("Failed to bind VSock listener")?;
         info!(
             message = "listening",
             event = "listen",
