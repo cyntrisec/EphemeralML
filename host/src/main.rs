@@ -175,6 +175,11 @@ struct ProdArgs {
     /// Embedding hidden dimension
     #[arg(long, default_value = "384")]
     hidden_dim: u32,
+
+    /// Allow running without PCR pinning (DANGEROUS — disables attestation verification).
+    /// Only use for development/debugging, never in production.
+    #[arg(long, default_value = "false")]
+    allow_unpinned: bool,
 }
 
 #[tokio::main]
@@ -330,30 +335,20 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         );
 
         // 1. Build NitroVerifier with expected PCR measurements for enclave verification.
-        //    Load from environment: EPHEMERALML_EXPECTED_PCR0, _PCR1, _PCR2 (hex).
-        let mut expected_pcrs: BTreeMap<usize, Vec<u8>> = BTreeMap::new();
-        for i in 0..3u16 {
-            if let Ok(hex_str) = std::env::var(format!("EPHEMERALML_EXPECTED_PCR{}", i)) {
-                match hex::decode(&hex_str) {
-                    Ok(bytes) if bytes.len() == 48 => {
-                        expected_pcrs.insert(i as usize, bytes);
-                        info!(pcr = i, prefix = &hex_str[..16], "Pinned enclave PCR");
-                    }
-                    Ok(bytes) => {
-                        warn!(
-                            pcr = i,
-                            len = bytes.len(),
-                            "EPHEMERALML_EXPECTED_PCR has wrong length (need 48 bytes), ignoring"
-                        );
-                    }
-                    Err(e) => {
-                        warn!(pcr = i, error = %e, "EPHEMERALML_EXPECTED_PCR invalid hex, ignoring");
-                    }
-                }
-            }
+        //    Fail-closed: refuse to proceed without valid PCR pins unless --allow-unpinned.
+        let expected_pcrs = ephemeral_ml_host::pcr::load_expected_pcrs_from_env(
+            args.allow_unpinned,
+        )
+        .map_err(|e| {
+            error!(error = %e, "PCR validation failed");
+            Box::<dyn std::error::Error>::from(e.to_string())
+        })?;
+
+        for (i, bytes) in &expected_pcrs {
+            info!(pcr = i, prefix = hex::encode(&bytes[..8]), "Pinned enclave PCR");
         }
         if expected_pcrs.is_empty() {
-            warn!("No EPHEMERALML_EXPECTED_PCR0/1/2 set. Enclave Nitro attestation measurements are NOT pinned.");
+            warn!("--allow-unpinned set: running WITHOUT PCR pinning. DO NOT USE IN PRODUCTION.");
         }
 
         let verifier = NitroVerifier::new(expected_pcrs)?;

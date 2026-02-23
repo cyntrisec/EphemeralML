@@ -13,11 +13,14 @@ RUN apt-get update && apt-get install -y \
 WORKDIR /app
 
 # 3. Copy the compiled enclave binary
-COPY target/release/ephemeral-ml-enclave /app/enclave_app
+# Note: target/ is in .dockerignore, so the build script stages the binary
+# into docker-stage/ first (see scripts/nitro_e2e.sh step 3/4).
+COPY docker-stage/ephemeral-ml-enclave /app/enclave_app
 
-# 4. Copy assets needed for inference (e.g., tokenizer)
+# 4. Copy model assets for inference (tokenizer, config, and weights)
 COPY test_assets/minilm/tokenizer.json /app/test_assets/minilm/tokenizer.json
 COPY test_assets/minilm/config.json /app/test_assets/minilm/config.json
+COPY test_assets/minilm/model.safetensors /app/test_assets/minilm/model.safetensors
 
 # 5. Set entrypoint
 # The enclave app will listen on VSock

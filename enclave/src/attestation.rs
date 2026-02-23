@@ -92,6 +92,24 @@ pub trait AttestationProvider: Send + Sync {
     /// Decrypt ciphertext returned by AWS KMS (RecipientInfo flow)
     fn decrypt_kms(&self, ciphertext: &[u8]) -> Result<Vec<u8>>;
 
+    /// Generate an attestation document for the transport handshake.
+    ///
+    /// The `handshake_public_key` is the HPKE ephemeral public key from the
+    /// SecureChannel handshake, which must be bound in the attestation document's
+    /// `public_key` field so the verifier can confirm key binding.
+    ///
+    /// Default implementation ignores the handshake key and falls back to
+    /// `generate_attestation()`. Providers that support key binding (e.g. NSM)
+    /// should override this.
+    fn generate_attestation_for_transport(
+        &self,
+        nonce: &[u8],
+        receipt_public_key: [u8; 32],
+        _handshake_public_key: Option<&[u8]>,
+    ) -> Result<AttestationDocument> {
+        self.generate_attestation(nonce, receipt_public_key)
+    }
+
     /// Return the platform measurement type for receipt encoding.
     /// Override in TDX/SEV-SNP providers; defaults to "nitro-pcr".
     fn measurement_type(&self) -> &str {
@@ -125,8 +143,25 @@ impl NSMAttestationProvider {
         })
     }
 
-    /// Generate attestation document using NSM API
-    fn generate_nsm_attestation(&self, nonce: &[u8], user_data: &[u8]) -> Result<Vec<u8>> {
+    /// Generate attestation document using NSM API.
+    ///
+    /// If `public_key_override` is provided, it is used as the NSM `public_key` field
+    /// instead of the RSA KMS key. This is needed for transport handshake binding where
+    /// the verifier checks that the HPKE ephemeral key matches the attestation.
+    fn generate_nsm_attestation(
+        &self,
+        nonce: &[u8],
+        user_data: &[u8],
+    ) -> Result<Vec<u8>> {
+        self.generate_nsm_attestation_with_key(nonce, user_data, None)
+    }
+
+    fn generate_nsm_attestation_with_key(
+        &self,
+        nonce: &[u8],
+        user_data: &[u8],
+        public_key_override: Option<&[u8]>,
+    ) -> Result<Vec<u8>> {
         let nsm_fd = nsm::driver::nsm_init();
         if nsm_fd < 0 {
             return Err(EnclaveError::Enclave(EphemeralError::AttestationError(
@@ -134,19 +169,24 @@ impl NSMAttestationProvider {
             )));
         }
 
-        // Export RSA public key as SPKI DER for KMS
-        let kms_pub_key = self.kms_keypair.to_public_key();
-        let kms_pub_der = kms_pub_key.to_public_key_der().map_err(|e| {
-            EnclaveError::Enclave(EphemeralError::Internal(format!(
-                "RSA export failed: {}",
-                e
-            )))
-        })?;
+        let pk_bytes: Vec<u8> = if let Some(override_key) = public_key_override {
+            override_key.to_vec()
+        } else {
+            // Default: RSA public key for KMS key release
+            let kms_pub_key = self.kms_keypair.to_public_key();
+            let kms_pub_der = kms_pub_key.to_public_key_der().map_err(|e| {
+                EnclaveError::Enclave(EphemeralError::Internal(format!(
+                    "RSA export failed: {}",
+                    e
+                )))
+            })?;
+            kms_pub_der.as_bytes().to_vec()
+        };
 
         let request = nsm::api::Request::Attestation {
             user_data: Some(ByteBuf::from(user_data.to_vec())),
             nonce: Some(ByteBuf::from(nonce.to_vec())),
-            public_key: Some(ByteBuf::from(kms_pub_der.as_bytes().to_vec())),
+            public_key: Some(ByteBuf::from(pk_bytes)),
         };
 
         let response = nsm::driver::nsm_process_request(nsm_fd, request);
@@ -237,6 +277,46 @@ impl AttestationProvider for NSMAttestationProvider {
         // not a map) to verify the signature and extract the payload.
         // The other fields on AttestationDocument are placeholders — the real
         // data lives inside the COSE_Sign1 payload.
+        Ok(AttestationDocument {
+            module_id: "nitro-enclave".to_string(),
+            digest: vec![],
+            timestamp: current_timestamp(),
+            pcrs,
+            certificate: vec![],
+            signature: attestation_doc_bytes,
+            nonce: Some(nonce.to_vec()),
+        })
+    }
+
+    fn generate_attestation_for_transport(
+        &self,
+        nonce: &[u8],
+        receipt_public_key: [u8; 32],
+        handshake_public_key: Option<&[u8]>,
+    ) -> Result<AttestationDocument> {
+        let user_data = AttestationUserData {
+            hpke_public_key: self.hpke_keypair.public_key,
+            receipt_signing_key: receipt_public_key,
+            protocol_version: 1,
+            supported_features: vec!["gateway".to_string()],
+        };
+
+        let user_data_bytes = serde_json::to_vec(&user_data).map_err(|e| {
+            EnclaveError::Enclave(EphemeralError::SerializationError(e.to_string()))
+        })?;
+
+        // Use handshake HPKE key as the NSM public_key field so the transport
+        // verifier can confirm key binding. Without this override, NSM would
+        // use the RSA KMS key (from generate_nsm_attestation), which would
+        // cause a PublicKeyMismatch during the cml-transport handshake.
+        let attestation_doc_bytes = self.generate_nsm_attestation_with_key(
+            nonce,
+            &user_data_bytes,
+            handshake_public_key,
+        )?;
+
+        let pcrs = self.get_pcr_measurements()?;
+
         Ok(AttestationDocument {
             module_id: "nitro-enclave".to_string(),
             digest: vec![],
@@ -362,6 +442,30 @@ impl AttestationProvider for DefaultAttestationProvider {
 
         #[cfg(all(feature = "mock", not(feature = "production")))]
         {
+            self.mock_provider
+                .generate_attestation(nonce, receipt_public_key)
+        }
+    }
+
+    fn generate_attestation_for_transport(
+        &self,
+        nonce: &[u8],
+        receipt_public_key: [u8; 32],
+        handshake_public_key: Option<&[u8]>,
+    ) -> Result<AttestationDocument> {
+        #[cfg(feature = "production")]
+        {
+            self.nsm_provider.generate_attestation_for_transport(
+                nonce,
+                receipt_public_key,
+                handshake_public_key,
+            )
+        }
+
+        #[cfg(all(feature = "mock", not(feature = "production")))]
+        {
+            // Mock mode doesn't support key binding override
+            let _ = handshake_public_key;
             self.mock_provider
                 .generate_attestation(nonce, receipt_public_key)
         }

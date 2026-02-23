@@ -16,6 +16,7 @@ compile_error!(
 );
 
 pub mod aws_proxy;
+pub mod pcr;
 pub mod circuit_breaker;
 pub mod error;
 pub mod kms_proxy_server;

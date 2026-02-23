@@ -8,8 +8,6 @@
 use crate::attestation::AttestationProvider as EphemeralAttestationProvider;
 use confidential_ml_transport::attestation::types::AttestationDocument as CmlAttestationDocument;
 use confidential_ml_transport::AttestationProvider as CmlAttestationProvider;
-use ephemeral_ml_common::transport_types::EphemeralUserData;
-
 /// Wraps an EphemeralML `AttestationProvider` as a cml-transport `AttestationProvider`.
 ///
 /// Stores the 32-byte Ed25519 receipt signing public key directly.
@@ -44,45 +42,30 @@ impl<P: EphemeralAttestationProvider> AttestationBridge<P> {
 impl<P: EphemeralAttestationProvider> CmlAttestationProvider for AttestationBridge<P> {
     async fn attest(
         &self,
-        user_data: Option<&[u8]>,
+        _user_data: Option<&[u8]>,
         nonce: Option<&[u8]>,
-        _public_key: Option<&[u8]>,
+        public_key: Option<&[u8]>,
     ) -> std::result::Result<CmlAttestationDocument, confidential_ml_transport::error::AttestError>
     {
-        // Build EphemeralUserData from receipt key + any additional user_data
-        let ephemeral_ud = if let Some(ud_bytes) = user_data {
-            // Try to parse existing user data and merge
-            EphemeralUserData::from_cbor(ud_bytes).unwrap_or_else(|_| {
-                EphemeralUserData::new(self.receipt_public_key, 1, vec!["gateway".to_string()])
-            })
-        } else {
-            EphemeralUserData::new(self.receipt_public_key, 1, vec!["gateway".to_string()])
-        };
-
-        let ud_cbor = ephemeral_ud.to_cbor().map_err(|e| {
-            confidential_ml_transport::error::AttestError::GenerationFailed(format!(
-                "Failed to serialize user data: {}",
-                e
-            ))
-        })?;
-
         // Use the nonce from cml-transport's handshake
         let nonce_bytes = nonce.unwrap_or(&[]);
 
-        // Call EphemeralML's attestation provider
+        // Call the transport-aware attestation method that binds the handshake
+        // HPKE public key in the attestation document's `public_key` field.
+        // This is required for the handshake verifier to confirm key binding.
         let doc = self
             .inner
-            .generate_attestation(nonce_bytes, self.receipt_public_key)
+            .generate_attestation_for_transport(
+                nonce_bytes,
+                self.receipt_public_key,
+                public_key,
+            )
             .map_err(|e| {
                 confidential_ml_transport::error::AttestError::GenerationFailed(format!(
                     "Attestation generation failed: {}",
                     e
                 ))
             })?;
-
-        // The `generate_attestation()` call above already embedded the receipt key,
-        // so we use doc.signature as the raw attestation bytes.
-        let _ = ud_cbor; // user_data was embedded by generate_attestation via receipt_pk
 
         Ok(CmlAttestationDocument::new(doc.signature))
     }
@@ -161,46 +144,23 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn bridge_with_none_user_data_creates_default() {
+    async fn bridge_ignores_user_data_parameter() {
+        // The bridge's attest() ignores the user_data parameter — the inner
+        // provider builds its own user_data via generate_attestation_for_transport.
         let mock = MockAttestationProvider::new();
         let receipt_key = [0x11; 32];
         let bridge = AttestationBridge::new(mock, receipt_key);
 
-        // Call with None user_data — should create default EphemeralUserData
-        let doc = bridge.attest(None, None, None).await.unwrap();
-        assert!(!doc.raw.is_empty());
-    }
+        // All three variants (None, valid bytes, invalid bytes) should succeed
+        // because user_data is ignored by the bridge.
+        let doc1 = bridge.attest(None, None, None).await.unwrap();
+        assert!(!doc1.raw.is_empty());
 
-    #[tokio::test]
-    async fn bridge_with_valid_cbor_user_data_parses_it() {
-        let mock = MockAttestationProvider::new();
-        let receipt_key = [0x22; 32];
-        let bridge = AttestationBridge::new(mock, receipt_key);
+        let doc2 = bridge.attest(Some(b"anything"), Some(&[0xCC; 32]), None).await.unwrap();
+        assert!(!doc2.raw.is_empty());
 
-        // Create valid EphemeralUserData CBOR
-        let ud = EphemeralUserData::new([0xAA; 32], 2, vec!["feature1".to_string()]);
-        let ud_cbor = ud.to_cbor().unwrap();
-
-        let doc = bridge
-            .attest(Some(&ud_cbor), Some(&[0xCC; 32]), None)
-            .await
-            .unwrap();
-        assert!(!doc.raw.is_empty());
-    }
-
-    #[tokio::test]
-    async fn bridge_with_invalid_cbor_user_data_uses_default() {
-        let mock = MockAttestationProvider::new();
-        let receipt_key = [0x33; 32];
-        let bridge = AttestationBridge::new(mock, receipt_key);
-
-        // Invalid CBOR bytes — should fall back to default EphemeralUserData
-        let invalid_cbor = b"this is not valid cbor";
-        let doc = bridge
-            .attest(Some(invalid_cbor), Some(&[0xDD; 32]), None)
-            .await
-            .unwrap();
-        assert!(!doc.raw.is_empty());
+        let doc3 = bridge.attest(Some(b"not valid cbor"), Some(&[0xDD; 32]), None).await.unwrap();
+        assert!(!doc3.raw.is_empty());
     }
 
     #[tokio::test]
