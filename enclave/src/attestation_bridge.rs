@@ -55,11 +55,7 @@ impl<P: EphemeralAttestationProvider> CmlAttestationProvider for AttestationBrid
         // This is required for the handshake verifier to confirm key binding.
         let doc = self
             .inner
-            .generate_attestation_for_transport(
-                nonce_bytes,
-                self.receipt_public_key,
-                public_key,
-            )
+            .generate_attestation_for_transport(nonce_bytes, self.receipt_public_key, public_key)
             .map_err(|e| {
                 confidential_ml_transport::error::AttestError::GenerationFailed(format!(
                     "Attestation generation failed: {}",
@@ -156,10 +152,16 @@ mod tests {
         let doc1 = bridge.attest(None, None, None).await.unwrap();
         assert!(!doc1.raw.is_empty());
 
-        let doc2 = bridge.attest(Some(b"anything"), Some(&[0xCC; 32]), None).await.unwrap();
+        let doc2 = bridge
+            .attest(Some(b"anything"), Some(&[0xCC; 32]), None)
+            .await
+            .unwrap();
         assert!(!doc2.raw.is_empty());
 
-        let doc3 = bridge.attest(Some(b"not valid cbor"), Some(&[0xDD; 32]), None).await.unwrap();
+        let doc3 = bridge
+            .attest(Some(b"not valid cbor"), Some(&[0xDD; 32]), None)
+            .await
+            .unwrap();
         assert!(!doc3.raw.is_empty());
     }
 

@@ -132,11 +132,7 @@ mod tests {
     #[test]
     fn partial_pcrs_accepted() {
         // Only PCR0 set — still valid (at least one pin)
-        let input = vec![
-            (0, Some(valid_pcr())),
-            (1, None),
-            (2, None),
-        ];
+        let input = vec![(0, Some(valid_pcr())), (1, None), (2, None)];
         let result = parse_expected_pcrs(&input, false);
         assert!(result.is_ok());
         assert_eq!(result.unwrap().len(), 1);
@@ -144,22 +140,14 @@ mod tests {
 
     #[test]
     fn no_pcrs_rejected_without_allow_unpinned() {
-        let input: Vec<(usize, Option<String>)> = vec![
-            (0, None),
-            (1, None),
-            (2, None),
-        ];
+        let input: Vec<(usize, Option<String>)> = vec![(0, None), (1, None), (2, None)];
         let result = parse_expected_pcrs(&input, false);
         assert_eq!(result.unwrap_err(), PcrError::NoPcrsSet);
     }
 
     #[test]
     fn no_pcrs_accepted_with_allow_unpinned() {
-        let input: Vec<(usize, Option<String>)> = vec![
-            (0, None),
-            (1, None),
-            (2, None),
-        ];
+        let input: Vec<(usize, Option<String>)> = vec![(0, None), (1, None), (2, None)];
         let result = parse_expected_pcrs(&input, true);
         assert!(result.is_ok());
         assert!(result.unwrap().is_empty());
@@ -182,11 +170,7 @@ mod tests {
     #[test]
     fn wrong_length_rejected_too_short() {
         // 32 hex chars = 16 bytes (not 48)
-        let input = vec![
-            (0, Some("ab".repeat(16))),
-            (1, None),
-            (2, None),
-        ];
+        let input = vec![(0, Some("ab".repeat(16))), (1, None), (2, None)];
         let result = parse_expected_pcrs(&input, false);
         assert_eq!(
             result.unwrap_err(),
@@ -211,11 +195,7 @@ mod tests {
 
     #[test]
     fn empty_hex_string_rejected() {
-        let input = vec![
-            (0, Some(String::new())),
-            (1, None),
-            (2, None),
-        ];
+        let input = vec![(0, Some(String::new())), (1, None), (2, None)];
         let result = parse_expected_pcrs(&input, false);
         // Empty string decodes to 0 bytes
         assert_eq!(
@@ -227,21 +207,22 @@ mod tests {
     #[test]
     fn allow_unpinned_does_not_bypass_malformed() {
         // Even with allow_unpinned, a *set* but malformed value is an error
-        let input = vec![
-            (0, Some("zzzz".to_string())),
-            (1, None),
-            (2, None),
-        ];
+        let input = vec![(0, Some("zzzz".to_string())), (1, None), (2, None)];
         let result = parse_expected_pcrs(&input, true);
         assert!(matches!(result.unwrap_err(), PcrError::InvalidHex { .. }));
     }
 
     #[test]
     fn error_display_messages() {
-        assert!(PcrError::NoPcrsSet.to_string().contains("PCR pinning required"));
-        assert!(PcrError::InvalidHex { pcr: 1, source: "odd length".into() }
+        assert!(PcrError::NoPcrsSet
             .to_string()
-            .contains("PCR1"));
+            .contains("PCR pinning required"));
+        assert!(PcrError::InvalidHex {
+            pcr: 1,
+            source: "odd length".into()
+        }
+        .to_string()
+        .contains("PCR1"));
         assert!(PcrError::WrongLength { pcr: 2, len: 32 }
             .to_string()
             .contains("32 bytes"));
@@ -297,6 +278,9 @@ mod tests {
         std::env::set_var("EPHEMERALML_EXPECTED_PCR0", "not-hex");
         let result = load_expected_pcrs_from_env(false);
         clear_pcr_env();
-        assert!(matches!(result.unwrap_err(), PcrError::InvalidHex { pcr: 0, .. }));
+        assert!(matches!(
+            result.unwrap_err(),
+            PcrError::InvalidHex { pcr: 0, .. }
+        ));
     }
 }

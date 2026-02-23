@@ -148,11 +148,7 @@ impl NSMAttestationProvider {
     /// If `public_key_override` is provided, it is used as the NSM `public_key` field
     /// instead of the RSA KMS key. This is needed for transport handshake binding where
     /// the verifier checks that the HPKE ephemeral key matches the attestation.
-    fn generate_nsm_attestation(
-        &self,
-        nonce: &[u8],
-        user_data: &[u8],
-    ) -> Result<Vec<u8>> {
+    fn generate_nsm_attestation(&self, nonce: &[u8], user_data: &[u8]) -> Result<Vec<u8>> {
         self.generate_nsm_attestation_with_key(nonce, user_data, None)
     }
 
@@ -309,11 +305,8 @@ impl AttestationProvider for NSMAttestationProvider {
         // verifier can confirm key binding. Without this override, NSM would
         // use the RSA KMS key (from generate_nsm_attestation), which would
         // cause a PublicKeyMismatch during the cml-transport handshake.
-        let attestation_doc_bytes = self.generate_nsm_attestation_with_key(
-            nonce,
-            &user_data_bytes,
-            handshake_public_key,
-        )?;
+        let attestation_doc_bytes =
+            self.generate_nsm_attestation_with_key(nonce, &user_data_bytes, handshake_public_key)?;
 
         let pcrs = self.get_pcr_measurements()?;
 

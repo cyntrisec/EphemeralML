@@ -345,7 +345,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         })?;
 
         for (i, bytes) in &expected_pcrs {
-            info!(pcr = i, prefix = hex::encode(&bytes[..8]), "Pinned enclave PCR");
+            info!(
+                pcr = i,
+                prefix = hex::encode(&bytes[..8]),
+                "Pinned enclave PCR"
+            );
         }
         if expected_pcrs.is_empty() {
             warn!("--allow-unpinned set: running WITHOUT PCR pinning. DO NOT USE IN PRODUCTION.");
