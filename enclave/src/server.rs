@@ -15,9 +15,6 @@ const ACCEPT_RETRY_MAX_DELAY_MS: u64 = 5000;
 /// Maximum size for inference input payloads (16 MB).
 const MAX_INPUT_PAYLOAD_SIZE: usize = 16 * 1024 * 1024;
 
-/// Maximum length for model_id strings.
-const MAX_MODEL_ID_LEN: usize = 128;
-
 // --- Direct mode types (matching client's InferenceHandlerInput/Output) ---
 
 /// Default max tokens for generation.
@@ -240,18 +237,10 @@ fn handle_direct_request<A: crate::AttestationProvider>(
     let request: DirectInferenceRequest =
         serde_json::from_slice(bytes).map_err(|e| format!("Bad request JSON: {}", e))?;
 
-    // Validate model_id: alphanumeric, hyphens, underscores, dots only
-    if request.model_id.len() > MAX_MODEL_ID_LEN
-        || !request
-            .model_id
-            .chars()
-            .all(|c| c.is_alphanumeric() || c == '-' || c == '_' || c == '.')
-    {
-        return Err(format!(
-            "Invalid model_id: must be <= {} chars, alphanumeric/hyphens/underscores/dots",
-            MAX_MODEL_ID_LEN
-        )
-        .into());
+    // Validate model_id using the shared InputValidator (common/src/validation.rs).
+    let validator = ephemeral_ml_common::InputValidator::new();
+    if let Err(e) = validator.validate_model_id(&request.model_id) {
+        return Err(format!("Invalid model_id: {}", e).into());
     }
 
     // Enforce input payload size limit to prevent OOM in constrained enclave

@@ -3,6 +3,7 @@ use axum::http::StatusCode;
 use axum::middleware::Next;
 use axum::response::{IntoResponse, Response};
 use axum::Json;
+use subtle::ConstantTimeEq;
 
 use crate::api_types::ErrorResponse;
 use crate::AppState;
@@ -11,6 +12,7 @@ use crate::AppState;
 ///
 /// Checks `Authorization: Bearer <key>` or `X-API-Key: <key>` headers.
 /// Skips auth for health and landing page endpoints.
+/// Uses constant-time comparison to prevent timing side-channel attacks.
 pub async fn auth_middleware(
     State(state): State<AppState>,
     request: Request,
@@ -40,7 +42,12 @@ pub async fn auth_middleware(
         });
 
     match provided {
-        Some(key) if key == expected => next.run(request).await,
+        Some(key)
+            if key.as_bytes().len() == expected.as_bytes().len()
+                && key.as_bytes().ct_eq(expected.as_bytes()).into() =>
+        {
+            next.run(request).await
+        }
         Some(_) => (
             StatusCode::UNAUTHORIZED,
             Json(ErrorResponse {

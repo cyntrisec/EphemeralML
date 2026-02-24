@@ -5,7 +5,7 @@ use thiserror::Error;
 pub struct ValidationLimits {
     /// Maximum ciphertext size (16MB VSock limit)
     pub max_ciphertext_size: usize,
-    /// Maximum model_id length (256 chars)
+    /// Maximum model_id length (128 chars)
     pub max_model_id_length: usize,
     /// Maximum manifest size (1MB)
     pub max_manifest_size: usize,
@@ -23,7 +23,7 @@ impl Default for ValidationLimits {
     fn default() -> Self {
         Self {
             max_ciphertext_size: 16 * 1024 * 1024, // 16MB VSock limit
-            max_model_id_length: 256,              // 256 characters
+            max_model_id_length: 128,              // 128 characters
             max_manifest_size: 1024 * 1024,        // 1MB
             max_payload_size: 32 * 1024 * 1024,    // 32MB for decompression protection
             max_allocation_size: 64 * 1024 * 1024, // 64MB per allocation
@@ -120,10 +120,10 @@ impl InputValidator {
             });
         }
 
-        // Check for valid characters (alphanumeric, hyphens, underscores)
+        // Check for valid characters (alphanumeric, hyphens, underscores, dots)
         if !model_id
             .chars()
-            .all(|c| c.is_alphanumeric() || c == '-' || c == '_')
+            .all(|c| c.is_alphanumeric() || c == '-' || c == '_' || c == '.')
         {
             return Err(ValidationError::InvalidModelId {
                 reason: "Model ID contains invalid characters".to_string(),
@@ -297,6 +297,8 @@ mod tests {
         assert!(validator.validate_model_id("model-123").is_ok());
         assert!(validator.validate_model_id("my_model_v2").is_ok());
         assert!(validator.validate_model_id("ModelABC123").is_ok());
+        assert!(validator.validate_model_id("model.v1.0").is_ok());
+        assert!(validator.validate_model_id("org.model-name_v2").is_ok());
 
         // Invalid model IDs
         assert!(validator.validate_model_id("").is_err());
