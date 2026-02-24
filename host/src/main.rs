@@ -39,7 +39,11 @@ fn save_receipt(receipt: &AttestationReceipt, path: Option<&str>) -> Result<(), 
 fn save_receipt_raw(raw_bytes: &[u8], path: Option<&str>) -> Result<(), std::io::Error> {
     let Some(path) = path else { return Ok(()) };
     std::fs::write(path, raw_bytes)?;
-    println!("  Raw receipt ({} bytes) saved to {}", raw_bytes.len(), path);
+    println!(
+        "  Raw receipt ({} bytes) saved to {}",
+        raw_bytes.len(),
+        path
+    );
     Ok(())
 }
 

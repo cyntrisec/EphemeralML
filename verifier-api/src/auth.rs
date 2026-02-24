@@ -43,8 +43,7 @@ pub async fn auth_middleware(
 
     match provided {
         Some(key)
-            if key.as_bytes().len() == expected.as_bytes().len()
-                && key.as_bytes().ct_eq(expected.as_bytes()).into() =>
+            if key.len() == expected.len() && key.as_bytes().ct_eq(expected.as_bytes()).into() =>
         {
             next.run(request).await
         }
