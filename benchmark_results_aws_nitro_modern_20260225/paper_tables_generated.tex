@@ -1,0 +1,41 @@
+% === Inference latency comparison (generated) ===
+\begin{tabular}{lrrr}
+\hline
+\textbf{Metric} & \textbf{Bare Metal} & \textbf{Enclave} & \textbf{Overhead} \\
+\hline
+Mean latency     & 75.58\,ms  & 78.10\,ms  & +3.3\% \\
+P95 latency      & 78.30\,ms  & 80.00\,ms  & +2.2\% \\
+Throughput       & 13.2\,inf/s & 12.8\,inf/s & -3.3\% \\
+Peak RSS         & 267\,MB    & 0\,MB & -100.0\% \\
+\hline
+\end{tabular}
+
+% === Cold start breakdown (generated) ===
+\begin{tabular}{lr}
+\hline
+\textbf{Phase} & \textbf{Latency} \\
+\hline
+NSM attestation generation & 0\,ms \\
+KMS key release            & 0\,ms \\
+S3 model fetch (via VSock) & 0\,ms \\
+Model decryption           & 0\,ms \\
+Model load (Candle)        & 0\,ms \\
+Tokenizer setup            & 0\,ms \\
+\hline
+\textbf{Total}             & \textbf{0\,ms} \\
+\hline
+\end{tabular}
+
+% Quality: unavailable (no embeddings in results)
+
+% === COSE attestation verification (generated) ===
+\begin{tabular}{lrr}
+\hline
+\textbf{Operation} & \textbf{Mean} & \textbf{P99} \\
+\hline
+COSE\_Sign1 verify (ECDSA-P384) & 0.481\,ms & 0.586\,ms \\
+Certificate chain walk & 1.428\,ms & 1.459\,ms \\
+CBOR payload parse & 0.002\,ms & 0.002\,ms \\
+\textbf{Full verification pipeline} & \textbf{1.915\,ms} & \textbf{1.997\,ms} \\
+\hline
+\end{tabular}

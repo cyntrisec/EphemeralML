@@ -23,5 +23,5 @@ COPY test_assets/minilm/config.json /app/test_assets/minilm/config.json
 COPY test_assets/minilm/model.safetensors /app/test_assets/minilm/model.safetensors
 
 # 5. Set entrypoint
-# The enclave app will listen on VSock
-ENTRYPOINT ["/app/enclave_app"]
+# Use an absolute model path because the enclave runtime may not honor Docker WORKDIR.
+ENTRYPOINT ["/app/enclave_app", "--model-dir", "/app/test_assets/minilm", "--control-addr", "127.0.0.1:5000", "--data-in-addr", "127.0.0.1:5001", "--data-out-target", "127.0.0.1:5002"]

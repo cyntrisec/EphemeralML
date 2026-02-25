@@ -1,0 +1,40 @@
+
+  ==============================================================
+  EphemeralML Receipt Verification
+  ==============================================================
+
+  Receipt:     997b2ee1-163a-45e7-a10a-016dcac9eedb
+  Model:       stage-0 v1.0
+  Platform:    tdx-mrtd-rtmr
+  Sequence:    #0
+
+  --------------------------------------------------------------
+  Checks:
+  --------------------------------------------------------------
+  Signature (Ed25519)         [PASS]
+  Model ID match              [SKIP]
+  Measurement type            [PASS]
+  Timestamp freshness         [SKIP]
+  Measurements present        [PASS]
+  Attestation source          [SKIP]
+  Image digest                [SKIP]
+  Destroy evidence            [PASS]
+  --------------------------------------------------------------
+
+  VERIFIED
+
+  --------------------------------------------------------------
+  Details:
+  --------------------------------------------------------------
+  Exec time:   75ms
+  Memory:      0 MB
+  Timestamp:   1771495626
+  Req hash:    f4a68967743b669666516beb4efbd4c9b33025a0215257734c225b977a24ddb0
+  Resp hash:   baac9798d5b94282d5a97ef2e67789d4d5cf508b5c4de14eeba862d5f42ecb49
+  Att hash:    057ddbb671862b99b45866cc11bc9330913080f9b4be861f3c8766f2e9ef4aa2
+  PCR0/MRTD:   aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+  PCR1/RTMR0:  bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+  PCR2/RTMR1:  cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+  Signature:   1c7c1f766ae8614aa4774824bc393c85...
+
+  --------------------------------------------------------------

@@ -334,8 +334,11 @@ impl SecureClient for SecureEnclaveClient {
             }
         }
 
-        // 7. Verify model_id matches the requested model
-        if output.receipt.model_id != model_id {
+        // 7. Verify model_id matches the requested model (or an explicitly allowed alias).
+        let allowed_receipt_model_id = std::env::var("EPHEMERALML_ACCEPT_RECEIPT_MODEL_ID").ok();
+        if output.receipt.model_id != model_id
+            && allowed_receipt_model_id.as_deref() != Some(output.receipt.model_id.as_str())
+        {
             return Err(ClientError::Client(EphemeralError::ValidationError(
                 format!(
                     "Receipt model_id mismatch: expected '{}', got '{}'",
@@ -525,7 +528,10 @@ impl SecureClient for SecureEnclaveClient {
             }
         }
 
-        if output.receipt.model_id != model_id {
+        let allowed_receipt_model_id = std::env::var("EPHEMERALML_ACCEPT_RECEIPT_MODEL_ID").ok();
+        if output.receipt.model_id != model_id
+            && allowed_receipt_model_id.as_deref() != Some(output.receipt.model_id.as_str())
+        {
             return Err(ClientError::Client(EphemeralError::ValidationError(
                 format!(
                     "Receipt model_id mismatch: expected '{}', got '{}'",
@@ -708,7 +714,10 @@ impl SecureClient for SecureEnclaveClient {
             }
         }
 
-        if output.receipt.model_id != model_id {
+        let allowed_receipt_model_id = std::env::var("EPHEMERALML_ACCEPT_RECEIPT_MODEL_ID").ok();
+        if output.receipt.model_id != model_id
+            && allowed_receipt_model_id.as_deref() != Some(output.receipt.model_id.as_str())
+        {
             return Err(ClientError::Client(EphemeralError::ValidationError(
                 format!(
                     "Receipt model_id mismatch: expected '{}', got '{}'",

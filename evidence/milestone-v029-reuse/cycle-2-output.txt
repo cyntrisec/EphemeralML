@@ -1,0 +1,36 @@
+    Finished `release` profile [optimized] target(s) in 0.24s
+     Running `target/release/ephemeralml infer --addr '34.9.156.127:9000' --text 'Reuse cycle 2 of 5' --receipt /home/tsyrulb/vsock/EphemeralML-cyntrisec/evidence/milestone-v029-reuse/cycle-2-receipt.json`
+
+  ==============================================================
+  EphemeralML Confidential Inference
+  ==============================================================
+
+  Connecting to 34.9.156.127:9000...
+[client] WARNING: No expected MRTD configured (EPHEMERALML_REQUIRE_MRTD=false). TDX peer measurements are NOT pinned. This is unsafe for production.
+[client] WARNING: No expected audience configured (EPHEMERALML_ALLOW_UNPINNED_AUDIENCE=true). JWT audience is NOT validated. This is unsafe for production.
+  Attestation: TDX verified (Confidential Space)
+  Encryption:  HPKE-X25519-ChaCha20Poly1305
+  Channel:     established
+
+  Input (18 bytes):
+    "Reuse cycle 2 of 5"
+
+  --------------------------------------------------------------
+  Inference:
+  --------------------------------------------------------------
+  Model:       stage-0
+  Time:        511ms
+  Output:      384-dim embedding
+  Values[0..5]:[0.0696, 0.0996, 0.3014, 0.1223, -0.4008]
+  L2 norm:     7.6398
+
+  --------------------------------------------------------------
+  Receipt:
+  --------------------------------------------------------------
+  ID:          47020dec-0f3d-440a-871c-7f3e8ffa2418
+  Platform:    tdx-mrtd-rtmr
+  Signature (Ed25519)         [PASS]
+  Saved to:    /home/tsyrulb/vsock/EphemeralML-cyntrisec/evidence/milestone-v029-reuse/cycle-2-receipt.json
+  Attestation: /tmp/ephemeralml-attestation.bin
+  Manifest:    /tmp/ephemeralml-manifest.json
+

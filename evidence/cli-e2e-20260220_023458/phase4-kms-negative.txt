@@ -1,0 +1,3 @@
+Error: setup-kms requires either --image-digest <sha256:DIGEST> or --allow-broad-binding.
+Production: ephemeralml gcp setup-kms --image-digest sha256:abc123...
+Development: ephemeralml gcp setup-kms --allow-broad-binding

@@ -1,0 +1,72 @@
+{
+  "benchmark_mode": "nitro_e2e_receipt_execution_time",
+  "notes": {
+    "samples_source": "Repeated scripts/nitro_e2e.sh runs; execution_time_ms read from receipt.json",
+    "latency_metric": "receipt.execution_time_ms (enclave-side execution only)",
+    "e2e_client_latency_metric": "timing.json.e2e_client_ms (host orchestrator wall-clock)",
+    "stage_timings": "Unavailable in current architecture benchmark path; set to 0/N/A",
+    "quality_capture": "Modern Nitro benchmark fallback does not capture full embedding vectors; quality comparison omitted."
+  },
+  "environment": "enclave",
+  "model": "MiniLM-L6-v2",
+  "model_id": "minilm-l6",
+  "model_params": 22700000,
+  "hardware": "m6i.xlarge",
+  "timestamp": "2026-02-25T10:28:55Z",
+  "commit": "unknown",
+  "stages": {
+    "attestation_ms": 0.0,
+    "kms_key_release_ms": 0.0,
+    "model_fetch_ms": 0.0,
+    "model_decrypt_ms": 0.0,
+    "model_load_ms": 0.0,
+    "tokenizer_setup_ms": 0.0,
+    "cold_start_total_ms": 0.0
+  },
+  "inference": {
+    "input_texts": [
+      "What is the capital of France?"
+    ],
+    "num_iterations": 10,
+    "latency_ms": {
+      "mean": 78.1,
+      "p50": 78.0,
+      "p95": 80.0,
+      "p99": 80.0,
+      "min": 76.0,
+      "max": 80.0
+    },
+    "throughput_inferences_per_sec": 12.8,
+    "e2e_client_latency_ms": {
+      "mean": 120.2,
+      "p50": 116.0,
+      "p95": 131.0,
+      "p99": 131.0,
+      "min": 113.0,
+      "max": 131.0
+    }
+  },
+  "memory": {
+    "peak_rss_mb": 0.0,
+    "peak_rss_source": "receipt.memory_peak_mb",
+    "peak_vmsize_mb": 0.0,
+    "model_size_mb": 86.66
+  },
+  "vsock": {
+    "rtt_64b_ms": 0.0,
+    "rtt_1kb_ms": 0.0,
+    "rtt_64kb_ms": 0.0,
+    "rtt_1mb_ms": 0.0,
+    "upload_throughput_mb_per_sec": 0.0
+  },
+  "quality": {
+    "reference_text": "What is the capital of France?",
+    "embedding_dim": 384,
+    "notes": "Modern Nitro benchmark fallback does not capture full embedding vectors; quality comparison omitted."
+  },
+  "raw_samples": {
+    "warmup_runs": 2,
+    "measured_runs": 10,
+    "samples_file": "nitro_enclave_samples.jsonl"
+  }
+}

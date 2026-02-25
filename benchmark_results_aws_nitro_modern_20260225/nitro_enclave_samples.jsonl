@@ -1,0 +1,12 @@
+{"run": 1, "warmup": true, "e2e_client_ms": 116, "enclave_execution_time_ms": 78, "memory_peak_mb": 0, "timestamp": "2026-02-25T10:24:49Z", "receipt_id": "1a8da4bc-ce56-4150-aa0b-7d4e9ba2ed5b"}
+{"run": 2, "warmup": true, "e2e_client_ms": 119, "enclave_execution_time_ms": 77, "memory_peak_mb": 0, "timestamp": "2026-02-25T10:25:11Z", "receipt_id": "d52a881a-e62e-40f4-8376-6ec59c4e82c1"}
+{"run": 3, "warmup": false, "e2e_client_ms": 120, "enclave_execution_time_ms": 79, "memory_peak_mb": 0, "timestamp": "2026-02-25T10:25:34Z", "receipt_id": "2b4152a9-1119-4eee-af81-e661a45fdb11"}
+{"run": 4, "warmup": false, "e2e_client_ms": 114, "enclave_execution_time_ms": 80, "memory_peak_mb": 0, "timestamp": "2026-02-25T10:25:56Z", "receipt_id": "a6272209-e4d3-4e7d-baaf-baf12d8f7433"}
+{"run": 5, "warmup": false, "e2e_client_ms": 118, "enclave_execution_time_ms": 78, "memory_peak_mb": 0, "timestamp": "2026-02-25T10:26:18Z", "receipt_id": "4d3e036c-8197-41df-813a-9a5b8eefaee8"}
+{"run": 6, "warmup": false, "e2e_client_ms": 114, "enclave_execution_time_ms": 79, "memory_peak_mb": 0, "timestamp": "2026-02-25T10:26:41Z", "receipt_id": "6a76a357-f605-46f7-979f-4bc945da7707"}
+{"run": 7, "warmup": false, "e2e_client_ms": 116, "enclave_execution_time_ms": 77, "memory_peak_mb": 0, "timestamp": "2026-02-25T10:27:03Z", "receipt_id": "f0b216ce-bd94-4875-acf5-ef05a8e842a5"}
+{"run": 8, "warmup": false, "e2e_client_ms": 130, "enclave_execution_time_ms": 77, "memory_peak_mb": 0, "timestamp": "2026-02-25T10:27:26Z", "receipt_id": "a26140a8-49ac-4c73-b7ba-0548dd1b7aa7"}
+{"run": 9, "warmup": false, "e2e_client_ms": 130, "enclave_execution_time_ms": 79, "memory_peak_mb": 0, "timestamp": "2026-02-25T10:27:48Z", "receipt_id": "b740ed9d-0fa0-4ccc-a19c-871dfce8a5e1"}
+{"run": 10, "warmup": false, "e2e_client_ms": 131, "enclave_execution_time_ms": 77, "memory_peak_mb": 0, "timestamp": "2026-02-25T10:28:10Z", "receipt_id": "b0b38ec7-df61-4209-a30b-68b75c830294"}
+{"run": 11, "warmup": false, "e2e_client_ms": 116, "enclave_execution_time_ms": 79, "memory_peak_mb": 0, "timestamp": "2026-02-25T10:28:33Z", "receipt_id": "6b7788b2-ec58-4027-866b-3e7c045b6b16"}
+{"run": 12, "warmup": false, "e2e_client_ms": 113, "enclave_execution_time_ms": 76, "memory_peak_mb": 0, "timestamp": "2026-02-25T10:28:55Z", "receipt_id": "6e310f1d-1c89-4606-beb9-c7e6ceab68a3"}

@@ -1,0 +1,9 @@
+GCS Object Generations Baseline (before reuse cycles)
+=====================================================
+Recorded: 2026-02-19
+
+config.json:           Generation=1771517340844022  md5=a7BR/PJ/NsINgEWEfH/bVg==
+manifest.json:         Generation=1771517356016461  md5=og8o5EeeL0O7nL6I8+kMDA==
+model.safetensors.enc: Generation=1771517351265881  md5=itrPlfOPO6Lqhe2cN13pfg==
+tokenizer.json:        Generation=1771517343575526  md5=9UAhXIWqKl1dXqRACTOXqA==
+wrapped_dek.bin:       Generation=1771517353646236  md5=4sUunyHk7FuwIZxScnh4WQ==

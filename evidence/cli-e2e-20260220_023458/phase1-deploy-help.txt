@@ -1,0 +1,51 @@
+Build container and launch Confidential Space CVM
+
+Usage: ephemeralml gcp deploy [OPTIONS]
+
+Options:
+      --project <PROJECT>
+          GCP project ID
+      --region <REGION>
+          GCP region (default: derived from zone, e.g. us-central1)
+      --zone <ZONE>
+          GCP zone (default: us-central1-a)
+      --dry-run
+          Print command without executing (skips preflight checks)
+      --plain
+          Disable colors and mascot (plain text output)
+      --no-color
+          Disable color output
+  -v, --verbose
+          Verbose output (print resolved config values)
+      --json
+          Output structured JSON status on completion
+      --no-mascot
+          Disable ghost mascot
+      --gpu
+          Deploy with GPU (a3-highgpu-1g with H100 CC)
+      --debug
+          Use debug image (SSH enabled)
+      --skip-build
+          Skip Docker build/push
+  -y, --yes
+          Skip confirmations
+      --tag <TAG>
+          Custom container image tag
+      --model-source <MODEL_SOURCE>
+          Model source: local, gcs, or gcs-kms
+      --kms-key <KMS_KEY>
+          Cloud KMS key resource name
+      --wip-audience <WIP_AUDIENCE>
+          WIP audience for STS exchange
+      --bucket <BUCKET>
+          GCS bucket name
+      --model-prefix <MODEL_PREFIX>
+          GCS path prefix for model
+      --model-hash <MODEL_HASH>
+          SHA-256 hash of plaintext model weights
+      --model-signing-pubkey <MODEL_SIGNING_PUBKEY>
+          Ed25519 public key (hex) for model manifest verification
+      --model-format <MODEL_FORMAT>
+          Model format (safetensors or gguf)
+  -h, --help
+          Print help

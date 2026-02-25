@@ -1,6 +1,6 @@
 # AWS Nitro Enclaves E2E — Final Report
 
-**Date:** 2026-02-23
+**Date:** 2026-02-25
 **Status:** SUCCESS — Full pipeline inference with PCR-pinned attestation on real Nitro hardware.
 
 ## What Worked
@@ -10,9 +10,9 @@ End-to-end confidential inference completed successfully:
 1. **Enclave launched** on real Nitro hardware (m6i.xlarge, us-east-1)
 2. **Host connected** over VSock (ports 5000/5001/5002) using pipeline mode
 3. **Attestation handshake** completed with HPKE key binding in NSM attestation document
-4. **PCR pinning** verified all 3 measurements (enforced by `nitro_e2e.sh` — the script refuses to proceed without valid PCRs; the host binary itself only warns and continues if PCRs are missing)
-5. **MiniLM-L6-v2 inference** returned 384-dim embeddings in 78ms (75ms execution, ~3ms overhead)
-6. **Signed attestation receipt** produced with Ed25519 signature
+4. **PCR pinning** verified all 3 measurements (enforced by `nitro_e2e.sh`; host validation is fail-closed on missing/malformed PCRs unless `--allow-unpinned` is explicitly used)
+5. **MiniLM-L6-v2 inference** returned 384-dim embeddings in ~81ms host-observed latency (78ms enclave execution from `timing.json`)
+6. **Signed attestation receipt** produced with Ed25519 signature and persisted to local evidence (`receipt.json` + `receipt.raw`)
 
 ### Results Summary
 
@@ -21,8 +21,8 @@ End-to-end confidential inference completed successfully:
 | Model | MiniLM-L6-v2 (22.7M params, 87MB safetensors) |
 | Embedding dimensions | 384 |
 | L2 norm | 7.3331 |
-| Inference time | ~78ms total, ~75ms execution |
-| Receipt ID | `5c5fe418-483f-4621-8829-6e5a931e39c9` |
+| Inference time | ~81ms host-observed, 78ms enclave execution (`timing.json`) |
+| Receipt ID | `751067b8-b646-4098-973a-0f4bca807784` |
 | First 5 dims | [-0.1558, 0.8509, -0.0341, 0.2921, 0.2311] |
 
 ## Infrastructure Configuration
@@ -44,9 +44,9 @@ End-to-end confidential inference completed successfully:
 
 | PCR | Prefix | Measures |
 |-----|--------|----------|
-| PCR0 | `f279be5d...` | Enclave image hash |
+| PCR0 | `6ed2877a...` | Enclave image hash |
 | PCR1 | `4b4d5b36...` | Linux kernel + boot config |
-| PCR2 | `f4f8b2fa...` | Application (binary + model weights) |
+| PCR2 | `95518cef...` | Application (binary + model weights) |
 
 ## Bugs Found and Fixed
 
@@ -105,17 +105,18 @@ End-to-end confidential inference completed successfully:
 | E2E runbook | `docs/AWS_NITRO_E2E_RUNBOOK.md` |
 | Automation script | `scripts/nitro_e2e.sh` |
 | This report | `docs/AWS_NITRO_E2E_REPORT.md` |
+| Success-run evidence bundle | `evidence/aws-nitro-e2e-20260225_095649/` |
 | Dockerfile (fixed) | `enclave/Dockerfile.enclave` |
 | Attestation fix | `enclave/src/attestation.rs`, `enclave/src/attestation_bridge.rs` |
 
-**Evidence gap:** The success-run evidence was not copied off the EC2 instance before termination and is therefore not independently verifiable from checked-in artifacts. The `evidence/aws-nitro-e2e-20260221_193937/` directory contains an older blocked run, not this one. The next E2E run should use `scp` or the updated `nitro_e2e.sh` to persist evidence locally before cleanup.
+Fresh success-run evidence is now checked in under `evidence/aws-nitro-e2e-20260225_095649/`, including:
+- `eif_build_output.json` and `pcr_measurements.json`
+- `enclave_launch.json` and `enclave_describe*.json`
+- `host_output.log`
+- `receipt.json` and `receipt.raw`
+- `timing.json`
 
-Evidence that was on the terminated EC2 instance:
-- EIF build JSON with PCR0/1/2
-- `describe-enclaves` output (CID 16, RUNNING, 4096 MiB)
-- Host output log (full pipeline trace with human-readable receipt summary)
-
-**Note:** The host binary prints the receipt as a human-readable summary, not raw CBOR bytes. A raw CBOR receipt artifact was not saved to disk. The `host_output.log` captures the printed summary (receipt ID, hashes, PCRs, signature, timing). To persist a machine-verifiable receipt, the host binary would need a `--receipt-output <path>` flag that writes the raw `__receipt__` tensor bytes.
+The older `evidence/aws-nitro-e2e-20260221_193937/` directory is retained as a blocked-run artifact for debugging history.
 
 ## Next Steps to Harden / Productionize
 
@@ -123,7 +124,7 @@ Evidence that was on the terminated EC2 instance:
 
 1. ~~**Harden host binary to fail-closed on missing PCRs**~~ — Done. `host/src/main.rs` now returns an error when `expected_pcrs` is empty (unless `--allow-unpinned`), and returns an error on malformed hex or wrong-length values.
 2. **Add integration test for `generate_attestation_for_transport`** — mock the NSM IOCTL response to verify the HPKE key lands in the attestation document's `public_key` field.
-3. **Update `nitro_e2e.sh` to save evidence locally** — `scp` the evidence directory from EC2 before terminating, and persist a raw receipt artifact.
+3. ~~**Update `nitro_e2e.sh` to save evidence locally**~~ — Done. `nitro_e2e.sh` now persists a local evidence bundle (including `receipt.json`, `receipt.raw`, PCR JSON, Nitro JSON, and `timing.json`) before teardown.
 4. **Pin the Dockerfile base image** — use `ubuntu:22.04@sha256:...` for reproducible builds.
 
 ### Medium-term (production readiness)

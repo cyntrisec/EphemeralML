@@ -1,0 +1,18 @@
+============================================
+  EphemeralML — Teardown
+============================================
+
+[1/2] Instance 'ephemeralml-cvm' not found in zone 'us-central1-a'. Nothing to delete.
+
+[2/2] Skipping image cleanup (use --delete-image to remove).
+
+============================================
+  Teardown complete.
+============================================
+
+
+  Preserved resources (reusable):
+    - Artifact Registry: us-docker.pkg.dev/project-d3c20737-eec2-453d-8e5/ephemeralml
+    - Service account:   ephemeralml-cvm@project-d3c20737-eec2-453d-8e5.iam.gserviceaccount.com
+    - Firewall rule:     allow-ephemeralml
+

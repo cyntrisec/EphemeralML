@@ -1,0 +1,90 @@
+{
+  "EifVersion": 4,
+  "Measurements": {
+    "HashAlgorithm": "Sha384 { ... }",
+    "PCR0": "6ed2877a128e5494813fade2a55477ae291f7d540160e9665b4bc21142ef556e0f36931dbaa33741b4768b00ae0302ed",
+    "PCR1": "4b4d5b3661b3efc12920900c80e126e4ce783c522de6c02a2a5bf7af3a2b9327b86776f188e4be1c1c404a129dbda493",
+    "PCR2": "95518cef96014fd4730433db2e2ef1e75155a233644230ab1b41342ca44e24ab5aa36fc550a731b7ed0ead4eba1ef168"
+  },
+  "IsSigned": false,
+  "CheckCRC": true,
+  "ImageName": "ephemeral-ml-enclave",
+  "ImageVersion": "b4a2744347b04360535967c2f3f898bc9eb16e965d818d0b4ce54386170c4bda",
+  "Metadata": {
+    "BuildTime": "2026-02-25T09:56:25.875012844+00:00",
+    "BuildTool": "nitro-cli",
+    "BuildToolVersion": "1.4.4",
+    "OperatingSystem": "Linux",
+    "KernelVersion": "4.14.256",
+    "DockerInfo": {
+      "Architecture": "amd64",
+      "Author": "",
+      "Comment": "buildkit.dockerfile.v0",
+      "Config": {
+        "AttachStderr": false,
+        "AttachStdin": false,
+        "AttachStdout": false,
+        "Domainname": "",
+        "Entrypoint": [
+          "/app/enclave_app",
+          "--model-dir",
+          "/app/test_assets/minilm",
+          "--control-addr",
+          "127.0.0.1:5000",
+          "--data-in-addr",
+          "127.0.0.1:5001",
+          "--data-out-target",
+          "127.0.0.1:5002"
+        ],
+        "Env": [
+          "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+        ],
+        "Hostname": "",
+        "Image": "",
+        "Labels": {
+          "org.opencontainers.image.ref.name": "ubuntu",
+          "org.opencontainers.image.version": "22.04"
+        },
+        "OpenStdin": false,
+        "StdinOnce": false,
+        "Tty": false,
+        "User": "",
+        "WorkingDir": "/app"
+      },
+      "Created": "2026-02-25T09:50:36.222097958Z",
+      "DockerVersion": "",
+      "GraphDriver": {
+        "Data": {
+          "LowerDir": "/var/lib/docker/overlay2/ogejadh7vr0m4l10qdxqxyl9n/diff:/var/lib/docker/overlay2/t10pih6c6dx8ew70jsu52sazz/diff:/var/lib/docker/overlay2/komhkhdctqpeygu25yjex00ja/diff:/var/lib/docker/overlay2/4cddhrfdgql1t25944jmgzzrh/diff:/var/lib/docker/overlay2/et4fkpscqu2ygus25hluu679e/diff:/var/lib/docker/overlay2/5041e6314f77e85d46c6b23de16353b1045cc7f18c542ae333aed01bec8bafbb/diff",
+          "MergedDir": "/var/lib/docker/overlay2/89g27nyv8pp2bdi3iq3ta28yu/merged",
+          "UpperDir": "/var/lib/docker/overlay2/89g27nyv8pp2bdi3iq3ta28yu/diff",
+          "WorkDir": "/var/lib/docker/overlay2/89g27nyv8pp2bdi3iq3ta28yu/work"
+        },
+        "Name": "overlay2"
+      },
+      "Id": "sha256:b4a2744347b04360535967c2f3f898bc9eb16e965d818d0b4ce54386170c4bda",
+      "Metadata": {
+        "LastTagTime": "2026-02-25T09:56:25.829717823Z"
+      },
+      "Os": "linux",
+      "Parent": "",
+      "RepoDigests": [],
+      "RepoTags": [
+        "ephemeral-ml-enclave:latest"
+      ],
+      "RootFS": {
+        "Layers": [
+          "sha256:6b7908e4c7473003628ddbd1d8ad378db659f0bf29a3019f7bb7150e9bfd109d",
+          "sha256:0c74a526b52e3bb9d662b64c2a919d88e3b11f96a372980dc0fe4cf0702d258a",
+          "sha256:18f9a846438432d95ca6da2be23d3037726bc81cd0cec94ba3d4d51b06a9aef8",
+          "sha256:296b59947a705656a39935a92304a880b955c0bc4ab4812ec4d927377638e41e",
+          "sha256:646a277d891cabd28f31d27d7d1a496c4f164edf59571fcd7239d3a23c25ee24",
+          "sha256:cf5c2d2c136db66d0f211795bb999e17f82252cd31efe2d4fd4ae4d4042dc868",
+          "sha256:d20bf51ef3feef23b64800aaea007e2ac8751bc2c28f9c744b6fc6fab96c382a"
+        ],
+        "Type": "layers"
+      },
+      "Size": 185849650
+    }
+  }
+}

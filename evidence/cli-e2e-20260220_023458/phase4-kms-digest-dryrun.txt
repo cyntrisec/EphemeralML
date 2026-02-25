@@ -1,0 +1,17 @@
+  --dry-run: skipping preflight checks (auth, disk, project)
+  Setting up Cloud KMS + Workload Identity Pool...
+    Project: project-d3c20737-eec2-453d-8e5
+    Region:  us-central1
+
+[dry-run] bash /home/tsyrulb/vsock/EphemeralML-cyntrisec/scripts/gcp/setup_kms.sh project-d3c20737-eec2-453d-8e5 us-central1 sha256:deadbeef1234
+[dry-run] Environment:
+[dry-run]   EPHEMERALML_GCP_PROJECT=project-d3c20737-eec2-453d-8e5
+[dry-run]   EPHEMERALML_GCP_REGION=us-central1
+[dry-run]   EPHEMERALML_GCP_ZONE=us-central1-a
+[dry-run]   EPHEMERALML_GCS_BUCKET=ephemeralml-models
+[dry-run]   EPHEMERALML_GCP_MODEL_PREFIX=models/minilm
+[dry-run]   EPHEMERALML_MODEL_SOURCE=local
+[dry-run]   EPHEMERALML_MODEL_FORMAT=safetensors
+[dry-run]   GCP_BUCKET=ephemeralml-models
+
+  Next: ephemeralml gcp package-model  (encrypt, sign, upload model)

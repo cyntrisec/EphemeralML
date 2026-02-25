@@ -1,0 +1,63 @@
+[2026-02-23T19:27:14.238852380Z] [INFO] Boot completed
+[2026-02-23T19:27:14.451469302Z] [INFO] TEE container launcher initiating
+[2026-02-23T19:27:15.456575Z] [NONE] ToolLogProto logjam_tag=tattler_initgoogle  build_timestamp:1756162185 host_name:"ephemeralml-cvm" language:"cpp" log_path:"//google/cloud/confidentialcomputing/phenotype:confidential_space_experiments" log_timestamp:1771874835 logger:"syslog_cpp" os:LINUX_OS tool_type:"cmdline" uid:0 version:""
+[2026-02-23T19:27:15.490243029Z] [INFO] Launch Spec: {Experiments:{EnableTestFeatureForImage:true EnableHealthMonitoring:false EnableItaVerifier:false EnableVerifyCS:true} FakeVerifierEnabled:false ImageRef:us-docker.pkg.dev/project-d3c20737-eec2-453d-8e5/ephemeralml/enclave:634a545 SignedImageRepos:[] RestartPolicy:Never Cmd:[] Envs:[{Name:EPHEMERALML_GCP_LOCATION Value:us-central1} {Name:EPHEMERALML_GCP_PROJECT Value:project-d3c20737-eec2-453d-8e5} {Name:EPHEMERALML_GCP_WIP_AUDIENCE Value://iam.googleapis.com/projects/324130315768/locations/global/workloadIdentityPools/ephemeralml-pool/providers/ephemeralml-tdx} {Name:EPHEMERALML_MODEL_FORMAT Value:safetensors} {Name:EPHEMERALML_DIRECT Value:true} {Name:EPHEMERALML_LOG_FORMAT Value:json} {Name:EPHEMERALML_MODEL_SOURCE Value:local}] GcaAddress: ImpersonateServiceAccounts:[] ProjectID:project-d3c20737-eec2-453d-8e5 Region:us-central1 Hardened:true MonitoringEnabled:none LogRedirect:true Mounts:[] ITAConfig:{ITARegion: ITAKey:} DevShmSize:0 AddedCapabilities:[] CgroupNamespace:false}
+[2026-02-23T19:27:15.617322695Z] [INFO] Updated TPM DA params: &{LockoutCounter:0 MaxTries:32 RecoveryTime:7200 LockoutRecovery:86400 StartupClearOrderly:true}
+[2026-02-23T19:27:15.851662861Z] [INFO] Launch started
+[2026-02-23T19:27:19.112671957Z] [INFO] Preparing Container Runner
+[2026-02-23T19:27:19.214310917Z] [INFO] Exposed Ports:             : map[9000/tcp:{}]
+
+[2026-02-23T19:27:19.291779683Z] [INFO] Image Labels               : map[tee.launch_policy.allow_env_override:EPHEMERALML_MODEL_SOURCE,EPHEMERALML_GCS_BUCKET,EPHEMERALML_GCP_MODEL_PREFIX,EPHEMERALML_GCP_PROJECT,EPHEMERALML_GCP_LOCATION,EPHEMERALML_GCP_KMS_KEY,EPHEMERALML_GCP_WIP_AUDIENCE,EPHEMERALML_EXPECTED_MODEL_HASH,EPHEMERALML_EXPECTED_MRTD,EPHEMERALML_DIRECT,EPHEMERALML_MODEL_FORMAT,EPHEMERALML_LOG_FORMAT,EPHEMERALML_MODEL_SIGNING_PUBKEY tee.launch_policy.log_redirect:always]
+
+[2026-02-23T19:27:19.377082437Z] [INFO] Health Monitoring is disabled
+[2026-02-23T19:27:19.493754355Z] [INFO] Launch Policy              : {AllowedEnvOverride:[EPHEMERALML_MODEL_SOURCE EPHEMERALML_GCS_BUCKET EPHEMERALML_GCP_MODEL_PREFIX EPHEMERALML_GCP_PROJECT EPHEMERALML_GCP_LOCATION EPHEMERALML_GCP_KMS_KEY EPHEMERALML_GCP_WIP_AUDIENCE EPHEMERALML_EXPECTED_MODEL_HASH EPHEMERALML_EXPECTED_MRTD EPHEMERALML_DIRECT EPHEMERALML_MODEL_FORMAT EPHEMERALML_LOG_FORMAT EPHEMERALML_MODEL_SIGNING_PUBKEY] AllowedCmdOverride:false AllowedLogRedirect:always AllowedMountDestinations:[] HardenedImageMonitoring:none DebugImageMonitoring:memoryOnly PrivilegedCaps:false AllowCgroups:false}
+
+[2026-02-23T19:27:19.569007056Z] [INFO] Retrieved image config
+[2026-02-23T19:27:19.886644864Z] [INFO] Adding TPM PCRs for measurement.
+[2026-02-23T19:27:19.960024767Z] [INFO] Adding TDX RTMRs for measurement.
+[2026-02-23T19:27:20.066572580Z] [INFO] Using TDX RTMR as attestation root.
+[2026-02-23T19:27:23.825802811Z] [INFO] Successfully measured memory monitoring event
+[2026-02-23T19:27:23.993247513Z] [INFO] Refreshed container image signature cache
+[2026-02-23T19:27:24.271116611Z] [INFO] attestation through TDX quote
+[2026-02-23T19:27:24.833830997Z] [INFO] successfully refreshed attestation token
+[2026-02-23T19:27:24.964117459Z] [INFO] EnableOnDemandAttestation is enabled: initializing TEE server.
+[2026-02-23T19:27:25.067511816Z] [INFO] MemoryMonitoring is disabled by the VM operator
+[2026-02-23T19:27:25.189251037Z] [INFO] Container stdout/stderr will be redirected to serial and Cloud Logging. This may result in performance issues due to slow serial console writes.
+[2026-02-23T19:27:25.558392904Z] [INFO] Workload setup completed
+[2026-02-23T19:27:25.640635236Z] [INFO] workload task started
+[2026-02-23T19:27:25.731959Z] [NONE] {"timestamp":"2026-02-23T19:27:25.731830Z","level":"INFO","fields":{"message":"EphemeralML Enclave v2.0 (GCP Confidential VM Mode)"},"target":"ephemeral_ml_enclave"}
+[2026-02-23T19:27:25.731959Z] [NONE] {"timestamp":"2026-02-23T19:27:25.731879Z","level":"INFO","fields":{"message":"Confidential Space detected (no configfs-tsm). Transport attestation will use Launcher JWT. Boot evidence from synthetic provider.","step":"attestation","mode":"cs_launcher"},"target":"ephemeral_ml_enclave"}
+[2026-02-23T19:27:25.732291Z] [NONE] {"timestamp":"2026-02-23T19:27:25.731972Z","level":"INFO","fields":{"message":"Using CPU device","step":"device_init","device":"cpu"},"target":"ephemeral_ml_enclave::candle_engine"}
+[2026-02-23T19:27:25.732485Z] [NONE] {"timestamp":"2026-02-23T19:27:25.732013Z","level":"INFO","fields":{"message":"Loading model from local directory","step":"model_load","source":"local","format":"safetensors","path":"/app/model"},"target":"ephemeral_ml_enclave"}
+[2026-02-23T19:27:25.974288Z] [NONE] {"timestamp":"2026-02-23T19:27:25.974000Z","level":"INFO","fields":{"message":"Model loaded","step":"model_load","source":"local","format":"safetensors","model_id":"stage-0","elapsed_ms":242.004144,"size_mb":86.6588363647461},"target":"ephemeral_ml_enclave"}
+[2026-02-23T19:27:25.977363225Z] [INFO] /v1/token called
+[2026-02-23T19:27:26.228603690Z] [INFO] attestation through TDX quote
+[2026-02-23T19:27:26.584217Z] [NONE] {"timestamp":"2026-02-23T19:27:26.583970Z","level":"INFO","fields":{"message":"Confidential Space identity obtained","step":"cs_identity","issuer":"https://confidentialcomputing.googleapis.com","subject":"https://www.googleapis.com/compute/v1/projects/project-d3c20737-eec2-453d-8e5/zones/us-central1-a/instances/ephemeralml-cvm","swname":"CONFIDENTIAL_SPACE"},"target":"ephemeral_ml_enclave"}
+[2026-02-23T19:27:26.586337Z] [NONE] ========================================
+[2026-02-23T19:27:26.586337Z] [NONE]   TRUST EVIDENCE BUNDLE
+[2026-02-23T19:27:26.586337Z] [NONE] ========================================
+[2026-02-23T19:27:26.586337Z] [NONE]   Platform:           tdx
+[2026-02-23T19:27:26.586337Z] [NONE]   Model ID:           stage-0
+[2026-02-23T19:27:26.586337Z] [NONE]   Quote Hash:         27f686af45ac81c36047e9da3062ed561a372b2dae00735237cbd26b5afb9831
+[2026-02-23T19:27:26.586337Z] [NONE]   HPKE Public Key:    6e97f0fbe81cf4d3088e473939b849a5
+[2026-02-23T19:27:26.586337Z] [NONE]   Receipt Sign Key:   d9abe282760ccf2180be74f7aa7cce59
+[2026-02-23T19:27:26.586337Z] [NONE]   Model Hash:         53aa51172d142c89d9012cce15ae4d6cc0ca6895895114379cacb4fab128d9db
+[2026-02-23T19:27:26.586337Z] [NONE] ========================================
+[2026-02-23T19:27:26.586337Z] [NONE] {"timestamp":"2026-02-23T19:27:26.586204Z","level":"INFO","fields":{"message":"Using Confidential Space Launcher JWT for transport attestation","step":"transport_bridge","mode":"cs_launcher_jwt"},"target":"ephemeral_ml_enclave"}
+[2026-02-23T19:27:26.586337Z] [NONE] {"timestamp":"2026-02-23T19:27:26.586215Z","level":"INFO","fields":{"message":"Direct mode: accepting client connections on 0.0.0.0:9000","step":"boot_evidence","mode":"direct","quote_hash":"27f686af45ac81c36047e9da3062ed561a372b2dae00735237cbd26b5afb9831","synthetic":false},"target":"ephemeral_ml_enclave"}
+[2026-02-23T19:27:26.586337Z] [NONE] [direct] Listening on 0.0.0.0:9000
+[2026-02-23T19:27:40.404511Z] [NONE] [direct] Malformed connection from 46.210.235.234:35472 (attempt 1/50): session closed
+[2026-02-23T19:28:18.791166Z] [NONE] [direct] Malformed connection from 46.210.235.234:35462 (attempt 2/50): session closed
+[2026-02-23T19:28:48.612381735Z] [INFO] /v1/token called
+[2026-02-23T19:28:48.612420Z] [NONE] {"timestamp":"2026-02-23T19:28:48.612006Z","level":"INFO","fields":{"message":"initiator attestation verification succeeded","document_hash":"63efeafbc5983329ccce438b02bcee63f972216a14f0451e1aec8b6fb35623d1","measurement_count":0},"target":"confidential_ml_transport::session::handshake"}
+[2026-02-23T19:28:48.902378052Z] [INFO] attestation through TDX quote
+[2026-02-23T19:28:50.390895Z] [NONE] [direct] Secure channel established with 46.210.235.234:35455
+[2026-02-23T19:28:50.390895Z] [NONE] [direct] Ready for inference requests
+[2026-02-23T19:28:50.591559Z] [NONE] [direct] Inference request: model_id=stage-0, input_len=384, generate=false
+[2026-02-23T19:28:50.661583Z] [NONE] [direct] Response sent: 384 floats, 69ms, seq=0
+[2026-02-23T19:28:50.865272Z] [NONE] [direct] Channel closed: session closed
+[2026-02-23T19:28:50.876326143Z] [INFO] workload task ended and returned 0
+[2026-02-23T19:28:51.014941937Z] [INFO] token refreshing stopped
+[2026-02-23T19:28:51.040546988Z] [INFO] Workload completed
+[2026-02-23T19:28:51.162340787Z] [INFO] TEE container launcher exiting
+[2026-02-23T19:28:51.324121Z] [NONE] Shutdown scheduled for Mon 2026-02-23 19:30:51 UTC, use 'shutdown -c' to cancel.

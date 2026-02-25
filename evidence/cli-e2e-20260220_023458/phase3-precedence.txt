@@ -1,0 +1,18 @@
+  --dry-run: skipping preflight checks (auth, disk, project)
+  Deploying Confidential Space CVM (CPU mode)...
+    Project: project-d3c20737-eec2-453d-8e5
+    Zone:    europe-west4-b
+    Region:  europe-west4
+
+[dry-run] bash /home/tsyrulb/vsock/EphemeralML-cyntrisec/scripts/gcp/deploy.sh --project project-d3c20737-eec2-453d-8e5 --zone europe-west4-b --model-source local --bucket ephemeralml-models --model-prefix models/minilm --model-format safetensors
+[dry-run] Environment:
+[dry-run]   EPHEMERALML_GCP_PROJECT=project-d3c20737-eec2-453d-8e5
+[dry-run]   EPHEMERALML_GCP_REGION=europe-west4
+[dry-run]   EPHEMERALML_GCP_ZONE=europe-west4-b
+[dry-run]   EPHEMERALML_GCS_BUCKET=ephemeralml-models
+[dry-run]   EPHEMERALML_GCP_MODEL_PREFIX=models/minilm
+[dry-run]   EPHEMERALML_MODEL_SOURCE=local
+[dry-run]   EPHEMERALML_MODEL_FORMAT=safetensors
+[dry-run]   GCP_BUCKET=ephemeralml-models
+
+  Next: ephemeralml gcp verify  (smoke test the deployment)

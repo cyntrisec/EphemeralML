@@ -29,6 +29,8 @@ TIMING_PATH="/tmp/ephemeralml-timing.json"
 VERIFY_OUTPUT="$(mktemp /tmp/ephemeralml-verify-output.XXXXXX.txt)"
 MAX_WAIT=180              # seconds to wait for port reachability
 INFERENCE_TEXT="Verify EphemeralML on Confidential Space"
+VERIFY_MODEL_ID="${EPHEMERALML_VERIFY_MODEL_ID:-stage-0}"
+VERIFY_RECEIPT_MODEL_ID="${EPHEMERALML_VERIFY_RECEIPT_MODEL_ID:-minilm-l6-v2}"
 
 # Clean up temp files on exit (even on failure).
 # Only clean up the script-local temp file; receipt is preserved for E2E callers.
@@ -50,6 +52,8 @@ while [[ $# -gt 0 ]]; do
         --ip)      IP="$2"; shift 2 ;;
         --zone)    ZONE="$2"; shift 2 ;;
         --project) PROJECT="$2"; shift 2 ;;
+        --model-id) VERIFY_MODEL_ID="$2"; shift 2 ;;
+        --receipt-model-id) VERIFY_RECEIPT_MODEL_ID="$2"; shift 2 ;;
         --gpu)     GPU=true; shift ;;
         --allow-unpinned-audience) ALLOW_UNPINNED_AUDIENCE=true; shift ;;
         *) echo "Unknown option: $1"; exit 1 ;;
@@ -59,6 +63,7 @@ done
 # GPU mode: match deploy.sh instance name
 if $GPU; then
     INSTANCE_NAME="ephemeralml-gpu"
+    MAX_WAIT=300
 fi
 
 if [[ -z "${PROJECT}" ]]; then
@@ -114,6 +119,8 @@ ui_blank
 ui_info "[3/4] Running inference against ${IP}:${DATA_PORT}..."
 ui_kv "Text" "\"${INFERENCE_TEXT}\""
 ui_kv "Mode" "gcp (TDX attestation + handshake)"
+ui_kv "Request model ID" "${VERIFY_MODEL_ID}"
+ui_kv "Receipt model ID" "${VERIFY_RECEIPT_MODEL_ID}"
 ui_blank
 
 cd "${PROJECT_DIR}"
@@ -148,6 +155,8 @@ fi
 INFERENCE_START=$(date +%s%N)
 EPHEMERALML_ENCLAVE_ADDR="${IP}:${DATA_PORT}" \
     EPHEMERALML_REQUIRE_MRTD=false \
+    EPHEMERALML_GCP_VERIFY_MODEL_ID="${VERIFY_MODEL_ID}" \
+    EPHEMERALML_ACCEPT_RECEIPT_MODEL_ID="${VERIFY_RECEIPT_MODEL_ID}" \
     cargo run --release --no-default-features --features gcp \
     -p ephemeral-ml-client --bin ephemeral-ml-client 2>&1 | tee ${VERIFY_OUTPUT}
 

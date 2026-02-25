@@ -1,0 +1,122 @@
+[2026-02-23T20:09:33.592260830Z] [INFO] Boot completed
+[2026-02-23T20:09:33.887856494Z] [INFO] TEE container launcher initiating
+[2026-02-23T20:09:34.563124Z] [NONE] ToolLogProto logjam_tag=tattler_initgoogle  build_timestamp:1752104425 host_name:"ephemeralml-gpu" language:"cpp" log_path:"//google/cloud/confidentialcomputing/phenotype:confidential_space_experiments" log_timestamp:1771877374 logger:"syslog_cpp" os:LINUX_OS tool_type:"cmdline" uid:0 version:""
+[2026-02-23T20:09:34.594477534Z] [INFO] Launch Spec: {Experiments:{EnableTestFeatureForImage:false EnableConfidentialGPUSupport:true EnableHealthMonitoring:false EnableItaVerifier:false} ImageRef:us-docker.pkg.dev/project-d3c20737-eec2-453d-8e5/ephemeralml/enclave:634a545 SignedImageRepos:[] RestartPolicy:Never Cmd:[] Envs:[{Name:EPHEMERALML_GCP_LOCATION Value:us-central1} {Name:EPHEMERALML_GCP_WIP_AUDIENCE Value://iam.googleapis.com/projects/324130315768/locations/global/workloadIdentityPools/ephemeralml-pool/providers/ephemeralml-tdx} {Name:EPHEMERALML_MODEL_FORMAT Value:safetensors} {Name:EPHEMERALML_MODEL_SOURCE Value:local} {Name:EPHEMERALML_GCP_PROJECT Value:project-d3c20737-eec2-453d-8e5} {Name:EPHEMERALML_LOG_FORMAT Value:json} {Name:EPHEMERALML_DIRECT Value:true}] AttestationServiceAddr: ImpersonateServiceAccounts:[] ProjectID:project-d3c20737-eec2-453d-8e5 Region:us-central1 Hardened:true MonitoringEnabled:none LogRedirect:true Mounts:[] ITARegion: ITAKey: DevShmSize:0 InstallGpuDriver:true AddedCapabilities:[] CgroupNamespace:false}
+[2026-02-23T20:09:34.699776449Z] [INFO] Updated TPM DA params: &{LockoutCounter:0 MaxTries:32 RecoveryTime:7200 LockoutRecovery:86400 StartupClearOrderly:true}
+[2026-02-23T20:09:34.945936625Z] [INFO] COS GPU installer version : us.gcr.io/cos-cloud/cos-gpu-installer:v2.5.3
+[2026-02-23T20:09:41.286773Z] [NONE] I0223 20:09:41.286543    1209 install.go:237] Feature flags initialization
+[2026-02-23T20:09:41.303252Z] [NONE] I0223 20:09:41.303027    1209 install.go:268] Install GPU driver for device type: NVIDIA_H100_80GB
+[2026-02-23T20:09:41.305443Z] [NONE] I0223 20:09:41.304482    1209 artifacts.go:257] Start to fetch the GCSClient.
+[2026-02-23T20:09:41.305443Z] [NONE] I0223 20:09:41.305308    1209 artifacts.go:262] GCSClient hasn't been created, start to create a new GCSClient.
+[2026-02-23T20:09:41.306499Z] [NONE] I0223 20:09:41.306337    1209 artifacts.go:268] Using universe domain: "googleapis.com"
+[2026-02-23T20:09:41.306499Z] [NONE] I0223 20:09:41.306368    1209 artifacts.go:270] Using storage endpoint: "https://storage.googleapis.com/storage/v1/"
+[2026-02-23T20:09:41.307410Z] [NONE] I0223 20:09:41.307263    1209 artifacts.go:193] Start to download gpu_driver_versions.bin artifact from bucket: cos-tools, object: 18244.382.54/tdx-amd64-gcp/gpu_driver_versions.bin to /root/var/lib/nvidia/gpu_driver_versions.bin.
+[2026-02-23T20:09:41.403320Z] [NONE] I0223 20:09:41.403065    1209 artifacts.go:198] Sucessfully downloaded gpu_driver_versions.bin artifact from bucket: cos-tools, object: 18244.382.54/tdx-amd64-gcp/gpu_driver_versions.bin to /root/var/lib/nvidia/gpu_driver_versions.bin.
+[2026-02-23T20:09:41.403320Z] [NONE] I0223 20:09:41.403096    1209 installer.go:463] Succesfully download gpu_driver_versions.bin from GCS bucket.
+[2026-02-23T20:09:41.403386Z] [NONE] I0223 20:09:41.403305    1209 install.go:313] Installing GPU driver version 535.247.01
+[2026-02-23T20:09:41.403486Z] [NONE] I0223 20:09:41.403348    1209 cache.go:76] error: failed to read file /root/var/lib/nvidia/.cache: open /root/var/lib/nvidia/.cache: no such file or directory
+[2026-02-23T20:09:41.403486Z] [NONE] I0223 20:09:41.403366    1209 artifacts.go:218] Start to check whether artifact: 18244.382.54/tdx-amd64-gcp/nvidia-drivers-535.247.01.tgz exists in bucket: cos-tools
+[2026-02-23T20:09:41.403486Z] [NONE] I0223 20:09:41.403371    1209 artifacts.go:257] Start to fetch the GCSClient.
+[2026-02-23T20:09:41.431768Z] [NONE] I0223 20:09:41.431571    1209 installer.go:132] Configuring driver installation directories
+[2026-02-23T20:09:41.466860Z] [NONE] I0223 20:09:41.466669    1209 installer.go:755] Downloading GPU driver installer version 535.247.01
+[2026-02-23T20:09:41.466860Z] [NONE] I0223 20:09:41.466716    1209 artifacts.go:257] Start to fetch the GCSClient.
+[2026-02-23T20:09:41.466860Z] [NONE] I0223 20:09:41.466720    1209 artifacts.go:193] Start to download NVIDIA-Linux-x86_64-535.247.01.run artifact from bucket: cos-nvidia-gpu-drivers, object: NVIDIA-Linux-x86_64-535.247.01.run to /usr/local/nvidia/NVIDIA-Linux-x86_64-535.247.01.run.
+[2026-02-23T20:09:42.936968Z] [NONE] I0223 20:09:42.936676    1209 artifacts.go:198] Sucessfully downloaded NVIDIA-Linux-x86_64-535.247.01.run artifact from bucket: cos-nvidia-gpu-drivers, object: NVIDIA-Linux-x86_64-535.247.01.run to /usr/local/nvidia/NVIDIA-Linux-x86_64-535.247.01.run.
+[2026-02-23T20:09:42.936968Z] [NONE] I0223 20:09:42.936724    1209 artifacts.go:257] Start to fetch the GCSClient.
+[2026-02-23T20:09:42.936968Z] [NONE] I0223 20:09:42.936729    1209 artifacts.go:193] Start to download nvidia-drivers-535.247.01.tgz artifact from bucket: cos-tools, object: 18244.382.54/tdx-amd64-gcp/nvidia-drivers-535.247.01.tgz to /usr/local/nvidia/nvidia-drivers-535.247.01.tgz.
+[2026-02-23T20:09:43.541427Z] [NONE] I0223 20:09:43.541157    1209 artifacts.go:198] Sucessfully downloaded nvidia-drivers-535.247.01.tgz artifact from bucket: cos-tools, object: 18244.382.54/tdx-amd64-gcp/nvidia-drivers-535.247.01.tgz to /usr/local/nvidia/nvidia-drivers-535.247.01.tgz.
+[2026-02-23T20:09:45.162848Z] [NONE] I0223 20:09:45.162519    1209 modules.go:190] loading module: /usr/sbin/insmod /usr/local/nvidia/drivers/nvidia.ko
+[2026-02-23T20:09:45.684310Z] [NONE] I0223 20:09:45.684075    1209 modules.go:190] loading module: /usr/sbin/insmod /usr/local/nvidia/drivers/nvidia-uvm.ko
+[2026-02-23T20:09:45.874722Z] [NONE] I0223 20:09:45.874425    1209 modules.go:190] loading module: /usr/sbin/insmod /usr/local/nvidia/drivers/nvidia-modeset.ko
+[2026-02-23T20:09:45.974721Z] [NONE] I0223 20:09:45.974480    1209 modules.go:190] loading module: /usr/sbin/insmod /usr/local/nvidia/drivers/nvidia-drm.ko
+[2026-02-23T20:09:49.677356Z] [NONE] I0223 20:09:49.677079    1209 installer.go:314] Installing userspace libraries...
+[2026-02-23T20:09:49.677356Z] [NONE] I0223 20:09:49.677132    1209 installer.go:330] Installer arguments:
+[2026-02-23T20:09:49.677356Z] [NONE] [/tmp/extract/nvidia-installer --utility-prefix=/usr/local/nvidia --opengl-prefix=/usr/local/nvidia --x-prefix=/usr/local/nvidia --install-libglvnd --log-file-name=/usr/local/nvidia/nvidia-installer.log --silent --accept-license --no-kernel-module --no-install-compat32-libs]
+[2026-02-23T20:09:49.685153Z] [NONE] E0223 20:09:49.684978    1209 utils.go:348]
+[2026-02-23T20:09:49.685444Z] [NONE] E0223 20:09:49.685314    1209 utils.go:348] WARNING: You specified the '--no-kernel-modules' command line option, nvidia-installer will not install any kernel modules as part of this driver installation, and it will not remove existing NVIDIA kernel modules not part of an earlier NVIDIA driver installation.  Please ensure that NVIDIA kernel modules matching this driver version are installed separately.
+[2026-02-23T20:09:49.685444Z] [NONE] E0223 20:09:49.685336    1209 utils.go:348]
+[2026-02-23T20:09:49.685444Z] [NONE] E0223 20:09:49.685339    1209 utils.go:348]
+[2026-02-23T20:09:49.685444Z] [NONE] E0223 20:09:49.685343    1209 utils.go:348] WARNING: nvidia-installer was forced to guess the X library path '/usr/local/nvidia/lib64' and X module path '/usr/local/nvidia/lib64/xorg/modules'; these paths were not queryable from the system.  If X fails to find the NVIDIA X driver module, please install the `pkg-config` utility and the X.Org SDK/development package for your distribution and reinstall the driver.
+[2026-02-23T20:09:49.685444Z] [NONE] E0223 20:09:49.685345    1209 utils.go:348]
+[2026-02-23T20:09:49.686545Z] [NONE] E0223 20:09:49.686319    1209 utils.go:348]
+[2026-02-23T20:09:49.686545Z] [NONE] E0223 20:09:49.686353    1209 utils.go:348] WARNING: This NVIDIA driver package includes Vulkan components, but no Vulkan ICD loader was detected on this system. The NVIDIA Vulkan ICD will not function without the loader. Most distributions package the Vulkan loader; try installing the "vulkan-loader", "vulkan-icd-loader", or "libvulkan1" package.
+[2026-02-23T20:09:49.686545Z] [NONE] E0223 20:09:49.686357    1209 utils.go:348]
+[2026-02-23T20:09:52.780737Z] [NONE] I0223 20:09:52.780426    1209 installer.go:334] Done installing userspace libraries
+[2026-02-23T20:09:52.780737Z] [NONE] I0223 20:09:52.780535    1209 cache.go:64] Updated cached version as
+[2026-02-23T20:09:52.780737Z] [NONE] I0223 20:09:52.780543    1209 cache.go:66] DRIVER_VERSION=535.247.01
+[2026-02-23T20:09:52.780737Z] [NONE] I0223 20:09:52.780549    1209 cache.go:66] KERNEL_OPEN=Y
+[2026-02-23T20:09:52.780737Z] [NONE] I0223 20:09:52.780553    1209 cache.go:66] BUILD_ID=18244.382.54
+[2026-02-23T20:09:52.780737Z] [NONE] I0223 20:09:52.780558    1209 installer.go:62] Verifying GPU driver installation
+[2026-02-23T20:09:52.815131Z] [NONE] I0223 20:09:52.814937    1209 modules.go:69] Updating host's ld cache
+[2026-02-23T20:09:53.146498Z] [NONE] I0223 20:09:53.146124    1209 install.go:574] Finished installing the drivers.
+[2026-02-23T20:09:53.146498Z] [NONE] I0223 20:09:53.146191    1209 installer.go:166] Start to clean up mounts...
+[2026-02-23T20:10:16.761650Z] [NONE] I0223 20:10:16.761401    1209 installer.go:172] Cleanup finished!
+[2026-02-23T20:10:17.128806558Z] [INFO] Starting nvidia-persistenced process
+[2026-02-23T20:10:17.201168Z] [NONE] Started (1387)
+[2026-02-23T20:10:21.944772629Z] [INFO] nvidia-persistenced daemon successfully started
+[2026-02-23T20:10:22.231824815Z] [INFO] GPU driver installation completed successfully
+[2026-02-23T20:10:22.370951734Z] [INFO] Launch started
+[2026-02-23T20:10:52.350593394Z] [INFO] Preparing Container Runner
+[2026-02-23T20:10:52.437165049Z] [INFO] Exposed Ports:             : map[9000/tcp:{}]
+
+[2026-02-23T20:10:52.565113548Z] [INFO] Image Labels               : map[maintainer:NVIDIA CORPORATION <cudatools@nvidia.com> org.opencontainers.image.ref.name:ubuntu org.opencontainers.image.version:22.04 tee.launch_policy.allow_env_override:EPHEMERALML_MODEL_SOURCE,EPHEMERALML_GCS_BUCKET,EPHEMERALML_GCP_MODEL_PREFIX,EPHEMERALML_GCP_PROJECT,EPHEMERALML_GCP_LOCATION,EPHEMERALML_GCP_KMS_KEY,EPHEMERALML_GCP_WIP_AUDIENCE,EPHEMERALML_EXPECTED_MODEL_HASH,EPHEMERALML_EXPECTED_MRTD,EPHEMERALML_DIRECT,EPHEMERALML_MODEL_FORMAT,EPHEMERALML_LOG_FORMAT,EPHEMERALML_MODEL_SIGNING_PUBKEY tee.launch_policy.log_redirect:always]
+
+[2026-02-23T20:10:52.657916608Z] [INFO] Health Monitoring is disabled
+[2026-02-23T20:10:52.765875942Z] [INFO] Launch Policy              : {AllowedEnvOverride:[EPHEMERALML_MODEL_SOURCE EPHEMERALML_GCS_BUCKET EPHEMERALML_GCP_MODEL_PREFIX EPHEMERALML_GCP_PROJECT EPHEMERALML_GCP_LOCATION EPHEMERALML_GCP_KMS_KEY EPHEMERALML_GCP_WIP_AUDIENCE EPHEMERALML_EXPECTED_MODEL_HASH EPHEMERALML_EXPECTED_MRTD EPHEMERALML_DIRECT EPHEMERALML_MODEL_FORMAT EPHEMERALML_LOG_FORMAT EPHEMERALML_MODEL_SIGNING_PUBKEY] AllowedCmdOverride:false AllowedLogRedirect:always AllowedMountDestinations:[] HardenedImageMonitoring:none DebugImageMonitoring:memoryOnly PrivilegedCaps:false AllowCgroups:false}
+
+[2026-02-23T20:10:52.855510936Z] [INFO] Retrieved image config
+[2026-02-23T20:10:52.947305741Z] [INFO] Detected NVIDIA GPU device : /dev/nvidia-caps/nvidia-cap1
+[2026-02-23T20:10:53.037690550Z] [INFO] Detected NVIDIA GPU device : /dev/nvidia-caps/nvidia-cap2
+[2026-02-23T20:10:53.120996438Z] [INFO] Detected NVIDIA GPU device : /dev/nvidia-modeset
+[2026-02-23T20:10:53.172312425Z] [INFO] Detected NVIDIA GPU device : /dev/nvidia-uvm
+[2026-02-23T20:10:53.235817975Z] [INFO] Detected NVIDIA GPU device : /dev/nvidia-uvm-tools
+[2026-02-23T20:10:53.319776727Z] [INFO] Detected NVIDIA GPU device : /dev/nvidia0
+[2026-02-23T20:10:53.389819237Z] [INFO] Detected NVIDIA GPU device : /dev/nvidiactl
+[2026-02-23T20:10:53.740068290Z] [INFO] Adding TPM PCRs for measurement.
+[2026-02-23T20:10:53.796791929Z] [INFO] Adding TDX RTMRs for measurement.
+[2026-02-23T20:10:53.894919658Z] [INFO] Using TDX RTMR as attestation root.
+[2026-02-23T20:10:57.183571386Z] [INFO] Successfully measured memory monitoring event
+[2026-02-23T20:10:57.378708256Z] [INFO] Successfully measured GPU CC mode status
+[2026-02-23T20:10:57.505291029Z] [INFO] Refreshed container image signature cache
+[2026-02-23T20:10:57.823956420Z] [INFO] attestation through TDX quote
+[2026-02-23T20:10:58.369168212Z] [INFO] successfully refreshed attestation token
+[2026-02-23T20:10:58.489014685Z] [INFO] EnableOnDemandAttestation is enabled: initializing TEE server.
+[2026-02-23T20:10:58.599231409Z] [INFO] MemoryMonitoring is disabled by the VM operator
+[2026-02-23T20:10:58.695772636Z] [INFO] Container stdout/stderr will be redirected to serial and Cloud Logging. This may result in performance issues due to slow serial console writes.
+[2026-02-23T20:10:58.849755151Z] [INFO] Workload setup completed
+[2026-02-23T20:10:58.895188467Z] [INFO] workload task started
+[2026-02-23T20:10:59.012512Z] [NONE] {"timestamp":"2026-02-23T20:10:59.012286Z","level":"INFO","fields":{"message":"EphemeralML Enclave v2.0 (GCP Confidential VM Mode)"},"target":"ephemeral_ml_enclave"}
+[2026-02-23T20:10:59.012512Z] [NONE] {"timestamp":"2026-02-23T20:10:59.012339Z","level":"INFO","fields":{"message":"Confidential Space detected (no configfs-tsm). Transport attestation will use Launcher JWT. Boot evidence from synthetic provider.","step":"attestation","mode":"cs_launcher"},"target":"ephemeral_ml_enclave"}
+[2026-02-23T20:10:59.012512Z] [NONE] {"timestamp":"2026-02-23T20:10:59.012413Z","level":"INFO","fields":{"message":"CUDA available — using GPU","step":"device_init","device":"cuda","gpu_id":0},"target":"ephemeral_ml_enclave::candle_engine"}
+[2026-02-23T20:11:09.105539Z] [NONE] {"timestamp":"2026-02-23T20:11:09.105185Z","level":"INFO","fields":{"message":"Loading model from local directory","step":"model_load","source":"local","format":"safetensors","path":"/app/model"},"target":"ephemeral_ml_enclave"}
+[2026-02-23T20:11:09.666462Z] [NONE] {"timestamp":"2026-02-23T20:11:09.665883Z","level":"INFO","fields":{"message":"Model loaded","step":"model_load","source":"local","format":"safetensors","model_id":"stage-0","elapsed_ms":560.740638,"size_mb":86.6588363647461},"target":"ephemeral_ml_enclave"}
+[2026-02-23T20:11:09.892423900Z] [INFO] attestation through TDX quote
+[2026-02-23T20:11:10.359772Z] [NONE] {"timestamp":"2026-02-23T20:11:10.359494Z","level":"INFO","fields":{"message":"Confidential Space identity obtained","step":"cs_identity","issuer":"https://confidentialcomputing.googleapis.com","subject":"https://www.googleapis.com/compute/v1/projects/project-d3c20737-eec2-453d-8e5/zones/us-central1-a/instances/ephemeralml-gpu","swname":"CONFIDENTIAL_SPACE"},"target":"ephemeral_ml_enclave"}
+[2026-02-23T20:11:10.360247Z] [NONE] ========================================
+[2026-02-23T20:11:10.360247Z] [NONE]   TRUST EVIDENCE BUNDLE
+[2026-02-23T20:11:10.360247Z] [NONE] ========================================
+[2026-02-23T20:11:10.360247Z] [NONE]   Platform:           tdx
+[2026-02-23T20:11:10.360247Z] [NONE]   Model ID:           stage-0
+[2026-02-23T20:11:10.360247Z] [NONE]   Quote Hash:         6e4f15d2fc6be8573328af30c549ae469e253725091eef931aeafd51a1a7e9f7
+[2026-02-23T20:11:10.360247Z] [NONE]   HPKE Public Key:    f00ae4282f04e6a79d972fa562575658
+[2026-02-23T20:11:10.360247Z] [NONE]   Receipt Sign Key:   dbf5a573be905260589a4451a314343b
+[2026-02-23T20:11:10.360247Z] [NONE]   Model Hash:         53aa51172d142c89d9012cce15ae4d6cc0ca6895895114379cacb4fab128d9db
+[2026-02-23T20:11:10.360247Z] [NONE] ========================================
+[2026-02-23T20:11:10.360247Z] [NONE] {"timestamp":"2026-02-23T20:11:10.360147Z","level":"INFO","fields":{"message":"Using Confidential Space Launcher JWT for transport attestation","step":"transport_bridge","mode":"cs_launcher_jwt"},"target":"ephemeral_ml_enclave"}
+[2026-02-23T20:11:10.360247Z] [NONE] {"timestamp":"2026-02-23T20:11:10.360156Z","level":"INFO","fields":{"message":"Direct mode: accepting client connections on 0.0.0.0:9000","step":"boot_evidence","mode":"direct","quote_hash":"6e4f15d2fc6be8573328af30c549ae469e253725091eef931aeafd51a1a7e9f7","synthetic":false},"target":"ephemeral_ml_enclave"}
+[2026-02-23T20:11:10.360247Z] [NONE] [direct] Listening on 0.0.0.0:9000
+[2026-02-23T20:29:36.556583Z] [NONE] [direct] Malformed connection from 46.210.235.234:35460 (attempt 1/50): session closed
+[2026-02-23T20:29:43.036185Z] [NONE] [direct] Malformed connection from 46.210.235.234:35460 (attempt 2/50): session closed
+[2026-02-23T20:29:44.415592Z] [NONE] {"timestamp":"2026-02-23T20:29:44.415085Z","level":"INFO","fields":{"message":"initiator attestation verification succeeded","document_hash":"111f482894cabdd1d06201c062e7c23d7a850404deb4aae7009ce254c7379e2d","measurement_count":0},"target":"confidential_ml_transport::session::handshake"}
+[2026-02-23T20:29:44.628663780Z] [INFO] attestation through TDX quote
+[2026-02-23T20:29:46.562715Z] [NONE] [direct] Secure channel established with 46.210.235.234:35465
+[2026-02-23T20:29:46.562715Z] [NONE] [direct] Ready for inference requests
+[2026-02-23T20:29:46.736580Z] [NONE] [direct] Inference request: model_id=stage-0, input_len=384, generate=false
+[2026-02-23T20:29:58.963771Z] [NONE] [direct] Response sent: 384 floats, 12226ms, seq=0
+[2026-02-23T20:29:59.182394Z] [NONE] [direct] Channel closed: session closed
+[2026-02-23T20:30:06.289061521Z] [INFO] workload task ended and returned 0
+[2026-02-23T20:30:06.433358876Z] [INFO] token refreshing stopped
+[2026-02-23T20:30:06.457658888Z] [INFO] Workload completed
+[2026-02-23T20:30:06.636646495Z] [INFO] TEE container launcher exiting
+[2026-02-23T20:30:08.141939Z] [NONE] Shutdown (1387)
+[2026-02-23T20:30:08.201215Z] [NONE] Shutdown scheduled for Mon 2026-02-23 20:32:08 UTC, use 'shutdown -c' to cancel.

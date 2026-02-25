@@ -1,10 +1,14 @@
 # EphemeralML Benchmark & Competitive Analysis
 
+> Benchmark freshness status (2026-02-25): the legacy Nitro benchmark pipeline (`enclaves/vsock-pingpong` + several `benchmark_*.rs` bins) is not present on `main` (`f1ba30d`), but `scripts/run_benchmark.sh` now auto-falls back to `scripts/run_benchmark_modern.sh` for a current-architecture benchmark path. The historical benchmark tables below still refer to commit `b00bab1` (February 4, 2026). Fresh multicloud E2E timings from the latest reruns are tracked in `docs/MULTICLOUD_E2E_STATUS.md`.
+
+> AWS benchmark refresh (2026-02-25, modern fallback path): `benchmark_results_aws_nitro_modern_20260225_clean/` contains a fresh Nitro benchmark bundle generated via repeated `scripts/nitro_e2e.sh` runs (10 measured, 2 warmup) plus `benchmark_baseline` and `benchmark_cose`. MiniLM-L6 mean latency was `74.61ms` bare metal vs `77.00ms` enclave receipt execution time (`+3.2%`), with host-side Nitro E2E mean `117.1ms`. COSE full attestation verification mean was `1.9212ms`. Caveats: legacy cold-start stage breakdown / VSock RTT are unavailable in this fallback mode, receipt `memory_peak_mb` is `0` in the current Nitro host path (so enclave RSS is not reported), and the benchmark host checkout lacked `.git` metadata, so `commit` fields were normalized locally to `f1ba30d` after artifact copy.
+
 ## Methodology
 
 ### Reproducibility
 
-All benchmarks are produced by the automated benchmark suite in this repository.
+All benchmarks below were produced by the automated benchmark suite in this repository on the benchmark branch/commit noted in the results section.
 To reproduce:
 
 ```bash

@@ -1,0 +1,15 @@
+{
+  "schema_version": 1,
+  "generated": "2026-02-25T10:25:56Z",
+  "artifacts": [
+    {"file": "eif_build_output.json", "sha256": "317755de337dc43e9149af4201734ef156f4ba4a0529005858ea09fc05e50be5", "bytes": 3590},
+    {"file": "enclave_describe.json", "sha256": "fc6db6f8d195d2814c72137a0af491827aca69917a7bfac136db1809fe6119aa", "bytes": 701},
+    {"file": "enclave_describe_post.json", "sha256": "fc6db6f8d195d2814c72137a0af491827aca69917a7bfac136db1809fe6119aa", "bytes": 701},
+    {"file": "enclave_launch.json", "sha256": "e8a539eb645e97a1455b1b6c8fde82b59b61b38852f8b0da3784641c726158f7", "bytes": 316},
+    {"file": "host_output.log", "sha256": "861e4dede9d012ad6b89cc83729b2118aa8e4256b457adac5b8b615f861980f5", "bytes": 6548},
+    {"file": "pcr_measurements.json", "sha256": "b10180dd6c2bdcdb7f1d21054ed59e097e2cb82b50ee8887fe28203c0a7dad56", "bytes": 442},
+    {"file": "receipt.json", "sha256": "18064ff3f02b474c63ad3f2a37d567998c1712a27373eff6ed793391ebfafb1d", "bytes": 3442},
+    {"file": "receipt.raw", "sha256": "096edc17a630c97d73ccf4a9bb93cfd7f3d02a8db9520f5508c2760ce113edab", "bytes": 821},
+    {"file": "timing.json", "sha256": "698d4f347957f9dd702f737d141cf29753f1d49b1e02a538079a3442bb245fa9", "bytes": 219}
+  ]
+}

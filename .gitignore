@@ -1,6 +1,7 @@
 # Rust
 /target/
 .target_codex/
+.target_*/
 **/*.rs.bk
 *.pdb
 
@@ -60,6 +61,7 @@ benchmark_results/
 /test_assets/**/*.encrypted
 /test_assets/**/*.wrapped
 /test_assets/**/*.safetensors
+/test_assets/llama3/
 test_artifacts/
 
 # Build artifacts

@@ -1,0 +1,11 @@
+  ==============================================================
+  EphemeralML — Verify Deployment
+  ==============================================================
+
+  [1/4] Resolving instance IP...
+  Instance IP:  35.202.45.171
+
+  [2/4] Waiting for 35.202.45.171:9000 to be reachable (max 180s)...
+  Waiting... [5/180s]  Waiting... [10/180s]  Waiting... [15/180s]  Waiting... [20/180s]  Waiting... [25/180s]  Waiting... [30/180s]  Waiting... [35/180s]  Waiting... [40/180s]  Waiting... [45/180s]  Waiting... [50/180s]  Waiting... [55/180s]  Waiting... [60/180s]  Waiting... [65/180s]  Waiting... [70/180s]  Waiting... [75/180s]  Waiting... [80/180s]  Waiting... [85/180s]  Waiting... [90/180s]  Waiting... [95/180s]  Waiting... [100/180s]  Waiting... [105/180s]  Waiting... [110/180s]  Waiting... [115/180s]  Waiting... [120/180s]  Waiting... [125/180s]  Waiting... [130/180s]  Waiting... [135/180s]  Waiting... [140/180s]  Waiting... [145/180s]  Waiting... [150/180s]  Waiting... [155/180s]  Waiting... [160/180s]  Waiting... [165/180s]  Waiting... [170/180s]  Waiting... [175/180s]  ERROR: Port 9000 not reachable after 180s.
+    - Firewall rule allows TCP 9000: gcloud compute firewall-rules list --project=project-d3c20737-eec2-453d-8e5
+    - Container is running: gcloud compute ssh ephemeralml-cvm --zone=us-central1-a --command='sudo journalctl -u tee-container-runner --no-pager -n 50'

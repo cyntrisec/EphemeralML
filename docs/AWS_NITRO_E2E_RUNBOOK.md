@@ -208,7 +208,7 @@ Successful run shows:
 1. Pipeline initialized with VSock connections on ports 5000/5001/5002
 2. Attestation verification succeeded (with document hash)
 3. Health check passed
-4. Inference complete (~75ms for MiniLM-L6-v2)
+4. Inference complete (~78ms enclave execution for MiniLM-L6-v2; ~118ms host E2E in current evidence)
 5. Embedding output (384 dimensions, L2 norm ~7.3)
 6. Signed attestation receipt with PCR measurements
 
@@ -219,7 +219,9 @@ Successful run shows:
 | EIF build JSON | PCR0/1/2 measurements from `nitro-cli build-enclave` |
 | `describe-enclaves` | Runtime enclave state, CID, memory, CPU allocation |
 | Host output log | Full pipeline trace: handshake, health check, inference, receipt |
-| Receipt (in log) | Human-readable receipt summary printed by host binary (receipt ID, hashes, PCRs, signature). Raw CBOR receipt is not currently saved to a separate file — the host would need a `--receipt-output` flag. |
+| `receipt.json` | Parsed attestation receipt saved by host (`--receipt-output`) |
+| `receipt.raw` | Raw `__receipt__` tensor bytes (wire format) saved by host (`--receipt-output-raw`) |
+| Receipt (in log) | Human-readable receipt summary printed by host binary (receipt ID, hashes, PCRs, signature) |
 
 ## Security Notes
 

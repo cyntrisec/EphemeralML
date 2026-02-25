@@ -1,0 +1,34 @@
+Encrypted Model Reuse Validation — 5 Cycles
+=============================================
+Date: 2026-02-19/20
+Image: us-docker.pkg.dev/project-d3c20737-eec2-453d-8e5/ephemeralml/enclave:e7ce267
+Platform: GCP c3-standard-4 (Intel TDX), Confidential Space production image
+Model: MiniLM-L6-v2 (22.7M params), AES-GCM encrypted, KMS-gated
+
+Cycle  IP             Inference  Receipt ID                            GCS Immutable
+-----  ----           ---------  ----------                            -------------
+1      34.42.228.69   515ms      1f72c927-6a63-4f36-a4a2-5807b4be3606 PASS
+2      34.9.156.127   511ms      47020dec-0f3d-440a-871c-7f3e8ffa2418 PASS
+3      34.9.156.127   497ms      f27cd8bc-f693-4b16-8156-6e9af8049658 PASS
+4      34.9.156.127   431ms      513b6488-c996-45f8-b4c7-36ea60aa6c4a PASS
+5      34.42.228.69   593ms      e5847274-259c-40cf-88ad-aadee2cfbe84 PASS
+
+GCS Object Generations (unchanged across all 5 cycles):
+  config.json:           1771517340844022
+  manifest.json:         1771517356016461
+  model.safetensors.enc: 1771517351265881
+  tokenizer.json:        1771517343575526
+  wrapped_dek.bin:       1771517353646236
+
+Observations:
+- Each fresh CVM instance successfully obtained attestation token from CS Launcher
+- KMS decrypted wrapped DEK via WIP (Workload Identity Pool) on each boot
+- Model hash verified against manifest on each boot
+- Inference latency: 431-593ms (avg ~509ms), consistent across cycles
+- Different external IPs allocated (GCP rotation), same zone us-central1-a
+- ~40s from VM RUNNING to server accepting connections
+- All receipts Ed25519 signed with TDX-backed keys
+
+Conclusion: Encrypted model in GCS is correctly reused across 5 independent
+deployment cycles with no data mutation. KMS key release, model decryption,
+hash verification, and TDX attestation work reliably across fresh boots.

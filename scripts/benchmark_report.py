@@ -29,12 +29,13 @@ def overhead_pct(baseline: float, enclave: float) -> str:
 
 
 def fmt_ms(val: float) -> str:
-    if val == 0.0:
+    if val is None or val == 0.0:
         return "N/A"
     return f"{val:.2f}ms"
 
 
 def generate_report(baseline: dict, enclave: dict) -> str:
+    modern_fallback = enclave.get("benchmark_mode") == "nitro_e2e_receipt_execution_time"
     lines = []
     lines.append("# EphemeralML Benchmark Report")
     lines.append("")
@@ -67,8 +68,13 @@ def generate_report(baseline: dict, enclave: dict) -> str:
     for key, label in stage_keys:
         bv = b_stages.get(key, 0.0)
         ev = e_stages.get(key, 0.0)
-        oh = overhead_pct(bv, ev) if bv > 0 else ("N/A (enclave-only)" if ev > 0 else "N/A")
-        lines.append(f"| {label} | {fmt_ms(bv)} | {fmt_ms(ev)} | {oh} |")
+        if modern_fallback and (ev is None or ev == 0.0):
+            oh = "N/A"
+            ev_display = "N/A"
+        else:
+            oh = overhead_pct(bv, ev) if bv > 0 else ("N/A (enclave-only)" if ev > 0 else "N/A")
+            ev_display = fmt_ms(ev)
+        lines.append(f"| {label} | {fmt_ms(bv)} | {ev_display} | {oh} |")
 
     lines.append("")
 
@@ -94,6 +100,19 @@ def generate_report(baseline: dict, enclave: dict) -> str:
 
     lines.append("")
 
+    # Optional host-side E2E latency stats (modern fallback benchmark path)
+    e2e_client_lat = enclave.get("inference", {}).get("e2e_client_latency_ms", {})
+    if isinstance(e2e_client_lat, dict) and any(e2e_client_lat.get(k, 0) > 0 for k in ["mean", "p50", "p95", "p99"]):
+        lines.append("## Host-Side E2E Latency (Modern Fallback)")
+        lines.append("")
+        lines.append("Aggregated from repeated `scripts/nitro_e2e.sh` runs (`timing.json.e2e_client_ms`).")
+        lines.append("")
+        lines.append("| Percentile | Host E2E |")
+        lines.append("|-----------|----------|")
+        for key, label in [("mean", "Mean"), ("p50", "P50"), ("p95", "P95"), ("p99", "P99"), ("min", "Min"), ("max", "Max")]:
+            lines.append(f"| {label} | {fmt_ms(e2e_client_lat.get(key, 0.0))} |")
+        lines.append("")
+
     # Memory comparison
     lines.append("## Memory Usage")
     lines.append("")
@@ -105,7 +124,10 @@ def generate_report(baseline: dict, enclave: dict) -> str:
 
     bv = b_mem.get("peak_rss_mb", 0.0)
     ev = e_mem.get("peak_rss_mb", 0.0)
-    lines.append(f"| Peak RSS | {bv:.1f} MB | {ev:.1f} MB | {overhead_pct(bv, ev)} |")
+    if modern_fallback and (ev is None or ev == 0.0):
+        lines.append(f"| Peak RSS | {bv:.1f} MB | N/A | N/A |")
+    else:
+        lines.append(f"| Peak RSS | {bv:.1f} MB | {ev:.1f} MB | {overhead_pct(bv, ev)} |")
     lines.append(f"| Model Size | {b_mem.get('model_size_mb', 0.0):.1f} MB | {e_mem.get('model_size_mb', 0.0):.1f} MB | - |")
 
     lines.append("")
@@ -333,6 +355,42 @@ def generate_crypto_report(crypto: dict) -> str:
     return "\n".join(lines)
 
 
+def generate_cose_report(cose: dict) -> str:
+    """Generate markdown section for COSE attestation verification benchmark."""
+    lines = []
+    lines.append("")
+    lines.append("## COSE Attestation Verification")
+    lines.append("")
+    lines.append(
+        "Client-side verification cost for Nitro-style COSE_Sign1 attestation (ECDSA P-384 + SHA-384)."
+    )
+    lines.append("")
+    lines.append("| Component | Mean | P50 | P95 | P99 |")
+    lines.append("|-----------|------|-----|-----|-----|")
+
+    mapping = [
+        ("cose_signature_verify_ms", "COSE signature verify"),
+        ("cert_chain_verify_ms", "Certificate chain verify"),
+        ("cbor_payload_parse_ms", "CBOR payload parse"),
+        ("full_verification_ms", "Full verification pipeline"),
+    ]
+    for key, label in mapping:
+        stats = cose.get(key, {})
+        if stats:
+            lines.append(
+                f"| {label} | {fmt_ms(stats.get('mean', 0))} | {fmt_ms(stats.get('p50', 0))} | "
+                f"{fmt_ms(stats.get('p95', 0))} | {fmt_ms(stats.get('p99', 0))} |"
+            )
+
+    if cose.get("cose_sign1_size_bytes"):
+        lines.append("")
+        lines.append(
+            f"Payload: `{cose.get('payload_size_bytes', 'unknown')}` bytes, COSE_Sign1: `{cose.get('cose_sign1_size_bytes')}` bytes."
+        )
+    lines.append("")
+    return "\n".join(lines)
+
+
 def generate_input_scaling_report(data: dict) -> str:
     """Generate markdown section for input-shape scaling benchmark."""
     lines = []
@@ -458,6 +516,7 @@ def main():
     parser.add_argument("--baseline", required=True, help="Path to baseline_results.json")
     parser.add_argument("--enclave", required=True, help="Path to enclave_results.json")
     parser.add_argument("--crypto", default=None, help="Path to crypto benchmark results JSON")
+    parser.add_argument("--cose", default=None, help="Path to COSE attestation verification benchmark results JSON")
     parser.add_argument("--input-scaling", default=None, help="Path to input scaling results JSON")
     parser.add_argument("--true-e2e", default=None, help="Path to true E2E results JSON")
     parser.add_argument("--enclave-concurrency", default=None, help="Path to enclave concurrency results JSON")
@@ -468,10 +527,13 @@ def main():
     baseline = load_results(args.baseline)
     enclave = load_results(args.enclave)
     crypto = load_results(args.crypto) if args.crypto else None
+    cose = load_results(args.cose) if args.cose else None
 
     report = generate_report(baseline, enclave)
     if crypto:
         report += generate_crypto_report(crypto)
+    if cose:
+        report += generate_cose_report(cose)
     if args.input_scaling:
         report += generate_input_scaling_report(load_results(args.input_scaling))
     if args.true_e2e:

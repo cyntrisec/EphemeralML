@@ -44,6 +44,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
         let receipt_path = std::env::var("EPHEMERALML_RECEIPT_PATH")
             .unwrap_or_else(|_| "/tmp/ephemeralml-receipt.json".to_string());
+        let model_id = std::env::var("EPHEMERALML_GCP_VERIFY_MODEL_ID")
+            .unwrap_or_else(|_| "stage-0".to_string());
 
         match client.establish_channel(&addr).await {
             Ok(()) => {
@@ -58,7 +60,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
                 // Run inference with dummy input matching MiniLM-L6-v2 (384-dim)
                 let input_tensor: Vec<f32> = vec![0.1; 384];
-                match client.execute_inference("stage-0", input_tensor).await {
+                println!("Using model_id={}", model_id);
+                match client.execute_inference(&model_id, input_tensor).await {
                     Ok(result) => {
                         println!(
                             "Inference succeeded: {} floats returned",

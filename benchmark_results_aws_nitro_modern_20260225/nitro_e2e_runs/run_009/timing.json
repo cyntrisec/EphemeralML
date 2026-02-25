@@ -1,0 +1,8 @@
+{
+  "schema_version": 1,
+  "e2e_client_ms": 130,
+  "enclave_execution_time_ms": 79,
+  "client_exit_code": 0,
+  "input_text": "Confidential AI inference with cryptographic proof",
+  "timestamp": "2026-02-25T10:27:48Z"
+}

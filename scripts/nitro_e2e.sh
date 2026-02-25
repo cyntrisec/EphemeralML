@@ -124,49 +124,34 @@ if [ ! -f "$EVIDENCE_DIR/eif_build_output.json" ]; then
     nitro-cli describe-eif --eif-path "$EIF_PATH" > "$EVIDENCE_DIR/eif_build_output.json" 2>&1 || true
 fi
 
-# Parse PCRs — nitro-cli build-enclave outputs JSON with Measurements.PCR0/1/2
-PCR0=$(python3 -c "
-import json, sys
-try:
-    data = json.load(open('$EVIDENCE_DIR/eif_build_output.json'))
-    if 'Measurements' in data:
-        print(data['Measurements']['PCR0'])
-    elif 'PCR0' in data:
-        print(data['PCR0'])
-    else:
-        print('')
-except Exception as e:
-    print('', file=sys.stderr)
-    print('')
-" 2>/dev/null)
+# Parse PCRs — nitro-cli may print status lines before the JSON payload.
+extract_pcr() {
+    local pcr_name="$1"
+    python3 - "$EVIDENCE_DIR/eif_build_output.json" "$pcr_name" <<'PY' 2>/dev/null
+import json
+import sys
 
-PCR1=$(python3 -c "
-import json, sys
+path, pcr_name = sys.argv[1], sys.argv[2]
 try:
-    data = json.load(open('$EVIDENCE_DIR/eif_build_output.json'))
-    if 'Measurements' in data:
-        print(data['Measurements']['PCR1'])
-    elif 'PCR1' in data:
-        print(data['PCR1'])
+    raw = open(path, "r", encoding="utf-8", errors="replace").read()
+    start = raw.find("{")
+    end = raw.rfind("}")
+    if start == -1 or end == -1 or end < start:
+        print("")
+        raise SystemExit(0)
+    data = json.loads(raw[start:end + 1])
+    if "Measurements" in data:
+        print(data["Measurements"].get(pcr_name, ""))
     else:
-        print('')
-except Exception as e:
-    print('')
-" 2>/dev/null)
+        print(data.get(pcr_name, ""))
+except Exception:
+    print("")
+PY
+}
 
-PCR2=$(python3 -c "
-import json, sys
-try:
-    data = json.load(open('$EVIDENCE_DIR/eif_build_output.json'))
-    if 'Measurements' in data:
-        print(data['Measurements']['PCR2'])
-    elif 'PCR2' in data:
-        print(data['PCR2'])
-    else:
-        print('')
-except Exception as e:
-    print('')
-" 2>/dev/null)
+PCR0=$(extract_pcr "PCR0")
+PCR1=$(extract_pcr "PCR1")
+PCR2=$(extract_pcr "PCR2")
 
 # Debug mode zeros out PCRs — that's expected, but we still pin them
 if [ "$DEBUG_MODE" = true ]; then

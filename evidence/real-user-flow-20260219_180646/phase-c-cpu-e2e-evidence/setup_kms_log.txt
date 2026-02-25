@@ -1,0 +1,47 @@
+=== EphemeralML KMS + WIP Setup ===
+  Project:  project-d3c20737-eec2-453d-8e5
+  Region:   us-central1
+  Keyring:  ephemeralml
+  Key:      model-dek
+  Pool:     ephemeralml-pool
+  Provider: ephemeralml-tdx
+  Bucket:   ephemeralml-models-project-d3c20737-eec2-453d-8e5
+
+[1/5] Creating KMS keyring and key...
+  Keyring already exists
+  Key already exists
+  KMS key: projects/project-d3c20737-eec2-453d-8e5/locations/us-central1/keyRings/ephemeralml/cryptoKeys/model-dek
+[2/5] Creating Workload Identity Pool...
+  Pool already exists
+[3/5] Creating OIDC provider for TDX attestation...
+  Provider already exists — updating allowed-audiences...
+Updated workload identity pool provider [ephemeralml-tdx].
+name: projects/324130315768/locations/global/workloadIdentityPools/ephemeralml-pool/providers/ephemeralml-tdx/operations/bigarepl3tgamefqu73jkai000000000
+  WIP audience: //iam.googleapis.com/projects/324130315768/locations/global/workloadIdentityPools/ephemeralml-pool/providers/ephemeralml-tdx
+  Attribute mappings:
+    attribute.image_digest  = assertion.submods.container.image_digest
+    attribute.gpu_cc_mode   = assertion.submods.nvidia_gpu.cc_mode
+
+  To also gate KMS key release on GPU CC mode (recommended for GPU deployments),
+  add gpu_cc_mode to the attribute condition on the IAM binding.
+[4/5] Granting KMS decrypt permission to WIP principals...
+  WARNING: --allow-broad-binding set. KMS decrypt granted to ALL workloads in the pool.
+           This is unsafe for production. Re-run with IMAGE_DIGEST to restrict access.
+bindings:
+- members:
+  - principalSet://iam.googleapis.com/projects/324130315768/locations/global/workloadIdentityPools/ephemeralml-pool/*
+  role: roles/cloudkms.cryptoKeyDecrypter
+etag: BwZLL4VQ_PA=
+version: 1
+[5/5] Creating GCS bucket...
+  Bucket already exists
+
+=== Setup Complete ===
+
+Export these for server invocation:
+  export GCP_KMS_KEY=projects/project-d3c20737-eec2-453d-8e5/locations/us-central1/keyRings/ephemeralml/cryptoKeys/model-dek
+  export GCP_WIP_AUDIENCE=//iam.googleapis.com/projects/324130315768/locations/global/workloadIdentityPools/ephemeralml-pool/providers/ephemeralml-tdx
+  export GCP_BUCKET=ephemeralml-models-project-d3c20737-eec2-453d-8e5
+
+Next: encrypt and upload a model with:
+  bash scripts/gcp/encrypt_model.sh <model_dir> <gcs_prefix>

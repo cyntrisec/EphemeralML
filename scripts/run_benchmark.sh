@@ -61,11 +61,35 @@ else
     INSTANCE_TYPE=$(curl -sf http://169.254.169.254/latest/meta-data/instance-type 2>/dev/null || echo "unknown")
 fi
 [ -z "$INSTANCE_TYPE" ] && INSTANCE_TYPE="unknown"
-GIT_COMMIT=$(cd "$PROJECT_ROOT" && git rev-parse --short HEAD 2>/dev/null || echo "unknown")
+GIT_COMMIT="${GIT_COMMIT:-$(cd "$PROJECT_ROOT" && git rev-parse --short HEAD 2>/dev/null || echo "unknown")}"
+ORIG_ARGS=("$@")
 
 # Parse arguments
 while [[ $# -gt 0 ]]; do
     case "$1" in
+        --help|-h)
+            cat <<'EOF'
+Usage: ./scripts/run_benchmark.sh [options]
+
+Legacy benchmark suite wrapper. On branches where the legacy vsock-pingpong benchmark
+pipeline is missing, this script automatically falls back to `scripts/run_benchmark_modern.sh`.
+
+Common options:
+  --model-id MODEL
+  --clean
+  --skip-baseline
+  --skip-build
+  --require-kms
+  --allow-kms-bypass
+  --output-dir DIR
+
+Modern fallback options (accepted and passed through):
+  --nitro-runs N
+  --nitro-warmup N
+  --text TEXT
+EOF
+            exit 0
+            ;;
         --skip-baseline) SKIP_BASELINE=true; shift ;;
         --skip-build) SKIP_BUILD=true; shift ;;
         --clean) CLEAN_BUILD=true; shift ;;
@@ -73,6 +97,10 @@ while [[ $# -gt 0 ]]; do
         --require-kms) REQUIRE_KMS=true; shift ;;
         --allow-kms-bypass) REQUIRE_KMS=false; shift ;;
         --output-dir) OUTPUT_DIR="$2"; shift 2 ;;
+        # Accepted for modern fallback runner; ignored by legacy path.
+        --nitro-runs) shift 2 ;;
+        --nitro-warmup) shift 2 ;;
+        --text) shift 2 ;;
         *) echo "Unknown argument: $1"; exit 1 ;;
     esac
 done
@@ -104,6 +132,41 @@ cat >"$OUTPUT_DIR/run_metadata.json" <<EOF
   "enclave_cpus": ${ENCLAVE_CPUS}
 }
 EOF
+
+# Preflight: this script targets a legacy Nitro benchmark pipeline ("vsock-pingpong")
+# that may not exist in newer checkouts. Fail fast with an actionable message instead
+# of failing midway through the run after expensive setup/build steps.
+LEGACY_BENCHMARK_DOCKERFILE="$PROJECT_ROOT/enclaves/vsock-pingpong/Dockerfile"
+REQUIRED_BENCHMARK_SOURCES=(
+    "$PROJECT_ROOT/enclave/src/bin/benchmark_baseline.rs"
+    "$PROJECT_ROOT/client/src/bin/benchmark_cose.rs"
+    "$PROJECT_ROOT/client/src/bin/benchmark_crypto.rs"
+    "$PROJECT_ROOT/client/src/bin/benchmark_e2e.rs"
+    "$PROJECT_ROOT/client/src/bin/benchmark_concurrent.rs"
+    "$PROJECT_ROOT/client/src/bin/benchmark_input_scaling.rs"
+    "$PROJECT_ROOT/client/src/bin/benchmark_true_e2e.rs"
+    "$PROJECT_ROOT/client/src/bin/benchmark_enclave_concurrency.rs"
+)
+
+MISSING_BENCHMARK_COMPONENTS=()
+[[ -f "$LEGACY_BENCHMARK_DOCKERFILE" ]] || MISSING_BENCHMARK_COMPONENTS+=("$LEGACY_BENCHMARK_DOCKERFILE")
+for src in "${REQUIRED_BENCHMARK_SOURCES[@]}"; do
+    [[ -f "$src" ]] || MISSING_BENCHMARK_COMPONENTS+=("$src")
+done
+
+if [[ ${#MISSING_BENCHMARK_COMPONENTS[@]} -gt 0 ]]; then
+    log "Legacy benchmark pipeline components are missing in this checkout."
+    log "Missing benchmark components:"
+    for path in "${MISSING_BENCHMARK_COMPONENTS[@]}"; do
+        log "  - ${path#$PROJECT_ROOT/}"
+    done
+    if [[ -x "$SCRIPT_DIR/run_benchmark_modern.sh" ]]; then
+        log "Falling back to scripts/run_benchmark_modern.sh (current architecture benchmark path)"
+        exec "$SCRIPT_DIR/run_benchmark_modern.sh" "${ORIG_ARGS[@]}"
+    fi
+    log "ERROR: scripts/run_benchmark_modern.sh not found/executable, and legacy pipeline is unavailable."
+    exit 2
+fi
 
 # ── Step 0: Clean build (optional but recommended for first run after checkout) ──
 # option_env!("GIT_COMMIT") is baked at compile time; stale binaries will have the wrong commit.

@@ -1,0 +1,13 @@
+{
+  "schema_version": 1,
+  "client_build_ms": 990,
+  "port_wait_ms": 90000,
+  "e2e_client_ms": 14888,
+  "enclave_execution_time_ms": 12319,
+  "receipt_verify_ms": 578,
+  "client_exit_code": 0,
+  "receipt_verified": true,
+  "instance": "ephemeralml-gpu",
+  "ip": "34.45.147.85",
+  "timestamp": "2026-02-25T09:28:24Z"
+}

@@ -1,0 +1,31 @@
+
+  ==============================================================
+  EphemeralML Receipt Verification
+  ==============================================================
+
+  Receipt:     9ff387a3-b603-4ffb-a9f8-2ad94bededec
+  Model:       stage-0 v1.0
+  Platform:    tdx-mrtd-rtmr
+  Sequence:    #0
+
+  --------------------------------------------------------------
+  Checks:
+  --------------------------------------------------------------
+  Signature (Ed25519)         [FAIL]
+    Why: The Ed25519 signature does not match the provided public key.
+    Fix: Verify you are using the correct public key (--public-key or --public-key-file).
+  Model ID match              [SKIP]
+  Measurement type            [SKIP]
+  Timestamp freshness         [PASS]
+  Measurements present        [PASS]
+  Attestation source          [SKIP]
+  Image digest                [SKIP]
+  Destroy evidence            [SKIP]
+  --------------------------------------------------------------
+
+  INVALID
+
+  Errors:
+    - Ed25519 signature verification failed
+
+  --------------------------------------------------------------

@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CYNTRISEC — Confidential AI Infrastructure</title>
+    <meta name="description" content="EphemeralML: Per-inference cryptographic proof bundles for confidential AI. Your data existed for 1.7 seconds. Here's the cryptographic proof.">
+    <link rel="icon" type="image/png" href="assets/favicon.png?v=3">
+    <link rel="shortcut icon" href="assets/favicon.png?v=3">
+    <link rel="stylesheet" href="style.css?v=6">
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+</head>
+<body>
+    <!-- Theme Toggle (Fixed Corner) -->
+    <button id="theme-toggle" class="theme-toggle" onclick="toggleTheme()" aria-label="Toggle Dark Mode">
+        <svg id="moon-icon" viewBox="0 0 24 24"><path d="M12 3a9 9 0 1 0 9 9c0-.46-.04-.92-.1-1.36a5.389 5.389 0 0 1-4.4 2.26 5.403 5.403 0 0 1-3.14-9.8c-.44-.06-.9-.1-1.36-.1z"/></svg>
+        <svg id="sun-icon" viewBox="0 0 24 24" style="display:none;"><path d="M12 7c-2.76 0-5 2.24-5 5s2.24 5 5 5 5-2.24 5-5-2.24-5-5-5zM2 13h2c.55 0 1-.45 1-1s-.45-1-1-1H2c-.55 0-1 .45-1 1s.45 1 1 1zm18 0h2c.55 0 1-.45 1-1s-.45-1-1-1h-2c-.55 0-1 .45-1 1s.45 1 1 1zM11 2v2c0 .55.45 1 1 1s1-.45 1-1V2c0-.55-.45-1-1-1s-1 .45-1 1zm0 18v2c0 .55.45 1 1 1s1-.45 1-1v-2c0-.55-.45-1-1-1s-1 .45-1 1zM5.99 4.58c-.39-.39-1.03-.39-1.41 0-.39.39-.39 1.03 0 1.41l1.06 1.06c.39.39 1.03.39 1.41 0s.39-1.03 0-1.41L5.99 4.58zm12.37 12.37c-.39-.39-1.03-.39-1.41 0-.39.39-.39 1.03 0 1.41l1.06 1.06c.39.39 1.03.39 1.41 0 .39-.39.39-1.03 0-1.41l-1.06-1.06zm1.06-10.96c.39-.39.39-1.03 0-1.41-.39-.39-1.03-.39-1.41 0l-1.06 1.06c-.39.39-.39 1.03 0 1.41s1.03.39 1.41 0l1.06-1.06zM7.05 18.36c.39-.39.39-1.03 0-1.41-.39-.39-1.03-.39-1.41 0l-1.06 1.06c-.39.39-.39 1.03 0 1.41s1.03.39 1.41 0l1.06-1.06z"/></svg>
+    </button>
+
+    <div class="container">
+        <header>
+            <div class="logo-container">
+                <img src="assets/logo.png" alt="Cyntrisec Logo" class="logo-img">
+                <div class="brand-name">CYNTRISEC<span class="brand-cursor"></span></div>
+            </div>
+            <nav>
+                <a href="#ephemeralml">./EPHEMERALML</a>
+                <a href="#how-it-works">./HOW_IT_WORKS</a>
+                <a href="#cli">./CLI</a>
+                <a href="https://github.com/cyntrisec">./GITHUB</a>
+                <a href="https://x.com/cyntrisec">./X</a>
+            </nav>
+        </header>
+
+        <!-- EphemeralML Hero -->
+        <section id="ephemeralml" class="hero">
+            <h1>EPHEMERALML</h1>
+            <p class="subtitle">
+                AI Clean Room for Inference.<br>
+                Per-request cryptographic proof that your data was processed inside<br>
+                a hardware-isolated environment &mdash; and nowhere else.
+            </p>
+
+            <div class="badges">
+                <img src="https://img.shields.io/crates/v/confidential-ml-transport?style=for-the-badge&logo=rust&logoColor=white&color=black&labelColor=black" alt="crates.io">
+                <img src="https://img.shields.io/github/license/cyntrisec/EphemeralML?style=for-the-badge&color=black&labelColor=black" alt="License">
+                <img src="https://img.shields.io/badge/TEE-TDX%20%7C%20SEV--SNP%20%7C%20NITRO-black?style=for-the-badge" alt="TEE Support">
+            </div>
+
+            <div class="quote-block">
+                "Your data existed for 1.7 seconds.<br>Here's the cryptographic proof."
+            </div>
+
+            <div class="ascii-box">
+                <span class="prompt">$ ephemeralml infer \</span>
+                <span class="prompt">&nbsp;&nbsp;--addr 203.0.113.42:9000 \</span>
+                <span class="prompt">&nbsp;&nbsp;--text "Patient presents with chest pain..." \</span>
+                <span class="prompt">&nbsp;&nbsp;--model llama3-8b --generate</span>
+                <span class="prompt">&nbsp;</span>
+                <span class="prompt">Attestation:  TDX verified (Confidential Space)</span>
+                <span class="prompt">Encryption:   HPKE-X25519-ChaCha20Poly1305</span>
+                <span class="prompt">Channel:      established</span>
+                <span class="prompt">&nbsp;</span>
+                <span class="prompt">Generated: "Based on the symptoms described..."</span>
+                <span class="prompt">&nbsp;</span>
+                <span class="prompt">Receipt</span>
+                <span class="prompt">  Signature:  VERIFIED (Ed25519)</span>
+                <span class="prompt">  Model hash: a3f7c2e1...</span>
+                <span class="prompt">  Attestation: 8b4f19d0... (TDX quote bound)</span>
+                <span class="prompt">  Saved to:   receipt.json</span>
+                <span class="prompt">&nbsp;</span>
+                <span class="prompt">$ ephemeralml verify receipt.json --public-key-file receipt.json.pubkey</span>
+                <span class="prompt">  --> VERIFIED<span class="cursor"></span></span>
+            </div>
+        </section>
+
+        <!-- The Problem -->
+        <section class="problem-section">
+            <h2>[ THE_PROBLEM ]</h2>
+            <p>
+                53% of enterprises cite privacy as the #1 barrier to cloud AI adoption.
+                Healthcare, finance, and legal teams can't use cloud inference because they
+                can't prove to auditors how patient data, trade secrets, or privileged
+                communications were handled. Encryption in transit isn't enough &mdash;
+                they need <strong>auditable evidence</strong> of what happened during processing.
+            </p>
+        </section>
+
+        <!-- How It Works -->
+        <section id="how-it-works" class="features">
+            <div class="feature">
+                <h3>[ PROOF_BUNDLE ]</h3>
+                <p>Every inference produces a signed receipt: model hash, input/output hashes, attestation evidence, Ed25519 signature. Human-readable. Machine-verifiable.</p>
+            </div>
+            <div class="feature">
+                <h3>[ HARDWARE_ISOLATION ]</h3>
+                <p>Models run inside TEEs (Intel TDX, AMD SEV-SNP, AWS Nitro). The cloud operator cannot access data during processing. Verified by hardware attestation.</p>
+            </div>
+            <div class="feature">
+                <h3>[ ENCRYPTED_TRANSPORT ]</h3>
+                <p>Attestation-bound X25519 + ChaCha20-Poly1305 channels. Data is encrypted end-to-end between client and enclave. 170ns frame encoding, sub-8&micro;s per 4KB.</p>
+            </div>
+            <div class="feature">
+                <h3>[ GPU_INFERENCE ]</h3>
+                <p>Llama 3 8B on NVIDIA H100 Confidential Computing. Quantized GGUF models with autoregressive generation. Full text output with receipt verification.</p>
+            </div>
+            <div class="feature">
+                <h3>[ MULTI_CLOUD ]</h3>
+                <p>Tested on real hardware: GCP Confidential Space (TDX), AWS Nitro Enclaves, Azure DCads_v5 (SEV-SNP). One transport layer, three TEE backends.</p>
+            </div>
+            <div class="feature">
+                <h3>[ OPEN_SOURCE ]</h3>
+                <p>Rust. Published on crates.io. 171 tests. Zero unsafe in application code. Audited 35 dependency crates. Apache 2.0 licensed.</p>
+            </div>
+        </section>
+
+        <!-- HIPAA Mapping -->
+        <section class="compliance-section">
+            <h2>[ COMPLIANCE_MAPPING ]</h2>
+            <div class="compliance-grid">
+                <div class="compliance-item">
+                    <strong>HIPAA 164.312(a)</strong> Access Control
+                    <span class="arrow">&rarr;</span> Enclave isolation proof
+                </div>
+                <div class="compliance-item">
+                    <strong>HIPAA 164.312(b)</strong> Audit Controls
+                    <span class="arrow">&rarr;</span> The receipt itself
+                </div>
+                <div class="compliance-item">
+                    <strong>HIPAA 164.312(c)</strong> Integrity
+                    <span class="arrow">&rarr;</span> Model hash + attestation signature
+                </div>
+                <div class="compliance-item">
+                    <strong>HIPAA 164.312(e)</strong> Transmission Security
+                    <span class="arrow">&rarr;</span> AEAD encryption proof
+                </div>
+            </div>
+        </section>
+
+        <!-- Divider -->
+        <section class="divider-section">
+            <h2>ALSO FROM CYNTRISEC</h2>
+        </section>
+
+        <!-- CLI Section -->
+        <section id="cli" class="cli-section">
+            <h2>[ CYNTRISEC_CLI ]</h2>
+            <p class="cli-subtitle">AWS Security Graph &mdash; Attack path discovery optimized for LLMs.</p>
+
+            <div class="cli-features">
+                <div class="feature">
+                    <h3>[ GRAPH_ANALYSIS ]</h3>
+                    <p>Builds a full capability graph of IAM, network, and dependencies to find hidden attack paths.</p>
+                </div>
+                <div class="feature">
+                    <h3>[ AGENTIC_INTERFACE ]</h3>
+                    <p>Native MCP server. Connect Claude Desktop or other agents to reason about your infra safely.</p>
+                </div>
+                <div class="feature">
+                    <h3>[ READ_ONLY ]</h3>
+                    <p>Scans via AssumeRole without modifying infrastructure. No SaaS backend. Local-first.</p>
+                </div>
+            </div>
+
+            <div class="install-cmd" onclick="copyCmd()">
+                &gt; pip install cyntrisec
+            </div>
+            <div style="margin-top: 5px; margin-bottom: 10px; font-size: 0.8rem; text-transform: uppercase;">[ Copy PIP Install ]</div>
+            <div class="cli-links">
+                <a href="https://github.com/cyntrisec/cyntrisec-cli">GitHub</a>
+                <a href="https://pypi.org/project/cyntrisec/">PyPI</a>
+            </div>
+        </section>
+
+        <footer>
+            &copy; 2026 CYNTRISEC. OPEN SOURCE (APACHE 2.0).<br>
+            <span style="font-size: 0.7rem;">contact@cyntrisec.com</span>
+        </footer>
+    </div>
+
+    <script>
+        function copyCmd() {
+            const cmd = "pip install cyntrisec";
+            navigator.clipboard.writeText(cmd);
+            alert("COMMAND COPIED: " + cmd);
+        }
+
+        const toggleBtn = document.getElementById('theme-toggle');
+        const moonIcon = document.getElementById('moon-icon');
+        const sunIcon = document.getElementById('sun-icon');
+        const logoImg = document.querySelector('.logo-img');
+        const root = document.documentElement;
+
+        const LIGHT_LOGO = "assets/logo.png";
+        const DARK_LOGO = "assets/logo-dark.png";
+
+        function setTheme(theme) {
+            if (theme === 'dark') {
+                root.setAttribute('data-theme', 'dark');
+                logoImg.src = DARK_LOGO;
+                moonIcon.style.display = 'none';
+                sunIcon.style.display = 'block';
+                localStorage.setItem('theme', 'dark');
+            } else {
+                root.removeAttribute('data-theme');
+                logoImg.src = LIGHT_LOGO;
+                moonIcon.style.display = 'block';
+                sunIcon.style.display = 'none';
+                localStorage.setItem('theme', 'light');
+            }
+        }
+
+        function toggleTheme() {
+            const currentTheme = root.getAttribute('data-theme');
+            setTheme(currentTheme === 'dark' ? 'light' : 'dark');
+        }
+
+        const savedTheme = localStorage.getItem('theme');
+        if (savedTheme) {
+            setTheme(savedTheme);
+        } else if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
+            setTheme('dark');
+        }
+    </script>
+</body>
+</html>

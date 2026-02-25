@@ -1,0 +1,11 @@
+{
+  "schema_version": 1,
+  "generated": "2026-02-25T09:13:57Z",
+  "artifacts": [
+    {"file": "ephemeralml-receipt.json", "sha256": "fca4568c16109cfee0d7ed2114dd9146a52fee83cd07770120593398a9d36804", "bytes": 4077},
+    {"file": "ephemeralml-receipt.json.pubkey", "sha256": "b94cd70b1bf03d7c6ece6ede5edfae808f1126523460ba942ae7af9de7056aaa", "bytes": 64},
+    {"file": "ephemeralml-attestation.bin", "sha256": "d11beb007ebaf4df453e010ebdea7e760497cc1fac046904d73a175653dc200b", "bytes": 764},
+    {"file": "ephemeralml-manifest.json", "sha256": "a1d8d1cf259ad9c0fa4ee2f56f639d0cd76afb6fdbcf6830a446fc7cc1a2bd3e", "bytes": 1548},
+    {"file": "ephemeralml-timing.json", "sha256": "0bd0eb191a865b974339eddc27807184588ff8915edc319f7088a24746297139", "bytes": 318}
+  ]
+}

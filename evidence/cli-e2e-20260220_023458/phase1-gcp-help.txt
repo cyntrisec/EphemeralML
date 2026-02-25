@@ -1,0 +1,22 @@
+GCP deployment and management commands
+
+Usage: ephemeralml gcp [OPTIONS] <COMMAND>
+
+Commands:
+  doctor         Run preflight checks (gcloud, docker, disk space, auth)
+  init           Initialize GCP configuration (generates .env.gcp)
+  setup          One-time GCP infrastructure setup (APIs, Artifact Registry, service account)
+  setup-kms      Set up Cloud KMS keyring, WIP, and GCS bucket
+  package-model  Encrypt, sign, and upload model to GCS
+  deploy         Build container and launch Confidential Space CVM
+  verify         Smoke test a deployed CVM (inference + receipt verify)
+  teardown       Delete the Confidential Space CVM
+  e2e            Run full end-to-end pipeline (setup -> deploy -> verify -> teardown)
+  release-gate   Run pre-release validation gate
+  help           Print this message or the help of the given subcommand(s)
+
+Options:
+      --plain      Disable colors and mascot (plain text output)
+      --no-color   Disable color output
+      --no-mascot  Disable ghost mascot
+  -h, --help       Print help
