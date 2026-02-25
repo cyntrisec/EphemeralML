@@ -1009,4 +1009,233 @@ mod tests {
         assert!(skipped.contains(&"NONCE"));
         assert!(skipped.contains(&"REPLAY"));
     }
+
+    // ══════════════════════════════════════════════════════════════
+    // Golden test vectors (#73)
+    //
+    // These tests validate byte-stability against the golden vectors
+    // stored in spec/v1/vectors/. If any encoding changes, these
+    // tests will fail — update vectors only after spec review.
+    // ══════════════════════════════════════════════════════════════
+
+    /// Golden vector 1: Nitro, no nonce
+    const GOLDEN_V1_RECEIPT: &str = "d28446a2012703183da0590208b03a0001000b6b476174657761794f6e6c793a0001000a1902003a0001000918743a00010008182a3a000100076e706f6c6963792d323032362e30323a00010006a4706d6561737572656d656e745f74797065696e6974726f2d7063726470637230583001010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010164706372315830020202020202020202020202020202020202020202020202020202020202020202020202020202020202020202020202647063723258300303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303033a000100055820dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd3a000100045820cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc3a000100035820bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb3a000100025820aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa3a0001000165312e302e303a000100006c6d696e696c6d2d6c362d7632016d63796e7472697365632e636f6d061a67bdec2007500102030405060708090a0b0c0d0e0f10190109782168747470733a2f2f737065632e63796e7472697365632e636f6d2f6169722f763158409cc5942a32bebd5da4b3c2a0cfc5e07c9ec5b62f5629a56bfc78d3286bf60fc479414b640e44c85d8326bdc4de90be12b0345e0b9654b86c9bdd62ebaf230000";
+
+    /// Golden vector 1: payload only
+    const GOLDEN_V1_PAYLOAD: &str = "b03a0001000b6b476174657761794f6e6c793a0001000a1902003a0001000918743a00010008182a3a000100076e706f6c6963792d323032362e30323a00010006a4706d6561737572656d656e745f74797065696e6974726f2d7063726470637230583001010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010164706372315830020202020202020202020202020202020202020202020202020202020202020202020202020202020202020202020202647063723258300303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303033a000100055820dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd3a000100045820cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc3a000100035820bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb3a000100025820aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa3a0001000165312e302e303a000100006c6d696e696c6d2d6c362d7632016d63796e7472697365632e636f6d061a67bdec2007500102030405060708090a0b0c0d0e0f10190109782168747470733a2f2f737065632e63796e7472697365632e636f6d2f6169722f7631";
+
+    /// Golden vector 2: TDX, with nonce
+    const GOLDEN_V2_RECEIPT: &str = "d28446a2012703183da0590211b13a0001000b6a536869656c644d6f64653a0001000a1920003a000100091909c43a00010008013a000100076e706f6c6963792d323032362e30333a00010006a4706d6561737572656d656e745f747970656d7464782d6d7274642d72746d726470637230583010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101064706372315830202020202020202020202020202020202020202020202020202020202020202020202020202020202020202020202020647063723258303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303a00010005582088888888888888888888888888888888888888888888888888888888888888883a00010004582077777777777777777777777777777777777777777777777777777777777777773a00010003582066666666666666666666666666666666666666666666666666666666666666663a00010002582055555555555555555555555555555555555555555555555555555555555555553a0001000165322e302e303a00010000686c6c616d612d3762016d63796e7472697365632e636f6d061a67bdec8407501112131415161718191a1b1c1d1e1f200a48deadbeefcafebabe190109782168747470733a2f2f737065632e63796e7472697365632e636f6d2f6169722f76315840d7ee450b3e29573251ad06440aac3c9aeb8f12a39a459f83df319669c8aad4b653334ec77309070bc56883364051dc85e3b0da5777a869218b26a47237995408";
+
+    /// Invalid vector: wrong alg (ES256)
+    const GOLDEN_WRONG_ALG_RECEIPT: &str = "d28446a2012603183da0590208b03a0001000b6b476174657761794f6e6c793a0001000a1902003a0001000918743a00010008182a3a000100076e706f6c6963792d323032362e30323a00010006a4706d6561737572656d656e745f74797065696e6974726f2d7063726470637230583001010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010164706372315830020202020202020202020202020202020202020202020202020202020202020202020202020202020202020202020202647063723258300303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303033a000100055820dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd3a000100045820cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc3a000100035820bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb3a000100025820aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa3a0001000165312e302e303a000100006c6d696e696c6d2d6c362d7632016d63796e7472697365632e636f6d061a67bdec2007500102030405060708090a0b0c0d0e0f10190109782168747470733a2f2f737065632e63796e7472697365632e636f6d2f6169722f763158409b11f6890bdee630ca7a62dc073385a4f8ac020b0231be6460e5e4bc0ffac7400f56899966d81c8bb88742a802edb8801dea916975d4fbf488ee511e5bede201";
+
+    /// Golden vector public key
+    const GOLDEN_PUBKEY: &str = "197f6b23e16c8532c6abc838facd5ea789be0c76b2920334039bfa8b3d368d61";
+
+    /// Wrong public key for signature failure vector
+    const GOLDEN_WRONG_PUBKEY: &str = "8a88e3dd7409f195fd52db2d3cba5d72ca6709bf1d94121bf3748801b40f6f5c";
+
+    fn golden_pubkey() -> ed25519_dalek::VerifyingKey {
+        let bytes = hex::decode(GOLDEN_PUBKEY).unwrap();
+        ed25519_dalek::VerifyingKey::from_bytes(&bytes.try_into().unwrap()).unwrap()
+    }
+
+    fn wrong_pubkey() -> ed25519_dalek::VerifyingKey {
+        let bytes = hex::decode(GOLDEN_WRONG_PUBKEY).unwrap();
+        ed25519_dalek::VerifyingKey::from_bytes(&bytes.try_into().unwrap()).unwrap()
+    }
+
+    // ── GV-1: byte stability — receipt produced from fixture matches golden hex
+
+    #[test]
+    fn test_golden_v1_byte_stable() {
+        use crate::air_receipt::golden;
+        let key = golden::key();
+        let claims = golden::claims_v1();
+        let bytes = build_air_v1(&claims, &key).unwrap();
+        assert_eq!(
+            hex::encode(&bytes),
+            GOLDEN_V1_RECEIPT,
+            "Vector 1 encoding changed — update golden vectors after spec review"
+        );
+    }
+
+    #[test]
+    fn test_golden_v2_byte_stable() {
+        use crate::air_receipt::golden;
+        let key = golden::key();
+        let claims = golden::claims_v2();
+        let bytes = build_air_v1(&claims, &key).unwrap();
+        assert_eq!(
+            hex::encode(&bytes),
+            GOLDEN_V2_RECEIPT,
+            "Vector 2 encoding changed — update golden vectors after spec review"
+        );
+    }
+
+    // ── GV-2: full 4-layer verify on golden vector 1
+
+    #[test]
+    fn test_golden_v1_full_verify() {
+        let receipt = hex::decode(GOLDEN_V1_RECEIPT).unwrap();
+        let pubkey = golden_pubkey();
+
+        let result = verify_air_v1_receipt(&receipt, &pubkey, &AirVerifyPolicy::default());
+        assert!(result.verified, "golden v1 failed: {:?}", result.failures());
+
+        // Verify parsed claims
+        let claims = result.claims.as_ref().unwrap();
+        assert_eq!(claims.iss, "cyntrisec.com");
+        assert_eq!(claims.iat, 1740500000);
+        assert_eq!(claims.cti, [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16]);
+        assert!(claims.eat_nonce.is_none());
+        assert_eq!(claims.model_id, "minilm-l6-v2");
+        assert_eq!(claims.model_version, "1.0.0");
+        assert_eq!(claims.model_hash, [0xAA; 32]);
+        assert_eq!(claims.request_hash, [0xBB; 32]);
+        assert_eq!(claims.response_hash, [0xCC; 32]);
+        assert_eq!(claims.attestation_doc_hash, [0xDD; 32]);
+        assert_eq!(claims.enclave_measurements.measurement_type, "nitro-pcr");
+        assert_eq!(claims.policy_version, "policy-2026.02");
+        assert_eq!(claims.sequence_number, 42);
+        assert_eq!(claims.execution_time_ms, 116);
+        assert_eq!(claims.memory_peak_mb, 512);
+        assert_eq!(claims.security_mode, "GatewayOnly");
+    }
+
+    // ── GV-3: full 4-layer verify on golden vector 2 (TDX + nonce)
+
+    #[test]
+    fn test_golden_v2_full_verify() {
+        let receipt = hex::decode(GOLDEN_V2_RECEIPT).unwrap();
+        let pubkey = golden_pubkey();
+
+        let policy = AirVerifyPolicy {
+            expected_nonce: Some(vec![0xDE, 0xAD, 0xBE, 0xEF, 0xCA, 0xFE, 0xBA, 0xBE]),
+            expected_platform: Some("tdx-mrtd-rtmr".to_string()),
+            expected_model_hash: Some([0x55; 32]),
+            expected_model_id: Some("llama-7b".to_string()),
+            ..Default::default()
+        };
+        let result = verify_air_v1_receipt(&receipt, &pubkey, &policy);
+        assert!(result.verified, "golden v2 failed: {:?}", result.failures());
+
+        let claims = result.claims.as_ref().unwrap();
+        assert_eq!(claims.iss, "cyntrisec.com");
+        assert_eq!(claims.iat, 1740500100);
+        assert_eq!(claims.eat_nonce, Some(vec![0xDE, 0xAD, 0xBE, 0xEF, 0xCA, 0xFE, 0xBA, 0xBE]));
+        assert_eq!(claims.model_id, "llama-7b");
+        assert_eq!(claims.enclave_measurements.measurement_type, "tdx-mrtd-rtmr");
+        assert_eq!(claims.security_mode, "ShieldMode");
+        assert_eq!(claims.execution_time_ms, 2500);
+        assert_eq!(claims.memory_peak_mb, 8192);
+    }
+
+    // ── GV-4: wrong key → SIG_FAILED
+
+    #[test]
+    fn test_golden_v1_wrong_key() {
+        let receipt = hex::decode(GOLDEN_V1_RECEIPT).unwrap();
+        let pubkey = wrong_pubkey();
+
+        let result = verify_air_v1_receipt(&receipt, &pubkey, &AirVerifyPolicy::default());
+        assert!(!result.verified);
+        assert!(result.has_failure(&AirCheckCode::SignatureFailed));
+        // Claims should still parse successfully
+        assert!(result.claims.is_some());
+    }
+
+    // ── GV-5: wrong alg → BAD_ALG
+
+    #[test]
+    fn test_golden_wrong_alg() {
+        let receipt = hex::decode(GOLDEN_WRONG_ALG_RECEIPT).unwrap();
+        let pubkey = golden_pubkey();
+
+        let result = verify_air_v1_receipt(&receipt, &pubkey, &AirVerifyPolicy::default());
+        assert!(!result.verified);
+        assert!(result.has_failure(&AirCheckCode::BadAlg));
+    }
+
+    // ── GV-6: COSE tag 18 present
+
+    #[test]
+    fn test_golden_v1_tag_18() {
+        let receipt = hex::decode(GOLDEN_V1_RECEIPT).unwrap();
+        assert_eq!(receipt[0], 0xD2, "COSE_Sign1 tag 18 must be first byte");
+    }
+
+    // ── GV-7: payload deterministic encoding
+
+    #[test]
+    fn test_golden_v1_payload_stable() {
+        use crate::air_receipt::golden;
+        let claims = golden::claims_v1();
+        let payload = crate::air_receipt::encode_claims_exported(&claims).unwrap();
+        assert_eq!(
+            hex::encode(&payload),
+            GOLDEN_V1_PAYLOAD,
+            "Payload encoding changed — update golden vectors after spec review"
+        );
+    }
+
+    // ── GV-8: cross-vector nonce mismatch
+
+    #[test]
+    fn test_golden_v2_nonce_mismatch() {
+        let receipt = hex::decode(GOLDEN_V2_RECEIPT).unwrap();
+        let pubkey = golden_pubkey();
+
+        let policy = AirVerifyPolicy {
+            expected_nonce: Some(vec![0xFF; 8]), // Wrong nonce
+            ..Default::default()
+        };
+        let result = verify_air_v1_receipt(&receipt, &pubkey, &policy);
+        assert!(!result.verified);
+        assert!(result.has_failure(&AirCheckCode::NonceMismatch));
+    }
+
+    // ── GV-9: cross-vector model hash mismatch
+
+    #[test]
+    fn test_golden_v1_model_hash_mismatch() {
+        let receipt = hex::decode(GOLDEN_V1_RECEIPT).unwrap();
+        let pubkey = golden_pubkey();
+
+        let policy = AirVerifyPolicy {
+            expected_model_hash: Some([0xFF; 32]), // Vector has 0xAA
+            ..Default::default()
+        };
+        let result = verify_air_v1_receipt(&receipt, &pubkey, &policy);
+        assert!(!result.verified);
+        assert!(result.has_failure(&AirCheckCode::ModelHashMismatch));
+    }
+
+    // ── GV-10: cross-vector platform mismatch
+
+    #[test]
+    fn test_golden_v1_platform_mismatch() {
+        let receipt = hex::decode(GOLDEN_V1_RECEIPT).unwrap();
+        let pubkey = golden_pubkey();
+
+        let policy = AirVerifyPolicy {
+            expected_platform: Some("tdx-mrtd-rtmr".to_string()), // Vector is nitro-pcr
+            ..Default::default()
+        };
+        let result = verify_air_v1_receipt(&receipt, &pubkey, &policy);
+        assert!(!result.verified);
+        assert!(result.has_failure(&AirCheckCode::PlatformMismatch));
+    }
+
+    // ── GV-11: garbage data still produces structured result
+
+    #[test]
+    fn test_golden_garbage() {
+        let pubkey = golden_pubkey();
+        let result = verify_air_v1_receipt(&[0xFF, 0x00], &pubkey, &AirVerifyPolicy::default());
+        assert!(!result.verified);
+        assert!(result.has_failure(&AirCheckCode::CoseDecodeFailed));
+        assert!(result.claims.is_none());
+    }
 }

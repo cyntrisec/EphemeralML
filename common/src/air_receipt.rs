@@ -575,6 +575,78 @@ fn get_text_bstr_opt(entries: &[(Value, Value)], name: &str) -> Option<Vec<u8>> 
     }
 }
 
+// ── Golden vector helpers (test-only, crate-visible) ─────────────
+
+#[cfg(test)]
+pub(crate) mod golden {
+    use super::*;
+    use crate::receipt_signing::{EnclaveMeasurements, ReceiptSigningKey};
+
+    /// Fixed signing key seed for golden vectors.
+    pub fn key() -> ReceiptSigningKey {
+        let private = ed25519_dalek::SigningKey::from_bytes(&[42u8; 32]);
+        ReceiptSigningKey::from_parts(private.clone(), private.verifying_key())
+    }
+
+    /// Fixed claims for golden vector 1 (Nitro, no nonce).
+    pub fn claims_v1() -> AirReceiptClaims {
+        AirReceiptClaims {
+            iss: "cyntrisec.com".to_string(),
+            iat: 1740500000,
+            cti: [
+                0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08,
+                0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F, 0x10,
+            ],
+            eat_nonce: None,
+            model_id: "minilm-l6-v2".to_string(),
+            model_version: "1.0.0".to_string(),
+            model_hash: [0xAA; 32],
+            request_hash: [0xBB; 32],
+            response_hash: [0xCC; 32],
+            attestation_doc_hash: [0xDD; 32],
+            enclave_measurements: EnclaveMeasurements::new(
+                vec![1u8; 48],
+                vec![2u8; 48],
+                vec![3u8; 48],
+            ),
+            policy_version: "policy-2026.02".to_string(),
+            sequence_number: 42,
+            execution_time_ms: 116,
+            memory_peak_mb: 512,
+            security_mode: "GatewayOnly".to_string(),
+        }
+    }
+
+    /// Fixed claims for golden vector 2 (TDX, with nonce).
+    pub fn claims_v2() -> AirReceiptClaims {
+        AirReceiptClaims {
+            iss: "cyntrisec.com".to_string(),
+            iat: 1740500100,
+            cti: [
+                0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17, 0x18,
+                0x19, 0x1A, 0x1B, 0x1C, 0x1D, 0x1E, 0x1F, 0x20,
+            ],
+            eat_nonce: Some(vec![0xDE, 0xAD, 0xBE, 0xEF, 0xCA, 0xFE, 0xBA, 0xBE]),
+            model_id: "llama-7b".to_string(),
+            model_version: "2.0.0".to_string(),
+            model_hash: [0x55; 32],
+            request_hash: [0x66; 32],
+            response_hash: [0x77; 32],
+            attestation_doc_hash: [0x88; 32],
+            enclave_measurements: EnclaveMeasurements::new_tdx(
+                vec![0x10; 48],
+                vec![0x20; 48],
+                vec![0x30; 48],
+            ),
+            policy_version: "policy-2026.03".to_string(),
+            sequence_number: 1,
+            execution_time_ms: 2500,
+            memory_peak_mb: 8192,
+            security_mode: "ShieldMode".to_string(),
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -812,6 +884,68 @@ mod tests {
         let result = parse_air_v1(&tampered);
         assert!(result.is_err());
         assert!(result.unwrap_err().to_string().contains("eat_profile"));
+    }
+
+    #[test]
+    fn generate_golden_vectors() {
+        use coset::TaggedCborSerializable;
+        use super::golden;
+
+        let key = golden::key();
+
+        // Vector 1: Nitro, no nonce
+        let c1 = golden::claims_v1();
+        let bytes1 = build_air_v1(&c1, &key).unwrap();
+        let payload1 = encode_claims(&c1).unwrap();
+
+        // Vector 2: TDX, with nonce
+        let c2 = golden::claims_v2();
+        let bytes2 = build_air_v1(&c2, &key).unwrap();
+        let payload2 = encode_claims(&c2).unwrap();
+
+        // Wrong key for invalid vector
+        let wrong_private = ed25519_dalek::SigningKey::from_bytes(&[0x01; 32]);
+        let wrong_public = wrong_private.verifying_key();
+
+        // Wrong alg receipt (ES256 instead of EdDSA)
+        let protected_wrong_alg = coset::HeaderBuilder::new()
+            .algorithm(coset::iana::Algorithm::ES256)
+            .content_format(coset::iana::CoapContentFormat::Cwt)
+            .build();
+        let sign1_wrong_alg = coset::CoseSign1Builder::new()
+            .protected(protected_wrong_alg)
+            .payload(payload1.clone())
+            .try_create_signature(b"", |tbs| {
+                Ok::<_, String>(key.raw_sign(tbs))
+            })
+            .unwrap()
+            .build();
+        let wrong_alg_bytes = sign1_wrong_alg.to_tagged_vec().unwrap();
+
+        // Print for capture
+        eprintln!("=== GOLDEN VECTOR 1 (Nitro, no nonce) ===");
+        eprintln!("receipt_hex: {}", hex::encode(&bytes1));
+        eprintln!("payload_hex: {}", hex::encode(&payload1));
+        eprintln!("public_key_hex: {}", hex::encode(key.public_key.as_bytes()));
+        eprintln!("receipt_len: {}", bytes1.len());
+        eprintln!("");
+        eprintln!("=== GOLDEN VECTOR 2 (TDX, with nonce) ===");
+        eprintln!("receipt_hex: {}", hex::encode(&bytes2));
+        eprintln!("payload_hex: {}", hex::encode(&payload2));
+        eprintln!("receipt_len: {}", bytes2.len());
+        eprintln!("");
+        eprintln!("=== WRONG KEY ===");
+        eprintln!("wrong_public_key_hex: {}", hex::encode(wrong_public.as_bytes()));
+        eprintln!("");
+        eprintln!("=== WRONG ALG ===");
+        eprintln!("wrong_alg_receipt_hex: {}", hex::encode(&wrong_alg_bytes));
+        eprintln!("wrong_alg_receipt_len: {}", wrong_alg_bytes.len());
+
+        // Verify determinism
+        let bytes1b = build_air_v1(&c1, &key).unwrap();
+        assert_eq!(bytes1, bytes1b, "Vector 1 not deterministic");
+        let bytes2b = build_air_v1(&c2, &key).unwrap();
+        assert_eq!(bytes2, bytes2b, "Vector 2 not deterministic");
     }
 
     #[test]
