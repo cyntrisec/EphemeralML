@@ -48,6 +48,7 @@ the policy that triggers the failure.
 | `invalid/v1-nonce-mismatch.json` | NONCE_MISMATCH | `expected_nonce_hex` |
 | `invalid/v1-model-hash-mismatch.json` | MODEL_HASH_MISMATCH | `expected_model_hash_hex` |
 | `invalid/v1-platform-mismatch.json` | PLATFORM_MISMATCH | `expected_platform` |
+| `invalid/v1-stale-iat.json` | TIMESTAMP_STALE | `max_age_secs` |
 
 ## JSON Schema
 
@@ -77,6 +78,7 @@ policy parameters that cause the failure:
 | `expected_nonce_hex` | hex string | Expected `eat_nonce` value |
 | `expected_model_hash_hex` | hex string | Expected `model_hash` (32 bytes) |
 | `expected_platform` | string | Expected `measurement_type` |
+| `max_age_secs` | integer | Maximum receipt age in seconds |
 
 ## Using Vectors
 

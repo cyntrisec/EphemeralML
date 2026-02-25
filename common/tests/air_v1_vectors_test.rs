@@ -54,7 +54,8 @@ fn golden_key() -> ReceiptSigningKey {
 
 /// Build an `AirVerifyPolicy` from the JSON `verify_policy` field (if present).
 ///
-/// Supports: `expected_nonce_hex`, `expected_model_hash_hex`, `expected_platform`.
+/// Supports: `expected_nonce_hex`, `expected_model_hash_hex`, `expected_platform`,
+/// `max_age_secs`.
 /// If no `verify_policy` field exists, returns default policy.
 fn policy_from_json(v: &Value) -> AirVerifyPolicy {
     let vp = match v.get("verify_policy") {
@@ -82,10 +83,13 @@ fn policy_from_json(v: &Value) -> AirVerifyPolicy {
         .and_then(|n| n.as_str())
         .map(|s| s.to_string());
 
+    let max_age_secs = vp.get("max_age_secs").and_then(|n| n.as_u64()).unwrap_or(0);
+
     AirVerifyPolicy {
         expected_nonce,
         expected_model_hash,
         expected_platform,
+        max_age_secs,
         ..Default::default()
     }
 }
@@ -402,6 +406,23 @@ fn cv_platform_mismatch_fails() {
     assert!(!result.has_failure(&AirCheckCode::SignatureFailed));
 }
 
+#[test]
+fn cv_stale_iat_fails() {
+    let v = load_vector("invalid", "v1-stale-iat.json");
+    let receipt = decode_hex(&v, "receipt_hex");
+    let pubkey = pubkey_from_hex(v["public_key_hex"].as_str().unwrap());
+    let policy = policy_from_json(&v);
+
+    let result = verify_air_v1_receipt(&receipt, &pubkey, &policy);
+    assert!(!result.verified);
+    assert!(
+        result.has_failure(&AirCheckCode::TimestampStale),
+        "expected TIMESTAMP_STALE, got: {:?}",
+        result.failures()
+    );
+    assert!(!result.has_failure(&AirCheckCode::SignatureFailed));
+}
+
 // ═══════════════════════════════════════════════════════════════════
 // Vector file integrity
 // ═══════════════════════════════════════════════════════════════════
@@ -421,6 +442,7 @@ fn cv_vector_directory_complete() {
     assert!(dir.join("invalid/v1-nonce-mismatch.json").exists());
     assert!(dir.join("invalid/v1-model-hash-mismatch.json").exists());
     assert!(dir.join("invalid/v1-platform-mismatch.json").exists());
+    assert!(dir.join("invalid/v1-stale-iat.json").exists());
     // Documentation
     assert!(dir.join("README.md").exists());
 }
