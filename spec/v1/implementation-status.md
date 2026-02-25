@@ -171,8 +171,8 @@ Legacy JSON receipts continue to work unchanged. No flags needed.
 
 | Script | AIR v1 collected | AIR v1 verified |
 |--------|-----------------|-----------------|
-| `scripts/gcp/mvp_gpu_e2e.sh` | `receipt.cbor` in evidence dir | Non-blocking verify step |
-| `scripts/gcp/verify.sh` | `receipt.cbor` in artifact manifest | Verification + SHA-256 hash |
+| `scripts/gcp/mvp_gpu_e2e.sh` | `receipt.cbor` in evidence dir | Strict-by-default AIR v1 verify (`EPHEMERALML_REQUIRE_AIR_V1_VERIFY=true`, opt-out available) |
+| `scripts/gcp/verify.sh` | `receipt.cbor` in artifact manifest | AIR v1 verification + SHA-256 hash (optional strict fail mode via `EPHEMERALML_REQUIRE_AIR_V1_VERIFY`) |
 | `scripts/gcp/e2e_kms_test.sh` | `receipt.cbor` copied | — |
 | `scripts/nitro_e2e.sh` | `--receipt-output-air-v1` flag | — |
 
@@ -186,13 +186,13 @@ Legacy JSON receipts continue to work unchanged. No flags needed.
 ### Latest cross-cloud verification run (2026-02-25)
 
 - AWS Nitro E2E: PASS
-- GCP CPU (TDX / Confidential Space) E2E: PASS
+- GCP CPU (TDX / Confidential Space) E2E: PASS (strict AIR v1 verification enabled in `verify.sh`)
 - GCP GPU (TDX + H100 CC) E2E: PASS
 
 Evidence bundles (local repo paths from latest run):
 
 - `evidence/nitro-e2e-20260225T160258Z/`
-- `evidence/mvp-20260225_153301/`
+- `evidence/mvp-20260225_194858/` (GCP CPU, strict AIR v1 verify)
 - `evidence/mvp-20260225_161319/`
 
 ## 6. Known Gaps (Summary)
@@ -213,11 +213,13 @@ Ready now:
 - Conformance vectors
 - Reference verifier
 - Interop kit
+- Public AIR v1 entrypoint docs
+- Independent Python verifier harness (same team)
+- Fresh-VM AIR v1 vector validation (`10/10`)
 
 Still needed for M4 exit:
 
-- At least one external verifier run (or independent implementation)
-- Public release packaging / public entrypoint polish
+- At least one external third-party verifier run
 - Interop feedback loop (docs/examples fixes, no normative churn unless necessary)
 
 ## 8. Test Coverage
@@ -228,4 +230,3 @@ Still needed for M4 exit:
 - 59 receipt tests (legacy + AIR v1 round-trip, signing, compliance, property-based)
 - 7 conformance vector tests (ct_001 through ct_020)
 - Remaining: transport, pipeline, crypto, E2E integration, model handling
-

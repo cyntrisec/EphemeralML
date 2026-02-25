@@ -55,11 +55,9 @@ spec/v1/
 
 ## IETF Prep (Non-Normative)
 
-These documents are M4/M5 preparation artifacts and are **not** part of the AIR v1 normative specification:
-
-- [ietf/README.md](ietf/README.md)
-- [ietf/air-v1-rats-draft-outline.md](ietf/air-v1-rats-draft-outline.md)
-- [ietf/rats-intro-email-draft.md](ietf/rats-intro-email-draft.md)
+IETF prep drafts are maintained as non-normative working docs under `spec/v1/ietf/` on
+development branches. They are **not** part of the AIR v1 normative specification and may not be
+published on every branch/tag.
 
 ## License
 

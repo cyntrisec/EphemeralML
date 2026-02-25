@@ -9,7 +9,7 @@
 
 [![CI](https://github.com/cyntrisec/EphemeralML/actions/workflows/ci.yml/badge.svg)](https://github.com/cyntrisec/EphemeralML/actions/workflows/ci.yml)
 [![Status](https://img.shields.io/badge/Status-v3.1%20GPU%20Confidential-brightgreen?style=for-the-badge)](https://github.com/cyntrisec/EphemeralML/releases/tag/v3.1.0)
-[![Tests](https://img.shields.io/badge/Tests-105%20Passing-success?style=for-the-badge)](https://github.com/cyntrisec/EphemeralML/actions/workflows/ci.yml)
+[![Tests](https://img.shields.io/badge/Tests-CI%20green-success?style=for-the-badge)](https://github.com/cyntrisec/EphemeralML/actions/workflows/ci.yml)
 [![Platform](https://img.shields.io/badge/Platform-AWS%20Nitro%20|%20GCP%20TDX%20|%20GPU%20H100-orange?style=for-the-badge&logo=amazon-aws)](https://aws.amazon.com/ec2/nitro/nitro-enclaves/)
 [![Language](https://img.shields.io/badge/Language-Rust-b7410e?style=for-the-badge&logo=rust&logoColor=white)](https://www.rust-lang.org/)
 [![License](https://img.shields.io/badge/Apache%202.0-blue?style=for-the-badge)](LICENSE)
@@ -124,7 +124,7 @@ AIR v1 is **single-inference only** (pipeline proof chaining is planned for vNEX
 
 ### How
 1. **Attestation-gated key release** — KMS releases DEK only if enclave measurements match policy (PCRs on Nitro, MRTD/RTMRs on TDX)
-2. **HPKE encrypted sessions** — end-to-end encryption, host sees only ciphertext
+2. **Attestation-bound encrypted sessions** — X25519 + HKDF + ChaCha20-Poly1305, host sees only ciphertext
 3. **Ed25519 signed receipts** — cryptographic proof of execution
 4. **Cross-platform transport** — `confidential-ml-transport` handles attestation-bound channels on both VSock (Nitro) and TCP (TDX)
 
@@ -140,7 +140,7 @@ AIR v1 is **single-inference only** (pipeline proof chaining is planned for vNEX
 
 ### Core (Production Ready)
 - **AWS Nitro Enclave integration** with real NSM attestation and PCR-bound KMS key release
-- **GCP Confidential Space integration** with Intel TDX attestation, MRTD/RTMR measurement pinning, and Cloud KMS key release (`GcpKmsClient` implemented, not yet wired into runtime model-loading path)
+- **GCP Confidential Space integration** with Intel TDX attestation, MRTD/RTMR measurement pinning, and Cloud KMS key release
 - **Pipeline orchestration** via `confidential-ml-pipeline` — multi-stage inference with per-stage attestation, health checks, and graceful shutdown
 - **Cross-platform transport** via `confidential-ml-transport` — attestation-bound SecureChannel with pluggable TCP/VSock backends
 - **S3 model storage** (AWS) and **GCS model storage** (GCP) with client-side encryption
@@ -153,10 +153,10 @@ AIR v1 is **single-inference only** (pipeline proof chaining is planned for vNEX
 - Memory-optimized for TEE constraints
 
 ### Security & Compliance
-- **Attested Execution Receipts** (AER) — Ed25519-signed, CBOR-canonical, binding input/output hashes to enclave attestation
+- **Attested Inference Receipts (AIR)** — Ed25519-signed, CBOR-canonical, binding input/output hashes to enclave attestation
 - **Policy update system** with signature verification and hot-reload
 - **Model format validation** (safetensors, dtype enforcement)
-- **105 tests** across 4 workspace crates (including pipeline integration and GCP tests)
+- **500+ tests** across the workspace and CI (including pipeline integration and GCP tests)
 - **Deterministic builds** for reproducibility
 
 ---
@@ -394,7 +394,7 @@ See [`QUICKSTART.md`](QUICKSTART.md) and [`docs/build-matrix.md`](docs/build-mat
 | GPU Inference (H100 CC, CUDA 12.2) | ✅ Verified on hardware | — |
 | TDX Verifier Bridge (Client) | ✅ Implemented | — |
 
-**v3.1 GPU Confidential** — GPU inference on GCP Confidential Space (a3-highgpu-1g, NVIDIA H100 CC-mode) with Llama 3 8B Q4_K_M GGUF, CUDA 12.2, TDX attestation, and Ed25519-signed receipts. GCS loader supports up to 16GB models with Content-Length pre-check. 105 tests passing.
+**v3.1 GPU Confidential** — GPU inference on GCP Confidential Space (a3-highgpu-1g, NVIDIA H100 CC-mode) with Llama 3 8B Q4_K_M GGUF, CUDA 12.2, TDX attestation, and Ed25519-signed receipts. GCS loader supports up to 16GB models with Content-Length pre-check. CI green.
 
 ---
 

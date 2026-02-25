@@ -180,6 +180,6 @@ def verify_air_v1(receipt_bytes, public_key_bytes):
 | Language | Library / Package | Status | Coverage | Last Verified | Details |
 |----------|--------------------|--------|----------|---------------|---------|
 | Rust | `ephemeral-ml-common` (this repo) | Reference implementation — **emitted in production E2E** | AIR verifier + vectors + policy hooks + live emission | 2026-02-25 | [implementation-status.md](implementation-status.md) |
-| Python | `spec/v1/scripts/interop_test.py` | Draft harness (not externally validated yet) | External vector verification harness | 2026-02-25 (syntax checked) | M4 external interop run pending |
+| Python | `spec/v1/scripts/interop_test.py` | Same-team independent verifier (third-party validation pending) | AIR v1 vector verification harness (COSE parse + Sig_structure verify + claims/policy checks) | 2026-02-25 (local + fresh VM `10/10`) | M4b: external third-party interop run pending |
 
 To register your implementation, open an issue or PR.
