@@ -44,6 +44,19 @@ const AIR_MODEL_HASH_SCHEME: i64 = -65549;
 /// AIR v1 eat_profile URI
 pub const AIR_V1_PROFILE: &str = "https://spec.cyntrisec.com/air/v1";
 
+const MODEL_HASH_SCHEME_SHA256_SINGLE: &str = "sha256-single";
+const MODEL_HASH_SCHEME_SHA256_CONCAT: &str = "sha256-concat";
+const MODEL_HASH_SCHEME_SHA256_MANIFEST: &str = "sha256-manifest";
+
+pub(crate) fn is_known_model_hash_scheme(s: &str) -> bool {
+    matches!(
+        s,
+        MODEL_HASH_SCHEME_SHA256_SINGLE
+            | MODEL_HASH_SCHEME_SHA256_CONCAT
+            | MODEL_HASH_SCHEME_SHA256_MANIFEST
+    )
+}
+
 /// Typed claim set for an AIR v1 receipt.
 #[derive(Debug, Clone)]
 pub struct AirReceiptClaims {
@@ -98,6 +111,14 @@ impl AirReceiptClaims {
                 "unknown measurement_type: {}",
                 mt
             )));
+        }
+        if let Some(ref scheme) = self.model_hash_scheme {
+            if !is_known_model_hash_scheme(scheme) {
+                return Err(EphemeralError::ValidationError(format!(
+                    "unknown model_hash_scheme: {}",
+                    scheme
+                )));
+            }
         }
         Ok(())
     }
@@ -867,6 +888,15 @@ mod tests {
         let bytes = build_air_v1(&claims, &key).unwrap();
         let parsed = parse_air_v1(&bytes).unwrap();
         assert!(parsed.claims.model_hash_scheme.is_none());
+    }
+
+    #[test]
+    fn test_unknown_model_hash_scheme_rejected() {
+        let key = ReceiptSigningKey::generate().unwrap();
+        let mut claims = fixture_claims();
+        claims.model_hash_scheme = Some("sha256-custom".to_string());
+        let err = build_air_v1(&claims, &key).unwrap_err();
+        assert!(err.to_string().contains("unknown model_hash_scheme"));
     }
 
     #[test]

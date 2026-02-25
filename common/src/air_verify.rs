@@ -56,6 +56,8 @@ pub enum AirCheckCode {
     BadMeasurementLength,
     /// Unknown `measurement_type` value
     UnknownMeasurementType(String),
+    /// Unknown `model_hash_scheme` value (if present)
+    UnknownModelHashScheme(String),
 
     // Layer 4: policy
     /// `iat` is in the future (beyond clock_skew)
@@ -94,6 +96,7 @@ impl std::fmt::Display for AirCheckCode {
             Self::BadHashLength(c) => write!(f, "BAD_HASH_LENGTH:{c}"),
             Self::BadMeasurementLength => write!(f, "BAD_MEASUREMENT_LENGTH"),
             Self::UnknownMeasurementType(t) => write!(f, "UNKNOWN_MTYPE:{t}"),
+            Self::UnknownModelHashScheme(s) => write!(f, "UNKNOWN_MODEL_HASH_SCHEME:{s}"),
             Self::TimestampFuture => write!(f, "TIMESTAMP_FUTURE"),
             Self::TimestampStale => write!(f, "TIMESTAMP_STALE"),
             Self::ModelHashMismatch => write!(f, "MODEL_HASH_MISMATCH"),
@@ -475,6 +478,19 @@ fn layer3_claims(claims: &AirReceiptClaims, checks: &mut Vec<AirCheck>) {
             AirCheckCode::UnknownMeasurementType(mt.clone()),
             format!("unknown measurement_type: {mt}"),
         ));
+    }
+
+    // model_hash_scheme allowlist (optional, fail-closed if present and unknown)
+    match &claims.model_hash_scheme {
+        None => checks.push(AirCheck::pass("MHASH_SCHEME")),
+        Some(s) if crate::air_receipt::is_known_model_hash_scheme(s) => {
+            checks.push(AirCheck::pass("MHASH_SCHEME"))
+        }
+        Some(s) => checks.push(AirCheck::fail(
+            "MHASH_SCHEME",
+            AirCheckCode::UnknownModelHashScheme(s.clone()),
+            format!("unknown model_hash_scheme: {s}"),
+        )),
     }
 }
 
@@ -969,6 +985,34 @@ mod tests {
         let result = verify_air_v1_receipt(&tampered, &key.public_key, &AirVerifyPolicy::default());
         assert!(!result.verified);
         assert!(result.has_failure(&AirCheckCode::ZeroModelHash));
+    }
+
+    #[test]
+    fn test_unknown_model_hash_scheme_claim_fails() {
+        // Build a signed receipt with an unknown scheme to isolate verifier behavior
+        // (build_air_v1 validates the allowlist and would reject this earlier).
+        let key = ReceiptSigningKey::generate().unwrap();
+        let mut claims = fixture_claims();
+        claims.model_hash_scheme = Some("sha256-custom".to_string());
+
+        let payload = crate::air_receipt::encode_claims_exported(&claims).unwrap();
+        let protected = coset::HeaderBuilder::new()
+            .algorithm(coset::iana::Algorithm::EdDSA)
+            .content_format(coset::iana::CoapContentFormat::Cwt)
+            .build();
+        let sign1 = coset::CoseSign1Builder::new()
+            .protected(protected)
+            .payload(payload)
+            .try_create_signature(b"", |tbs| Ok::<_, String>(key.raw_sign(tbs)))
+            .unwrap()
+            .build();
+        let bytes = sign1.to_tagged_vec().unwrap();
+
+        let result = verify_air_v1_receipt(&bytes, &key.public_key, &AirVerifyPolicy::default());
+        assert!(!result.verified);
+        assert!(result.has_failure(&AirCheckCode::UnknownModelHashScheme(
+            "sha256-custom".to_string()
+        )));
     }
 
     // ── Multiple failures reported ──────────────────────────────────

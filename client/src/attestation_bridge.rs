@@ -802,8 +802,53 @@ mod tests {
     use confidential_ml_transport::AttestationVerifier as CmlAttestationVerifier;
     use ephemeral_ml_common::CsTransportAttestation;
     use jsonwebtoken::{Algorithm, EncodingKey, Header};
+    use std::ffi::OsString;
+    use std::sync::{Mutex, OnceLock};
 
     const TEST_KID: &str = "test-key-1";
+    const STRICT_ENV_VARS: [&str; 4] = [
+        "EPHEMERALML_ALLOW_UNPINNED_AUDIENCE",
+        "EPHEMERALML_REQUIRE_MRTD",
+        "EPHEMERALML_EXPECTED_AUDIENCE",
+        "EPHEMERALML_EXPECTED_MRTD",
+    ];
+
+    fn env_test_lock() -> &'static Mutex<()> {
+        static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+        LOCK.get_or_init(|| Mutex::new(()))
+    }
+
+    fn lock_env_vars() -> std::sync::MutexGuard<'static, ()> {
+        env_test_lock().lock().expect("env test lock poisoned")
+    }
+
+    /// Serializes env-mutating tests and restores tracked env vars on drop.
+    struct StrictEnvGuard {
+        _lock: std::sync::MutexGuard<'static, ()>,
+        saved: Vec<(&'static str, Option<OsString>)>,
+    }
+
+    impl StrictEnvGuard {
+        fn acquire() -> Self {
+            let lock = lock_env_vars();
+            let saved = STRICT_ENV_VARS
+                .iter()
+                .map(|&name| (name, std::env::var_os(name)))
+                .collect();
+            Self { _lock: lock, saved }
+        }
+    }
+
+    impl Drop for StrictEnvGuard {
+        fn drop(&mut self) {
+            for (name, value) in &self.saved {
+                match value {
+                    Some(v) => std::env::set_var(name, v),
+                    None => std::env::remove_var(name),
+                }
+            }
+        }
+    }
 
     /// Generate an RSA keypair for test JWT signing.
     fn test_rsa_keys() -> (EncodingKey, jsonwebtoken::DecodingKey) {
@@ -878,6 +923,7 @@ mod tests {
     }
 
     fn make_verifier(decoding_key: jsonwebtoken::DecodingKey) -> TdxEnvelopeVerifierBridge {
+        let _env_lock = lock_env_vars();
         std::env::set_var("EPHEMERALML_REQUIRE_MRTD", "false");
         std::env::set_var("EPHEMERALML_ALLOW_UNPINNED_AUDIENCE", "true");
         TdxEnvelopeVerifierBridge::new(None)
@@ -1514,24 +1560,15 @@ mod tests {
     // These tests prove the fail-closed defaults: audience and MRTD must be
     // configured in production mode. The opt-out env vars must be explicitly set.
 
-    /// Restore env vars to dev-mode defaults (used by all other tests).
-    /// Must be called after any test that modifies strict-mode env vars.
-    fn restore_dev_env() {
-        std::env::set_var("EPHEMERALML_ALLOW_UNPINNED_AUDIENCE", "true");
-        std::env::set_var("EPHEMERALML_REQUIRE_MRTD", "false");
-        std::env::remove_var("EPHEMERALML_EXPECTED_AUDIENCE");
-        std::env::remove_var("EPHEMERALML_EXPECTED_MRTD");
-    }
-
     #[test]
     fn test_strict_mode_rejects_no_audience() {
+        let _env_guard = StrictEnvGuard::acquire();
         // Clear the opt-out var so strict mode is active.
         std::env::remove_var("EPHEMERALML_ALLOW_UNPINNED_AUDIENCE");
         std::env::remove_var("EPHEMERALML_EXPECTED_AUDIENCE");
         std::env::set_var("EPHEMERALML_REQUIRE_MRTD", "false");
 
         let result = TdxEnvelopeVerifierBridge::new(None);
-        restore_dev_env();
         match result {
             Err(e) => {
                 let err = format!("{}", e);
@@ -1547,13 +1584,13 @@ mod tests {
 
     #[test]
     fn test_strict_mode_rejects_no_mrtd() {
+        let _env_guard = StrictEnvGuard::acquire();
         // Set audience so that check passes, but leave MRTD unconfigured.
         std::env::set_var("EPHEMERALML_EXPECTED_AUDIENCE", "//iam.googleapis.com/test");
         std::env::remove_var("EPHEMERALML_REQUIRE_MRTD");
         std::env::remove_var("EPHEMERALML_EXPECTED_MRTD");
 
         let result = TdxEnvelopeVerifierBridge::new(None);
-        restore_dev_env();
         match result {
             Err(e) => {
                 let err = format!("{}", e);
@@ -1569,6 +1606,7 @@ mod tests {
 
     #[test]
     fn test_strict_mode_allows_explicit_opt_out() {
+        let _env_guard = StrictEnvGuard::acquire();
         // Explicitly opt out of both strict checks (development mode).
         std::env::set_var("EPHEMERALML_ALLOW_UNPINNED_AUDIENCE", "true");
         std::env::set_var("EPHEMERALML_REQUIRE_MRTD", "false");
