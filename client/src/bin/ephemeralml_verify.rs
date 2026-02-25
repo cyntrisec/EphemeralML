@@ -14,6 +14,7 @@
 use anyhow::{bail, Context, Result};
 use clap::Parser;
 use ed25519_dalek::VerifyingKey;
+use ephemeral_ml_common::air_verify::{AirCheckStatus, AirVerifyPolicy, AirVerifyResult};
 use ephemeral_ml_common::receipt_verify::{VerifyOptions, VerifyResult};
 use ephemeral_ml_common::ui::{GhostState, Ui, UiConfig};
 use ephemeral_ml_common::AttestationReceipt;
@@ -117,6 +118,19 @@ fn main() -> Result<()> {
 
     // 1. Load receipt
     let receipt_bytes = fs::read(&args.receipt).context("Failed to read receipt file")?;
+
+    // 2. Auto-detect format: CBOR tag 18 (0xD2) = AIR v1 COSE_Sign1
+    if receipt_bytes.first() == Some(&0xD2) {
+        let public_key = resolve_public_key(&args)?;
+        return verify_air_v1_path(
+            &mut ui,
+            &receipt_bytes,
+            &public_key,
+            &args,
+        );
+    }
+
+    // Legacy path: JSON or CBOR AttestationReceipt
     let receipt: AttestationReceipt = ephemeral_ml_common::cbor::from_slice(&receipt_bytes)
         .or_else(|_| {
             serde_json::from_slice(&receipt_bytes)
@@ -274,6 +288,127 @@ fn extract_key_from_attestation(att_bytes: &[u8], allow_mock: bool) -> Result<Ve
         };
 
     VerifyingKey::from_bytes(&ud.receipt_signing_key).context("Invalid receipt signing key")
+}
+
+/// Verify an AIR v1 receipt (COSE_Sign1 CBOR) using the 4-layer verifier.
+fn verify_air_v1_path(
+    ui: &mut Ui,
+    data: &[u8],
+    public_key: &VerifyingKey,
+    args: &Args,
+) -> Result<()> {
+    // Build policy from CLI args
+    let policy = AirVerifyPolicy {
+        max_age_secs: args.max_age,
+        expected_model_id: args.expected_model.clone(),
+        expected_platform: if args.measurement_type == "any" {
+            None
+        } else {
+            Some(args.measurement_type.clone())
+        },
+        ..Default::default()
+    };
+
+    let result = ephemeral_ml_common::air_verify::verify_air_v1_receipt(data, public_key, &policy);
+
+    match args.format.as_str() {
+        "json" => {
+            // Serialize the check results as JSON
+            println!("{}", serde_json::to_string_pretty(&result)?);
+        }
+        _ => {
+            print_air_v1_text_report(ui, &result, args.verbose);
+        }
+    }
+
+    if result.verified {
+        ui.ghost(GhostState::Success);
+        std::process::exit(0);
+    } else {
+        ui.ghost(GhostState::Fail);
+        std::process::exit(1);
+    }
+}
+
+fn print_air_v1_text_report(ui: &mut Ui, result: &AirVerifyResult, verbose: bool) {
+    use ephemeral_ml_common::receipt_verify::CheckStatus;
+
+    ui.blank();
+    ui.header("EphemeralML AIR v1 Receipt Verification");
+    ui.blank();
+
+    if let Some(ref claims) = result.claims {
+        let cti_hex = hex::encode(claims.cti);
+        ui.kv("Receipt", &cti_hex);
+        ui.kv(
+            "Model",
+            &format!("{} v{}", claims.model_id, claims.model_version),
+        );
+        ui.kv(
+            "Platform",
+            &claims.enclave_measurements.measurement_type,
+        );
+        ui.kv("Sequence", &format!("#{}", claims.sequence_number));
+        ui.kv("Issuer", &claims.iss);
+    }
+
+    ui.blank();
+    ui.section("4-Layer Verification");
+
+    for check in &result.checks {
+        let status = match check.status {
+            AirCheckStatus::Pass => CheckStatus::Pass,
+            AirCheckStatus::Fail => CheckStatus::Fail,
+            AirCheckStatus::Skip => CheckStatus::Skip,
+        };
+        let detail = check
+            .code
+            .as_ref()
+            .map(|c| format!(" [{}]", c))
+            .or_else(|| check.detail.as_ref().map(|d| format!(" ({})", d)))
+            .unwrap_or_default();
+        let label = format!("{}{}", check.name, detail);
+        ui.check(&label, &status);
+    }
+    ui.divider();
+
+    ui.blank();
+    if result.verified {
+        ui.success("VERIFIED (AIR v1)");
+    } else {
+        ui.failure("INVALID (AIR v1)");
+    }
+    ui.blank();
+
+    let failures = result.failures();
+    if !failures.is_empty() {
+        ui.info("Failures:");
+        for code in &failures {
+            ui.bullet(&format!("{}", code));
+        }
+        ui.blank();
+    }
+
+    if verbose {
+        if let Some(ref claims) = result.claims {
+            ui.section("Details");
+            ui.kv("Exec time", &format!("{}ms", claims.execution_time_ms));
+            ui.kv("Memory", &format!("{} MB", claims.memory_peak_mb));
+            ui.kv("Timestamp (iat)", &claims.iat.to_string());
+            ui.kv("Model hash", &hex::encode(claims.model_hash));
+            ui.kv("Req hash", &hex::encode(claims.request_hash));
+            ui.kv("Resp hash", &hex::encode(claims.response_hash));
+            ui.kv("Att hash", &hex::encode(claims.attestation_doc_hash));
+            ui.kv("Security mode", &claims.security_mode);
+            ui.kv("Policy", &claims.policy_version);
+            if let Some(ref scheme) = claims.model_hash_scheme {
+                ui.kv("Hash scheme", scheme);
+            }
+            ui.blank();
+        }
+    }
+
+    ui.divider();
 }
 
 fn print_text_report(

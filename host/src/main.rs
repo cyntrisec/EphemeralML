@@ -211,6 +211,10 @@ struct ProdArgs {
     /// Preserves the exact on-wire encoding for canonical verification.
     #[arg(long, env = "EPHEMERALML_RECEIPT_OUTPUT_RAW")]
     receipt_output_raw: Option<String>,
+
+    /// Save the AIR v1 receipt (COSE_Sign1 CBOR bytes) to this path.
+    #[arg(long, env = "EPHEMERALML_RECEIPT_OUTPUT_AIR_V1")]
+    receipt_output_air_v1: Option<String>,
 }
 
 #[tokio::main]
@@ -223,6 +227,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
         let mock_receipt_output = std::env::var("EPHEMERALML_RECEIPT_OUTPUT").ok();
         let mock_receipt_output_raw = std::env::var("EPHEMERALML_RECEIPT_OUTPUT_RAW").ok();
+        let mock_receipt_output_air_v1 = std::env::var("EPHEMERALML_RECEIPT_OUTPUT_AIR_V1").ok();
 
         // 1. Start KMS proxy in background
         let kms_handle = tokio::spawn(async move {
@@ -332,6 +337,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         Err(e) => {
                             eprintln!("Failed to parse receipt: {}", e);
                         }
+                    }
+                } else if t.name == "__receipt_air_v1__" {
+                    if let Err(e) = save_receipt_raw(&t.data, mock_receipt_output_air_v1.as_deref()) {
+                        eprintln!("Warning: failed to save AIR v1 receipt: {}", e);
+                    } else if mock_receipt_output_air_v1.is_some() {
+                        println!("  AIR v1 receipt ({} bytes) saved", t.data.len());
                     }
                 } else {
                     print_embeddings(&t.data, &t.shape);
@@ -525,6 +536,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         Err(e) => {
                             error!(error = %e, "Failed to parse receipt");
                         }
+                    }
+                } else if t.name == "__receipt_air_v1__" {
+                    if let Err(e) = save_receipt_raw(&t.data, args.receipt_output_air_v1.as_deref()) {
+                        error!(error = %e, "Failed to save AIR v1 receipt");
+                    } else if args.receipt_output_air_v1.is_some() {
+                        info!(size = t.data.len(), "AIR v1 receipt saved");
                     }
                 } else {
                     print_embeddings(&t.data, &t.shape);

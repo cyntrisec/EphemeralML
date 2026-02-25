@@ -203,6 +203,19 @@ if [[ -f "${RECEIPT_PATH}" ]]; then
         VERIFY_EXIT=$?
         VERIFY_END=$(date +%s%N)
         RECEIPT_VERIFIED=true
+
+        # Also verify AIR v1 receipt if present (non-blocking)
+        AIR_V1_PATH="/tmp/ephemeralml-receipt.cbor"
+        if [[ -f "${AIR_V1_PATH}" ]]; then
+            ui_blank
+            ui_info "AIR v1 receipt verification..."
+            cargo run --release --no-default-features --features gcp \
+                --bin ephemeralml-verify -- \
+                "${AIR_V1_PATH}" \
+                --public-key "${PK_HEX}" \
+                --max-age 0 \
+                --format text || true
+        fi
     else
         ui_warn "WARNING: Receipt file exists but no .pubkey file found at ${PUBKEY_FILE}."
         ui_info "Receipt at: ${RECEIPT_PATH}"
@@ -269,8 +282,8 @@ MANIFEST_PATH="/tmp/ephemeralml-artifact_manifest.json"
     echo "  \"generated\": \"$(date -u +%Y-%m-%dT%H:%M:%SZ)\","
     echo '  "artifacts": ['
     _first=true
-    for _f in "${RECEIPT_PATH}" "${RECEIPT_PATH}.pubkey" "/tmp/ephemeralml-attestation.bin" \
-              "/tmp/ephemeralml-manifest.json" "${TIMING_PATH}"; do
+    for _f in "${RECEIPT_PATH}" "/tmp/ephemeralml-receipt.cbor" "${RECEIPT_PATH}.pubkey" \
+              "/tmp/ephemeralml-attestation.bin" "/tmp/ephemeralml-manifest.json" "${TIMING_PATH}"; do
         [ -f "$_f" ] || continue
         _basename="$(basename "$_f")"
         _hash=$(sha256sum "$_f" | cut -d' ' -f1)

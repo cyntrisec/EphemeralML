@@ -85,6 +85,24 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                             Err(e) => eprintln!("Warning: failed to serialize receipt: {}", e),
                         }
 
+                        // Save AIR v1 receipt (CBOR) if present
+                        if let Some(ref air_b64) = result.air_v1_receipt_b64 {
+                            use base64::Engine as _;
+                            match base64::engine::general_purpose::STANDARD.decode(air_b64) {
+                                Ok(cbor_bytes) => {
+                                    let cbor_path = "/tmp/ephemeralml-receipt.cbor";
+                                    if let Err(e) = std::fs::write(cbor_path, &cbor_bytes) {
+                                        eprintln!("Warning: failed to save AIR v1 receipt: {}", e);
+                                    } else {
+                                        println!("AIR v1 receipt saved to {}", cbor_path);
+                                    }
+                                }
+                                Err(e) => {
+                                    eprintln!("Warning: failed to decode AIR v1 receipt base64: {}", e);
+                                }
+                            }
+                        }
+
                         // Save sidecar evidence files alongside receipt
                         if let Some(ref att_b64) = result.boot_attestation_b64 {
                             use base64::Engine as _;

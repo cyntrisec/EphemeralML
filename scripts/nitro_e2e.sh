@@ -286,6 +286,7 @@ set +e
     --text "$INPUT_TEXT" \
     --receipt-output "$EVIDENCE_DIR/receipt.json" \
     --receipt-output-raw "$EVIDENCE_DIR/receipt.raw" \
+    --receipt-output-air-v1 "$EVIDENCE_DIR/receipt.cbor" \
     2>&1 | tee "$EVIDENCE_DIR/host_output.log"
 HOST_EXIT=${PIPESTATUS[0]}
 set -e

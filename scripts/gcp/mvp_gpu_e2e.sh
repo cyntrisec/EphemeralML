@@ -199,13 +199,18 @@ else
     step_fail "verify.sh exit code ${VERIFY_EXIT}"
 fi
 
-# Copy receipt, pubkey, and sidecar evidence artifacts
+# Copy receipt, pubkey, AIR v1 receipt, and sidecar evidence artifacts
 RECEIPT_PATH="/tmp/ephemeralml-receipt.json"
+AIR_V1_PATH="/tmp/ephemeralml-receipt.cbor"
 PUBKEY_PATH="${RECEIPT_PATH}.pubkey"
 ATTESTATION_PATH="/tmp/ephemeralml-attestation.bin"
 MANIFEST_PATH="/tmp/ephemeralml-manifest.json"
 if [[ -f "${RECEIPT_PATH}" ]]; then
     cp "${RECEIPT_PATH}" "${EVIDENCE_DIR}/receipt.json"
+fi
+if [[ -f "${AIR_V1_PATH}" ]]; then
+    cp "${AIR_V1_PATH}" "${EVIDENCE_DIR}/receipt.cbor"
+    echo "  Copied AIR v1 receipt: ${EVIDENCE_DIR}/receipt.cbor"
 fi
 if [[ -f "${PUBKEY_PATH}" ]]; then
     cp "${PUBKEY_PATH}" "${EVIDENCE_DIR}/receipt.pubkey"
@@ -246,6 +251,19 @@ if [[ -f "${EVIDENCE_DIR}/receipt.json" ]] && [[ -x "${VERIFY_BIN}" ]] && [[ -n 
     fi
 else
     step_fail "receipt.json, ephemeralml-verify, or public key not found"
+fi
+
+# AIR v1 receipt verification (non-blocking: log result but don't fail E2E)
+if [[ -f "${EVIDENCE_DIR}/receipt.cbor" ]] && [[ -x "${VERIFY_BIN}" ]] && [[ -n "${PK_HEX}" ]]; then
+    echo "  AIR v1 verification..."
+    if "${VERIFY_BIN}" "${EVIDENCE_DIR}/receipt.cbor" \
+        --public-key "${PK_HEX}" \
+        --max-age 0 \
+        2>&1 | tee "${EVIDENCE_DIR}/receipt_air_v1_verify_log.txt"; then
+        echo "  AIR v1: VERIFIED"
+    else
+        echo "  AIR v1: FAILED (non-blocking)"
+    fi
 fi
 echo
 

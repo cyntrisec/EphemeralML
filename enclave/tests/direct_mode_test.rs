@@ -97,6 +97,8 @@ async fn direct_mode_happy_path() {
             [0u8; 32],
             None,
             None,
+            None,
+            "cyntrisec.com".to_string(),
         )
         .await
     });
@@ -228,6 +230,8 @@ async fn direct_mode_malformed_json_no_crash() {
             [0u8; 32],
             None,
             None,
+            None,
+            "cyntrisec.com".to_string(),
         )
         .await
     });
@@ -336,6 +340,8 @@ async fn setup_direct_server_with_manifest(
             [0u8; 32],
             None,
             manifest_arc,
+            None,
+            "cyntrisec.com".to_string(),
         )
         .await
     });

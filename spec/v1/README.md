@@ -19,6 +19,17 @@ A cryptographically signed proof that an ML inference was executed inside a hard
 | [cddl/air-v1.cddl](cddl/air-v1.cddl) | CDDL wire schema |
 | [vectors/](vectors/) | Golden test vectors (10 vectors: 2 valid, 8 invalid) |
 | [interop-kit.md](interop-kit.md) | Quick-start guide for external implementors |
+| [implementation-status.md](implementation-status.md) | Reference implementation status, platform coverage, and known gaps (non-normative) |
+
+## Public Entry Point
+
+Start here if you are evaluating AIR v1 externally:
+
+1. [interop-kit.md](interop-kit.md) — minimum information to build a verifier
+2. [cddl/air-v1.cddl](cddl/air-v1.cddl) — wire schema
+3. [vectors/](vectors/) — conformance corpus (valid + invalid vectors)
+4. [implementation-status.md](implementation-status.md) — current Rust implementation coverage and gaps
+5. [limitations-v1.md](limitations-v1.md) — explicit non-claims
 
 ## Format
 
@@ -41,6 +52,14 @@ spec/v1/
 ## Prior Version
 
 [spec/receipt-v0.1.md](../receipt-v0.1.md) — EphemeralML internal format (FROZEN, superseded by AIR v1).
+
+## IETF Prep (Non-Normative)
+
+These documents are M4/M5 preparation artifacts and are **not** part of the AIR v1 normative specification:
+
+- [ietf/README.md](ietf/README.md)
+- [ietf/air-v1-rats-draft-outline.md](ietf/air-v1-rats-draft-outline.md)
+- [ietf/rats-intro-email-draft.md](ietf/rats-intro-email-draft.md)
 
 ## License
 

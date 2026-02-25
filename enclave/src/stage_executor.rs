@@ -20,6 +20,10 @@ pub struct EphemeralStageExecutor<A: AttestationProvider> {
     model_id: String,
     /// Mutable connection state behind a mutex for receipt sequence tracking.
     state: Mutex<ConnectionState>,
+    /// SHA-256 of model weights for AIR v1 receipt generation.
+    model_hash: Option<[u8; 32]>,
+    /// Issuer identifier for AIR v1 receipts.
+    receipt_issuer: String,
 }
 
 impl<A: AttestationProvider> EphemeralStageExecutor<A> {
@@ -33,6 +37,18 @@ impl<A: AttestationProvider> EphemeralStageExecutor<A> {
         provider: A,
         receipt_key: ReceiptSigningKey,
         attestation_doc_hash: Option<[u8; 32]>,
+    ) -> Self {
+        Self::with_air_v1(engine, provider, receipt_key, attestation_doc_hash, None, "cyntrisec.com".to_string())
+    }
+
+    /// Create a new stage executor with AIR v1 receipt parameters.
+    pub fn with_air_v1(
+        engine: CandleInferenceEngine,
+        provider: A,
+        receipt_key: ReceiptSigningKey,
+        attestation_doc_hash: Option<[u8; 32]>,
+        model_hash: Option<[u8; 32]>,
+        receipt_issuer: String,
     ) -> Self {
         let receipt_pk = receipt_key.public_key_bytes();
         let session_id = hex::encode(&receipt_pk[..16]);
@@ -53,6 +69,8 @@ impl<A: AttestationProvider> EphemeralStageExecutor<A> {
             attestation_provider: provider,
             model_id: String::new(),
             state: Mutex::new(state),
+            model_hash,
+            receipt_issuer,
         }
     }
 }
@@ -82,7 +100,7 @@ impl<A: AttestationProvider + Send + Sync> StageExecutor for EphemeralStageExecu
         let mut prev_receipt_tensors: Vec<OwnedTensor> = Vec::new();
         let mut data_tensors: Vec<&OwnedTensor> = Vec::new();
         for tensor in &inputs {
-            if tensor.name.starts_with("__receipt__") {
+            if tensor.name.starts_with("__receipt") {
                 prev_receipt_tensors.push(tensor.clone());
             } else {
                 data_tensors.push(tensor);
@@ -266,7 +284,42 @@ impl<A: AttestationProvider + Send + Sync> StageExecutor for EphemeralStageExecu
             data: bytes::Bytes::from(receipt_bytes),
         };
 
-        // Build output: [output_tensor, ...forwarded_prev_receipts_renamed, this_receipt]
+        // Build AIR v1 receipt tensor (non-fatal: skip if model_hash unavailable or build fails)
+        let air_v1_tensor: Option<OwnedTensor> = if let Some(mh) = self.model_hash {
+            match ephemeral_ml_common::air_receipt::AirReceiptClaims::from_legacy(
+                &receipt,
+                self.receipt_issuer.clone(),
+                mh,
+            ) {
+                Ok(claims) => {
+                    let state = self.state.lock().map_err(|_| StageError::ForwardFailed {
+                        request_id,
+                        micro_batch,
+                        reason: "State lock poisoned (AIR v1)".to_string(),
+                    })?;
+                    match ephemeral_ml_common::air_receipt::build_air_v1(&claims, &state.receipt_signing_key) {
+                        Ok(cbor_bytes) => Some(OwnedTensor {
+                            name: "__receipt_air_v1__".to_string(),
+                            dtype: confidential_ml_transport::DType::U8,
+                            shape: vec![cbor_bytes.len() as u32],
+                            data: bytes::Bytes::from(cbor_bytes),
+                        }),
+                        Err(e) => {
+                            eprintln!("[stage] Warning: AIR v1 build failed: {}", e);
+                            None
+                        }
+                    }
+                }
+                Err(e) => {
+                    eprintln!("[stage] Warning: AIR v1 from_legacy failed: {}", e);
+                    None
+                }
+            }
+        } else {
+            None
+        };
+
+        // Build output: [output_tensor, ...forwarded_prev_receipts_renamed, this_receipt, air_v1?]
         let mut out_tensors = vec![output_tensor];
 
         // Forward previous receipts with stage-indexed names
@@ -276,6 +329,10 @@ impl<A: AttestationProvider + Send + Sync> StageExecutor for EphemeralStageExecu
         }
 
         out_tensors.push(receipt_tensor);
+
+        if let Some(air_v1) = air_v1_tensor {
+            out_tensors.push(air_v1);
+        }
 
         Ok(ForwardOutput {
             tensors: out_tensors,

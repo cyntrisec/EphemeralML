@@ -153,6 +153,7 @@ impl SecureClient for MockSecureClient {
             generated_text: None,
             boot_attestation_b64: None,
             model_manifest_json: None,
+            air_v1_receipt_b64: None,
         })
     }
 
@@ -188,6 +189,7 @@ impl SecureClient for MockSecureClient {
             generated_text: None,
             boot_attestation_b64: None,
             model_manifest_json: None,
+            air_v1_receipt_b64: None,
         })
     }
 
@@ -228,6 +230,7 @@ impl SecureClient for MockSecureClient {
             generated_text: Some(generated_text),
             boot_attestation_b64: None,
             model_manifest_json: None,
+            air_v1_receipt_b64: None,
         })
     }
 }

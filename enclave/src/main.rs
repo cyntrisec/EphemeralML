@@ -145,6 +145,10 @@ struct Args {
     /// Data-out target address for pipeline mode (connect to next stage or orchestrator).
     #[arg(long, default_value = "127.0.0.1:9002")]
     data_out_target: String,
+
+    /// Issuer identifier for AIR v1 receipts (e.g. domain name).
+    #[arg(long, env = "EPHEMERALML_RECEIPT_ISSUER", default_value = "cyntrisec.com")]
+    receipt_issuer: String,
 }
 
 /// Classify an error message into a structured exit code for CI/script parsing.
@@ -1041,6 +1045,8 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
                     boot_attestation_hash,
                     Some(boot_attestation_bytes),
                     manifest_arc,
+                    loaded_model_hash,
+                    args.receipt_issuer.clone(),
                 )
                 .await
                 .map_err(|e| -> Box<dyn std::error::Error> { e })?;
@@ -1048,7 +1054,14 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
             }
 
             // Pipeline mode: orchestrator connects to control, then data channels.
-            let executor = EphemeralStageExecutor::new(engine, tee_provider, receipt_key, None);
+            let executor = EphemeralStageExecutor::with_air_v1(
+                engine,
+                tee_provider,
+                receipt_key,
+                None,
+                loaded_model_hash,
+                args.receipt_issuer.clone(),
+            );
 
             // Use configurable addresses (default: 0.0.0.0:9000/9001/9002 for GCP)
             let gcp_control = if args.control_addr == "127.0.0.1:9000" {
@@ -1209,11 +1222,20 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
                 mock_attestation_hash,
                 None,
                 None,
+                None,
+                args.receipt_issuer.clone(),
             )
             .await
             .map_err(|e| -> Box<dyn std::error::Error> { e })?;
         } else {
-            let executor = EphemeralStageExecutor::new(engine, mock_provider, receipt_key, None);
+            let executor = EphemeralStageExecutor::with_air_v1(
+                engine,
+                mock_provider,
+                receipt_key,
+                None,
+                None,
+                args.receipt_issuer.clone(),
+            );
 
             info!(
                 step = "pipeline",

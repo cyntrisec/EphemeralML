@@ -43,6 +43,9 @@ pub struct InferenceHandlerOutput {
     /// Model manifest JSON string.
     #[serde(default)]
     pub model_manifest_json: Option<String>,
+    /// Base64-encoded AIR v1 receipt (COSE_Sign1 CBOR bytes).
+    #[serde(default)]
+    pub air_v1_receipt_b64: Option<String>,
 }
 
 /// Result of an inference request, including the output tensor and the signed receipt.
@@ -57,6 +60,9 @@ pub struct InferenceResult {
     /// Model manifest JSON string.
     /// Present when the server provides a model manifest.
     pub model_manifest_json: Option<String>,
+    /// Base64-encoded AIR v1 receipt (COSE_Sign1 CBOR bytes).
+    /// Present when the server provides an AIR v1 receipt.
+    pub air_v1_receipt_b64: Option<String>,
 }
 
 /// Trait for secure client communication
@@ -412,6 +418,7 @@ impl SecureClient for SecureEnclaveClient {
             generated_text: None,
             boot_attestation_b64: output.boot_attestation_b64,
             model_manifest_json: output.model_manifest_json,
+            air_v1_receipt_b64: output.air_v1_receipt_b64,
         })
     }
 
@@ -601,6 +608,7 @@ impl SecureClient for SecureEnclaveClient {
             generated_text: output.generated_text,
             boot_attestation_b64: output.boot_attestation_b64,
             model_manifest_json: output.model_manifest_json,
+            air_v1_receipt_b64: output.air_v1_receipt_b64,
         })
     }
 
@@ -787,6 +795,7 @@ impl SecureClient for SecureEnclaveClient {
             generated_text: output.generated_text,
             boot_attestation_b64: output.boot_attestation_b64,
             model_manifest_json: output.model_manifest_json,
+            air_v1_receipt_b64: output.air_v1_receipt_b64,
         })
     }
 }
@@ -872,6 +881,7 @@ mod tests {
                     generated_text: None,
                     boot_attestation_b64: None,
                     model_manifest_json: None,
+                    air_v1_receipt_b64: None,
                 };
                 let response_bytes = serde_json::to_vec(&output).unwrap();
                 channel.send(Bytes::from(response_bytes)).await.unwrap();

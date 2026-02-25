@@ -171,8 +171,9 @@ def verify_air_v1(receipt_bytes, public_key_bytes):
 
 ## 8. Known Implementations
 
-| Language | Library | Status |
-|----------|---------|--------|
-| Rust | `ephemeral-ml-common` (this repo) | Reference implementation, 197+ tests |
+| Language | Library / Package | Status | Coverage | Last Verified | Details |
+|----------|--------------------|--------|----------|---------------|---------|
+| Rust | `ephemeral-ml-common` (this repo) | Reference implementation | AIR verifier + vectors + policy hooks | 2026-02-25 | [implementation-status.md](implementation-status.md) |
+| Python | `spec/v1/scripts/interop_test.py` | Draft harness (not externally validated yet) | External vector verification harness | 2026-02-25 (syntax checked) | M4 external interop run pending |
 
 To register your implementation, open an issue or PR.

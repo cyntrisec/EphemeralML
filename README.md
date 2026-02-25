@@ -34,6 +34,21 @@
 
 ---
 
+## AIR v1 (Open Receipt Format)
+
+EphemeralML now includes **AIR v1 (Attested Inference Receipt)**, a standards-aligned receipt format
+for proving a single AI inference happened in an attested confidential environment.
+
+- Spec entrypoint: [`spec/v1/README.md`](spec/v1/README.md)
+- Interop quick start: [`spec/v1/interop-kit.md`](spec/v1/interop-kit.md)
+- CDDL schema: [`spec/v1/cddl/air-v1.cddl`](spec/v1/cddl/air-v1.cddl)
+- Conformance vectors: [`spec/v1/vectors/`](spec/v1/vectors/)
+- Implementation status / known gaps: [`spec/v1/implementation-status.md`](spec/v1/implementation-status.md)
+
+AIR v1 is **single-inference only** (pipeline proof chaining is planned for vNEXT).
+
+---
+
 ## Architecture
 
 ### AWS Nitro Enclaves

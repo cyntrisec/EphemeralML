@@ -151,6 +151,10 @@ if [[ -f /tmp/ephemeralml-receipt.json ]]; then
     cp /tmp/ephemeralml-receipt.json "${EVIDENCE_DIR}/receipt.json"
     echo "  Receipt saved to ${EVIDENCE_DIR}/receipt.json"
 fi
+if [[ -f /tmp/ephemeralml-receipt.cbor ]]; then
+    cp /tmp/ephemeralml-receipt.cbor "${EVIDENCE_DIR}/receipt.cbor"
+    echo "  AIR v1 receipt saved to ${EVIDENCE_DIR}/receipt.cbor"
+fi
 
 # ---------------------------------------------------------------------------
 # Step 5: Negative test — wrong model hash

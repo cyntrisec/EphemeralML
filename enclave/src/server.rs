@@ -64,6 +64,10 @@ struct DirectInferenceResponse {
     /// Present when the server loaded a signed model manifest.
     #[serde(skip_serializing_if = "Option::is_none")]
     model_manifest_json: Option<String>,
+    /// Base64-encoded AIR v1 receipt (COSE_Sign1 CBOR bytes).
+    /// Present when the server has a model_hash and can build an AIR v1 receipt.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    air_v1_receipt_b64: Option<String>,
 }
 
 /// Accept a single client SecureChannel on `listen_addr` and serve inference
@@ -82,6 +86,8 @@ pub async fn run_direct_tcp<A: crate::AttestationProvider + Send + Sync>(
     boot_attestation_hash: [u8; 32],
     boot_attestation_bytes: Option<std::sync::Arc<Vec<u8>>>,
     model_manifest_json: Option<std::sync::Arc<String>>,
+    model_hash: Option<[u8; 32]>,
+    receipt_issuer: String,
 ) -> std::result::Result<(), Box<dyn std::error::Error + Send + Sync>> {
     use bytes::Bytes;
     use confidential_ml_transport::session::channel::Message;
@@ -182,6 +188,8 @@ pub async fn run_direct_tcp<A: crate::AttestationProvider + Send + Sync>(
                     &mut state,
                     boot_attestation_bytes.as_deref(),
                     model_manifest_json.as_deref(),
+                    model_hash,
+                    &receipt_issuer,
                 ) {
                     Ok(result) => {
                         channel.send(Bytes::from(result.response_json)).await?;
@@ -233,6 +241,8 @@ fn handle_direct_request<A: crate::AttestationProvider>(
     state: &mut ephemeral_ml_common::transport_types::ConnectionState,
     boot_attestation_bytes: Option<&Vec<u8>>,
     model_manifest_json: Option<&String>,
+    model_hash: Option<[u8; 32]>,
+    receipt_issuer: &str,
 ) -> std::result::Result<DirectResult, Box<dyn std::error::Error + Send + Sync>> {
     let request: DirectInferenceRequest =
         serde_json::from_slice(bytes).map_err(|e| format!("Bad request JSON: {}", e))?;
@@ -366,6 +376,34 @@ fn handle_direct_request<A: crate::AttestationProvider>(
 
     receipt.sign(&state.receipt_signing_key)?;
 
+    // Build AIR v1 receipt (non-fatal: skip if model_hash unavailable or build fails)
+    let air_v1_receipt_b64: Option<String> = if let Some(mh) = model_hash {
+        match ephemeral_ml_common::air_receipt::AirReceiptClaims::from_legacy(
+            &receipt,
+            receipt_issuer.to_string(),
+            mh,
+        ) {
+            Ok(claims) => {
+                match ephemeral_ml_common::air_receipt::build_air_v1(&claims, &state.receipt_signing_key) {
+                    Ok(cbor_bytes) => {
+                        use base64::Engine as _;
+                        Some(base64::engine::general_purpose::STANDARD.encode(&cbor_bytes))
+                    }
+                    Err(e) => {
+                        eprintln!("[direct] Warning: AIR v1 build failed: {}", e);
+                        None
+                    }
+                }
+            }
+            Err(e) => {
+                eprintln!("[direct] Warning: AIR v1 from_legacy failed: {}", e);
+                None
+            }
+        }
+    } else {
+        None
+    };
+
     let seq = receipt.sequence_number;
     let n_floats = output_tensor.len();
     use base64::Engine as _;
@@ -376,6 +414,7 @@ fn handle_direct_request<A: crate::AttestationProvider>(
         boot_attestation_b64: boot_attestation_bytes
             .map(|b| base64::engine::general_purpose::STANDARD.encode(b)),
         model_manifest_json: model_manifest_json.cloned(),
+        air_v1_receipt_b64,
     };
     let response_json = serde_json::to_vec(&response)?;
 
