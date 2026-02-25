@@ -165,6 +165,8 @@ jobs:
           key: ${{ runner.os }}-cargo-compliance-${{ hashFiles('**/Cargo.lock') }}
       - run: cargo test -p ephemeral-ml-compliance
       - run: cargo test --test conformance_test
+      - name: AIR v1 vector conformance
+        run: cargo test -p ephemeral-ml-common --test air_v1_vectors_test
 
   deps:
     name: Dependency Drift
