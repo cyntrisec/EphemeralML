@@ -251,10 +251,7 @@ fn encode_measurements(m: &EnclaveMeasurements) -> Value {
         ),
     ];
     if let Some(ref pcr8) = m.pcr8 {
-        entries.push((
-            Value::Text("pcr8".to_string()),
-            Value::Bytes(pcr8.clone()),
-        ));
+        entries.push((Value::Text("pcr8".to_string()), Value::Bytes(pcr8.clone())));
     }
     // Sort text keys lexicographically for determinism
     entries.sort_by(|(k1, _), (k2, _)| crate::cbor::cmp_cbor_keys(k1, k2));
@@ -266,10 +263,7 @@ fn encode_measurements(m: &EnclaveMeasurements) -> Value {
 /// Build a signed AIR v1 receipt (COSE_Sign1 tagged bytes).
 ///
 /// Returns the CBOR-encoded COSE_Sign1 with tag 18.
-pub fn build_air_v1(
-    claims: &AirReceiptClaims,
-    signing_key: &ReceiptSigningKey,
-) -> Result<Vec<u8>> {
+pub fn build_air_v1(claims: &AirReceiptClaims, signing_key: &ReceiptSigningKey) -> Result<Vec<u8>> {
     claims.validate()?;
 
     if signing_key.is_expired() {
@@ -322,9 +316,8 @@ pub fn encode_claims_exported(claims: &AirReceiptClaims) -> Result<Vec<u8>> {
 
 /// Parse AIR v1 COSE_Sign1 bytes into claims. Does NOT verify the signature.
 pub fn parse_air_v1(data: &[u8]) -> Result<ParsedAirReceipt> {
-    let cose = coset::CoseSign1::from_tagged_slice(data).map_err(|e| {
-        EphemeralError::SerializationError(format!("COSE_Sign1 parse failed: {e}"))
-    })?;
+    let cose = coset::CoseSign1::from_tagged_slice(data)
+        .map_err(|e| EphemeralError::SerializationError(format!("COSE_Sign1 parse failed: {e}")))?;
 
     // Check protected header
     let alg = cose.protected.header.alg.as_ref().ok_or_else(|| {
@@ -417,7 +410,8 @@ fn decode_claims(payload: &[u8]) -> Result<AirReceiptClaims> {
     let model_hash = get_hash32(entries, AIR_MODEL_HASH, "model_hash")?;
     let request_hash = get_hash32(entries, AIR_REQUEST_HASH, "request_hash")?;
     let response_hash = get_hash32(entries, AIR_RESPONSE_HASH, "response_hash")?;
-    let attestation_doc_hash = get_hash32(entries, AIR_ATTESTATION_DOC_HASH, "attestation_doc_hash")?;
+    let attestation_doc_hash =
+        get_hash32(entries, AIR_ATTESTATION_DOC_HASH, "attestation_doc_hash")?;
     let enclave_measurements = decode_measurements(entries)?;
     let policy_version = get_text(entries, AIR_POLICY_VERSION)?;
     let sequence_number = get_uint(entries, AIR_SEQUENCE_NUMBER)?;
@@ -594,8 +588,8 @@ pub(crate) mod golden {
             iss: "cyntrisec.com".to_string(),
             iat: 1740500000,
             cti: [
-                0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08,
-                0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F, 0x10,
+                0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E,
+                0x0F, 0x10,
             ],
             eat_nonce: None,
             model_id: "minilm-l6-v2".to_string(),
@@ -623,8 +617,8 @@ pub(crate) mod golden {
             iss: "cyntrisec.com".to_string(),
             iat: 1740500100,
             cti: [
-                0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17, 0x18,
-                0x19, 0x1A, 0x1B, 0x1C, 0x1D, 0x1E, 0x1F, 0x20,
+                0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17, 0x18, 0x19, 0x1A, 0x1B, 0x1C, 0x1D, 0x1E,
+                0x1F, 0x20,
             ],
             eat_nonce: Some(vec![0xDE, 0xAD, 0xBE, 0xEF, 0xCA, 0xFE, 0xBA, 0xBE]),
             model_id: "llama-7b".to_string(),
@@ -692,7 +686,10 @@ mod tests {
         assert_eq!(parsed.claims.model_hash, claims.model_hash);
         assert_eq!(parsed.claims.request_hash, claims.request_hash);
         assert_eq!(parsed.claims.response_hash, claims.response_hash);
-        assert_eq!(parsed.claims.attestation_doc_hash, claims.attestation_doc_hash);
+        assert_eq!(
+            parsed.claims.attestation_doc_hash,
+            claims.attestation_doc_hash
+        );
         assert_eq!(parsed.claims.policy_version, claims.policy_version);
         assert_eq!(parsed.claims.sequence_number, claims.sequence_number);
         assert_eq!(parsed.claims.execution_time_ms, claims.execution_time_ms);
@@ -740,7 +737,10 @@ mod tests {
 
         let bytes1 = build_air_v1(&claims, &key).unwrap();
         let bytes2 = build_air_v1(&claims, &key).unwrap();
-        assert_eq!(bytes1, bytes2, "output must be byte-stable for fixed inputs");
+        assert_eq!(
+            bytes1, bytes2,
+            "output must be byte-stable for fixed inputs"
+        );
     }
 
     #[test]
@@ -844,10 +844,7 @@ mod tests {
         claims.enclave_measurements.pcr8 = Some(vec![8u8; 48]);
         let bytes = build_air_v1(&claims, &key).unwrap();
         let parsed = parse_air_v1(&bytes).unwrap();
-        assert_eq!(
-            parsed.claims.enclave_measurements.pcr8,
-            Some(vec![8u8; 48])
-        );
+        assert_eq!(parsed.claims.enclave_measurements.pcr8, Some(vec![8u8; 48]));
     }
 
     #[test]
@@ -888,8 +885,8 @@ mod tests {
 
     #[test]
     fn generate_golden_vectors() {
-        use coset::TaggedCborSerializable;
         use super::golden;
+        use coset::TaggedCborSerializable;
 
         let key = golden::key();
 
@@ -915,9 +912,7 @@ mod tests {
         let sign1_wrong_alg = coset::CoseSign1Builder::new()
             .protected(protected_wrong_alg)
             .payload(payload1.clone())
-            .try_create_signature(b"", |tbs| {
-                Ok::<_, String>(key.raw_sign(tbs))
-            })
+            .try_create_signature(b"", |tbs| Ok::<_, String>(key.raw_sign(tbs)))
             .unwrap()
             .build();
         let wrong_alg_bytes = sign1_wrong_alg.to_tagged_vec().unwrap();
@@ -935,7 +930,10 @@ mod tests {
         eprintln!("receipt_len: {}", bytes2.len());
         eprintln!("");
         eprintln!("=== WRONG KEY ===");
-        eprintln!("wrong_public_key_hex: {}", hex::encode(wrong_public.as_bytes()));
+        eprintln!(
+            "wrong_public_key_hex: {}",
+            hex::encode(wrong_public.as_bytes())
+        );
         eprintln!("");
         eprintln!("=== WRONG ALG ===");
         eprintln!("wrong_alg_receipt_hex: {}", hex::encode(&wrong_alg_bytes));

@@ -139,13 +139,28 @@ pub struct AirCheck {
 
 impl AirCheck {
     fn pass(name: &'static str) -> Self {
-        Self { name, status: AirCheckStatus::Pass, code: None, detail: None }
+        Self {
+            name,
+            status: AirCheckStatus::Pass,
+            code: None,
+            detail: None,
+        }
     }
     fn fail(name: &'static str, code: AirCheckCode, detail: impl Into<String>) -> Self {
-        Self { name, status: AirCheckStatus::Fail, code: Some(code), detail: Some(detail.into()) }
+        Self {
+            name,
+            status: AirCheckStatus::Fail,
+            code: Some(code),
+            detail: Some(detail.into()),
+        }
     }
     fn skip(name: &'static str) -> Self {
-        Self { name, status: AirCheckStatus::Skip, code: None, detail: None }
+        Self {
+            name,
+            status: AirCheckStatus::Skip,
+            code: None,
+            detail: None,
+        }
     }
 }
 
@@ -166,9 +181,7 @@ pub struct AirVerifyResult {
 impl AirVerifyResult {
     /// Get all failure codes.
     pub fn failures(&self) -> Vec<&AirCheckCode> {
-        self.checks.iter()
-            .filter_map(|c| c.code.as_ref())
-            .collect()
+        self.checks.iter().filter_map(|c| c.code.as_ref()).collect()
     }
 
     /// Check if a specific failure code is present.
@@ -244,9 +257,9 @@ pub fn verify_air_v1_receipt(
     // Layer 4: Policy evaluation
     layer4_policy(&parsed.claims, policy, &mut checks);
 
-    let verified = checks.iter().all(|c| {
-        matches!(c.status, AirCheckStatus::Pass | AirCheckStatus::Skip)
-    });
+    let verified = checks
+        .iter()
+        .all(|c| matches!(c.status, AirCheckStatus::Pass | AirCheckStatus::Skip));
 
     AirVerifyResult {
         verified,
@@ -276,12 +289,18 @@ fn layer1_parse(data: &[u8], checks: &mut Vec<AirCheck>) -> Option<ParsedAirRece
 
     // Protected header: alg
     let alg_ok = match cose.protected.header.alg.as_ref() {
-        Some(a) if *a == coset::RegisteredLabelWithPrivate::Assigned(coset::iana::Algorithm::EdDSA) => {
+        Some(a)
+            if *a == coset::RegisteredLabelWithPrivate::Assigned(coset::iana::Algorithm::EdDSA) =>
+        {
             checks.push(AirCheck::pass("ALG"));
             true
         }
         Some(a) => {
-            checks.push(AirCheck::fail("ALG", AirCheckCode::BadAlg, format!("got {:?}", a)));
+            checks.push(AirCheck::fail(
+                "ALG",
+                AirCheckCode::BadAlg,
+                format!("got {:?}", a),
+            ));
             false
         }
         None => {
@@ -415,7 +434,11 @@ fn layer2_crypto(
 fn layer3_claims(claims: &AirReceiptClaims, checks: &mut Vec<AirCheck>) {
     // cti length (already parsed as [u8; 16], but verify it's not all zeros)
     if claims.cti == [0u8; 16] {
-        checks.push(AirCheck::fail("CTI", AirCheckCode::BadCtiLength, "cti is all zeros"));
+        checks.push(AirCheck::fail(
+            "CTI",
+            AirCheckCode::BadCtiLength,
+            "cti is all zeros",
+        ));
     } else {
         checks.push(AirCheck::pass("CTI"));
     }
@@ -457,11 +480,7 @@ fn layer3_claims(claims: &AirReceiptClaims, checks: &mut Vec<AirCheck>) {
 
 // ── Layer 4: Policy evaluation ──────────────────────────────────────
 
-fn layer4_policy(
-    claims: &AirReceiptClaims,
-    policy: &AirVerifyPolicy,
-    checks: &mut Vec<AirCheck>,
-) {
+fn layer4_policy(claims: &AirReceiptClaims, policy: &AirVerifyPolicy, checks: &mut Vec<AirCheck>) {
     // Timestamp freshness
     if policy.max_age_secs == 0 {
         checks.push(AirCheck::skip("FRESH"));
@@ -653,7 +672,9 @@ mod tests {
             assert!(
                 matches!(c.status, AirCheckStatus::Pass | AirCheckStatus::Skip),
                 "check {} is {:?}: {:?}",
-                c.name, c.status, c.detail
+                c.name,
+                c.status,
+                c.detail
             );
         }
     }
@@ -677,7 +698,8 @@ mod tests {
     #[test]
     fn test_garbage_data_fails_parse() {
         let key = ReceiptSigningKey::generate().unwrap();
-        let result = verify_air_v1_receipt(&[0xFF, 0xFF], &key.public_key, &AirVerifyPolicy::default());
+        let result =
+            verify_air_v1_receipt(&[0xFF, 0xFF], &key.public_key, &AirVerifyPolicy::default());
         assert!(!result.verified);
         assert!(result.has_failure(&AirCheckCode::CoseDecodeFailed));
         assert!(result.claims.is_none());
@@ -693,15 +715,13 @@ mod tests {
         // Build with wrong alg header
         let payload = crate::air_receipt::encode_claims_exported(&claims).unwrap();
         let protected = coset::HeaderBuilder::new()
-            .algorithm(coset::iana::Algorithm::ES256)  // Wrong!
+            .algorithm(coset::iana::Algorithm::ES256) // Wrong!
             .content_format(coset::iana::CoapContentFormat::Cwt)
             .build();
         let sign1 = coset::CoseSign1Builder::new()
             .protected(protected)
             .payload(payload)
-            .try_create_signature(b"", |tbs| {
-                Ok::<_, String>(key.raw_sign(tbs))
-            })
+            .try_create_signature(b"", |tbs| Ok::<_, String>(key.raw_sign(tbs)))
             .unwrap()
             .build();
         let bytes = sign1.to_tagged_vec().unwrap();
@@ -969,7 +989,11 @@ mod tests {
         assert!(!result.verified);
 
         let failures = result.failures();
-        assert!(failures.len() >= 3, "expected >= 3 failures, got {:?}", failures);
+        assert!(
+            failures.len() >= 3,
+            "expected >= 3 failures, got {:?}",
+            failures
+        );
         assert!(result.has_failure(&AirCheckCode::SignatureFailed));
         assert!(result.has_failure(&AirCheckCode::TimestampStale));
         assert!(result.has_failure(&AirCheckCode::ModelIdMismatch));
@@ -987,7 +1011,9 @@ mod tests {
         let result = verify_air_v1_receipt(&bytes, &key.public_key, &AirVerifyPolicy::default());
         assert!(result.verified);
 
-        let skipped: Vec<_> = result.checks.iter()
+        let skipped: Vec<_> = result
+            .checks
+            .iter()
             .filter(|c| matches!(c.status, AirCheckStatus::Skip))
             .map(|c| c.name)
             .collect();
@@ -1023,7 +1049,8 @@ mod tests {
     const GOLDEN_PUBKEY: &str = "197f6b23e16c8532c6abc838facd5ea789be0c76b2920334039bfa8b3d368d61";
 
     /// Wrong public key for signature failure vector
-    const GOLDEN_WRONG_PUBKEY: &str = "8a88e3dd7409f195fd52db2d3cba5d72ca6709bf1d94121bf3748801b40f6f5c";
+    const GOLDEN_WRONG_PUBKEY: &str =
+        "8a88e3dd7409f195fd52db2d3cba5d72ca6709bf1d94121bf3748801b40f6f5c";
 
     fn golden_pubkey() -> ed25519_dalek::VerifyingKey {
         let bytes = hex::decode(GOLDEN_PUBKEY).unwrap();
@@ -1077,7 +1104,10 @@ mod tests {
         let claims = result.claims.as_ref().unwrap();
         assert_eq!(claims.iss, "cyntrisec.com");
         assert_eq!(claims.iat, 1740500000);
-        assert_eq!(claims.cti, [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16]);
+        assert_eq!(
+            claims.cti,
+            [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16]
+        );
         assert!(claims.eat_nonce.is_none());
         assert_eq!(claims.model_id, "minilm-l6-v2");
         assert_eq!(claims.model_version, "1.0.0");
@@ -1113,9 +1143,15 @@ mod tests {
         let claims = result.claims.as_ref().unwrap();
         assert_eq!(claims.iss, "cyntrisec.com");
         assert_eq!(claims.iat, 1740500100);
-        assert_eq!(claims.eat_nonce, Some(vec![0xDE, 0xAD, 0xBE, 0xEF, 0xCA, 0xFE, 0xBA, 0xBE]));
+        assert_eq!(
+            claims.eat_nonce,
+            Some(vec![0xDE, 0xAD, 0xBE, 0xEF, 0xCA, 0xFE, 0xBA, 0xBE])
+        );
         assert_eq!(claims.model_id, "llama-7b");
-        assert_eq!(claims.enclave_measurements.measurement_type, "tdx-mrtd-rtmr");
+        assert_eq!(
+            claims.enclave_measurements.measurement_type,
+            "tdx-mrtd-rtmr"
+        );
         assert_eq!(claims.security_mode, "ShieldMode");
         assert_eq!(claims.execution_time_ms, 2500);
         assert_eq!(claims.memory_peak_mb, 8192);
