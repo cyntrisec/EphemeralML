@@ -308,6 +308,18 @@ pub struct ParsedAirReceipt {
     pub cose: coset::CoseSign1,
 }
 
+/// Decode claims from raw CBOR payload bytes.
+///
+/// Exposed for the verifier layer to decode claims independently of COSE parsing.
+pub fn decode_claims_from_bytes(payload: &[u8]) -> Result<AirReceiptClaims> {
+    decode_claims(payload)
+}
+
+/// Encode claims to deterministic CBOR bytes (for test/verifier use).
+pub fn encode_claims_exported(claims: &AirReceiptClaims) -> Result<Vec<u8>> {
+    encode_claims(claims)
+}
+
 /// Parse AIR v1 COSE_Sign1 bytes into claims. Does NOT verify the signature.
 pub fn parse_air_v1(data: &[u8]) -> Result<ParsedAirReceipt> {
     let cose = coset::CoseSign1::from_tagged_slice(data).map_err(|e| {

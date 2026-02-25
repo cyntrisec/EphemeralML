@@ -1801,6 +1801,7 @@ dependencies = [
  "candle-transformers",
  "ciborium",
  "confidential-ml-transport",
+ "coset",
  "ed25519-dalek",
  "hex",
  "lazy_static",

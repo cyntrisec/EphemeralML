@@ -1,4 +1,5 @@
 pub mod air_receipt;
+pub mod air_verify;
 pub mod audit;
 pub mod cbor;
 pub mod error;
