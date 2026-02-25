@@ -1,7 +1,7 @@
 # AIR v1 — EAT Claim Mapping
 
 **Issue:** #69
-**Status:** M1 DRAFT
+**Status:** v1.0 FROZEN
 **Date:** 2026-02-25
 **Companion:** `cddl/air-v1.cddl` (wire schema)
 
@@ -92,7 +92,7 @@ These claims use IANA-registered CWT integer keys.
 
 ## 3. AIR Private Claims
 
-These claims use negative integer keys to avoid collision with IANA CWT claim registry. Range -65537 to -65548 assigned; -65549 to -65599 reserved for v1.x extensions.
+These claims use negative integer keys to avoid collision with IANA CWT claim registry. Range -65537 to -65548 assigned (required); -65549 assigned (optional). Range -65550 to -65599 reserved for v1.x extensions.
 
 ### model_id — key -65537
 
@@ -120,7 +120,7 @@ These claims use negative integer keys to avoid collision with IANA CWT claim re
 | Required | Yes |
 | Semantics | SHA-256 of model weights. The cryptographic binding between the receipt and a specific model artifact. |
 | Verification | MHASH check: verifier MUST compare against a known-good hash when model identity matters. This is the primary model identity proof. |
-| Open issue | #80: multi-file hashing scheme is implementation-defined in v1.0. A `model_hash_scheme` claim may be added in v1.x. |
+| Hash scheme | See `model_hash_scheme` (key -65549, optional) for how the hash was computed. When absent, treat model_hash as opaque. |
 
 ### request_hash — key -65540
 
@@ -203,6 +203,27 @@ These claims use negative integer keys to avoid collision with IANA CWT claim re
 | Semantics | Security mode of the workload (e.g., `"GatewayOnly"`, `"FullAttestation"`). |
 | Verification | Informational. Verifier MAY require a specific security mode. |
 
+### model_hash_scheme — key -65549
+
+| Property | Value |
+|----------|-------|
+| CBOR type | tstr |
+| Required | No (optional, RECOMMENDED) |
+| Semantics | Declares how `model_hash` was computed. Enables verifiers to reproduce the hash from model artifacts. |
+| Verification | If present, verifier MUST recognize the scheme. Unknown schemes MUST be rejected (fail-closed). If absent, verifier treats model_hash as opaque (can still compare against known-good hash, but cannot reproduce it). |
+
+**Defined scheme values:**
+
+| Scheme | Description |
+|--------|-------------|
+| `"sha256-single"` | SHA-256 of a single model weights file. This is the default for single-file models (e.g., SafeTensors, GGUF, ONNX). |
+| `"sha256-concat"` | SHA-256 of deterministically concatenated weight files. Files MUST be concatenated in lexicographic filename order. The concatenation order MUST be reproducible from the model artifact directory. |
+| `"sha256-manifest"` | SHA-256 of a manifest document that lists per-file hashes. The manifest format is implementation-defined but MUST be self-describing (i.e., the manifest contains enough information to verify each file independently). |
+
+**Extensibility:** New scheme values MAY be registered in v1.x minor updates. Implementations MUST NOT invent unregistered scheme values.
+
+**Issue:** #80 (RESOLVED)
+
 ## 4. Measurement Map Variants
 
 The `enclave_measurements` claim (key -65543) contains a map whose structure depends on the `measurement_type` field inside it.
@@ -244,8 +265,8 @@ TDX registers are mapped to `pcr0`/`pcr1`/`pcr2` field names for verifier simpli
 
 ## 6. v1.x Extension Rules
 
-1. New optional claims MAY be added in v1.x minor versions using keys -65549 to -65599.
+1. New optional claims MAY be added in v1.x minor versions using keys -65550 to -65599.
 2. New claims MUST NOT be required — a v1.0 verifier must still accept v1.x receipts.
 3. New measurement_type variants MAY be added (e.g., `"sev-snp-vcek"` for AMD SEV-SNP).
 4. The protected header MUST NOT gain new required fields in v1.x.
-5. `model_hash_scheme` (Issue #80) is the first candidate extension claim (key -65549).
+5. New `model_hash_scheme` values MAY be registered in v1.x minor updates.

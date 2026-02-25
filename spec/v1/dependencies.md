@@ -78,10 +78,10 @@ AIR v1 uses these COSE_Sign1 header parameters:
 
 ### AIR Private Claims (negative integer keys, range TBD)
 
-Private claims use negative integer keys to avoid collision with IANA-registered CWT claims. Exact key assignments will be defined in the CDDL schema.
+Private claims use negative integer keys to avoid collision with IANA-registered CWT claims.
 
-| Claim | Key (TBD) | Type | Required | Description |
-|-------|-----------|------|----------|-------------|
+| Claim | Key | Type | Required | Description |
+|-------|-----|------|----------|-------------|
 | model_id | -65537 | tstr | Yes | Model identifier (operator-assigned, opaque) |
 | model_version | -65538 | tstr | Yes | Model version string (operator-assigned, opaque) |
 | model_hash | -65539 | bstr(32) | Yes | SHA-256 of model weights — cryptographic model identity |
@@ -94,6 +94,7 @@ Private claims use negative integer keys to avoid collision with IANA-registered
 | execution_time_ms | -65546 | uint | Yes | Inference wall-clock time (ms) |
 | memory_peak_mb | -65547 | uint | Yes | Peak memory usage (MB) |
 | security_mode | -65548 | tstr | Yes | Security mode identifier |
+| model_hash_scheme | -65549 | tstr | No | How model_hash was computed (Issue #80) |
 
 ## 6. Rust Crate Dependencies
 

@@ -648,6 +648,7 @@ mod tests {
             execution_time_ms: 116,
             memory_peak_mb: 512,
             security_mode: "GatewayOnly".to_string(),
+            model_hash_scheme: None,
         }
     }
 

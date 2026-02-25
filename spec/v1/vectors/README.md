@@ -1,6 +1,6 @@
 # AIR v1 Golden Test Vectors
 
-**Status:** M1 DRAFT
+**Status:** v1.0 FROZEN
 **Date:** 2026-02-25
 
 ## Purpose

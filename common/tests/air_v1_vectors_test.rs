@@ -116,6 +116,7 @@ fn golden_claims_v1() -> AirReceiptClaims {
         execution_time_ms: 116,
         memory_peak_mb: 512,
         security_mode: "GatewayOnly".to_string(),
+        model_hash_scheme: None,
     }
 }
 
@@ -145,6 +146,7 @@ fn golden_claims_v2() -> AirReceiptClaims {
         execution_time_ms: 2500,
         memory_peak_mb: 8192,
         security_mode: "ShieldMode".to_string(),
+        model_hash_scheme: None,
     }
 }
 

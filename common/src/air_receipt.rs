@@ -39,6 +39,7 @@ const AIR_SEQUENCE_NUMBER: i64 = -65545;
 const AIR_EXECUTION_TIME_MS: i64 = -65546;
 const AIR_MEMORY_PEAK_MB: i64 = -65547;
 const AIR_SECURITY_MODE: i64 = -65548;
+const AIR_MODEL_HASH_SCHEME: i64 = -65549;
 
 /// AIR v1 eat_profile URI
 pub const AIR_V1_PROFILE: &str = "https://spec.cyntrisec.com/air/v1";
@@ -68,6 +69,9 @@ pub struct AirReceiptClaims {
     pub execution_time_ms: u64,
     pub memory_peak_mb: u64,
     pub security_mode: String,
+    /// How model_hash was computed (optional, Issue #80).
+    /// Defined values: "sha256-single", "sha256-concat", "sha256-manifest".
+    pub model_hash_scheme: Option<String>,
 }
 
 impl AirReceiptClaims {
@@ -135,6 +139,7 @@ impl AirReceiptClaims {
             execution_time_ms: receipt.execution_time_ms,
             memory_peak_mb: receipt.memory_peak_mb,
             security_mode,
+            model_hash_scheme: None,
         })
     }
 }
@@ -146,6 +151,12 @@ fn encode_claims(claims: &AirReceiptClaims) -> Result<Vec<u8>> {
     let mut entries: Vec<(Value, Value)> = Vec::with_capacity(18);
 
     // Negative keys first (sorted ascending by value, i.e., most negative first)
+    if let Some(ref scheme) = claims.model_hash_scheme {
+        entries.push((
+            Value::Integer(AIR_MODEL_HASH_SCHEME.into()),
+            Value::Text(scheme.clone()),
+        ));
+    }
     entries.push((
         Value::Integer(AIR_SECURITY_MODE.into()),
         Value::Text(claims.security_mode.clone()),
@@ -418,6 +429,7 @@ fn decode_claims(payload: &[u8]) -> Result<AirReceiptClaims> {
     let execution_time_ms = get_uint(entries, AIR_EXECUTION_TIME_MS)?;
     let memory_peak_mb = get_uint(entries, AIR_MEMORY_PEAK_MB)?;
     let security_mode = get_text(entries, AIR_SECURITY_MODE)?;
+    let model_hash_scheme = get_text_opt(entries, AIR_MODEL_HASH_SCHEME);
 
     Ok(AirReceiptClaims {
         iss,
@@ -436,6 +448,7 @@ fn decode_claims(payload: &[u8]) -> Result<AirReceiptClaims> {
         execution_time_ms,
         memory_peak_mb,
         security_mode,
+        model_hash_scheme,
     })
 }
 
@@ -528,6 +541,13 @@ fn get_bstr(entries: &[(Value, Value)], key: i64) -> Result<Vec<u8>> {
     }
 }
 
+fn get_text_opt(entries: &[(Value, Value)], key: i64) -> Option<String> {
+    match get_by_int(entries, key) {
+        Some(Value::Text(s)) => Some(s.clone()),
+        _ => None,
+    }
+}
+
 fn get_bstr_opt(entries: &[(Value, Value)], key: i64) -> Option<Vec<u8>> {
     match get_by_int(entries, key) {
         Some(Value::Bytes(b)) => Some(b.clone()),
@@ -608,6 +628,7 @@ pub(crate) mod golden {
             execution_time_ms: 116,
             memory_peak_mb: 512,
             security_mode: "GatewayOnly".to_string(),
+            model_hash_scheme: None,
         }
     }
 
@@ -637,6 +658,7 @@ pub(crate) mod golden {
             execution_time_ms: 2500,
             memory_peak_mb: 8192,
             security_mode: "ShieldMode".to_string(),
+            model_hash_scheme: None,
         }
     }
 }
@@ -668,6 +690,7 @@ mod tests {
             execution_time_ms: 116,
             memory_peak_mb: 512,
             security_mode: "GatewayOnly".to_string(),
+            model_hash_scheme: None,
         }
     }
 
@@ -695,6 +718,7 @@ mod tests {
         assert_eq!(parsed.claims.execution_time_ms, claims.execution_time_ms);
         assert_eq!(parsed.claims.memory_peak_mb, claims.memory_peak_mb);
         assert_eq!(parsed.claims.security_mode, claims.security_mode);
+        assert_eq!(parsed.claims.model_hash_scheme, claims.model_hash_scheme);
         assert_eq!(
             parsed.claims.enclave_measurements.measurement_type,
             claims.enclave_measurements.measurement_type
@@ -820,6 +844,29 @@ mod tests {
         let bytes = build_air_v1(&claims, &key).unwrap();
         let parsed = parse_air_v1(&bytes).unwrap();
         assert!(parsed.claims.eat_nonce.is_none());
+    }
+
+    #[test]
+    fn test_model_hash_scheme_roundtrip() {
+        let key = ReceiptSigningKey::generate().unwrap();
+        let mut claims = fixture_claims();
+        claims.model_hash_scheme = Some("sha256-single".to_string());
+        let bytes = build_air_v1(&claims, &key).unwrap();
+        let parsed = parse_air_v1(&bytes).unwrap();
+        assert_eq!(
+            parsed.claims.model_hash_scheme,
+            Some("sha256-single".to_string())
+        );
+    }
+
+    #[test]
+    fn test_model_hash_scheme_absent_roundtrip() {
+        let key = ReceiptSigningKey::generate().unwrap();
+        let claims = fixture_claims();
+        assert!(claims.model_hash_scheme.is_none());
+        let bytes = build_air_v1(&claims, &key).unwrap();
+        let parsed = parse_air_v1(&bytes).unwrap();
+        assert!(parsed.claims.model_hash_scheme.is_none());
     }
 
     #[test]

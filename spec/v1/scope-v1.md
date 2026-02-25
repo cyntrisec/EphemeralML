@@ -43,7 +43,7 @@ Additional platforms (AMD SEV-SNP, ARM CCA) may be added in v1.x minor versions 
 | **Key management** | How signing keys are provisioned, rotated, or bound to attestation is implementation-specific. v1 defines the signature algorithm, not key lifecycle. |
 | **SCITT integration** | Transparency log registration (IETF SCITT) is a future layer. v1 receipts are compatible but do not require SCITT. |
 | **C2PA integration** | Content provenance embedding is complementary but out of scope for v1. |
-| **Model format** | v1 does not define how model_id or model_version are assigned. These are opaque strings. `model_hash` is a SHA-256 over the model weights file(s); v1 does not define the hashing scheme for multi-file models (implementor chooses, e.g., hash of concatenated files or Merkle root). |
+| **Model format** | v1 does not define how model_id or model_version are assigned. These are opaque strings. `model_hash` is a SHA-256 digest whose computation method is declared by the optional `model_hash_scheme` claim (key -65549). Defined schemes: `"sha256-single"`, `"sha256-concat"`, `"sha256-manifest"`. When `model_hash_scheme` is absent, the hash is treated as opaque. |
 | **Attestation document format** | The attestation_doc_hash is a SHA-256 of the platform's attestation document. v1 does not define the document format itself (Nitro COSE, TDX quote, etc.). |
 | **Privacy / differential privacy** | v1 does not address what the receipt reveals about inputs/outputs beyond their hashes. |
 | **Performance requirements** | v1 does not mandate latency or throughput for receipt generation. |

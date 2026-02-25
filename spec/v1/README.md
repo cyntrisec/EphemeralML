@@ -4,7 +4,7 @@ A cryptographically signed proof that an ML inference was executed inside a hard
 
 ## Status
 
-**v1.0:** M0 FROZEN — Charter & Scope locked. M1 implementation unblocked.
+**v1.0:** FROZEN — All normative documents locked. Issue #80 (model_hash_scheme) resolved.
 
 ## Documents
 
@@ -15,8 +15,10 @@ A cryptographically signed proof that an ML inference was executed inside a hard
 | [dependencies.md](dependencies.md) | Normative references and MTI algorithms |
 | [threat-model.md](threat-model.md) | Trust assumptions and threat analysis |
 | [limitations-v1.md](limitations-v1.md) | Explicit non-claims and limitations |
-| [claim-mapping.md](claim-mapping.md) | EAT claim mapping and verification semantics (M1) |
-| [cddl/air-v1.cddl](cddl/air-v1.cddl) | CDDL wire schema (M1) |
+| [claim-mapping.md](claim-mapping.md) | EAT claim mapping and verification semantics |
+| [cddl/air-v1.cddl](cddl/air-v1.cddl) | CDDL wire schema |
+| [vectors/](vectors/) | Golden test vectors (10 vectors: 2 valid, 8 invalid) |
+| [interop-kit.md](interop-kit.md) | Quick-start guide for external implementors |
 
 ## Format
 

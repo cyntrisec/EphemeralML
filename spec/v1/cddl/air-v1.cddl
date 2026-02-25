@@ -1,5 +1,5 @@
 ; Attested Inference Receipt (AIR) v1 — CDDL Schema
-; Status: M1 DRAFT
+; Status: v1.0 FROZEN
 ; Date: 2026-02-25
 ; References: RFC 9052 (COSE), RFC 8392 (CWT), RFC 9711 (EAT),
 ;             RFC 8949 (CBOR), RFC 8610 (CDDL)
@@ -71,11 +71,25 @@ air-claims = {
   -65547 => uint,            ; memory_peak_mb
   -65548 => tstr,            ; security_mode
 
+  ; --- Optional claims (v1.0) ---
+  ? -65549 => tstr,          ; model_hash_scheme (Issue #80)
+                              ;   Declares how model_hash was computed.
+                              ;   Defined values:
+                              ;     "sha256-single"  — SHA-256 of single weights file
+                              ;     "sha256-concat"  — SHA-256 of deterministically
+                              ;                        concatenated weight files
+                              ;     "sha256-manifest" — SHA-256 of a manifest listing
+                              ;                         per-file hashes (self-describing)
+                              ;   Verifiers encountering an unknown scheme MUST
+                              ;   reject the receipt (fail-closed).
+                              ;   Omission is permitted: when absent, the verifier
+                              ;   SHOULD treat model_hash as opaque (no scheme
+                              ;   assumption). Implementations are RECOMMENDED to
+                              ;   include this claim.
+
   ; --- v1.x extension point ---
   ; Future minor versions MAY add optional claims here.
-  ; model_hash_scheme (Issue #80) will be added before vector freeze
-  ; if multi-file hashing needs explicit declaration.
-  ; Key range reserved: -65549 to -65599
+  ; Key range reserved: -65550 to -65599
 }
 
 ; ============================================================
@@ -122,8 +136,9 @@ tdx-measurements = {
 ; 1. No pipeline fields (previous_receipt_hash) in v1.
 ;    Pipeline chaining is tracked in M6 (vNEXT).
 ;
-; 2. Private claim keys -65537 to -65548 are assigned.
-;    Range -65549 to -65599 is reserved for v1.x extensions.
+; 2. Private claim keys -65537 to -65549 are assigned.
+;    -65537 to -65548 are required; -65549 is optional.
+;    Range -65550 to -65599 is reserved for v1.x extensions.
 ;    Do NOT use keys in this range without spec amendment.
 ;
 ; 3. COSE_Sign1 tag 18 is mandatory for AIR v1 receipts.
@@ -132,7 +147,6 @@ tdx-measurements = {
 ; 4. Deterministic encoding: the payload bstr MUST be
 ;    CBOR deterministic encoding per RFC 8949 §4.2.
 ;
-; 5. model_hash_scheme (Issue #80): if multi-file model
-;    hashing needs an explicit scheme declaration, a new
-;    optional claim will be added in a v1.x minor update.
-;    Candidate key: -65549.
+; 5. model_hash_scheme (Issue #80): RESOLVED in v1.0.
+;    Optional claim -65549 declares how model_hash was computed.
+;    See claim definition above for defined scheme values.

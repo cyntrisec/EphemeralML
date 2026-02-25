@@ -3,12 +3,19 @@
 ## [Unreleased]
 
 ### Added
+- **AIR v1 spec frozen**: All normative documents (CDDL, claim-mapping, vectors, scope, dependencies, threat-model, limitations, naming) now carry `v1.0 FROZEN` status.
+- **Issue #80 resolved — `model_hash_scheme`**: New optional claim (key -65549) declares how `model_hash` was computed. Defined values: `"sha256-single"`, `"sha256-concat"`, `"sha256-manifest"`. When absent, hash is treated as opaque. Added to CDDL schema, claim-mapping, scope, limitations, dependencies, and reference implementation.
+- **Interop kit**: `spec/v1/interop-kit.md` — self-contained quick-start guide for external implementors. Includes claim map, verification checklist, pseudocode verifier, and golden vector reference.
+- **M2 trust matrix**: `docs/security/M2_TRUST_MATRIX_STATUS.md` — complete status artifact covering all 36 `AttestCheckCode` variants, runtime enforcement, strict vs dev behavior, and 96 M2-specific tests.
+- **Strict-mode enforcement tests**: 3 new integration tests proving fail-closed behavior for audience pin and MRTD pin in GCP Confidential Space mode.
+- **`model_hash_scheme` roundtrip tests**: 2 new tests verifying encode/decode for present and absent `model_hash_scheme`.
 - **CLI auto-chain**: `ephemeralml gcp setup-kms` now automatically persists KMS outputs (`EPHEMERALML_GCS_BUCKET`, `EPHEMERALML_GCP_KMS_KEY`, `EPHEMERALML_GCP_WIP_AUDIENCE` + `GCP_*` aliases) to `.env.gcp` so downstream commands pick them up without manual export.
 - **Receipt model_id from manifest**: In direct mode, receipts now use the manifest's `model_id` and `version` when a signed manifest is loaded, instead of defaulting to the client request's model_id.
 
 ### Security
 - **Fail-closed `.env.gcp` persistence**: `setup-kms` now fails if `.env.gcp` update fails, instead of warning and continuing. Operators see the failure before proceeding to downstream commands.
 - **Fail-closed manifest parse**: If manifest JSON is present but fails to parse, the server rejects the request instead of silently falling back to the client's model_id. Preserves receipt integrity semantics.
+- **Structured trust verification (M2)**: 4-layer trust model (T1_PARSE → T2_CRYPTO → T3_CHAIN → T4_POLICY) with 36 typed error codes, TDX DCAP chain hardening (T3_CHAIN), and CS JWT verification hardening (CsJwtVerifyError enum with runtime enforcement).
 
 ## [0.2.9] - 2026-02-19
 

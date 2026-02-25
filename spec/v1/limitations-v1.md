@@ -29,7 +29,7 @@ AIR v1 includes a required `model_hash` claim — a SHA-256 of the model weights
 - `model_id` and `model_version` are operator-assigned opaque strings for human readability. They are NOT the cryptographic binding — `model_hash` is.
 - `model_hash` does **not** prove the model behaves correctly, is free of bias, or matches a reference specification. It proves byte-level identity of the weights file.
 - Attestation documents (Nitro COSE, TDX quotes) measure the workload code/runtime, not the model weights. `model_hash` fills this gap — without it, a compromised workload could load arbitrary weights.
-- v1 does not define the hashing scheme for multi-file models. Implementations choose their own method (e.g., hash of concatenated files, Merkle root). The scheme SHOULD be documented alongside published model hashes.
+- The optional `model_hash_scheme` claim (key -65549) declares how model_hash was computed. Defined values: `"sha256-single"`, `"sha256-concat"`, `"sha256-manifest"`. When absent, the hash is opaque. Implementations are RECOMMENDED to include this claim for reproducibility.
 
 **Correct claim:** "The receipt cryptographically identifies the exact model weights used via model_hash."
 **Incorrect claim:** "The receipt proves the model is unbiased/correct/safe."
