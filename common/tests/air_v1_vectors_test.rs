@@ -52,6 +52,44 @@ fn golden_key() -> ReceiptSigningKey {
     ReceiptSigningKey::from_parts(private.clone(), private.verifying_key())
 }
 
+/// Build an `AirVerifyPolicy` from the JSON `verify_policy` field (if present).
+///
+/// Supports: `expected_nonce_hex`, `expected_model_hash_hex`, `expected_platform`.
+/// If no `verify_policy` field exists, returns default policy.
+fn policy_from_json(v: &Value) -> AirVerifyPolicy {
+    let vp = match v.get("verify_policy") {
+        Some(p) => p,
+        None => return AirVerifyPolicy::default(),
+    };
+
+    let expected_nonce = vp
+        .get("expected_nonce_hex")
+        .and_then(|n| n.as_str())
+        .map(|h| hex::decode(h).unwrap());
+
+    let expected_model_hash = vp
+        .get("expected_model_hash_hex")
+        .and_then(|n| n.as_str())
+        .map(|h| {
+            let bytes = hex::decode(h).unwrap();
+            let mut arr = [0u8; 32];
+            arr.copy_from_slice(&bytes);
+            arr
+        });
+
+    let expected_platform = vp
+        .get("expected_platform")
+        .and_then(|n| n.as_str())
+        .map(|s| s.to_string());
+
+    AirVerifyPolicy {
+        expected_nonce,
+        expected_model_hash,
+        expected_platform,
+        ..Default::default()
+    }
+}
+
 /// Build golden claims V1 (Nitro, no nonce) — must match the JSON vector.
 fn golden_claims_v1() -> AirReceiptClaims {
     AirReceiptClaims {
@@ -233,7 +271,7 @@ fn cv_v2_tdx_verifier_pass_with_nonce() {
 }
 
 // ═══════════════════════════════════════════════════════════════════
-// Invalid vector tests
+// Invalid vector tests — structural (Layers 1-3)
 // ═══════════════════════════════════════════════════════════════════
 
 #[test]
@@ -268,6 +306,102 @@ fn cv_wrong_alg_bad_alg() {
     );
 }
 
+#[test]
+fn cv_zero_model_hash_fails() {
+    let v = load_vector("invalid", "v1-zero-model-hash.json");
+    let receipt = decode_hex(&v, "receipt_hex");
+    let pubkey = pubkey_from_hex(v["public_key_hex"].as_str().unwrap());
+
+    let result = verify_air_v1_receipt(&receipt, &pubkey, &AirVerifyPolicy::default());
+    assert!(!result.verified);
+    assert!(
+        result.has_failure(&AirCheckCode::ZeroModelHash),
+        "expected ZERO_MODEL_HASH, got: {:?}",
+        result.failures()
+    );
+    // Crypto should pass (receipt is properly signed)
+    assert!(
+        !result.has_failure(&AirCheckCode::SignatureFailed),
+        "signature should pass for tampered-but-re-signed receipt"
+    );
+}
+
+#[test]
+fn cv_bad_measurement_length_fails() {
+    let v = load_vector("invalid", "v1-bad-measurement-length.json");
+    let receipt = decode_hex(&v, "receipt_hex");
+    let pubkey = pubkey_from_hex(v["public_key_hex"].as_str().unwrap());
+
+    let result = verify_air_v1_receipt(&receipt, &pubkey, &AirVerifyPolicy::default());
+    assert!(!result.verified);
+    assert!(
+        result.has_failure(&AirCheckCode::BadMeasurementLength),
+        "expected BAD_MEASUREMENT_LENGTH, got: {:?}",
+        result.failures()
+    );
+    // Crypto should pass
+    assert!(
+        !result.has_failure(&AirCheckCode::SignatureFailed),
+        "signature should pass for tampered-but-re-signed receipt"
+    );
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// Invalid vector tests — policy (Layer 4)
+// ═══════════════════════════════════════════════════════════════════
+
+#[test]
+fn cv_nonce_mismatch_fails() {
+    let v = load_vector("invalid", "v1-nonce-mismatch.json");
+    let receipt = decode_hex(&v, "receipt_hex");
+    let pubkey = pubkey_from_hex(v["public_key_hex"].as_str().unwrap());
+    let policy = policy_from_json(&v);
+
+    let result = verify_air_v1_receipt(&receipt, &pubkey, &policy);
+    assert!(!result.verified);
+    assert!(
+        result.has_failure(&AirCheckCode::NonceMismatch),
+        "expected NONCE_MISMATCH, got: {:?}",
+        result.failures()
+    );
+    // Parse + crypto + claims should all pass
+    assert!(!result.has_failure(&AirCheckCode::SignatureFailed));
+}
+
+#[test]
+fn cv_model_hash_mismatch_fails() {
+    let v = load_vector("invalid", "v1-model-hash-mismatch.json");
+    let receipt = decode_hex(&v, "receipt_hex");
+    let pubkey = pubkey_from_hex(v["public_key_hex"].as_str().unwrap());
+    let policy = policy_from_json(&v);
+
+    let result = verify_air_v1_receipt(&receipt, &pubkey, &policy);
+    assert!(!result.verified);
+    assert!(
+        result.has_failure(&AirCheckCode::ModelHashMismatch),
+        "expected MODEL_HASH_MISMATCH, got: {:?}",
+        result.failures()
+    );
+    assert!(!result.has_failure(&AirCheckCode::SignatureFailed));
+}
+
+#[test]
+fn cv_platform_mismatch_fails() {
+    let v = load_vector("invalid", "v1-platform-mismatch.json");
+    let receipt = decode_hex(&v, "receipt_hex");
+    let pubkey = pubkey_from_hex(v["public_key_hex"].as_str().unwrap());
+    let policy = policy_from_json(&v);
+
+    let result = verify_air_v1_receipt(&receipt, &pubkey, &policy);
+    assert!(!result.verified);
+    assert!(
+        result.has_failure(&AirCheckCode::PlatformMismatch),
+        "expected PLATFORM_MISMATCH, got: {:?}",
+        result.failures()
+    );
+    assert!(!result.has_failure(&AirCheckCode::SignatureFailed));
+}
+
 // ═══════════════════════════════════════════════════════════════════
 // Vector file integrity
 // ═══════════════════════════════════════════════════════════════════
@@ -275,10 +409,19 @@ fn cv_wrong_alg_bad_alg() {
 #[test]
 fn cv_vector_directory_complete() {
     let dir = vectors_dir();
+    // Valid vectors
     assert!(dir.join("valid/v1-nitro-no-nonce.json").exists());
     assert!(dir.join("valid/v1-tdx-with-nonce.json").exists());
+    // Invalid vectors — structural (layers 1-3)
     assert!(dir.join("invalid/v1-wrong-key.json").exists());
     assert!(dir.join("invalid/v1-wrong-alg.json").exists());
+    assert!(dir.join("invalid/v1-zero-model-hash.json").exists());
+    assert!(dir.join("invalid/v1-bad-measurement-length.json").exists());
+    // Invalid vectors — policy (layer 4)
+    assert!(dir.join("invalid/v1-nonce-mismatch.json").exists());
+    assert!(dir.join("invalid/v1-model-hash-mismatch.json").exists());
+    assert!(dir.join("invalid/v1-platform-mismatch.json").exists());
+    // Documentation
     assert!(dir.join("README.md").exists());
 }
 
@@ -345,7 +488,10 @@ fn cv_all_invalid_vectors_fail() {
             pubkey_from_hex(v["public_key_hex"].as_str().unwrap())
         };
 
-        let result = verify_air_v1_receipt(&receipt, &pubkey, &AirVerifyPolicy::default());
+        // Build policy from verify_policy field (if present) for layer 4 vectors
+        let policy = policy_from_json(&v);
+
+        let result = verify_air_v1_receipt(&receipt, &pubkey, &policy);
         assert!(
             !result.verified,
             "invalid vector {} should have failed but passed",

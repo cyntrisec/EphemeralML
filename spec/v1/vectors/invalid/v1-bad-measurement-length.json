@@ -1,0 +1,14 @@
+{
+  "name": "v1-bad-measurement-length",
+  "description": "AIR v1 receipt with 32-byte pcr0 measurement (should be 48 bytes SHA-384). Layer 3 (claim validation) must fail with BAD_MEASUREMENT_LENGTH. Receipt is properly signed — crypto passes, but measurement validation fails.",
+  "version": "1.0",
+  "date": "2026-02-25",
+  "public_key_hex": "197f6b23e16c8532c6abc838facd5ea789be0c76b2920334039bfa8b3d368d61",
+  "receipt_hex": "d28446a2012703183da05901f8b03a0001000b6b476174657761794f6e6c793a0001000a1902003a0001000918743a00010008182a3a000100076e706f6c6963792d323032362e30323a00010006a4706d6561737572656d656e745f74797065696e6974726f2d70637264706372305820aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa64706372315830020202020202020202020202020202020202020202020202020202020202020202020202020202020202020202020202647063723258300303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303033a000100055820dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd3a000100045820cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc3a000100035820bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb3a000100025820aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa3a0001000165312e302e303a000100006c6d696e696c6d2d6c362d7632016d63796e7472697365632e636f6d061a67bdec2007500102030405060708090a0b0c0d0e0f10190109782168747470733a2f2f737065632e63796e7472697365632e636f6d2f6169722f7631584008166a03f051c0b15e138f1f94b4c7f98dc9155b2a581863fc0149fa6a31351273a8e68604788fdaf6ba1f7414c40f1fd18d250d2c764771ebced3afb508440a",
+  "expected_failure": {
+    "layer": 3,
+    "check": "MEAS",
+    "code": "BAD_MEASUREMENT_LENGTH",
+    "reason": "pcr0 is 32 bytes instead of required 48 bytes (SHA-384)"
+  }
+}

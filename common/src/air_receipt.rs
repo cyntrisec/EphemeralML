@@ -946,6 +946,79 @@ mod tests {
         assert_eq!(bytes2, bytes2b, "Vector 2 not deterministic");
     }
 
+    /// Helper: build a tampered COSE_Sign1 receipt by modifying the payload CBOR.
+    ///
+    /// `modifier` receives mutable payload entries and can tamper them.
+    /// The result is re-signed with the golden key so crypto passes.
+    fn build_tampered_receipt(
+        base_claims: &AirReceiptClaims,
+        modifier: impl FnOnce(&mut Vec<(Value, Value)>),
+    ) -> Vec<u8> {
+        use coset::TaggedCborSerializable;
+
+        let key = super::golden::key();
+        let payload_bytes = encode_claims(base_claims).unwrap();
+
+        // Decode payload CBOR, apply tamper
+        let val: Value = crate::cbor::from_slice(&payload_bytes).unwrap();
+        let mut entries = match val {
+            Value::Map(m) => m,
+            _ => panic!("payload is not a map"),
+        };
+        modifier(&mut entries);
+        let tampered_payload = crate::cbor::value_to_vec(&Value::Map(entries)).unwrap();
+
+        // Build COSE_Sign1 with correct header but tampered payload
+        let protected = coset::HeaderBuilder::new()
+            .algorithm(coset::iana::Algorithm::EdDSA)
+            .content_format(coset::iana::CoapContentFormat::Cwt)
+            .build();
+        let sign1 = coset::CoseSign1Builder::new()
+            .protected(protected)
+            .payload(tampered_payload)
+            .try_create_signature(b"", |tbs| Ok::<_, String>(key.raw_sign(tbs)))
+            .unwrap()
+            .build();
+        sign1.to_tagged_vec().unwrap()
+    }
+
+    #[test]
+    fn generate_structural_invalid_vectors() {
+        let c1 = super::golden::claims_v1();
+
+        // Zero model_hash: replace model_hash (-65539) with all-zero bytes
+        let zero_mhash = build_tampered_receipt(&c1, |entries| {
+            for (k, v) in entries.iter_mut() {
+                if *k == Value::Integer((-65539i64).into()) {
+                    *v = Value::Bytes(vec![0u8; 32]);
+                }
+            }
+        });
+
+        // Bad measurement length: replace pcr0 with 32-byte value
+        let bad_meas = build_tampered_receipt(&c1, |entries| {
+            for (k, v) in entries.iter_mut() {
+                if *k == Value::Integer((-65543i64).into()) {
+                    if let Value::Map(ref mut meas_entries) = v {
+                        for (mk, mv) in meas_entries.iter_mut() {
+                            if *mk == Value::Text("pcr0".to_string()) {
+                                *mv = Value::Bytes(vec![0xAA; 32]); // 32 instead of 48
+                            }
+                        }
+                    }
+                }
+            }
+        });
+
+        eprintln!("=== ZERO MODEL HASH ===");
+        eprintln!("receipt_hex: {}", hex::encode(&zero_mhash));
+        eprintln!("receipt_len: {}", zero_mhash.len());
+        eprintln!();
+        eprintln!("=== BAD MEASUREMENT LENGTH ===");
+        eprintln!("receipt_hex: {}", hex::encode(&bad_meas));
+        eprintln!("receipt_len: {}", bad_meas.len());
+    }
+
     #[test]
     fn test_from_legacy_conversion() {
         let measurements = EnclaveMeasurements::new(vec![1u8; 48], vec![2u8; 48], vec![3u8; 48]);
