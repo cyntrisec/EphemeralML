@@ -292,6 +292,8 @@ fn verify_air_v1_path(
     public_key: &VerifyingKey,
     args: &Args,
 ) -> Result<()> {
+    validate_air_v1_cli_args(args)?;
+
     // Build policy from CLI args
     let policy = AirVerifyPolicy {
         max_age_secs: args.max_age,
@@ -323,6 +325,29 @@ fn verify_air_v1_path(
         ui.ghost(GhostState::Fail);
         std::process::exit(1);
     }
+}
+
+fn validate_air_v1_cli_args(args: &Args) -> Result<()> {
+    let mut unsupported: Vec<&str> = Vec::new();
+    if args.expected_attestation_source.is_some() {
+        unsupported.push("--expected-attestation-source");
+    }
+    if args.expected_image_digest.is_some() {
+        unsupported.push("--expected-image-digest");
+    }
+    if args.require_destroy_event {
+        unsupported.push("--require-destroy-event");
+    }
+
+    if unsupported.is_empty() {
+        return Ok(());
+    }
+
+    bail!(
+        "Unsupported for AIR v1 receipts: {}. Supported AIR checks are --expected-model, \
+         --measurement-type, and --max-age (plus key/attestation inputs).",
+        unsupported.join(", ")
+    )
 }
 
 fn print_air_v1_text_report(ui: &mut Ui, result: &AirVerifyResult, verbose: bool) {

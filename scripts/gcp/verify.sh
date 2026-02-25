@@ -9,6 +9,8 @@
 #   bash scripts/gcp/verify.sh                              # auto-detect IP; requires GCP_WIP_AUDIENCE
 #   bash scripts/gcp/verify.sh --ip 34.72.100.50            # explicit IP
 #   bash scripts/gcp/verify.sh --allow-unpinned-audience     # skip audience pin (dev only)
+# Env:
+#   EPHEMERALML_REQUIRE_AIR_V1_VERIFY=true|false            # fail if AIR v1 verify fails/missing (default false)
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -31,6 +33,7 @@ MAX_WAIT=180              # seconds to wait for port reachability
 INFERENCE_TEXT="Verify EphemeralML on Confidential Space"
 VERIFY_MODEL_ID="${EPHEMERALML_VERIFY_MODEL_ID:-stage-0}"
 VERIFY_RECEIPT_MODEL_ID="${EPHEMERALML_VERIFY_RECEIPT_MODEL_ID:-minilm-l6-v2}"
+REQUIRE_AIR_V1_VERIFY="${EPHEMERALML_REQUIRE_AIR_V1_VERIFY:-false}"
 
 # Clean up temp files on exit (even on failure).
 # Only clean up the script-local temp file; receipt is preserved for E2E callers.
@@ -177,6 +180,7 @@ ui_blank
 # 4. Verify receipt (if saved)
 # ---------------------------------------------------------------------------
 RECEIPT_VERIFIED=false
+AIR_V1_VERIFIED=false
 
 ui_info "[4/4] Verifying receipt..."
 
@@ -204,17 +208,29 @@ if [[ -f "${RECEIPT_PATH}" ]]; then
         VERIFY_END=$(date +%s%N)
         RECEIPT_VERIFIED=true
 
-        # Also verify AIR v1 receipt if present (non-blocking)
+        # Also verify AIR v1 receipt if present (optionally strict)
         AIR_V1_PATH="/tmp/ephemeralml-receipt.cbor"
         if [[ -f "${AIR_V1_PATH}" ]]; then
             ui_blank
             ui_info "AIR v1 receipt verification..."
-            cargo run --release --no-default-features --features gcp \
+            if cargo run --release --no-default-features --features gcp \
                 --bin ephemeralml-verify -- \
                 "${AIR_V1_PATH}" \
                 --public-key "${PK_HEX}" \
                 --max-age 0 \
-                --format text || true
+                --format text; then
+                AIR_V1_VERIFIED=true
+            else
+                if [[ "${REQUIRE_AIR_V1_VERIFY}" == "true" ]]; then
+                    ui_fail "ERROR: AIR v1 receipt verification failed (strict mode)."
+                    VERIFY_EXIT=1
+                else
+                    ui_warn "WARNING: AIR v1 receipt verification failed (non-blocking)."
+                fi
+            fi
+        elif [[ "${REQUIRE_AIR_V1_VERIFY}" == "true" ]]; then
+            ui_fail "ERROR: AIR v1 receipt missing at ${AIR_V1_PATH} (strict mode)."
+            VERIFY_EXIT=1
         fi
     else
         ui_warn "WARNING: Receipt file exists but no .pubkey file found at ${PUBKEY_FILE}."
@@ -315,6 +331,7 @@ ui_blank
 ui_kv "Instance" "${INSTANCE_NAME} (${IP})"
 ui_kv "Client" "exit ${CLIENT_EXIT}"
 ui_kv "Receipt" "$(if ${RECEIPT_VERIFIED}; then echo "VERIFIED"; else echo "NOT VERIFIED"; fi)"
+ui_kv "AIR v1" "$(if ${AIR_V1_VERIFIED}; then echo "VERIFIED"; else echo "NOT VERIFIED/NOT CHECKED"; fi)"
 ui_blank
 ui_info "Next: bash scripts/gcp/teardown.sh"
 

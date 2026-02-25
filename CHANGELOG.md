@@ -16,6 +16,7 @@
 - **Fail-closed `.env.gcp` persistence**: `setup-kms` now fails if `.env.gcp` update fails, instead of warning and continuing. Operators see the failure before proceeding to downstream commands.
 - **Fail-closed manifest parse**: If manifest JSON is present but fails to parse, the server rejects the request instead of silently falling back to the client's model_id. Preserves receipt integrity semantics.
 - **Structured trust verification (M2)**: 4-layer trust model (T1_PARSE → T2_CRYPTO → T3_CHAIN → T4_POLICY) with 36 typed error codes, TDX DCAP chain hardening (T3_CHAIN), and CS JWT verification hardening (CsJwtVerifyError enum with runtime enforcement).
+- **AIR v1 audit fixes**: Pipeline chaining now excludes AIR v1 sidecar tensors from legacy `previous_receipt_hash`, `ephemeralml-verify` rejects legacy-only flags in AIR mode instead of silently ignoring them, and GCP `verify.sh`/`mvp_gpu_e2e.sh` support strict AIR v1 verification enforcement (enabled by default in MVP E2E via `EPHEMERALML_REQUIRE_AIR_V1_VERIFY=true`).
 
 ## [0.2.9] - 2026-02-19
 

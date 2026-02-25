@@ -33,6 +33,7 @@ SKIP_SETUP=false
 SKIP_TEARDOWN=false
 MODEL_DIR="${PROJECT_DIR}/test_assets/minilm"
 MODEL_FORMAT="safetensors"
+AIR_V1_VERIFY_STRICT="${EPHEMERALML_REQUIRE_AIR_V1_VERIFY:-true}"
 
 # Parse args
 while [[ $# -gt 0 ]]; do
@@ -190,7 +191,8 @@ fi
 echo "[4/${STEP_COUNT}] Inference + receipt (timeout: ${BOOT_TIMEOUT}s)..."
 VERIFY_ARGS=(--project "${PROJECT}" --zone "${ZONE}")
 [[ -n "${GPU_FLAG}" ]] && VERIFY_ARGS+=("${GPU_FLAG}")
-if bash "${SCRIPT_DIR}/verify.sh" "${VERIFY_ARGS[@]}" \
+if EPHEMERALML_REQUIRE_AIR_V1_VERIFY="${AIR_V1_VERIFY_STRICT}" \
+   bash "${SCRIPT_DIR}/verify.sh" "${VERIFY_ARGS[@]}" \
     2>&1 | tee "${EVIDENCE_DIR}/verify_output.txt"; then
     VERIFY_EXIT=0
     step_pass
@@ -253,7 +255,7 @@ else
     step_fail "receipt.json, ephemeralml-verify, or public key not found"
 fi
 
-# AIR v1 receipt verification (non-blocking: log result but don't fail E2E)
+# AIR v1 receipt verification (strict by default; opt out with EPHEMERALML_REQUIRE_AIR_V1_VERIFY=false)
 if [[ -f "${EVIDENCE_DIR}/receipt.cbor" ]] && [[ -x "${VERIFY_BIN}" ]] && [[ -n "${PK_HEX}" ]]; then
     echo "  AIR v1 verification..."
     if "${VERIFY_BIN}" "${EVIDENCE_DIR}/receipt.cbor" \
@@ -262,7 +264,11 @@ if [[ -f "${EVIDENCE_DIR}/receipt.cbor" ]] && [[ -x "${VERIFY_BIN}" ]] && [[ -n 
         2>&1 | tee "${EVIDENCE_DIR}/receipt_air_v1_verify_log.txt"; then
         echo "  AIR v1: VERIFIED"
     else
-        echo "  AIR v1: FAILED (non-blocking)"
+        if [[ "${AIR_V1_VERIFY_STRICT}" == "true" ]]; then
+            step_fail "AIR v1 verification failed"
+        else
+            echo "  AIR v1: FAILED (non-blocking)"
+        fi
     fi
 fi
 echo

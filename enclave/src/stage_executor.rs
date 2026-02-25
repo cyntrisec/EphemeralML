@@ -82,6 +82,14 @@ impl<A: AttestationProvider> EphemeralStageExecutor<A> {
     }
 }
 
+fn is_legacy_chain_receipt_name(name: &str) -> bool {
+    name == "__receipt__" || name.starts_with("__receipt__stage")
+}
+
+fn is_aux_receipt_name(name: &str) -> bool {
+    name == "__receipt_air_v1__" || name.starts_with("__receipt_air_v1__stage")
+}
+
 #[async_trait]
 impl<A: AttestationProvider + Send + Sync> StageExecutor for EphemeralStageExecutor<A> {
     async fn init(&mut self, spec: &StageSpec) -> std::result::Result<(), StageError> {
@@ -107,8 +115,11 @@ impl<A: AttestationProvider + Send + Sync> StageExecutor for EphemeralStageExecu
         let mut prev_receipt_tensors: Vec<OwnedTensor> = Vec::new();
         let mut data_tensors: Vec<&OwnedTensor> = Vec::new();
         for tensor in &inputs {
-            if tensor.name.starts_with("__receipt") {
+            if is_legacy_chain_receipt_name(&tensor.name) {
                 prev_receipt_tensors.push(tensor.clone());
+            } else if is_aux_receipt_name(&tensor.name) {
+                // AIR v1 tensors are metadata sidecars and must not be chained into the
+                // legacy previous_receipt_hash. They are also not model inputs.
             } else {
                 data_tensors.push(tensor);
             }
@@ -354,6 +365,17 @@ impl<A: AttestationProvider + Send + Sync> StageExecutor for EphemeralStageExecu
 mod tests {
     use super::*;
     use crate::attestation::DefaultAttestationProvider;
+
+    #[test]
+    fn test_receipt_name_classification() {
+        assert!(is_legacy_chain_receipt_name("__receipt__"));
+        assert!(is_legacy_chain_receipt_name("__receipt__stage0"));
+        assert!(!is_legacy_chain_receipt_name("__receipt_air_v1__"));
+
+        assert!(is_aux_receipt_name("__receipt_air_v1__"));
+        assert!(is_aux_receipt_name("__receipt_air_v1__stage0"));
+        assert!(!is_aux_receipt_name("__receipt__"));
+    }
 
     #[tokio::test]
     async fn test_stage_executor_forward() {
