@@ -1,0 +1,138 @@
+; Attested Inference Receipt (AIR) v1 — CDDL Schema
+; Status: M1 DRAFT
+; Date: 2026-02-25
+; References: RFC 9052 (COSE), RFC 8392 (CWT), RFC 9711 (EAT),
+;             RFC 8949 (CBOR), RFC 8610 (CDDL)
+;
+; This schema defines the wire shape of an AIR v1 receipt.
+; The receipt is a COSE_Sign1 envelope carrying a CWT payload
+; with EAT and AIR-specific claims.
+
+; ============================================================
+; Top-level: COSE_Sign1 (RFC 9052 §4.2)
+; ============================================================
+; COSE_Sign1 = [
+;   protected : bstr,        ; serialized protected header
+;   unprotected : header_map,
+;   payload : bstr / nil,    ; serialized CWT claims
+;   signature : bstr         ; Ed25519 signature (64 bytes)
+; ]
+
+air-receipt = #6.18([
+  protected:   bstr .cbor air-protected-header,
+  unprotected: air-unprotected-header,
+  payload:     bstr .cbor air-claims,
+  signature:   bstr .size 64
+])
+
+; ============================================================
+; Protected Header
+; ============================================================
+; alg (1) = EdDSA (-8)
+; content type (3) = application/cwt (61)
+
+air-protected-header = {
+  1 => -8,          ; alg: EdDSA (Ed25519)
+  3 => 61,          ; content type: application/cwt
+}
+
+; ============================================================
+; Unprotected Header
+; ============================================================
+; kid (4) is optional — signing key identifier
+
+air-unprotected-header = {
+  ? 4 => bstr,      ; kid: key identifier
+}
+
+; ============================================================
+; CWT Payload — EAT + AIR Claims
+; ============================================================
+
+air-claims = {
+  ; --- Standard CWT/EAT claims (RFC 8392 / RFC 9711) ---
+  1   => tstr,               ; iss: issuer
+  6   => uint,               ; iat: issued-at (Unix seconds)
+  7   => bstr .size 16,      ; cti: CWT ID (UUID v4, 16 bytes)
+  265 => "https://spec.cyntrisec.com/air/v1",  ; eat_profile
+  ? 10 => bstr,              ; eat_nonce: challenge nonce (optional)
+
+  ; --- AIR private claims ---
+  -65537 => tstr,            ; model_id (operator-assigned, opaque)
+  -65538 => tstr,            ; model_version (operator-assigned, opaque)
+  -65539 => sha256-hash,     ; model_hash (cryptographic model identity)
+  -65540 => sha256-hash,     ; request_hash
+  -65541 => sha256-hash,     ; response_hash
+  -65542 => sha256-hash,     ; attestation_doc_hash
+  -65543 => enclave-measurements,  ; enclave_measurements
+  -65544 => tstr,            ; policy_version
+  -65545 => uint,            ; sequence_number (monotonic, session-scoped)
+  -65546 => uint,            ; execution_time_ms
+  -65547 => uint,            ; memory_peak_mb
+  -65548 => tstr,            ; security_mode
+
+  ; --- v1.x extension point ---
+  ; Future minor versions MAY add optional claims here.
+  ; model_hash_scheme (Issue #80) will be added before vector freeze
+  ; if multi-file hashing needs explicit declaration.
+  ; Key range reserved: -65549 to -65599
+}
+
+; ============================================================
+; Shared Types
+; ============================================================
+
+sha256-hash = bstr .size 32   ; SHA-256 digest
+sha384-hash = bstr .size 48   ; SHA-384 digest (PCR/RTMR values)
+
+; ============================================================
+; Enclave Measurements
+; ============================================================
+; Two platform variants. Exactly one must be present per receipt.
+; measurement_type discriminates the variant.
+
+enclave-measurements = nitro-measurements / tdx-measurements
+
+; --- AWS Nitro Enclaves ---
+; pcr0, pcr1, pcr2 required (SHA-384). pcr8 optional.
+
+nitro-measurements = {
+  "pcr0"             => sha384-hash,
+  "pcr1"             => sha384-hash,
+  "pcr2"             => sha384-hash,
+  ? "pcr8"           => sha384-hash,
+  "measurement_type" => "nitro-pcr",
+}
+
+; --- Intel TDX ---
+; MRTD, RTMR0, RTMR1 mapped to pcr0/pcr1/pcr2 field names
+; for cross-platform verifier compatibility.
+
+tdx-measurements = {
+  "pcr0"             => sha384-hash,   ; MRTD
+  "pcr1"             => sha384-hash,   ; RTMR0
+  "pcr2"             => sha384-hash,   ; RTMR1
+  "measurement_type" => "tdx-mrtd-rtmr",
+}
+
+; ============================================================
+; Notes
+; ============================================================
+;
+; 1. No pipeline fields (previous_receipt_hash) in v1.
+;    Pipeline chaining is tracked in M6 (vNEXT).
+;
+; 2. Private claim keys -65537 to -65548 are assigned.
+;    Range -65549 to -65599 is reserved for v1.x extensions.
+;    Do NOT use keys in this range without spec amendment.
+;
+; 3. COSE_Sign1 tag 18 is mandatory for AIR v1 receipts.
+;    Untagged COSE_Sign1 MUST be rejected by verifiers.
+;
+; 4. Deterministic encoding: the payload bstr MUST be
+;    CBOR deterministic encoding per RFC 8949 §4.2.
+;
+; 5. model_hash_scheme (Issue #80): if multi-file model
+;    hashing needs an explicit scheme declaration, a new
+;    optional claim will be added in a v1.x minor update.
+;    Candidate key: -65549.

@@ -15,6 +15,8 @@ A cryptographically signed proof that an ML inference was executed inside a hard
 | [dependencies.md](dependencies.md) | Normative references and MTI algorithms |
 | [threat-model.md](threat-model.md) | Trust assumptions and threat analysis |
 | [limitations-v1.md](limitations-v1.md) | Explicit non-claims and limitations |
+| [claim-mapping.md](claim-mapping.md) | EAT claim mapping and verification semantics (M1) |
+| [cddl/air-v1.cddl](cddl/air-v1.cddl) | CDDL wire schema (M1) |
 
 ## Format
 
