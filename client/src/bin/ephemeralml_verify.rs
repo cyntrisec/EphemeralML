@@ -122,12 +122,7 @@ fn main() -> Result<()> {
     // 2. Auto-detect format: CBOR tag 18 (0xD2) = AIR v1 COSE_Sign1
     if receipt_bytes.first() == Some(&0xD2) {
         let public_key = resolve_public_key(&args)?;
-        return verify_air_v1_path(
-            &mut ui,
-            &receipt_bytes,
-            &public_key,
-            &args,
-        );
+        return verify_air_v1_path(&mut ui, &receipt_bytes, &public_key, &args);
     }
 
     // Legacy path: JSON or CBOR AttestationReceipt
@@ -344,10 +339,7 @@ fn print_air_v1_text_report(ui: &mut Ui, result: &AirVerifyResult, verbose: bool
             "Model",
             &format!("{} v{}", claims.model_id, claims.model_version),
         );
-        ui.kv(
-            "Platform",
-            &claims.enclave_measurements.measurement_type,
-        );
+        ui.kv("Platform", &claims.enclave_measurements.measurement_type);
         ui.kv("Sequence", &format!("#{}", claims.sequence_number));
         ui.kv("Issuer", &claims.iss);
     }

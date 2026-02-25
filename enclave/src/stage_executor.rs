@@ -38,7 +38,14 @@ impl<A: AttestationProvider> EphemeralStageExecutor<A> {
         receipt_key: ReceiptSigningKey,
         attestation_doc_hash: Option<[u8; 32]>,
     ) -> Self {
-        Self::with_air_v1(engine, provider, receipt_key, attestation_doc_hash, None, "cyntrisec.com".to_string())
+        Self::with_air_v1(
+            engine,
+            provider,
+            receipt_key,
+            attestation_doc_hash,
+            None,
+            "cyntrisec.com".to_string(),
+        )
     }
 
     /// Create a new stage executor with AIR v1 receipt parameters.
@@ -297,7 +304,10 @@ impl<A: AttestationProvider + Send + Sync> StageExecutor for EphemeralStageExecu
                         micro_batch,
                         reason: "State lock poisoned (AIR v1)".to_string(),
                     })?;
-                    match ephemeral_ml_common::air_receipt::build_air_v1(&claims, &state.receipt_signing_key) {
+                    match ephemeral_ml_common::air_receipt::build_air_v1(
+                        &claims,
+                        &state.receipt_signing_key,
+                    ) {
                         Ok(cbor_bytes) => Some(OwnedTensor {
                             name: "__receipt_air_v1__".to_string(),
                             dtype: confidential_ml_transport::DType::U8,

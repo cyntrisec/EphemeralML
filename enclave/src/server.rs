@@ -234,6 +234,7 @@ struct DirectResult {
 }
 
 /// Process a single direct-mode inference request.
+#[allow(clippy::too_many_arguments)]
 fn handle_direct_request<A: crate::AttestationProvider>(
     bytes: &[u8],
     engine: &crate::CandleInferenceEngine,
@@ -384,7 +385,10 @@ fn handle_direct_request<A: crate::AttestationProvider>(
             mh,
         ) {
             Ok(claims) => {
-                match ephemeral_ml_common::air_receipt::build_air_v1(&claims, &state.receipt_signing_key) {
+                match ephemeral_ml_common::air_receipt::build_air_v1(
+                    &claims,
+                    &state.receipt_signing_key,
+                ) {
                     Ok(cbor_bytes) => {
                         use base64::Engine as _;
                         Some(base64::engine::general_purpose::STANDARD.encode(&cbor_bytes))

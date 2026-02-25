@@ -339,7 +339,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         }
                     }
                 } else if t.name == "__receipt_air_v1__" {
-                    if let Err(e) = save_receipt_raw(&t.data, mock_receipt_output_air_v1.as_deref()) {
+                    if let Err(e) = save_receipt_raw(&t.data, mock_receipt_output_air_v1.as_deref())
+                    {
                         eprintln!("Warning: failed to save AIR v1 receipt: {}", e);
                     } else if mock_receipt_output_air_v1.is_some() {
                         println!("  AIR v1 receipt ({} bytes) saved", t.data.len());
@@ -538,7 +539,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         }
                     }
                 } else if t.name == "__receipt_air_v1__" {
-                    if let Err(e) = save_receipt_raw(&t.data, args.receipt_output_air_v1.as_deref()) {
+                    if let Err(e) = save_receipt_raw(&t.data, args.receipt_output_air_v1.as_deref())
+                    {
                         error!(error = %e, "Failed to save AIR v1 receipt");
                     } else if args.receipt_output_air_v1.is_some() {
                         info!(size = t.data.len(), "AIR v1 receipt saved");

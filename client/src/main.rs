@@ -98,7 +98,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                     }
                                 }
                                 Err(e) => {
-                                    eprintln!("Warning: failed to decode AIR v1 receipt base64: {}", e);
+                                    eprintln!(
+                                        "Warning: failed to decode AIR v1 receipt base64: {}",
+                                        e
+                                    );
                                 }
                             }
                         }

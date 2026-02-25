@@ -147,7 +147,11 @@ struct Args {
     data_out_target: String,
 
     /// Issuer identifier for AIR v1 receipts (e.g. domain name).
-    #[arg(long, env = "EPHEMERALML_RECEIPT_ISSUER", default_value = "cyntrisec.com")]
+    #[arg(
+        long,
+        env = "EPHEMERALML_RECEIPT_ISSUER",
+        default_value = "cyntrisec.com"
+    )]
     receipt_issuer: String,
 }
 
