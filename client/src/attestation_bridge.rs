@@ -1509,4 +1509,75 @@ mod tests {
             err
         );
     }
+
+    // --- Strict mode enforcement tests ---
+    // These tests prove the fail-closed defaults: audience and MRTD must be
+    // configured in production mode. The opt-out env vars must be explicitly set.
+
+    /// Restore env vars to dev-mode defaults (used by all other tests).
+    /// Must be called after any test that modifies strict-mode env vars.
+    fn restore_dev_env() {
+        std::env::set_var("EPHEMERALML_ALLOW_UNPINNED_AUDIENCE", "true");
+        std::env::set_var("EPHEMERALML_REQUIRE_MRTD", "false");
+        std::env::remove_var("EPHEMERALML_EXPECTED_AUDIENCE");
+        std::env::remove_var("EPHEMERALML_EXPECTED_MRTD");
+    }
+
+    #[test]
+    fn test_strict_mode_rejects_no_audience() {
+        // Clear the opt-out var so strict mode is active.
+        std::env::remove_var("EPHEMERALML_ALLOW_UNPINNED_AUDIENCE");
+        std::env::remove_var("EPHEMERALML_EXPECTED_AUDIENCE");
+        std::env::set_var("EPHEMERALML_REQUIRE_MRTD", "false");
+
+        let result = TdxEnvelopeVerifierBridge::new(None);
+        restore_dev_env();
+        match result {
+            Err(e) => {
+                let err = format!("{}", e);
+                assert!(
+                    err.contains("audience pinning is required"),
+                    "Expected audience pinning error, got: {}",
+                    err
+                );
+            }
+            Ok(_) => panic!("Expected error: no audience configured in strict mode"),
+        }
+    }
+
+    #[test]
+    fn test_strict_mode_rejects_no_mrtd() {
+        // Set audience so that check passes, but leave MRTD unconfigured.
+        std::env::set_var("EPHEMERALML_EXPECTED_AUDIENCE", "//iam.googleapis.com/test");
+        std::env::remove_var("EPHEMERALML_REQUIRE_MRTD");
+        std::env::remove_var("EPHEMERALML_EXPECTED_MRTD");
+
+        let result = TdxEnvelopeVerifierBridge::new(None);
+        restore_dev_env();
+        match result {
+            Err(e) => {
+                let err = format!("{}", e);
+                assert!(
+                    err.contains("MRTD pinning is required"),
+                    "Expected MRTD pinning error, got: {}",
+                    err
+                );
+            }
+            Ok(_) => panic!("Expected error: no MRTD configured in strict mode"),
+        }
+    }
+
+    #[test]
+    fn test_strict_mode_allows_explicit_opt_out() {
+        // Explicitly opt out of both strict checks (development mode).
+        std::env::set_var("EPHEMERALML_ALLOW_UNPINNED_AUDIENCE", "true");
+        std::env::set_var("EPHEMERALML_REQUIRE_MRTD", "false");
+        std::env::remove_var("EPHEMERALML_EXPECTED_AUDIENCE");
+        std::env::remove_var("EPHEMERALML_EXPECTED_MRTD");
+
+        match TdxEnvelopeVerifierBridge::new(None) {
+            Ok(_) => {} // pass
+            Err(e) => panic!("Expected OK with explicit opt-out, got: {}", e),
+        }
+    }
 }
