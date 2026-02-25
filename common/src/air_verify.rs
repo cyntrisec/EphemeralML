@@ -179,10 +179,14 @@ impl AirVerifyResult {
 
 // ── Policy inputs ───────────────────────────────────────────────────
 
+/// Callback for seen-cti replay detection. Returns `true` if the cti was already seen.
+pub type SeenCtiFn = Box<dyn Fn(&[u8; 16]) -> bool + Send + Sync>;
+
 /// Policy inputs for layer 4 (policy evaluation).
 ///
 /// All fields are optional. Absent fields cause the corresponding check
 /// to be skipped (not failed).
+#[derive(Default)]
 pub struct AirVerifyPolicy {
     /// Maximum receipt age in seconds. 0 = skip freshness check.
     pub max_age_secs: u64,
@@ -201,22 +205,7 @@ pub struct AirVerifyPolicy {
     pub require_nonce: bool,
     /// Seen-cti cache hook. If provided, called with the receipt's cti.
     /// Return `true` if the cti has been seen before (replay).
-    pub seen_cti: Option<Box<dyn Fn(&[u8; 16]) -> bool + Send + Sync>>,
-}
-
-impl Default for AirVerifyPolicy {
-    fn default() -> Self {
-        Self {
-            max_age_secs: 0,
-            clock_skew_secs: 0,
-            expected_model_hash: None,
-            expected_model_id: None,
-            expected_platform: None,
-            expected_nonce: None,
-            require_nonce: false,
-            seen_cti: None,
-        }
-    }
+    pub seen_cti: Option<SeenCtiFn>,
 }
 
 // ── Top-level verify ────────────────────────────────────────────────
