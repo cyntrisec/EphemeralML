@@ -3,6 +3,12 @@
 **Status:** v1.0 FROZEN
 **Date:** 2026-02-25
 
+> **Production note (2026-02-25):** AIR v1 receipts are now emitted in live
+> inference flows on both AWS Nitro and GCP Confidential Space. The receipts
+> below are not hypothetical — they match what the production server produces.
+> See [implementation-status.md](implementation-status.md) §5 for the full
+> emission matrix.
+
 This document is the starting point for implementing an AIR v1 verifier in any language. It bundles the minimum information needed to parse, verify, and validate AIR v1 receipts against the golden test vectors.
 
 ## 1. Quick Start
@@ -173,7 +179,7 @@ def verify_air_v1(receipt_bytes, public_key_bytes):
 
 | Language | Library / Package | Status | Coverage | Last Verified | Details |
 |----------|--------------------|--------|----------|---------------|---------|
-| Rust | `ephemeral-ml-common` (this repo) | Reference implementation | AIR verifier + vectors + policy hooks | 2026-02-25 | [implementation-status.md](implementation-status.md) |
+| Rust | `ephemeral-ml-common` (this repo) | Reference implementation — **emitted in production E2E** | AIR verifier + vectors + policy hooks + live emission | 2026-02-25 | [implementation-status.md](implementation-status.md) |
 | Python | `spec/v1/scripts/interop_test.py` | Draft harness (not externally validated yet) | External vector verification harness | 2026-02-25 (syntax checked) | M4 external interop run pending |
 
 To register your implementation, open an issue or PR.
