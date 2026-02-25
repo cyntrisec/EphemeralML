@@ -20,6 +20,7 @@ zeroize = { version = "1.7", features = ["zeroize_derive"] }
 
 # CBOR serialization
 ciborium = "0.2"
+coset = { workspace = true }
 
 # Confidential ML transport
 confidential-ml-transport = { workspace = true, features = ["tcp"] }

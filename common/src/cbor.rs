@@ -74,7 +74,7 @@ fn sort_value_maps(val: Value) -> Value {
 ///
 /// serde_cbor orders variants: Integer, Bytes, Text, Array, Map, Tag, Bool, Null, Float.
 /// Within a variant, standard Rust comparison applies (i128 for Integer, String for Text, etc.).
-fn cmp_cbor_keys(a: &Value, b: &Value) -> Ordering {
+pub fn cmp_cbor_keys(a: &Value, b: &Value) -> Ordering {
     fn variant_idx(v: &Value) -> u8 {
         match v {
             Value::Integer(_) => 0,
@@ -103,6 +103,16 @@ fn cmp_cbor_keys(a: &Value, b: &Value) -> Ordering {
             (Value::Bool(x), Value::Bool(y)) => x.cmp(y),
             _ => Ordering::Equal,
         })
+}
+
+/// Serialize a `ciborium::Value` to CBOR bytes.
+///
+/// Unlike `to_vec` (which goes through serde), this encodes a pre-built
+/// `Value` tree directly — preserving map key ordering as-is.
+pub fn value_to_vec(val: &Value) -> Result<Vec<u8>, CborError> {
+    let mut buf = Vec::new();
+    ciborium::into_writer(val, &mut buf)?;
+    Ok(buf)
 }
 
 /// Look up a key in a ciborium Map's entries.

@@ -80,6 +80,11 @@ impl ReceiptSigningKey {
         Ok(signature.to_bytes().to_vec())
     }
 
+    /// Sign raw bytes with Ed25519 (for COSE_Sign1 Sig_structure).
+    pub fn raw_sign(&self, data: &[u8]) -> Vec<u8> {
+        self.private_key.sign(data).to_bytes().to_vec()
+    }
+
     /// Check if key is expired
     pub fn is_expired(&self) -> bool {
         if let Some(expires_at) = self.expires_at {
