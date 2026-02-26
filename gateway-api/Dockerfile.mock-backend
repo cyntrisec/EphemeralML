@@ -1,0 +1,40 @@
+# Builds the EphemeralML enclave binary in mock mode for local eval.
+# This is NOT a production image — it simulates attestation locally.
+
+FROM rust:1.83-slim-bookworm AS builder
+RUN apt-get update && apt-get install -y pkg-config libssl-dev && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /build
+COPY Cargo.toml Cargo.lock ./
+COPY common/Cargo.toml common/Cargo.toml
+COPY client/Cargo.toml client/Cargo.toml
+COPY host/Cargo.toml host/Cargo.toml
+COPY enclave/Cargo.toml enclave/Cargo.toml
+COPY verifier-api/Cargo.toml verifier-api/Cargo.toml
+COPY gateway-api/Cargo.toml gateway-api/Cargo.toml
+COPY compliance/Cargo.toml compliance/Cargo.toml
+
+RUN for d in common client host enclave verifier-api gateway-api compliance; do \
+      mkdir -p "$d/src" && echo "" > "$d/src/lib.rs"; \
+    done
+RUN echo "fn main() {}" > enclave/src/main.rs && \
+    echo "fn main() {}" > gateway-api/src/main.rs && \
+    echo "fn main() {}" > verifier-api/src/main.rs
+
+RUN cargo build --release -p ephemeral-ml-enclave --features mock 2>/dev/null || true
+
+COPY common/ common/
+COPY client/ client/
+COPY enclave/ enclave/
+COPY host/ host/
+COPY test_assets/ test_assets/
+
+RUN cargo build --release -p ephemeral-ml-enclave --features mock
+
+FROM debian:bookworm-slim
+RUN apt-get update && apt-get install -y ca-certificates && rm -rf /var/lib/apt/lists/*
+COPY --from=builder /build/target/release/ephemeral-ml-enclave /usr/local/bin/
+COPY --from=builder /build/test_assets/ /app/test_assets/
+
+EXPOSE 9000
+ENTRYPOINT ["ephemeral-ml-enclave"]

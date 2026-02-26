@@ -1,0 +1,46 @@
+# Local evaluation stack for EphemeralML OpenAI-compatible gateway.
+#
+# This runs the gateway in mock mode — no real TEE backend required.
+# The mock backend simulates attestation and receipt signing locally.
+#
+# Usage:
+#   cd gateway-api
+#   docker compose up --build
+#
+#   # Then in another terminal:
+#   curl http://localhost:8090/health
+#   curl http://localhost:8090/v1/chat/completions \
+#     -H "Content-Type: application/json" \
+#     -d '{"model":"gpt-4","messages":[{"role":"user","content":"Hello"}],"max_tokens":32}'
+#
+# To run with auth:
+#   EPHEMERALML_API_KEY=my-secret docker compose up --build
+
+services:
+  # Mock enclave backend (simulates attested inference)
+  backend:
+    build:
+      context: ..
+      dockerfile: gateway-api/Dockerfile.mock-backend
+    ports:
+      - "9000:9000"
+    command: >
+      --model-dir /app/test_assets/minilm
+      --model-id stage-0
+      --listen 0.0.0.0:9000
+
+  # OpenAI-compatible gateway
+  gateway:
+    build:
+      context: ..
+      dockerfile: gateway-api/Dockerfile
+    ports:
+      - "8090:8090"
+    environment:
+      EPHEMERALML_BACKEND_ADDR: "backend:9000"
+      EPHEMERALML_DEFAULT_MODEL: "stage-0"
+      EPHEMERALML_GATEWAY_PORT: "8090"
+      EPHEMERALML_API_KEY: "${EPHEMERALML_API_KEY:-}"
+      EPHEMERALML_INCLUDE_METADATA_JSON: "${EPHEMERALML_INCLUDE_METADATA_JSON:-false}"
+    depends_on:
+      - backend
