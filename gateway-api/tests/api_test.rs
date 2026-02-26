@@ -46,10 +46,7 @@ fn test_router_with_capabilities(
 }
 
 /// Build a test router with a dedicated embedding backend (disconnected).
-fn test_router_with_embedding_backend(
-    model_capabilities: &str,
-    embedding_model: &str,
-) -> Router {
+fn test_router_with_embedding_backend(model_capabilities: &str, embedding_model: &str) -> Router {
     let config = GatewayConfig {
         backend_addr: "127.0.0.1:0".to_string(),
         default_model: "test-model".to_string(),
@@ -617,9 +614,7 @@ fn config_rejects_embedding_backend_without_model() {
     };
     let result = config.validate();
     assert!(result.is_err());
-    assert!(result
-        .unwrap_err()
-        .contains("EPHEMERALML_EMBEDDING_MODEL"));
+    assert!(result.unwrap_err().contains("EPHEMERALML_EMBEDDING_MODEL"));
 }
 
 #[test]
