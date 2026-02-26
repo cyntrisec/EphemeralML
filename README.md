@@ -138,7 +138,7 @@ AIR v1 is **single-inference only** (pipeline proof chaining is planned for vNEX
 
 ## Features
 
-### Core (Production Ready)
+### Core (E2E-Validated, Hardening Ongoing)
 - **AWS Nitro Enclave integration** with real NSM attestation and PCR-bound KMS key release
 - **GCP Confidential Space integration** with Intel TDX attestation, MRTD/RTMR measurement pinning, and Cloud KMS key release
 - **Pipeline orchestration** via `confidential-ml-pipeline` — multi-stage inference with per-stage attestation, health checks, and graceful shutdown
