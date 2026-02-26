@@ -78,9 +78,10 @@ pub async fn chat_completions(
     // Ensure backend channel
     if let Err(e) = state.ensure_connected().await {
         tracing::error!(request_id = %request_id, error = %e, "Backend connection failed");
-        return error_response(
+        return error_response_with_id(
             StatusCode::BAD_GATEWAY,
             ErrorResponse::server_error(format!("Backend unavailable: {e}")),
+            &request_id,
         );
     }
 
@@ -105,18 +106,24 @@ pub async fn chat_completions(
     let inference_result = match result {
         Ok(Ok(r)) => r,
         Ok(Err(e)) => {
+            let err_str = e.to_string();
             tracing::warn!(
                 request_id = %request_id,
                 model = %model_id,
                 latency_ms = %elapsed_ms,
                 "Inference failed"
             );
-            state
-                .connected
-                .store(false, std::sync::atomic::Ordering::Release);
-            return error_response(
+            // Only mark disconnected for transport/network errors (channel broken).
+            // Inference logic errors (e.g. wrong model type) leave the channel intact.
+            if is_transport_error(&err_str) {
+                state
+                    .connected
+                    .store(false, std::sync::atomic::Ordering::Release);
+            }
+            return error_response_with_id(
                 StatusCode::BAD_GATEWAY,
                 ErrorResponse::server_error(format!("Inference error: {e}")),
+                &request_id,
             );
         }
         Err(_) => {
@@ -129,9 +136,10 @@ pub async fn chat_completions(
             state
                 .connected
                 .store(false, std::sync::atomic::Ordering::Release);
-            return error_response(
+            return error_response_with_id(
                 StatusCode::GATEWAY_TIMEOUT,
                 ErrorResponse::server_error("Backend inference timed out."),
+                &request_id,
             );
         }
     };
@@ -282,9 +290,10 @@ pub async fn responses(
     // Ensure backend channel
     if let Err(e) = state.ensure_connected().await {
         tracing::error!(request_id = %request_id, error = %e, "Backend connection failed");
-        return error_response(
+        return error_response_with_id(
             StatusCode::BAD_GATEWAY,
             ErrorResponse::server_error(format!("Backend unavailable: {e}")),
+            &request_id,
         );
     }
 
@@ -306,18 +315,22 @@ pub async fn responses(
     let inference_result = match result {
         Ok(Ok(r)) => r,
         Ok(Err(e)) => {
+            let err_str = e.to_string();
             tracing::warn!(
                 request_id = %request_id,
                 model = %model_id,
                 latency_ms = %elapsed_ms,
                 "Responses inference failed"
             );
-            state
-                .connected
-                .store(false, std::sync::atomic::Ordering::Release);
-            return error_response(
+            if is_transport_error(&err_str) {
+                state
+                    .connected
+                    .store(false, std::sync::atomic::Ordering::Release);
+            }
+            return error_response_with_id(
                 StatusCode::BAD_GATEWAY,
                 ErrorResponse::server_error(format!("Inference error: {e}")),
+                &request_id,
             );
         }
         Err(_) => {
@@ -330,9 +343,10 @@ pub async fn responses(
             state
                 .connected
                 .store(false, std::sync::atomic::Ordering::Release);
-            return error_response(
+            return error_response_with_id(
                 StatusCode::GATEWAY_TIMEOUT,
                 ErrorResponse::server_error("Backend inference timed out."),
+                &request_id,
             );
         }
     };
@@ -420,9 +434,10 @@ pub async fn embeddings(
     // Ensure backend channel
     if let Err(e) = state.ensure_connected().await {
         tracing::error!(request_id = %request_id, error = %e, "Backend connection failed");
-        return error_response(
+        return error_response_with_id(
             StatusCode::BAD_GATEWAY,
             ErrorResponse::server_error(format!("Backend unavailable: {e}")),
+            &request_id,
         );
     }
 
@@ -444,18 +459,22 @@ pub async fn embeddings(
         let inference_result = match result {
             Ok(Ok(r)) => r,
             Ok(Err(e)) => {
+                let err_str = e.to_string();
                 tracing::warn!(
                     request_id = %request_id,
                     model = %model_id,
                     latency_ms = %elapsed_ms,
                     "Embedding inference failed"
                 );
-                state
-                    .connected
-                    .store(false, std::sync::atomic::Ordering::Release);
-                return error_response(
+                if is_transport_error(&err_str) {
+                    state
+                        .connected
+                        .store(false, std::sync::atomic::Ordering::Release);
+                }
+                return error_response_with_id(
                     StatusCode::BAD_GATEWAY,
                     ErrorResponse::server_error(format!("Inference error: {e}")),
+                    &request_id,
                 );
             }
             Err(_) => {
@@ -468,9 +487,10 @@ pub async fn embeddings(
                 state
                     .connected
                     .store(false, std::sync::atomic::Ordering::Release);
-                return error_response(
+                return error_response_with_id(
                     StatusCode::GATEWAY_TIMEOUT,
                     ErrorResponse::server_error("Backend inference timed out."),
+                    &request_id,
                 );
             }
         };
@@ -530,6 +550,20 @@ pub async fn embeddings(
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
+
+/// Returns true if the error string indicates a transport/channel failure
+/// (broken connection, send/recv failure) vs. a logical inference error
+/// (wrong model type, serialization mismatch). Only transport errors
+/// should mark the channel as disconnected.
+fn is_transport_error(err: &str) -> bool {
+    err.contains("Transport error")
+        || err.contains("Network error")
+        || err.contains("Send failed")
+        || err.contains("Recv failed")
+        || err.contains("Channel not established")
+        || err.contains("connection reset")
+        || err.contains("broken pipe")
+}
 
 /// Concatenate chat messages into a single prompt string for the backend.
 fn messages_to_prompt(messages: &[ChatMessage]) -> String {
@@ -634,6 +668,14 @@ fn attach_metadata_headers(
 /// Build an OpenAI-style error response.
 fn error_response(status: StatusCode, body: ErrorResponse) -> Response {
     (status, Json(body)).into_response()
+}
+
+fn error_response_with_id(status: StatusCode, body: ErrorResponse, request_id: &str) -> Response {
+    let mut headers = HeaderMap::new();
+    if let Ok(v) = HeaderValue::from_str(request_id) {
+        headers.insert("x-request-id", v);
+    }
+    (status, headers, Json(body)).into_response()
 }
 
 // ---------------------------------------------------------------------------

@@ -15,6 +15,9 @@ Usage:
     # Custom endpoint:
     EPHEMERALML_GATEWAY_URL=http://10.0.0.1:8090 python scripts/smoke_test_openai.py
 
+    # With a generative model backend (enables chat/responses tests):
+    EPHEMERALML_GENERATIVE=1 python scripts/smoke_test_openai.py
+
 Exit codes:
     0 — all checks passed
     1 — one or more checks failed
@@ -27,9 +30,13 @@ import traceback
 
 GATEWAY_URL = os.environ.get("EPHEMERALML_GATEWAY_URL", "http://localhost:8090")
 API_KEY = os.environ.get("EPHEMERALML_API_KEY", "not-needed")
+# Set EPHEMERALML_GENERATIVE=1 when backend has a generative model (not BERT/MiniLM).
+# When unset, chat/responses tests verify error handling instead of success.
+GENERATIVE = os.environ.get("EPHEMERALML_GENERATIVE", "") == "1"
 
 passed = 0
 failed = 0
+skipped = 0
 
 
 def check(name, fn):
@@ -42,6 +49,12 @@ def check(name, fn):
         print(f"  FAIL  {name}: {e}")
         traceback.print_exc()
         failed += 1
+
+
+def skip(name, reason):
+    global skipped
+    print(f"  SKIP  {name}: {reason}")
+    skipped += 1
 
 
 # ---------------------------------------------------------------------------
@@ -57,7 +70,7 @@ def test_health():
 
 
 # ---------------------------------------------------------------------------
-# 2. Chat completions via OpenAI SDK
+# 2. Chat completions via OpenAI SDK (requires generative model)
 # ---------------------------------------------------------------------------
 
 def test_chat_completions():
@@ -80,7 +93,47 @@ def test_chat_completions():
 
 
 # ---------------------------------------------------------------------------
-# 3. Chat completions — attestation headers (raw HTTP)
+# 3. Chat error handling (BERT backend returns 502, channel stays alive)
+# ---------------------------------------------------------------------------
+
+def test_chat_error_keeps_channel():
+    """With a BERT/embedding-only backend, chat returns 502 but the channel
+    should remain connected for subsequent embedding requests."""
+    import httpx
+    headers = {"Content-Type": "application/json"}
+    if API_KEY and API_KEY != "not-needed":
+        headers["Authorization"] = f"Bearer {API_KEY}"
+    # This should fail (BERT can't generate) but return a proper error
+    resp = httpx.post(
+        f"{GATEWAY_URL}/v1/chat/completions",
+        headers=headers,
+        json={
+            "model": "gpt-4",
+            "messages": [{"role": "user", "content": "hi"}],
+            "max_tokens": 16,
+        },
+        timeout=30,
+    )
+    assert resp.status_code == 502, f"expected 502, got {resp.status_code}"
+    data = resp.json()
+    assert "error" in data, "missing error object"
+    assert data["error"]["type"] == "server_error"
+    # x-request-id should still be present even on errors
+    assert "x-request-id" in resp.headers, "missing x-request-id on error response"
+
+    # Now verify the channel is still alive by doing an embedding
+    resp2 = httpx.post(
+        f"{GATEWAY_URL}/v1/embeddings",
+        headers=headers,
+        json={"model": "text-embedding-3-small", "input": "channel alive check"},
+        timeout=30,
+    )
+    assert resp2.status_code == 200, \
+        f"embedding after chat error failed ({resp2.status_code}): channel incorrectly disconnected"
+
+
+# ---------------------------------------------------------------------------
+# 4. Chat completions — attestation headers (raw HTTP, requires generative)
 # ---------------------------------------------------------------------------
 
 def test_chat_headers():
@@ -108,7 +161,7 @@ def test_chat_headers():
 
 
 # ---------------------------------------------------------------------------
-# 4. Embeddings via OpenAI SDK
+# 5. Embeddings via OpenAI SDK
 # ---------------------------------------------------------------------------
 
 def test_embeddings():
@@ -124,7 +177,30 @@ def test_embeddings():
 
 
 # ---------------------------------------------------------------------------
-# 5. /v1/responses endpoint (raw HTTP — SDK may not have this yet)
+# 6. Embeddings — attestation headers
+# ---------------------------------------------------------------------------
+
+def test_embeddings_headers():
+    import httpx
+    headers = {"Content-Type": "application/json"}
+    if API_KEY and API_KEY != "not-needed":
+        headers["Authorization"] = f"Bearer {API_KEY}"
+    resp = httpx.post(
+        f"{GATEWAY_URL}/v1/embeddings",
+        headers=headers,
+        json={"model": "text-embedding-3-small", "input": "test headers"},
+        timeout=30,
+    )
+    assert resp.status_code == 200, f"expected 200, got {resp.status_code}: {resp.text}"
+    assert "x-request-id" in resp.headers, "missing x-request-id header"
+    assert "x-ephemeralml-receipt-present" in resp.headers, "missing receipt-present header"
+    assert "x-ephemeralml-attestation-mode" in resp.headers, "missing attestation-mode header"
+    assert "x-ephemeralml-air-receipt-b64" not in resp.headers, \
+        "full receipt header should not be present by default"
+
+
+# ---------------------------------------------------------------------------
+# 7. /v1/responses endpoint (requires generative model)
 # ---------------------------------------------------------------------------
 
 def test_responses():
@@ -151,7 +227,7 @@ def test_responses():
 
 
 # ---------------------------------------------------------------------------
-# 6. Stream rejection
+# 8. Stream rejection
 # ---------------------------------------------------------------------------
 
 def test_stream_rejected():
@@ -175,7 +251,7 @@ def test_stream_rejected():
 
 
 # ---------------------------------------------------------------------------
-# 7. Models list
+# 9. Models list
 # ---------------------------------------------------------------------------
 
 def test_models():
@@ -193,16 +269,31 @@ def test_models():
 if __name__ == "__main__":
     print(f"EphemeralML Gateway Smoke Test — {GATEWAY_URL}")
     print(f"Auth: {'configured' if API_KEY != 'not-needed' else 'none'}")
+    print(f"Backend: {'generative' if GENERATIVE else 'embedding-only (BERT/MiniLM)'}")
     print()
 
+    # Always-valid tests (any backend)
     check("Health check", test_health)
     check("Models list", test_models)
-    check("Chat completions (SDK)", test_chat_completions)
-    check("Chat headers (attestation)", test_chat_headers)
-    check("Embeddings (SDK)", test_embeddings)
-    check("Responses endpoint", test_responses)
     check("Stream rejection", test_stream_rejected)
+    check("Embeddings (SDK)", test_embeddings)
+    check("Embeddings headers", test_embeddings_headers)
+
+    # Generative-only tests (need a text-generation model)
+    if GENERATIVE:
+        check("Chat completions (SDK)", test_chat_completions)
+        check("Chat headers (attestation)", test_chat_headers)
+        check("Responses endpoint", test_responses)
+    else:
+        skip("Chat completions (SDK)", "BERT backend (set EPHEMERALML_GENERATIVE=1)")
+        skip("Chat headers (attestation)", "BERT backend")
+        skip("Responses endpoint", "BERT backend")
+        # Verify error handling + channel resilience with BERT backend
+        check("Chat error keeps channel", test_chat_error_keeps_channel)
 
     print()
-    print(f"Results: {passed} passed, {failed} failed")
+    summary = f"Results: {passed} passed, {failed} failed"
+    if skipped:
+        summary += f", {skipped} skipped"
+    print(summary)
     sys.exit(1 if failed > 0 else 0)
