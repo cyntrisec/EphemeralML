@@ -107,6 +107,24 @@ impl GatewayConfig {
             );
         }
 
+        // Embedding backend configured but embeddings capability not enabled — dead config.
+        if self.embedding_backend_addr.is_some() && !self.has_capability("embeddings") {
+            tracing::warn!(
+                "EPHEMERALML_EMBEDDING_BACKEND_ADDR is set but 'embeddings' capability is not \
+                 enabled — the embedding backend will not be used. Add 'embeddings' to \
+                 EPHEMERALML_MODEL_CAPABILITIES."
+            );
+        }
+
+        // No capabilities active at all — gateway will reject all inference requests.
+        if !self.has_capability("chat") && !self.has_capability("embeddings") {
+            tracing::warn!(
+                "No capabilities enabled in EPHEMERALML_MODEL_CAPABILITIES — all inference \
+                 endpoints will return 400. Set capabilities to 'chat', 'embeddings', or \
+                 'chat,embeddings'."
+            );
+        }
+
         Ok(())
     }
 }

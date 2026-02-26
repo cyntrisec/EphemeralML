@@ -24,6 +24,11 @@ pub struct ChatCompletionRequest {
     pub stream: Option<bool>,
     #[serde(default)]
     pub user: Option<String>,
+    /// Unsupported — reject clearly if present (parity with /v1/responses).
+    #[serde(default)]
+    pub tools: Option<serde_json::Value>,
+    #[serde(default)]
+    pub tool_choice: Option<serde_json::Value>,
 }
 
 #[derive(Deserialize, Serialize, Debug, Clone)]
@@ -257,6 +262,12 @@ impl ErrorResponse {
                 code: code.map(|s| s.to_string()),
             },
         }
+    }
+
+    /// Set the `param` field on this error (builder pattern).
+    pub fn with_param(mut self, param: &str) -> Self {
+        self.error.param = Some(param.to_string());
+        self
     }
 
     pub fn invalid_request(message: impl Into<String>) -> Self {

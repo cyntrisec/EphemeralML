@@ -188,7 +188,34 @@ pub async fn chat_completions(
                 "Streaming is not supported in this version. Set stream=false or omit it.",
                 "invalid_request_error",
                 Some("unsupported_stream"),
-            ),
+            )
+            .with_param("stream"),
+            &request_id,
+        );
+    }
+
+    // Reject unsupported fields (parity with /v1/responses)
+    if req.tools.is_some() {
+        return error_response_with_id(
+            StatusCode::BAD_REQUEST,
+            ErrorResponse::new(
+                "Tool use is not supported in this version.",
+                "invalid_request_error",
+                Some("unsupported_parameter"),
+            )
+            .with_param("tools"),
+            &request_id,
+        );
+    }
+    if req.tool_choice.is_some() {
+        return error_response_with_id(
+            StatusCode::BAD_REQUEST,
+            ErrorResponse::new(
+                "tool_choice is not supported in this version.",
+                "invalid_request_error",
+                Some("unsupported_parameter"),
+            )
+            .with_param("tool_choice"),
             &request_id,
         );
     }
@@ -196,7 +223,8 @@ pub async fn chat_completions(
     if req.messages.is_empty() {
         return error_response_with_id(
             StatusCode::BAD_REQUEST,
-            ErrorResponse::invalid_request("messages array must not be empty."),
+            ErrorResponse::invalid_request("messages array must not be empty.")
+                .with_param("messages"),
             &request_id,
         );
     }
@@ -362,7 +390,8 @@ pub async fn responses(
                 "Streaming is not supported in this version. Set stream=false or omit it.",
                 "invalid_request_error",
                 Some("unsupported_stream"),
-            ),
+            )
+            .with_param("stream"),
             &request_id,
         );
     }
@@ -375,7 +404,8 @@ pub async fn responses(
                 "Tool use is not supported in this version.",
                 "invalid_request_error",
                 Some("unsupported_parameter"),
-            ),
+            )
+            .with_param("tools"),
             &request_id,
         );
     }
@@ -386,7 +416,8 @@ pub async fn responses(
                 "tool_choice is not supported in this version.",
                 "invalid_request_error",
                 Some("unsupported_parameter"),
-            ),
+            )
+            .with_param("tool_choice"),
             &request_id,
         );
     }
@@ -397,7 +428,7 @@ pub async fn responses(
             if t.is_empty() {
                 return error_response_with_id(
                     StatusCode::BAD_REQUEST,
-                    ErrorResponse::invalid_request("input must not be empty."),
+                    ErrorResponse::invalid_request("input must not be empty.").with_param("input"),
                     &request_id,
                 );
             }
@@ -415,7 +446,8 @@ pub async fn responses(
             if msgs.is_empty() {
                 return error_response_with_id(
                     StatusCode::BAD_REQUEST,
-                    ErrorResponse::invalid_request("input messages must not be empty."),
+                    ErrorResponse::invalid_request("input messages must not be empty.")
+                        .with_param("input"),
                     &request_id,
                 );
             }
@@ -598,9 +630,25 @@ pub async fn embeddings(
     if texts.is_empty() {
         return error_response_with_id(
             StatusCode::BAD_REQUEST,
-            ErrorResponse::invalid_request("input must not be empty."),
+            ErrorResponse::invalid_request("input must not be empty.").with_param("input"),
             &request_id,
         );
+    }
+
+    // Reject encoding_format="base64" — only "float" is supported.
+    if let Some(ref fmt) = req.encoding_format {
+        if fmt != "float" {
+            return error_response_with_id(
+                StatusCode::BAD_REQUEST,
+                ErrorResponse::new(
+                    format!("encoding_format '{fmt}' is not supported. Only 'float' is supported."),
+                    "invalid_request_error",
+                    Some("unsupported_parameter"),
+                )
+                .with_param("encoding_format"),
+                &request_id,
+            );
+        }
     }
 
     // Determine which client + model to use for embeddings.

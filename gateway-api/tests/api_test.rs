@@ -234,6 +234,7 @@ async fn chat_rejects_stream_true() {
     assert!(resp.headers().get("x-request-id").is_some());
     let json = body_json(resp).await;
     assert_eq!(json["error"]["code"], "unsupported_stream");
+    assert_eq!(json["error"]["param"], "stream");
 }
 
 #[tokio::test]
@@ -249,6 +250,39 @@ async fn chat_rejects_empty_messages() {
     assert!(resp.headers().get("x-request-id").is_some());
     let json = body_json(resp).await;
     assert!(json["error"]["message"].as_str().unwrap().contains("empty"));
+    assert_eq!(json["error"]["param"], "messages");
+}
+
+#[tokio::test]
+async fn chat_rejects_tools() {
+    let app = test_router(None, false, false);
+    let body = serde_json::json!({
+        "model": "gpt-4",
+        "messages": [{"role": "user", "content": "hi"}],
+        "tools": [{"type": "function", "function": {"name": "f"}}]
+    });
+    let req = json_request("POST", "/v1/chat/completions", body, None);
+    let resp = app.oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+    let json = body_json(resp).await;
+    assert_eq!(json["error"]["code"], "unsupported_parameter");
+    assert_eq!(json["error"]["param"], "tools");
+}
+
+#[tokio::test]
+async fn chat_rejects_tool_choice() {
+    let app = test_router(None, false, false);
+    let body = serde_json::json!({
+        "model": "gpt-4",
+        "messages": [{"role": "user", "content": "hi"}],
+        "tool_choice": "auto"
+    });
+    let req = json_request("POST", "/v1/chat/completions", body, None);
+    let resp = app.oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+    let json = body_json(resp).await;
+    assert_eq!(json["error"]["code"], "unsupported_parameter");
+    assert_eq!(json["error"]["param"], "tool_choice");
 }
 
 #[tokio::test]
@@ -281,6 +315,43 @@ async fn embeddings_rejects_empty_input() {
     let resp = app.oneshot(req).await.unwrap();
     assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
     assert!(resp.headers().get("x-request-id").is_some());
+    let json = body_json(resp).await;
+    assert_eq!(json["error"]["param"], "input");
+}
+
+#[tokio::test]
+async fn embeddings_rejects_base64_encoding_format() {
+    let app = test_router_with_capabilities(None, false, false, "chat,embeddings");
+    let body = serde_json::json!({
+        "model": "text-embedding-3-small",
+        "input": "hello world",
+        "encoding_format": "base64"
+    });
+    let req = json_request("POST", "/v1/embeddings", body, None);
+    let resp = app.oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+    assert!(resp.headers().get("x-request-id").is_some());
+    let json = body_json(resp).await;
+    assert_eq!(json["error"]["code"], "unsupported_parameter");
+    assert_eq!(json["error"]["param"], "encoding_format");
+    assert!(json["error"]["message"]
+        .as_str()
+        .unwrap()
+        .contains("base64"));
+}
+
+#[tokio::test]
+async fn embeddings_accepts_float_encoding_format() {
+    // encoding_format="float" should pass validation — will get 502 (no backend)
+    let app = test_router_with_capabilities(None, false, false, "chat,embeddings");
+    let body = serde_json::json!({
+        "model": "text-embedding-3-small",
+        "input": "hello world",
+        "encoding_format": "float"
+    });
+    let req = json_request("POST", "/v1/embeddings", body, None);
+    let resp = app.oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::BAD_GATEWAY);
 }
 
 #[tokio::test]
@@ -328,6 +399,7 @@ async fn responses_rejects_stream_true() {
     assert!(resp.headers().get("x-request-id").is_some());
     let json = body_json(resp).await;
     assert_eq!(json["error"]["code"], "unsupported_stream");
+    assert_eq!(json["error"]["param"], "stream");
 }
 
 #[tokio::test]
@@ -344,6 +416,23 @@ async fn responses_rejects_tools() {
     assert!(resp.headers().get("x-request-id").is_some());
     let json = body_json(resp).await;
     assert_eq!(json["error"]["code"], "unsupported_parameter");
+    assert_eq!(json["error"]["param"], "tools");
+}
+
+#[tokio::test]
+async fn responses_rejects_tool_choice() {
+    let app = test_router(None, false, false);
+    let body = serde_json::json!({
+        "model": "gpt-4",
+        "input": "hello",
+        "tool_choice": "auto"
+    });
+    let req = json_request("POST", "/v1/responses", body, None);
+    let resp = app.oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+    let json = body_json(resp).await;
+    assert_eq!(json["error"]["code"], "unsupported_parameter");
+    assert_eq!(json["error"]["param"], "tool_choice");
 }
 
 #[tokio::test]
@@ -357,6 +446,8 @@ async fn responses_rejects_empty_text_input() {
     let resp = app.oneshot(req).await.unwrap();
     assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
     assert!(resp.headers().get("x-request-id").is_some());
+    let json = body_json(resp).await;
+    assert_eq!(json["error"]["param"], "input");
 }
 
 #[tokio::test]
@@ -370,6 +461,8 @@ async fn responses_rejects_empty_messages_input() {
     let resp = app.oneshot(req).await.unwrap();
     assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
     assert!(resp.headers().get("x-request-id").is_some());
+    let json = body_json(resp).await;
+    assert_eq!(json["error"]["param"], "input");
 }
 
 #[tokio::test]

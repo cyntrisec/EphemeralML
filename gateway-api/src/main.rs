@@ -50,6 +50,23 @@ async fn main() -> anyhow::Result<()> {
         None
     };
 
+    // Log active endpoints based on capabilities.
+    let mut active = Vec::new();
+    if config.has_capability("chat") {
+        active.push("/v1/chat/completions");
+        active.push("/v1/responses");
+    }
+    if config.has_capability("embeddings") {
+        active.push("/v1/embeddings");
+    }
+    active.push("/v1/models");
+    active.push("/health");
+    active.push("/readyz");
+    tracing::info!(
+        endpoints = %active.join(", "),
+        "Active endpoints"
+    );
+
     let state = AppState::new(client, config, embedding_client);
     let app = ephemeralml_gateway::build_router(state);
 
