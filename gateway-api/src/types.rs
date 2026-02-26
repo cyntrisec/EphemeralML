@@ -184,6 +184,19 @@ pub struct ModelObject {
     pub object: &'static str,
     pub created: u64,
     pub owned_by: &'static str,
+    #[serde(rename = "_ephemeralml")]
+    pub ephemeralml: ModelEphemeralMeta,
+}
+
+#[derive(Serialize, Debug, Clone)]
+pub struct ModelEphemeralMeta {
+    pub capabilities: ModelCapabilities,
+}
+
+#[derive(Serialize, Debug, Clone)]
+pub struct ModelCapabilities {
+    pub chat: bool,
+    pub embeddings: bool,
 }
 
 // ---------------------------------------------------------------------------

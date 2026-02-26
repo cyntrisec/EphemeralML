@@ -1,16 +1,16 @@
 //! Bearer-token authentication middleware.
 
 use axum::extract::State;
-use axum::http::Request;
+use axum::http::{HeaderMap, HeaderValue, Request, StatusCode};
 use axum::middleware::Next;
-use axum::response::{IntoResponse, Response};
+use axum::response::{IntoResponse, Json, Response};
 use subtle::ConstantTimeEq;
 
 use crate::state::AppState;
 use crate::types::ErrorResponse;
 
 /// Axum middleware that checks `Authorization: Bearer <token>` when
-/// `EPHEMERALML_API_KEY` is configured. Skips auth for `/health`.
+/// `EPHEMERALML_API_KEY` is configured. Skips auth for `/health` and `/readyz`.
 pub async fn auth_middleware(
     State(state): State<AppState>,
     request: Request<axum::body::Body>,
@@ -21,8 +21,9 @@ pub async fn auth_middleware(
         None => return next.run(request).await,
     };
 
-    // Skip auth on health endpoint
-    if request.uri().path() == "/health" {
+    // Skip auth on operational endpoints
+    let path = request.uri().path();
+    if path == "/health" || path == "/readyz" {
         return next.run(request).await;
     }
 
@@ -35,10 +36,13 @@ pub async fn auth_middleware(
     match provided {
         Some(token) if token.as_bytes().ct_eq(api_key.as_bytes()).into() => next.run(request).await,
         _ => {
+            let request_id = uuid::Uuid::new_v4().to_string();
             let body = ErrorResponse::auth_error();
-            let mut resp = axum::response::Json(body).into_response();
-            *resp.status_mut() = axum::http::StatusCode::UNAUTHORIZED;
-            resp
+            let mut headers = HeaderMap::new();
+            if let Ok(v) = HeaderValue::from_str(&request_id) {
+                headers.insert("x-request-id", v);
+            }
+            (StatusCode::UNAUTHORIZED, headers, Json(body)).into_response()
         }
     }
 }

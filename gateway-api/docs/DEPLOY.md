@@ -77,6 +77,9 @@ docker run -d --name gateway -p 8090:8090 \
 | `EPHEMERALML_REQUEST_TIMEOUT_SECS` | No | `120` | Increase for large models |
 | `EPHEMERALML_INCLUDE_METADATA_JSON` | No | `false` | Embed `_ephemeralml` in body |
 | `EPHEMERALML_RECEIPT_HEADER_FULL` | No | `false` | Full receipt in header (proxy risk) |
+| `EPHEMERALML_MODEL_CAPABILITIES` | No | `chat` | `chat`, `embeddings`, or `chat,embeddings` |
+| `EPHEMERALML_EMBEDDING_BACKEND_ADDR` | No | — | Dedicated embedding backend IP:port |
+| `EPHEMERALML_EMBEDDING_MODEL` | No | — | Model ID for embedding backend |
 
 ## Health Checks
 

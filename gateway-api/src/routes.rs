@@ -17,11 +17,73 @@ use crate::types::*;
 
 pub async fn health(State(state): State<AppState>) -> Json<serde_json::Value> {
     let connected = state.connected.load(std::sync::atomic::Ordering::Relaxed);
-    Json(serde_json::json!({
-        "status": if connected { "ok" } else { "degraded" },
+    let emb_configured = state.config.embedding_backend_addr.is_some();
+    let emb_connected = state
+        .embedding_connected
+        .load(std::sync::atomic::Ordering::Relaxed);
+
+    let status = if emb_configured {
+        if connected && emb_connected {
+            "ok"
+        } else if connected || emb_connected {
+            "degraded"
+        } else {
+            "unavailable"
+        }
+    } else if connected {
+        "ok"
+    } else {
+        "degraded"
+    };
+
+    let mut body = serde_json::json!({
+        "status": status,
         "backend_connected": connected,
         "version": env!("CARGO_PKG_VERSION"),
-    }))
+    });
+
+    if emb_configured {
+        body["embedding_backend_configured"] = serde_json::json!(true);
+        body["embedding_backend_connected"] = serde_json::json!(emb_connected);
+    }
+
+    Json(body)
+}
+
+// ---------------------------------------------------------------------------
+// GET /readyz  (strict readiness — all configured backends must be connected)
+// ---------------------------------------------------------------------------
+
+pub async fn readyz(State(state): State<AppState>) -> Response {
+    let connected = state.connected.load(std::sync::atomic::Ordering::Relaxed);
+    let emb_configured = state.config.embedding_backend_addr.is_some();
+    let emb_connected = state
+        .embedding_connected
+        .load(std::sync::atomic::Ordering::Relaxed);
+
+    let ready = if emb_configured {
+        connected && emb_connected
+    } else {
+        connected
+    };
+
+    let status = if ready {
+        StatusCode::OK
+    } else {
+        StatusCode::SERVICE_UNAVAILABLE
+    };
+
+    let mut body = serde_json::json!({
+        "ready": ready,
+        "backend_connected": connected,
+    });
+
+    if emb_configured {
+        body["embedding_backend_configured"] = serde_json::json!(true);
+        body["embedding_backend_connected"] = serde_json::json!(emb_connected);
+    }
+
+    (status, Json(body)).into_response()
 }
 
 // ---------------------------------------------------------------------------
@@ -33,14 +95,57 @@ pub async fn list_models(State(state): State<AppState>) -> Json<ModelsResponse> 
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap_or_default()
         .as_secs();
-    Json(ModelsResponse {
-        object: "list",
-        data: vec![ModelObject {
-            id: state.config.default_model.clone(),
+
+    let has_chat = state.config.has_capability("chat");
+    let has_embeddings = state.config.has_capability("embeddings");
+
+    // If a separate embedding backend is configured, the main model only
+    // advertises the capabilities it actually supports.
+    let has_separate_embedding = state.config.embedding_backend_addr.is_some();
+
+    let main_caps = ModelCapabilities {
+        chat: has_chat,
+        embeddings: if has_separate_embedding {
+            false
+        } else {
+            has_embeddings
+        },
+    };
+
+    let mut models = vec![ModelObject {
+        id: state.config.default_model.clone(),
+        object: "model",
+        created: now,
+        owned_by: "ephemeralml",
+        ephemeralml: ModelEphemeralMeta {
+            capabilities: main_caps,
+        },
+    }];
+
+    // Add separate embedding model entry if configured
+    if has_separate_embedding && has_embeddings {
+        let emb_model_id = state
+            .config
+            .embedding_model
+            .clone()
+            .unwrap_or_else(|| state.config.default_model.clone());
+        models.push(ModelObject {
+            id: emb_model_id,
             object: "model",
             created: now,
             owned_by: "ephemeralml",
-        }],
+            ephemeralml: ModelEphemeralMeta {
+                capabilities: ModelCapabilities {
+                    chat: false,
+                    embeddings: true,
+                },
+            },
+        });
+    }
+
+    Json(ModelsResponse {
+        object: "list",
+        data: models,
     })
 }
 
@@ -55,23 +160,44 @@ pub async fn chat_completions(
     let request_id = uuid::Uuid::new_v4().to_string();
     let start = Instant::now();
 
+    // Capability gate — reject unless "chat" is enabled.
+    if !state.config.has_capability("chat") {
+        tracing::info!(request_id = %request_id, "Rejected chat: capability not enabled");
+        return error_response_with_id(
+            StatusCode::BAD_REQUEST,
+            ErrorResponse {
+                error: ErrorBody {
+                    message: "This model does not support chat completions. Configure \
+                        EPHEMERALML_MODEL_CAPABILITIES to include 'chat'."
+                        .to_string(),
+                    error_type: "invalid_request_error".to_string(),
+                    param: Some("model".to_string()),
+                    code: Some("unsupported_model_capability".to_string()),
+                },
+            },
+            &request_id,
+        );
+    }
+
     // Reject streaming (MVP)
     if req.stream == Some(true) {
         tracing::info!(request_id = %request_id, "Rejected stream=true request");
-        return error_response(
+        return error_response_with_id(
             StatusCode::BAD_REQUEST,
             ErrorResponse::new(
                 "Streaming is not supported in this version. Set stream=false or omit it.",
                 "invalid_request_error",
                 Some("unsupported_stream"),
             ),
+            &request_id,
         );
     }
 
     if req.messages.is_empty() {
-        return error_response(
+        return error_response_with_id(
             StatusCode::BAD_REQUEST,
             ErrorResponse::invalid_request("messages array must not be empty."),
+            &request_id,
         );
     }
 
@@ -209,37 +335,59 @@ pub async fn responses(
     let request_id = uuid::Uuid::new_v4().to_string();
     let start = Instant::now();
 
+    // Capability gate — reject unless "chat" is enabled.
+    if !state.config.has_capability("chat") {
+        tracing::info!(request_id = %request_id, "Rejected responses: chat capability not enabled");
+        return error_response_with_id(
+            StatusCode::BAD_REQUEST,
+            ErrorResponse {
+                error: ErrorBody {
+                    message: "This model does not support chat/responses. Configure \
+                        EPHEMERALML_MODEL_CAPABILITIES to include 'chat'."
+                        .to_string(),
+                    error_type: "invalid_request_error".to_string(),
+                    param: Some("model".to_string()),
+                    code: Some("unsupported_model_capability".to_string()),
+                },
+            },
+            &request_id,
+        );
+    }
+
     // Reject streaming
     if req.stream == Some(true) {
-        return error_response(
+        return error_response_with_id(
             StatusCode::BAD_REQUEST,
             ErrorResponse::new(
                 "Streaming is not supported in this version. Set stream=false or omit it.",
                 "invalid_request_error",
                 Some("unsupported_stream"),
             ),
+            &request_id,
         );
     }
 
     // Reject unsupported fields
     if req.tools.is_some() {
-        return error_response(
+        return error_response_with_id(
             StatusCode::BAD_REQUEST,
             ErrorResponse::new(
                 "Tool use is not supported in this version.",
                 "invalid_request_error",
                 Some("unsupported_parameter"),
             ),
+            &request_id,
         );
     }
     if req.tool_choice.is_some() {
-        return error_response(
+        return error_response_with_id(
             StatusCode::BAD_REQUEST,
             ErrorResponse::new(
                 "tool_choice is not supported in this version.",
                 "invalid_request_error",
                 Some("unsupported_parameter"),
             ),
+            &request_id,
         );
     }
 
@@ -247,9 +395,10 @@ pub async fn responses(
     let prompt = match &req.input {
         ResponsesInput::Text(t) => {
             if t.is_empty() {
-                return error_response(
+                return error_response_with_id(
                     StatusCode::BAD_REQUEST,
                     ErrorResponse::invalid_request("input must not be empty."),
+                    &request_id,
                 );
             }
             let mut p = String::new();
@@ -264,9 +413,10 @@ pub async fn responses(
         }
         ResponsesInput::Messages(msgs) => {
             if msgs.is_empty() {
-                return error_response(
+                return error_response_with_id(
                     StatusCode::BAD_REQUEST,
                     ErrorResponse::invalid_request("input messages must not be empty."),
+                    &request_id,
                 );
             }
             let mut p = String::new();
@@ -419,20 +569,53 @@ pub async fn embeddings(
     let request_id = uuid::Uuid::new_v4().to_string();
     let start = Instant::now();
 
+    // Capability gate — reject unless "embeddings" is explicitly enabled.
+    if !state.config.has_capability("embeddings") {
+        tracing::info!(request_id = %request_id, "Rejected embeddings: capability not enabled");
+        return error_response_with_id(
+            StatusCode::BAD_REQUEST,
+            ErrorResponse {
+                error: ErrorBody {
+                    message: "This model does not support embeddings. Configure \
+                        EPHEMERALML_MODEL_CAPABILITIES to include 'embeddings' or set up a \
+                        dedicated embedding backend with \
+                        EPHEMERALML_EMBEDDING_BACKEND_ADDR."
+                        .to_string(),
+                    error_type: "invalid_request_error".to_string(),
+                    param: Some("model".to_string()),
+                    code: Some("unsupported_model_capability".to_string()),
+                },
+            },
+            &request_id,
+        );
+    }
+
     let texts = match &req.input {
         EmbeddingInput::Single(s) => vec![s.clone()],
         EmbeddingInput::Multiple(v) => v.clone(),
     };
 
     if texts.is_empty() {
-        return error_response(
+        return error_response_with_id(
             StatusCode::BAD_REQUEST,
             ErrorResponse::invalid_request("input must not be empty."),
+            &request_id,
         );
     }
 
-    // Ensure backend channel
-    if let Err(e) = state.ensure_connected().await {
+    // Determine which client + model to use for embeddings.
+    let use_separate = state.embedding_client.is_some();
+
+    if use_separate {
+        if let Err(e) = state.ensure_embedding_connected().await {
+            tracing::error!(request_id = %request_id, error = %e, "Embedding backend connection failed");
+            return error_response_with_id(
+                StatusCode::BAD_GATEWAY,
+                ErrorResponse::server_error(format!("Embedding backend unavailable: {e}")),
+                &request_id,
+            );
+        }
+    } else if let Err(e) = state.ensure_connected().await {
         tracing::error!(request_id = %request_id, error = %e, "Backend connection failed");
         return error_response_with_id(
             StatusCode::BAD_GATEWAY,
@@ -441,7 +624,15 @@ pub async fn embeddings(
         );
     }
 
-    let model_id = &state.config.default_model;
+    let model_id = if use_separate {
+        state
+            .config
+            .embedding_model
+            .as_deref()
+            .unwrap_or(&state.config.default_model)
+    } else {
+        &state.config.default_model
+    };
     let timeout = tokio::time::Duration::from_secs(state.config.request_timeout_secs);
 
     let mut data = Vec::with_capacity(texts.len());
@@ -449,7 +640,11 @@ pub async fn embeddings(
     let mut last_result: Option<InferenceResult> = None;
 
     for (i, text) in texts.iter().enumerate() {
-        let result = {
+        let result = if use_separate {
+            let emb = state.embedding_client.as_ref().unwrap();
+            let mut client = emb.lock().await;
+            tokio::time::timeout(timeout, client.execute_inference_text(model_id, text)).await
+        } else {
             let mut client = state.client.lock().await;
             tokio::time::timeout(timeout, client.execute_inference_text(model_id, text)).await
         };
@@ -467,9 +662,15 @@ pub async fn embeddings(
                     "Embedding inference failed"
                 );
                 if is_transport_error(&err_str) {
-                    state
-                        .connected
-                        .store(false, std::sync::atomic::Ordering::Release);
+                    if use_separate {
+                        state
+                            .embedding_connected
+                            .store(false, std::sync::atomic::Ordering::Release);
+                    } else {
+                        state
+                            .connected
+                            .store(false, std::sync::atomic::Ordering::Release);
+                    }
                 }
                 return error_response_with_id(
                     StatusCode::BAD_GATEWAY,
@@ -484,9 +685,15 @@ pub async fn embeddings(
                     latency_ms = %elapsed_ms,
                     "Embedding timed out"
                 );
-                state
-                    .connected
-                    .store(false, std::sync::atomic::Ordering::Release);
+                if use_separate {
+                    state
+                        .embedding_connected
+                        .store(false, std::sync::atomic::Ordering::Release);
+                } else {
+                    state
+                        .connected
+                        .store(false, std::sync::atomic::Ordering::Release);
+                }
                 return error_response_with_id(
                     StatusCode::GATEWAY_TIMEOUT,
                     ErrorResponse::server_error("Backend inference timed out."),
@@ -514,11 +721,20 @@ pub async fn embeddings(
         .map(|r| build_metadata(&state, r, &req.model))
         .unwrap_or(None);
 
-    // Response `model` reflects the actual backend model.
+    let response_model = if use_separate {
+        state
+            .config
+            .embedding_model
+            .clone()
+            .unwrap_or_else(|| state.config.default_model.clone())
+    } else {
+        state.config.default_model.clone()
+    };
+
     let body = EmbeddingResponse {
         object: "list",
         data,
-        model: state.config.default_model.clone(),
+        model: response_model,
         usage: Usage {
             prompt_tokens: total_tokens,
             completion_tokens: 0,
@@ -665,11 +881,7 @@ fn attach_metadata_headers(
     }
 }
 
-/// Build an OpenAI-style error response.
-fn error_response(status: StatusCode, body: ErrorResponse) -> Response {
-    (status, Json(body)).into_response()
-}
-
+/// Build an OpenAI-style error response with x-request-id header.
 fn error_response_with_id(status: StatusCode, body: ErrorResponse, request_id: &str) -> Response {
     let mut headers = HeaderMap::new();
     if let Ok(v) = HeaderValue::from_str(request_id) {

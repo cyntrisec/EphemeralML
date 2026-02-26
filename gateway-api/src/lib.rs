@@ -28,6 +28,7 @@ pub fn build_router(state: AppState) -> Router {
         .route("/v1/embeddings", post(routes::embeddings))
         .route("/v1/models", get(routes::list_models))
         .route("/health", get(routes::health))
+        .route("/readyz", get(routes::readyz))
         .layer(middleware::from_fn_with_state(
             state.clone(),
             auth::auth_middleware,

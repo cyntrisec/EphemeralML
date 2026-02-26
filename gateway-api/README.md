@@ -123,6 +123,39 @@ All configuration is via environment variables (or CLI flags):
 | `EPHEMERALML_REQUEST_TIMEOUT_SECS` | No | `120` | Per-request backend timeout |
 | `EPHEMERALML_INCLUDE_METADATA_JSON` | No | `false` | Include `_ephemeralml` in JSON body |
 | `EPHEMERALML_RECEIPT_HEADER_FULL` | No | `false` | Full receipt in header (proxy risk) |
+| `EPHEMERALML_MODEL_CAPABILITIES` | No | `chat` | Comma-separated: `chat`, `embeddings`, or `chat,embeddings` |
+| `EPHEMERALML_EMBEDDING_BACKEND_ADDR` | No | — | Dedicated embedding backend address (`host:port`) |
+| `EPHEMERALML_EMBEDDING_MODEL` | No | — | Model ID for embedding backend (falls back to default) |
+
+## Model Capabilities
+
+The gateway uses `EPHEMERALML_MODEL_CAPABILITIES` to control which endpoints
+are active. By default only `chat` is enabled — `/v1/embeddings` returns 400
+unless explicitly enabled:
+
+```bash
+# Generative model only (default):
+EPHEMERALML_MODEL_CAPABILITIES=chat
+
+# Embedding model (e.g. MiniLM):
+EPHEMERALML_MODEL_CAPABILITIES=chat,embeddings
+
+# Dedicated embedding backend:
+EPHEMERALML_MODEL_CAPABILITIES=chat,embeddings
+EPHEMERALML_EMBEDDING_BACKEND_ADDR=10.0.0.2:9001
+EPHEMERALML_EMBEDDING_MODEL=minilm-l6-v2
+```
+
+The `/v1/models` endpoint advertises each model's capabilities:
+
+```json
+{
+  "data": [{
+    "id": "stage-0",
+    "_ephemeralml": { "capabilities": { "chat": true, "embeddings": false } }
+  }]
+}
+```
 
 ## Python Example (OpenAI SDK)
 
@@ -223,12 +256,17 @@ See [`docs/DEPLOY.md`](docs/DEPLOY.md) for a production deployment guide
 ## MVP Limitations
 
 - **No streaming** (`stream=true` returns 400). Planned for a future release.
-- **Single backend connection** — the gateway maintains one `SecureChannel` to the backend.
+- **Single backend connection** — the gateway maintains one `SecureChannel` to the backend
+  (plus optionally one to a dedicated embedding backend).
   Concurrent requests are serialized through a mutex. For production throughput,
   run multiple gateway instances behind a load balancer.
 - **Token counts are approximate** (whitespace-split estimate, not real tokenizer).
-- **No model routing** — all requests go to the configured `EPHEMERALML_DEFAULT_MODEL`.
+- **No model routing** — all requests go to the configured `EPHEMERALML_DEFAULT_MODEL`
+  (embeddings go to `EPHEMERALML_EMBEDDING_BACKEND_ADDR` when set).
   The response `model` field reflects the actual executed model.
+- **`/v1/embeddings` gated** — returns 400 unless `EPHEMERALML_MODEL_CAPABILITIES`
+  includes `embeddings`. This prevents generative models from returning misleading
+  logit vectors instead of real embeddings.
 - **`/v1/responses`** — minimal subset: no tools, no tool_choice, no streaming.
 - **Reconnection** — if the backend channel breaks, the gateway marks itself
   disconnected and attempts to reconnect on the next request. There is no

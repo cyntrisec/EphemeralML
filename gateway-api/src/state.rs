@@ -14,14 +14,24 @@ pub struct AppState {
     pub config: Arc<GatewayConfig>,
     /// Set to `true` once `establish_channel` succeeds.
     pub connected: Arc<std::sync::atomic::AtomicBool>,
+    /// Optional dedicated embedding backend client.
+    pub embedding_client: Option<Arc<Mutex<SecureEnclaveClient>>>,
+    /// Set to `true` once the embedding backend channel is established.
+    pub embedding_connected: Arc<std::sync::atomic::AtomicBool>,
 }
 
 impl AppState {
-    pub fn new(client: SecureEnclaveClient, config: GatewayConfig) -> Self {
+    pub fn new(
+        client: SecureEnclaveClient,
+        config: GatewayConfig,
+        embedding_client: Option<SecureEnclaveClient>,
+    ) -> Self {
         Self {
             client: Arc::new(Mutex::new(client)),
             config: Arc::new(config),
             connected: Arc::new(std::sync::atomic::AtomicBool::new(false)),
+            embedding_client: embedding_client.map(|c| Arc::new(Mutex::new(c))),
+            embedding_connected: Arc::new(std::sync::atomic::AtomicBool::new(false)),
         }
     }
 
@@ -45,6 +55,39 @@ impl AppState {
         tracing::info!(
             backend = %self.config.backend_addr,
             "Secure channel established with backend"
+        );
+        Ok(())
+    }
+
+    /// Ensure the embedding backend channel is established (when a dedicated
+    /// embedding backend is configured). Mirrors `ensure_connected()`.
+    pub async fn ensure_embedding_connected(&self) -> Result<(), String> {
+        use std::sync::atomic::Ordering;
+        let emb_client = self
+            .embedding_client
+            .as_ref()
+            .ok_or_else(|| "No embedding backend configured".to_string())?;
+        let emb_addr = self
+            .config
+            .embedding_backend_addr
+            .as_deref()
+            .ok_or_else(|| "No embedding backend address configured".to_string())?;
+
+        if self.embedding_connected.load(Ordering::Acquire) {
+            return Ok(());
+        }
+        let mut client = emb_client.lock().await;
+        if self.embedding_connected.load(Ordering::Acquire) {
+            return Ok(());
+        }
+        client
+            .establish_channel(emb_addr)
+            .await
+            .map_err(|e| format!("Embedding backend handshake failed: {e}"))?;
+        self.embedding_connected.store(true, Ordering::Release);
+        tracing::info!(
+            backend = %emb_addr,
+            "Secure channel established with embedding backend"
         );
         Ok(())
     }

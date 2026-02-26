@@ -33,6 +33,10 @@ API_KEY = os.environ.get("EPHEMERALML_API_KEY", "not-needed")
 # Set EPHEMERALML_GENERATIVE=1 when backend has a generative model (not BERT/MiniLM).
 # When unset, chat/responses tests verify error handling instead of success.
 GENERATIVE = os.environ.get("EPHEMERALML_GENERATIVE", "") == "1"
+# Set EPHEMERALML_EMBEDDINGS=1 when the gateway has embeddings capability enabled
+# (i.e. EPHEMERALML_MODEL_CAPABILITIES includes "embeddings").
+# When unset, embedding tests verify the capability rejection (400) instead.
+EMBEDDINGS = os.environ.get("EPHEMERALML_EMBEDDINGS", "") == "1"
 
 passed = 0
 failed = 0
@@ -263,6 +267,48 @@ def test_models():
 
 
 # ---------------------------------------------------------------------------
+# 10. Models list includes capabilities
+# ---------------------------------------------------------------------------
+
+def test_models_capabilities():
+    import httpx
+    headers = {}
+    if API_KEY and API_KEY != "not-needed":
+        headers["Authorization"] = f"Bearer {API_KEY}"
+    resp = httpx.get(f"{GATEWAY_URL}/v1/models", headers=headers, timeout=5)
+    assert resp.status_code == 200, f"expected 200, got {resp.status_code}"
+    data = resp.json()
+    model = data["data"][0]
+    assert "_ephemeralml" in model, f"missing _ephemeralml in model: {model}"
+    caps = model["_ephemeralml"]["capabilities"]
+    assert "chat" in caps, f"missing chat capability: {caps}"
+    assert "embeddings" in caps, f"missing embeddings capability: {caps}"
+
+
+# ---------------------------------------------------------------------------
+# 11. Embeddings capability rejection
+# ---------------------------------------------------------------------------
+
+def test_embeddings_capability_rejected():
+    """When EPHEMERALML_MODEL_CAPABILITIES does not include 'embeddings',
+    the endpoint should return 400 with unsupported_model_capability."""
+    import httpx
+    headers = {"Content-Type": "application/json"}
+    if API_KEY and API_KEY != "not-needed":
+        headers["Authorization"] = f"Bearer {API_KEY}"
+    resp = httpx.post(
+        f"{GATEWAY_URL}/v1/embeddings",
+        headers=headers,
+        json={"model": "text-embedding-3-small", "input": "test"},
+        timeout=10,
+    )
+    assert resp.status_code == 400, f"expected 400, got {resp.status_code}: {resp.text}"
+    data = resp.json()
+    assert data["error"]["code"] == "unsupported_model_capability", \
+        f"unexpected error code: {data['error'].get('code')}"
+
+
+# ---------------------------------------------------------------------------
 # Run all
 # ---------------------------------------------------------------------------
 
@@ -270,14 +316,23 @@ if __name__ == "__main__":
     print(f"EphemeralML Gateway Smoke Test — {GATEWAY_URL}")
     print(f"Auth: {'configured' if API_KEY != 'not-needed' else 'none'}")
     print(f"Backend: {'generative' if GENERATIVE else 'embedding-only (BERT/MiniLM)'}")
+    print(f"Embeddings capability: {'enabled' if EMBEDDINGS else 'disabled'}")
     print()
 
     # Always-valid tests (any backend)
     check("Health check", test_health)
     check("Models list", test_models)
+    check("Models capabilities", test_models_capabilities)
     check("Stream rejection", test_stream_rejected)
-    check("Embeddings (SDK)", test_embeddings)
-    check("Embeddings headers", test_embeddings_headers)
+
+    # Embeddings tests — depend on capability config
+    if EMBEDDINGS:
+        check("Embeddings (SDK)", test_embeddings)
+        check("Embeddings headers", test_embeddings_headers)
+    else:
+        check("Embeddings capability rejection", test_embeddings_capability_rejected)
+        skip("Embeddings (SDK)", "capability not enabled (set EPHEMERALML_EMBEDDINGS=1)")
+        skip("Embeddings headers", "capability not enabled")
 
     # Generative-only tests (need a text-generation model)
     if GENERATIVE:
@@ -289,7 +344,10 @@ if __name__ == "__main__":
         skip("Chat headers (attestation)", "BERT backend")
         skip("Responses endpoint", "BERT backend")
         # Verify error handling + channel resilience with BERT backend
-        check("Chat error keeps channel", test_chat_error_keeps_channel)
+        if EMBEDDINGS:
+            check("Chat error keeps channel", test_chat_error_keeps_channel)
+        else:
+            skip("Chat error keeps channel", "needs embeddings capability")
 
     print()
     summary = f"Results: {passed} passed, {failed} failed"

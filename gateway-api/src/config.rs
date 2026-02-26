@@ -47,4 +47,66 @@ pub struct GatewayConfig {
     /// `EPHEMERALML_INCLUDE_METADATA_JSON=true`.
     #[arg(long, env = "EPHEMERALML_RECEIPT_HEADER_FULL")]
     pub receipt_header_full: bool,
+
+    /// Comma-separated model capabilities: "chat", "embeddings", or
+    /// "chat,embeddings". Controls which endpoints are active. `/v1/embeddings`
+    /// returns 400 unless "embeddings" is listed.
+    #[arg(long, env = "EPHEMERALML_MODEL_CAPABILITIES", default_value = "chat")]
+    pub model_capabilities: String,
+
+    /// Optional dedicated embedding backend address (host:port).
+    /// When set, `/v1/embeddings` routes to this backend instead of the main one.
+    #[arg(long, env = "EPHEMERALML_EMBEDDING_BACKEND_ADDR")]
+    pub embedding_backend_addr: Option<String>,
+
+    /// Model ID for the embedding backend. Falls back to `default_model` if unset.
+    #[arg(long, env = "EPHEMERALML_EMBEDDING_MODEL")]
+    pub embedding_model: Option<String>,
+}
+
+impl GatewayConfig {
+    /// Check whether a capability (e.g. "chat", "embeddings") is present in
+    /// the comma-separated `model_capabilities` string.
+    pub fn has_capability(&self, cap: &str) -> bool {
+        self.model_capabilities
+            .split(',')
+            .any(|c| c.trim().eq_ignore_ascii_case(cap))
+    }
+
+    /// Validate config consistency at startup. Returns an error message if the
+    /// configuration is invalid.
+    pub fn validate(&self) -> Result<(), String> {
+        // Require explicit embedding model when a dedicated backend is configured
+        // to prevent duplicate IDs in /v1/models.
+        if self.embedding_backend_addr.is_some() && self.embedding_model.is_none() {
+            return Err(
+                "EPHEMERALML_EMBEDDING_BACKEND_ADDR is set but EPHEMERALML_EMBEDDING_MODEL is \
+                 not. A dedicated embedding backend requires an explicit model ID to avoid \
+                 duplicate entries in /v1/models. Set EPHEMERALML_EMBEDDING_MODEL to the \
+                 embedding model's identifier."
+                    .to_string(),
+            );
+        }
+
+        // Reject unknown capability tokens.
+        for cap in self.model_capabilities.split(',') {
+            let cap = cap.trim().to_lowercase();
+            if !cap.is_empty() && cap != "chat" && cap != "embeddings" {
+                return Err(format!(
+                    "Unknown capability '{cap}' in EPHEMERALML_MODEL_CAPABILITIES. \
+                     Valid values: chat, embeddings"
+                ));
+            }
+        }
+
+        // Embedding model without a backend address is a no-op — warn.
+        if self.embedding_model.is_some() && self.embedding_backend_addr.is_none() {
+            tracing::warn!(
+                "EPHEMERALML_EMBEDDING_MODEL is set but EPHEMERALML_EMBEDDING_BACKEND_ADDR is \
+                 not — the embedding model ID will be ignored"
+            );
+        }
+
+        Ok(())
+    }
 }
