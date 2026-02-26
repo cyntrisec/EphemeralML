@@ -62,6 +62,7 @@ benchmark_results/
 /test_assets/**/*.wrapped
 /test_assets/**/*.safetensors
 /test_assets/llama3/
+/test_assets/tinyllama/
 test_artifacts/
 
 # Build artifacts
