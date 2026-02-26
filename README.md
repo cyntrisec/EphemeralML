@@ -39,6 +39,11 @@
 EphemeralML now includes **AIR v1 (Attested Inference Receipt)**, a standards-aligned receipt format
 for proving a single AI inference happened in an attested confidential environment.
 
+Naming / standards note:
+- **AIR** here means **Attested Inference Receipt** (EphemeralML), not the IHE Radiology **AI Results (AIR)** profile.
+- AIR v1 is an application-specific COSE/CWT + EAT-profile receipt format for confidential AI inference, including AI provenance claims such as `model_id`/`model_hash` and request/response hash binding.
+- AIR v1 is **not** an implementation of IETF EAR. AIR v1 is workload-emitted execution evidence; EAR is verifier-emitted attestation results. They are complementary in a RATS-based architecture.
+
 - Spec entrypoint: [`spec/v1/README.md`](spec/v1/README.md)
 - Interop quick start: [`spec/v1/interop-kit.md`](spec/v1/interop-kit.md)
 - CDDL schema: [`spec/v1/cddl/air-v1.cddl`](spec/v1/cddl/air-v1.cddl)

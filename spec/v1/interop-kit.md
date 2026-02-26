@@ -9,6 +9,8 @@
 > See [implementation-status.md](implementation-status.md) §5 for the full
 > emission matrix.
 
+> **Terminology note:** AIR here means **Attested Inference Receipt** (EphemeralML), not the IHE Radiology **AI Results (AIR)** profile. AIR v1 is not IETF EAR; AIR is workload-emitted inference evidence, while EAR is verifier-emitted attestation results. A verifier may consume AIR v1 plus platform evidence and emit an EAR in a RATS-based deployment.
+
 This document is the starting point for implementing an AIR v1 verifier in any language. It bundles the minimum information needed to parse, verify, and validate AIR v1 receipts against the golden test vectors.
 
 ## 1. Quick Start

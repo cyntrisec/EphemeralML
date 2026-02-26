@@ -6,6 +6,13 @@ A cryptographically signed proof that an ML inference was executed inside a hard
 
 **v1.0:** FROZEN — All normative documents locked. Issue #80 (model_hash_scheme) resolved.
 
+## Naming and RATS Positioning (Non-Normative)
+
+- **AIR** in this specification means **Attested Inference Receipt** (EphemeralML) and is not the IHE Radiology **AI Results (AIR)** profile.
+- AIR v1 is an application-specific receipt profile for confidential AI inference built on COSE_Sign1, CWT, and EAT profile identification, with AI-specific provenance claims (for example `model_id`, `model_hash`, `request_hash`, `response_hash`).
+- AIR v1 is **not** an implementation of IETF EAR (EAT Attestation Results).
+- In a RATS-based deployment, an external verifier can consume AIR v1 receipts plus platform attestation evidence and emit an EAR for relying-party policy decisions.
+
 ## Documents
 
 | Document | Description |
