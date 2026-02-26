@@ -5,6 +5,7 @@ members = [
     "host",
     "enclave",
     "verifier-api",
+    "gateway-api",
     "compliance",
 ]
 resolver = "2"
