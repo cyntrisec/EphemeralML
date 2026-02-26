@@ -731,6 +731,26 @@ fn config_rejects_unknown_capability() {
 }
 
 #[test]
+fn config_rejects_duplicate_model_ids() {
+    let config = GatewayConfig {
+        backend_addr: "127.0.0.1:0".to_string(),
+        default_model: "test-model".to_string(),
+        api_key: None,
+        host: "127.0.0.1".to_string(),
+        port: 0,
+        request_timeout_secs: 5,
+        include_metadata_json: false,
+        receipt_header_full: false,
+        model_capabilities: "chat,embeddings".to_string(),
+        embedding_backend_addr: Some("127.0.0.1:9999".to_string()),
+        embedding_model: Some("test-model".to_string()), // same as default
+    };
+    let result = config.validate();
+    assert!(result.is_err());
+    assert!(result.unwrap_err().contains("must differ"));
+}
+
+#[test]
 fn config_accepts_valid_dual_backend() {
     let config = GatewayConfig {
         backend_addr: "127.0.0.1:0".to_string(),
@@ -746,4 +766,46 @@ fn config_accepts_valid_dual_backend() {
         embedding_model: Some("emb-model".to_string()),
     };
     assert!(config.validate().is_ok());
+}
+
+// ---------------------------------------------------------------------------
+// Malformed JSON / body-limit rejections → OpenAI-shaped errors
+// ---------------------------------------------------------------------------
+
+#[tokio::test]
+async fn malformed_json_returns_openai_error_with_request_id() {
+    let app = test_router(None, false, false);
+    let req = axum::http::Request::builder()
+        .method("POST")
+        .uri("/v1/chat/completions")
+        .header("content-type", "application/json")
+        .body(axum::body::Body::from(b"not-json".to_vec()))
+        .unwrap();
+    let resp = app.oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+    assert!(resp.headers().get("x-request-id").is_some());
+    let json = body_json(resp).await;
+    assert!(json["error"]["message"].is_string());
+    assert_eq!(json["error"]["type"], "invalid_request_error");
+    assert_eq!(json["error"]["code"], "invalid_json");
+}
+
+#[tokio::test]
+async fn missing_content_type_returns_openai_error() {
+    let app = test_router(None, false, false);
+    let req = axum::http::Request::builder()
+        .method("POST")
+        .uri("/v1/chat/completions")
+        .body(axum::body::Body::from(b"{}".to_vec()))
+        .unwrap();
+    let resp = app.oneshot(req).await.unwrap();
+    // Axum rejects missing content-type as 415 Unsupported Media Type
+    assert!(
+        resp.status() == StatusCode::UNSUPPORTED_MEDIA_TYPE
+            || resp.status() == StatusCode::BAD_REQUEST
+    );
+    assert!(resp.headers().get("x-request-id").is_some());
+    let json = body_json(resp).await;
+    assert!(json["error"]["message"].is_string());
+    assert_eq!(json["error"]["type"], "invalid_request_error");
 }

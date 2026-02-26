@@ -1,6 +1,7 @@
 //! Axum route handlers for OpenAI-compatible endpoints.
 
-use axum::extract::State;
+use axum::extract::rejection::JsonRejection;
+use axum::extract::{FromRequest, Request, State};
 use axum::http::{HeaderMap, HeaderValue, StatusCode};
 use axum::response::{IntoResponse, Json, Response};
 use sha2::{Digest, Sha256};
@@ -10,6 +11,44 @@ use ephemeral_ml_client::{InferenceResult, SecureClient};
 
 use crate::state::AppState;
 use crate::types::*;
+
+// ---------------------------------------------------------------------------
+// Custom JSON extractor — normalises parse/body-limit errors to OpenAI shape
+// ---------------------------------------------------------------------------
+
+/// Wrapper around `axum::Json` that converts framework-level rejections
+/// (malformed JSON, missing content-type, body too large) into OpenAI-
+/// compatible error envelopes with `x-request-id`.
+pub struct OpenAiJson<T>(pub T);
+
+impl<S, T> FromRequest<S> for OpenAiJson<T>
+where
+    axum::Json<T>: FromRequest<S, Rejection = JsonRejection>,
+    S: Send + Sync,
+{
+    type Rejection = Response;
+
+    async fn from_request(req: Request, state: &S) -> Result<Self, Self::Rejection> {
+        match axum::Json::<T>::from_request(req, state).await {
+            Ok(Json(value)) => Ok(OpenAiJson(value)),
+            Err(rejection) => {
+                let request_id = uuid::Uuid::new_v4().to_string();
+                let status = rejection.status();
+                let message = rejection.body_text();
+
+                // Map Axum status to appropriate OpenAI error type/code.
+                let (error_type, code) = if status == StatusCode::PAYLOAD_TOO_LARGE {
+                    ("invalid_request_error", Some("request_too_large"))
+                } else {
+                    ("invalid_request_error", Some("invalid_json"))
+                };
+
+                let body = ErrorResponse::new(message, error_type, code);
+                Err(error_response_with_id(status, body, &request_id))
+            }
+        }
+    }
+}
 
 // ---------------------------------------------------------------------------
 // GET /health
@@ -122,25 +161,38 @@ pub async fn list_models(State(state): State<AppState>) -> Json<ModelsResponse> 
         },
     }];
 
-    // Add separate embedding model entry if configured
+    // Add separate embedding model entry if configured (skip if ID duplicates default).
     if has_separate_embedding && has_embeddings {
         let emb_model_id = state
             .config
             .embedding_model
             .clone()
             .unwrap_or_else(|| state.config.default_model.clone());
-        models.push(ModelObject {
-            id: emb_model_id,
-            object: "model",
-            created: now,
-            owned_by: "ephemeralml",
-            ephemeralml: ModelEphemeralMeta {
-                capabilities: ModelCapabilities {
-                    chat: false,
-                    embeddings: true,
+        if emb_model_id == state.config.default_model {
+            // Config validation should prevent this, but guard at runtime too.
+            tracing::warn!(
+                model_id = %emb_model_id,
+                "Embedding model ID matches default model — merging capabilities"
+            );
+            // Upgrade main model's capabilities to include embeddings instead of
+            // adding a duplicate entry.
+            if let Some(main) = models.first_mut() {
+                main.ephemeralml.capabilities.embeddings = true;
+            }
+        } else {
+            models.push(ModelObject {
+                id: emb_model_id,
+                object: "model",
+                created: now,
+                owned_by: "ephemeralml",
+                ephemeralml: ModelEphemeralMeta {
+                    capabilities: ModelCapabilities {
+                        chat: false,
+                        embeddings: true,
+                    },
                 },
-            },
-        });
+            });
+        }
     }
 
     Json(ModelsResponse {
@@ -155,7 +207,7 @@ pub async fn list_models(State(state): State<AppState>) -> Json<ModelsResponse> 
 
 pub async fn chat_completions(
     State(state): State<AppState>,
-    Json(req): Json<ChatCompletionRequest>,
+    OpenAiJson(req): OpenAiJson<ChatCompletionRequest>,
 ) -> Response {
     let request_id = uuid::Uuid::new_v4().to_string();
     let start = Instant::now();
@@ -309,7 +361,7 @@ pub async fn chat_completions(
         .unwrap_or_default()
         .as_secs();
 
-    let metadata = build_metadata(&state, &inference_result, &req.model);
+    let metadata = build_metadata(&state, &inference_result, &req.model, model_id);
 
     // Response `model` reflects the actual backend model, not the caller's alias.
     let body = ChatCompletionResponse {
@@ -358,7 +410,7 @@ pub async fn chat_completions(
 
 pub async fn responses(
     State(state): State<AppState>,
-    Json(req): Json<ResponsesRequest>,
+    OpenAiJson(req): OpenAiJson<ResponsesRequest>,
 ) -> Response {
     let request_id = uuid::Uuid::new_v4().to_string();
     let start = Instant::now();
@@ -543,7 +595,7 @@ pub async fn responses(
         .unwrap_or_default()
         .as_secs();
 
-    let metadata = build_metadata(&state, &inference_result, &req.model);
+    let metadata = build_metadata(&state, &inference_result, &req.model, model_id);
 
     let output_item_id = format!("msg_{}", &request_id[..8]);
 
@@ -596,7 +648,7 @@ pub async fn responses(
 
 pub async fn embeddings(
     State(state): State<AppState>,
-    Json(req): Json<EmbeddingRequest>,
+    OpenAiJson(req): OpenAiJson<EmbeddingRequest>,
 ) -> Response {
     let request_id = uuid::Uuid::new_v4().to_string();
     let start = Instant::now();
@@ -766,7 +818,7 @@ pub async fn embeddings(
 
     let metadata = last_result
         .as_ref()
-        .map(|r| build_metadata(&state, r, &req.model))
+        .map(|r| build_metadata(&state, r, &req.model, model_id))
         .unwrap_or(None);
 
     let response_model = if use_separate {
@@ -844,10 +896,14 @@ fn messages_to_prompt(messages: &[ChatMessage]) -> String {
 }
 
 /// Build EphemeralML metadata from an inference result.
+///
+/// `executed_model` is the model ID that actually ran the inference (may differ
+/// from `default_model` when a dedicated embedding backend is in use).
 fn build_metadata(
-    state: &AppState,
+    _state: &AppState,
     result: &InferenceResult,
     requested_model: &str,
+    executed_model: &str,
 ) -> Option<EphemeralMetadata> {
     let manifest_sha256 = result.model_manifest_json.as_ref().map(|json| {
         let hash = Sha256::digest(json.as_bytes());
@@ -867,7 +923,7 @@ fn build_metadata(
     Some(EphemeralMetadata {
         receipt_id: result.receipt.receipt_id.clone(),
         attestation_mode,
-        executed_model: state.config.default_model.clone(),
+        executed_model: executed_model.to_string(),
         requested_model: requested_model.to_string(),
         receipt_sha256,
         air_v1_receipt_b64: result.air_v1_receipt_b64.clone(),

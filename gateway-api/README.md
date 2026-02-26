@@ -125,7 +125,7 @@ All configuration is via environment variables (or CLI flags):
 | `EPHEMERALML_RECEIPT_HEADER_FULL` | No | `false` | Full receipt in header (proxy risk) |
 | `EPHEMERALML_MODEL_CAPABILITIES` | No | `chat` | Comma-separated: `chat`, `embeddings`, or `chat,embeddings` |
 | `EPHEMERALML_EMBEDDING_BACKEND_ADDR` | No | — | Dedicated embedding backend address (`host:port`) |
-| `EPHEMERALML_EMBEDDING_MODEL` | No | — | Model ID for embedding backend (falls back to default) |
+| `EPHEMERALML_EMBEDDING_MODEL` | No | — | Model ID for embedding backend (required when `EMBEDDING_BACKEND_ADDR` is set, must differ from `DEFAULT_MODEL`) |
 
 ## Model Capabilities
 

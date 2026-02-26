@@ -59,7 +59,7 @@ pub struct GatewayConfig {
     #[arg(long, env = "EPHEMERALML_EMBEDDING_BACKEND_ADDR")]
     pub embedding_backend_addr: Option<String>,
 
-    /// Model ID for the embedding backend. Falls back to `default_model` if unset.
+    /// Model ID for the embedding backend. Required when `EPHEMERALML_EMBEDDING_BACKEND_ADDR` is set.
     #[arg(long, env = "EPHEMERALML_EMBEDDING_MODEL")]
     pub embedding_model: Option<String>,
 }
@@ -86,6 +86,19 @@ impl GatewayConfig {
                  embedding model's identifier."
                     .to_string(),
             );
+        }
+
+        // Reject embedding model ID that duplicates the default model — would
+        // produce ambiguous /v1/models output.
+        if let Some(ref emb_model) = self.embedding_model {
+            if self.embedding_backend_addr.is_some() && emb_model == &self.default_model {
+                return Err(format!(
+                    "EPHEMERALML_EMBEDDING_MODEL ('{}') must differ from \
+                     EPHEMERALML_DEFAULT_MODEL when a dedicated embedding backend is configured. \
+                     Use a distinct model ID to avoid duplicate entries in /v1/models.",
+                    emb_model
+                ));
+            }
         }
 
         // Reject unknown capability tokens.
