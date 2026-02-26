@@ -29,6 +29,7 @@ CONTROL_PORT=9000         # used only for the reachability probe
 RECEIPT_PATH="/tmp/ephemeralml-receipt.json"
 TIMING_PATH="/tmp/ephemeralml-timing.json"
 VERIFY_OUTPUT="$(mktemp /tmp/ephemeralml-verify-output.XXXXXX.txt)"
+CLIENT_LOG_PATH="/tmp/ephemeralml-client_output.log"
 MAX_WAIT=180              # seconds to wait for port reachability
 INFERENCE_TEXT="Verify EphemeralML on Confidential Space"
 VERIFY_MODEL_ID="${EPHEMERALML_VERIFY_MODEL_ID:-stage-0}"
@@ -36,7 +37,7 @@ VERIFY_RECEIPT_MODEL_ID="${EPHEMERALML_VERIFY_RECEIPT_MODEL_ID:-minilm-l6-v2}"
 REQUIRE_AIR_V1_VERIFY="${EPHEMERALML_REQUIRE_AIR_V1_VERIFY:-false}"
 
 # Clean up temp files on exit (even on failure).
-# Only clean up the script-local temp file; receipt is preserved for E2E callers.
+# Only clean up the script-local temp file; receipts and stable logs are preserved.
 cleanup_temp() {
     rm -f "${VERIFY_OUTPUT}"
 }
@@ -161,19 +162,23 @@ EPHEMERALML_ENCLAVE_ADDR="${IP}:${DATA_PORT}" \
     EPHEMERALML_GCP_VERIFY_MODEL_ID="${VERIFY_MODEL_ID}" \
     EPHEMERALML_ACCEPT_RECEIPT_MODEL_ID="${VERIFY_RECEIPT_MODEL_ID}" \
     cargo run --release --no-default-features --features gcp \
-    -p ephemeral-ml-client --bin ephemeral-ml-client 2>&1 | tee ${VERIFY_OUTPUT}
+    -p ephemeral-ml-client --bin ephemeral-ml-client 2>&1 | tee "${VERIFY_OUTPUT}"
 
 CLIENT_EXIT=${PIPESTATUS[0]}
 INFERENCE_END=$(date +%s%N)
+cp -f "${VERIFY_OUTPUT}" "${CLIENT_LOG_PATH}" 2>/dev/null || true
 
 if [[ ${CLIENT_EXIT} -ne 0 ]]; then
     ui_blank
     ui_fail "ERROR: Client exited with code ${CLIENT_EXIT}."
-    ui_info "Check the output above for details."
+    ui_kv "Client log" "${CLIENT_LOG_PATH}"
+    ui_info "Last 40 log lines:"
+    tail -n 40 "${CLIENT_LOG_PATH}" || true
     exit 1
 fi
 ui_blank
 ui_ok "Inference completed successfully."
+ui_kv "Client log" "${CLIENT_LOG_PATH}"
 ui_blank
 
 # ---------------------------------------------------------------------------
@@ -181,6 +186,7 @@ ui_blank
 # ---------------------------------------------------------------------------
 RECEIPT_VERIFIED=false
 AIR_V1_VERIFIED=false
+VERIFY_EXIT=1
 
 ui_info "[4/4] Verifying receipt..."
 
@@ -198,15 +204,21 @@ if [[ -f "${RECEIPT_PATH}" ]]; then
         ui_blank
 
         VERIFY_START=$(date +%s%N)
-        cargo run --release --no-default-features --features gcp \
+        if cargo run --release --no-default-features --features gcp \
             --bin ephemeralml-verify -- \
             "${RECEIPT_PATH}" \
             --public-key "${PK_HEX}" \
             --max-age 0 \
-            --format text
-        VERIFY_EXIT=$?
+            --format text; then
+            VERIFY_EXIT=0
+            RECEIPT_VERIFIED=true
+        else
+            VERIFY_EXIT=$?
+            RECEIPT_VERIFIED=false
+            ui_warn "WARNING: Legacy receipt verification failed (exit ${VERIFY_EXIT})."
+            ui_info "Continuing to generate timing + artifact manifest for debugging."
+        fi
         VERIFY_END=$(date +%s%N)
-        RECEIPT_VERIFIED=true
 
         # Also verify AIR v1 receipt if present (optionally strict)
         AIR_V1_PATH="/tmp/ephemeralml-receipt.cbor"
@@ -299,6 +311,7 @@ MANIFEST_PATH="/tmp/ephemeralml-artifact_manifest.json"
     echo '  "artifacts": ['
     _first=true
     for _f in "${RECEIPT_PATH}" "/tmp/ephemeralml-receipt.cbor" "${RECEIPT_PATH}.pubkey" \
+              "${CLIENT_LOG_PATH}" \
               "/tmp/ephemeralml-attestation.bin" "/tmp/ephemeralml-manifest.json" "${TIMING_PATH}"; do
         [ -f "$_f" ] || continue
         _basename="$(basename "$_f")"
