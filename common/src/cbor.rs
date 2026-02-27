@@ -87,7 +87,10 @@ pub fn cmp_cbor_keys(a: &Value, b: &Value) -> Ordering {
     let b_enc = encode_key(b);
     // RFC 8949 §4.2.1: shorter encoded form sorts first,
     // then bytewise lexicographic comparison for equal lengths.
-    a_enc.len().cmp(&b_enc.len()).then_with(|| a_enc.cmp(&b_enc))
+    a_enc
+        .len()
+        .cmp(&b_enc.len())
+        .then_with(|| a_enc.cmp(&b_enc))
 }
 
 /// Serialize a `ciborium::Value` to CBOR bytes.

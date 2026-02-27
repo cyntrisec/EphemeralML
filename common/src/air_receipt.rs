@@ -939,7 +939,10 @@ mod tests {
         claims.eat_nonce = Some(vec![0xDE, 0xAD, 0xBE, 0xEF]); // 4 bytes < 8 minimum
         let result = build_air_v1(&claims, &key);
         assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("eat_nonce must be 8-64 bytes"));
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("eat_nonce must be 8-64 bytes"));
     }
 
     #[test]
@@ -949,7 +952,10 @@ mod tests {
         claims.eat_nonce = Some(vec![0xAA; 65]); // 65 bytes > 64 maximum
         let result = build_air_v1(&claims, &key);
         assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("eat_nonce must be 8-64 bytes"));
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("eat_nonce must be 8-64 bytes"));
     }
 
     #[test]
@@ -1245,7 +1251,10 @@ mod tests {
         });
         let result = parse_air_v1(&tampered);
         assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("unknown claim key"));
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("unknown claim key"));
     }
 
     #[test]
