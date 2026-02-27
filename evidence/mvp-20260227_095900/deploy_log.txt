@@ -1,0 +1,55 @@
+  ==============================================================
+  EphemeralML — Deploy to Confidential Space
+  ==============================================================
+
+  Project:      project-d3c20737-eec2-453d-8e5
+  Zone:         us-central1-a
+  Machine:      a3-highgpu-1g
+  Image:        us-docker.pkg.dev/project-d3c20737-eec2-453d-8e5/ephemeralml/enclave:b01c2f9
+  CS family:    confidential-space-preview-cgpu
+  Debug:        false
+  GPU:          true
+  Model src:    gcs-kms
+  Format:       safetensors
+  GCS bucket:   ephemeralml-models-project-d3c20737-eec2-453d-8e5
+  Model prefix: models/minilm
+  Model hash:   53aa51172d142c89d9012cce15ae4d6cc0ca6895895114379cacb4fab128d9db
+  KMS key:      projects/project-d3c20737-eec2-453d-8e5/locations/us-central1/keyRings/ephemeralml/cryptoKeys/model-dek
+  WIP audience: //iam.googleapis.com/projects/324130315768/locations/global/workloadIdentityPools/ephemeralml-pool/providers/ephemeralml-tdx
+
+[1/6] Preparing model files...
+  Model weights already resolved (87M).
+
+[2/6] Configuring Docker authentication...  [OK] Configuring Docker authentication (0s)          
+
+[3/6] Building container image (Dockerfile.gpu)...  [OK] Building container image (Dockerfile.gpu) (625s)          
+
+[4/6] Pushing to Artifact Registry...  [OK] Pushing to Artifact Registry (15s)          
+
+  [5/6] Launching Confidential Space CVM...
+WARNING: You have selected a disk size of under [200GB]. This may result in poor I/O performance. For more information, see: https://developers.google.com/compute/docs/disks#performance.
+Created [https://www.googleapis.com/compute/v1/projects/project-d3c20737-eec2-453d-8e5/zones/us-central1-a/instances/ephemeralml-gpu].
+WARNING: Some requests generated warnings:
+ - Disk size: '30 GB' is larger than image size: '11 GB'. You might need to resize the root repartition manually if the operating system does not support automatic resizing. See https://cloud.google.com/compute/docs/disks/add-persistent-disk#resize_pd for details.
+
+NAME             ZONE           MACHINE_TYPE   PREEMPTIBLE  INTERNAL_IP  EXTERNAL_IP   STATUS
+ephemeralml-gpu  us-central1-a  a3-highgpu-1g  true         10.128.0.9   34.173.61.34  RUNNING
+  Instance 'ephemeralml-gpu' created.
+
+  [6/6] Waiting for instance to become RUNNING...
+
+  ==============================================================
+  Deployment complete
+  ==============================================================
+
+  Instance:     ephemeralml-gpu
+  Zone:         us-central1-a
+  Status:       RUNNING
+  External IP:  34.173.61.34
+  Ports:        9000 (control), 9001 (data_in), 9002 (data_out)
+
+
+  Note: GPU instances take ~2-5 minutes to start (driver install + CC boot).
+  WARNING: GPU Confidential Space is Preview. Spot VMs may be preempted.
+
+  Next: bash scripts/gcp/verify.sh
