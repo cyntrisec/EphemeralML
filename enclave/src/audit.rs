@@ -35,7 +35,7 @@ impl AuditLogger {
     ) {
         let mut entry = AuditLogEntry {
             entry_id: uuid::Uuid::new_v4().to_string(),
-            timestamp: ephemeral_ml_common::current_timestamp(),
+            timestamp: ephemeral_ml_common::current_timestamp().unwrap_or(0),
             event_type: event_type.clone(),
             session_id: session_id.clone(),
             client_id,
@@ -165,7 +165,7 @@ pub fn log_sync(
 ) {
     let entry = AuditLogEntry {
         entry_id: uuid::Uuid::new_v4().to_string(),
-        timestamp: ephemeral_ml_common::current_timestamp(),
+        timestamp: ephemeral_ml_common::current_timestamp().unwrap_or(0),
         event_type,
         session_id,
         client_id: None,

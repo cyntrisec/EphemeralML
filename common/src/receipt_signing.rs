@@ -30,7 +30,7 @@ impl ReceiptSigningKey {
 
         let private_key = ed25519_dalek::SigningKey::generate(&mut OsRng);
         let public_key = private_key.verifying_key();
-        let created_at = crate::current_timestamp();
+        let created_at = crate::current_timestamp()?;
 
         Ok(Self {
             private_key,
@@ -55,7 +55,7 @@ impl ReceiptSigningKey {
         Self {
             private_key,
             public_key,
-            created_at: crate::current_timestamp(),
+            created_at: crate::current_timestamp().unwrap_or(0),
             expires_at: None,
         }
     }
@@ -68,7 +68,7 @@ impl ReceiptSigningKey {
     /// Sign receipt with canonical encoding
     pub fn sign_receipt(&self, receipt: &AttestationReceipt) -> Result<Vec<u8>> {
         if let Some(expires_at) = self.expires_at {
-            if crate::current_timestamp() >= expires_at {
+            if crate::current_timestamp()? >= expires_at {
                 return Err(EphemeralError::EncryptionError(
                     "Signing key expired".to_string(),
                 ));
@@ -88,7 +88,7 @@ impl ReceiptSigningKey {
     /// Check if key is expired
     pub fn is_expired(&self) -> bool {
         if let Some(expires_at) = self.expires_at {
-            crate::current_timestamp() >= expires_at
+            crate::current_timestamp().unwrap_or(0) >= expires_at
         } else {
             false
         }
@@ -123,7 +123,7 @@ impl AttestationUserData {
             receipt_signing_key,
             protocol_version,
             supported_features,
-            key_generation_timestamp: crate::current_timestamp(),
+            key_generation_timestamp: crate::current_timestamp().unwrap_or(0),
         }
     }
 
@@ -329,7 +329,7 @@ impl AttestationReceipt {
             response_hash,
             policy_version,
             sequence_number,
-            execution_timestamp: crate::current_timestamp(),
+            execution_timestamp: crate::current_timestamp().unwrap_or(0),
             model_id,
             model_version,
             execution_time_ms,

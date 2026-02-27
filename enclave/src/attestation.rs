@@ -286,7 +286,7 @@ impl AttestationProvider for NSMAttestationProvider {
         Ok(AttestationDocument {
             module_id: "nitro-enclave".to_string(),
             digest: vec![],
-            timestamp: current_timestamp(),
+            timestamp: current_timestamp()?,
             pcrs,
             certificate: vec![],
             signature: attestation_doc_bytes,
@@ -323,7 +323,7 @@ impl AttestationProvider for NSMAttestationProvider {
         Ok(AttestationDocument {
             module_id: "nitro-enclave".to_string(),
             digest: vec![],
-            timestamp: current_timestamp(),
+            timestamp: current_timestamp()?,
             pcrs,
             certificate: vec![],
             signature: attestation_doc_bytes,

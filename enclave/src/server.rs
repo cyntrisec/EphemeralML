@@ -350,7 +350,7 @@ fn handle_direct_request<A: crate::AttestationProvider>(
 
     // Record destroy evidence for the cleanup actions taken during this request.
     receipt.destroy_evidence = Some(ephemeral_ml_common::DestroyEvidence {
-        timestamp: ephemeral_ml_common::current_timestamp(),
+        timestamp: ephemeral_ml_common::current_timestamp()?,
         actions: vec![
             ephemeral_ml_common::DestroyAction {
                 target: "output_bytes".to_string(),

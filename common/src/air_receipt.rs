@@ -44,6 +44,10 @@ const AIR_MODEL_HASH_SCHEME: i64 = -65549;
 /// AIR v1 eat_profile URI
 pub const AIR_V1_PROFILE: &str = "https://spec.cyntrisec.com/air/v1";
 
+/// Maximum allowed receipt size (64 KB). Golden vectors are ~600 bytes;
+/// 64 KB is generous but prevents DoS via oversized input.
+pub const MAX_RECEIPT_BYTES: usize = 65_536;
+
 const MODEL_HASH_SCHEME_SHA256_SINGLE: &str = "sha256-single";
 const MODEL_HASH_SCHEME_SHA256_CONCAT: &str = "sha256-concat";
 const MODEL_HASH_SCHEME_SHA256_MANIFEST: &str = "sha256-manifest";
@@ -110,6 +114,20 @@ impl AirReceiptClaims {
             return Err(EphemeralError::ValidationError(format!(
                 "unknown measurement_type: {}",
                 mt
+            )));
+        }
+        // Fix 6: pcr8 is only allowed for Nitro measurements (CDDL `tdx-measurements` omits it)
+        if mt == "tdx-mrtd-rtmr" && self.enclave_measurements.pcr8.is_some() {
+            return Err(EphemeralError::ValidationError(
+                "pcr8 is not allowed for TDX measurements (tdx-mrtd-rtmr)".to_string(),
+            ));
+        }
+        // Fix 4: security_mode must be a known value on the build path
+        const KNOWN_SECURITY_MODES: &[&str] = &["GatewayOnly", "ShieldMode"];
+        if !KNOWN_SECURITY_MODES.contains(&self.security_mode.as_str()) {
+            return Err(EphemeralError::ValidationError(format!(
+                "unknown security_mode: {}",
+                self.security_mode
             )));
         }
         // RFC 9711 §4.1: eat_nonce must be 8-64 bytes when present
@@ -180,7 +198,7 @@ impl AirReceiptClaims {
 fn encode_claims(claims: &AirReceiptClaims) -> Result<Vec<u8>> {
     let mut entries: Vec<(Value, Value)> = Vec::with_capacity(18);
 
-    // Negative keys first (sorted ascending by value, i.e., most negative first)
+    // Keys sorted per RFC 8949 §4.2.1 (shorter encoded form first, then bytewise lexicographic)
     if let Some(ref scheme) = claims.model_hash_scheme {
         entries.push((
             Value::Integer(AIR_MODEL_HASH_SCHEME.into()),
@@ -356,8 +374,29 @@ pub fn encode_claims_exported(claims: &AirReceiptClaims) -> Result<Vec<u8>> {
 
 /// Parse AIR v1 COSE_Sign1 bytes into claims. Does NOT verify the signature.
 pub fn parse_air_v1(data: &[u8]) -> Result<ParsedAirReceipt> {
+    // Fix 1: Pre-parse receipt size limit
+    if data.len() > MAX_RECEIPT_BYTES {
+        return Err(EphemeralError::ValidationError(format!(
+            "receipt too large: {} bytes (max {})",
+            data.len(),
+            MAX_RECEIPT_BYTES
+        )));
+    }
+
     let cose = coset::CoseSign1::from_tagged_slice(data)
         .map_err(|e| EphemeralError::SerializationError(format!("COSE_Sign1 parse failed: {e}")))?;
+
+    // Fix 2: Reject non-empty unprotected headers.
+    // AIR v1 requires all header parameters in the protected bucket.
+    // Unprotected headers are NOT signed and can be tampered with.
+    // This is stricter than the CDDL (which allows `? 4 => bstr` for kid)
+    // because AIR v1 does not use unprotected kid.
+    if !cose.unprotected.is_empty() {
+        return Err(EphemeralError::ValidationError(
+            "non-empty unprotected header (AIR v1 requires all headers in protected bucket)"
+                .to_string(),
+        ));
+    }
 
     // Check protected header
     let alg = cose.protected.header.alg.as_ref().ok_or_else(|| {
@@ -446,6 +485,8 @@ fn decode_claims(payload: &[u8]) -> Result<AirReceiptClaims> {
     };
 
     // Closed-map enforcement: reject unknown claims per CDDL schema
+    // Fix 3: Also detect duplicate keys (max 18 known claim keys)
+    let mut seen_keys: Vec<i64> = Vec::with_capacity(18);
     for (k, _) in entries {
         if let Value::Integer(n) = k {
             let key_val: i128 = (*n).into();
@@ -460,6 +501,12 @@ fn decode_claims(payload: &[u8]) -> Result<AirReceiptClaims> {
                     "unknown claim key: {key_i64}"
                 )));
             }
+            if seen_keys.contains(&key_i64) {
+                return Err(EphemeralError::ValidationError(format!(
+                    "duplicate claim key: {key_i64}"
+                )));
+            }
+            seen_keys.push(key_i64);
         } else {
             return Err(EphemeralError::ValidationError(format!(
                 "non-integer claim key: {:?}",
@@ -476,8 +523,15 @@ fn decode_claims(payload: &[u8]) -> Result<AirReceiptClaims> {
         )));
     }
 
-    let iss = get_text(entries, CWT_ISS)?;
+    // Fix 7: Use bounded text getters for all text claims
+    let iss = get_text_bounded(entries, CWT_ISS, 256)?;
     let iat = get_uint(entries, CWT_IAT)?;
+    // Fix 5: iat = 0 (Unix epoch) is not a valid timestamp for a receipt
+    if iat == 0 {
+        return Err(EphemeralError::ValidationError(
+            "iat must not be zero (Unix epoch)".to_string(),
+        ));
+    }
     let cti_bytes = get_bstr(entries, CWT_CTI)?;
     if cti_bytes.len() != 16 {
         return Err(EphemeralError::ValidationError(format!(
@@ -499,20 +553,20 @@ fn decode_claims(payload: &[u8]) -> Result<AirReceiptClaims> {
         }
     }
 
-    let model_id = get_text(entries, AIR_MODEL_ID)?;
-    let model_version = get_text(entries, AIR_MODEL_VERSION)?;
+    let model_id = get_text_bounded(entries, AIR_MODEL_ID, 256)?;
+    let model_version = get_text_bounded(entries, AIR_MODEL_VERSION, 128)?;
     let model_hash = get_hash32(entries, AIR_MODEL_HASH, "model_hash")?;
     let request_hash = get_hash32(entries, AIR_REQUEST_HASH, "request_hash")?;
     let response_hash = get_hash32(entries, AIR_RESPONSE_HASH, "response_hash")?;
     let attestation_doc_hash =
         get_hash32(entries, AIR_ATTESTATION_DOC_HASH, "attestation_doc_hash")?;
     let enclave_measurements = decode_measurements(entries)?;
-    let policy_version = get_text(entries, AIR_POLICY_VERSION)?;
+    let policy_version = get_text_bounded(entries, AIR_POLICY_VERSION, 256)?;
     let sequence_number = get_uint(entries, AIR_SEQUENCE_NUMBER)?;
     let execution_time_ms = get_uint(entries, AIR_EXECUTION_TIME_MS)?;
     let memory_peak_mb = get_uint(entries, AIR_MEMORY_PEAK_MB)?;
-    let security_mode = get_text(entries, AIR_SECURITY_MODE)?;
-    let model_hash_scheme = get_text_opt(entries, AIR_MODEL_HASH_SCHEME)?;
+    let security_mode = get_text_bounded(entries, AIR_SECURITY_MODE, 64)?;
+    let model_hash_scheme = get_text_opt_bounded(entries, AIR_MODEL_HASH_SCHEME, 64)?;
 
     Ok(AirReceiptClaims {
         iss,
@@ -549,6 +603,19 @@ fn decode_measurements(entries: &[(Value, Value)]) -> Result<EnclaveMeasurements
         }
     };
 
+    // Fix 3: Duplicate key check for nested measurements map (max 5 keys)
+    let mut seen_meas_keys: Vec<String> = Vec::with_capacity(5);
+    for (mk, _) in meas_entries {
+        if let Value::Text(t) = mk {
+            if seen_meas_keys.contains(t) {
+                return Err(EphemeralError::ValidationError(format!(
+                    "duplicate key in enclave_measurements: {t}"
+                )));
+            }
+            seen_meas_keys.push(t.clone());
+        }
+    }
+
     let mt_key = Value::Text("measurement_type".to_string());
     let measurement_type = match crate::cbor::map_get(meas_entries, &mt_key) {
         Some(Value::Text(t)) => t.clone(),
@@ -563,6 +630,13 @@ fn decode_measurements(entries: &[(Value, Value)]) -> Result<EnclaveMeasurements
     let pcr1 = get_text_bstr(meas_entries, "pcr1")?;
     let pcr2 = get_text_bstr(meas_entries, "pcr2")?;
     let pcr8 = get_text_bstr_opt(meas_entries, "pcr8")?;
+
+    // Fix 6: pcr8 is not allowed for TDX measurements (CDDL `tdx-measurements` omits it)
+    if measurement_type == "tdx-mrtd-rtmr" && pcr8.is_some() {
+        return Err(EphemeralError::ValidationError(
+            "pcr8 is not allowed for TDX measurements (tdx-mrtd-rtmr)".to_string(),
+        ));
+    }
 
     Ok(EnclaveMeasurements {
         pcr0,
@@ -630,6 +704,48 @@ fn get_text_opt(entries: &[(Value, Value)], key: i64) -> Result<Option<String>> 
         Some(_) => Err(EphemeralError::ValidationError(format!(
             "claim {key} is not a text string"
         ))),
+        None => Ok(None),
+    }
+}
+
+/// Fix 7: Get a required text claim with min-length=1 and max-length bounds.
+fn get_text_bounded(entries: &[(Value, Value)], key: i64, max_len: usize) -> Result<String> {
+    let s = get_text(entries, key)?;
+    if s.is_empty() {
+        return Err(EphemeralError::ValidationError(format!(
+            "claim {key} must not be empty"
+        )));
+    }
+    if s.len() > max_len {
+        return Err(EphemeralError::ValidationError(format!(
+            "claim {key} exceeds max length ({} > {max_len})",
+            s.len()
+        )));
+    }
+    Ok(s)
+}
+
+/// Fix 7: Get an optional text claim with min-length=1 and max-length bounds.
+fn get_text_opt_bounded(
+    entries: &[(Value, Value)],
+    key: i64,
+    max_len: usize,
+) -> Result<Option<String>> {
+    match get_text_opt(entries, key)? {
+        Some(s) => {
+            if s.is_empty() {
+                return Err(EphemeralError::ValidationError(format!(
+                    "claim {key} must not be empty"
+                )));
+            }
+            if s.len() > max_len {
+                return Err(EphemeralError::ValidationError(format!(
+                    "claim {key} exceeds max length ({} > {max_len})",
+                    s.len()
+                )));
+            }
+            Ok(Some(s))
+        }
         None => Ok(None),
     }
 }
@@ -1346,5 +1462,208 @@ mod tests {
         let result = build_air_v1(&claims, &key);
         assert!(result.is_err());
         assert!(result.unwrap_err().to_string().contains("48 bytes"));
+    }
+
+    // ── Tier 1+2 hardening tests ────────────────────────────────────
+
+    #[test]
+    fn test_oversized_receipt_rejected() {
+        // Fix 1: 70 KB random bytes → parse_air_v1 errors
+        let oversized = vec![0xAA; 70_000];
+        let result = parse_air_v1(&oversized);
+        assert!(result.is_err());
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("receipt too large"));
+    }
+
+    #[test]
+    fn test_non_empty_unprotected_header_rejected() {
+        // Fix 2: Build valid receipt, inject key_id in unprotected header
+        let key = super::golden::key();
+        let claims = fixture_claims();
+        let payload_bytes = encode_claims(&claims).unwrap();
+
+        let protected = coset::HeaderBuilder::new()
+            .algorithm(coset::iana::Algorithm::EdDSA)
+            .content_format(coset::iana::CoapContentFormat::Cwt)
+            .build();
+        let unprotected = coset::HeaderBuilder::new()
+            .key_id(b"rogue-kid".to_vec())
+            .build();
+        let sign1 = coset::CoseSign1Builder::new()
+            .protected(protected)
+            .unprotected(unprotected)
+            .payload(payload_bytes)
+            .try_create_signature(b"", |tbs| Ok::<_, String>(key.raw_sign(tbs)))
+            .unwrap()
+            .build();
+        let bytes = sign1.to_tagged_vec().unwrap();
+        let result = parse_air_v1(&bytes);
+        assert!(result.is_err());
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("non-empty unprotected header"));
+    }
+
+    #[test]
+    fn test_duplicate_claim_key_rejected() {
+        // Fix 3: Inject duplicate iss key
+        let claims = fixture_claims();
+        let tampered = build_tampered_receipt(&claims, |entries| {
+            entries.push((
+                Value::Integer(CWT_ISS.into()),
+                Value::Text("duplicate-iss".to_string()),
+            ));
+        });
+        let result = parse_air_v1(&tampered);
+        assert!(result.is_err());
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("duplicate claim key"));
+    }
+
+    #[test]
+    fn test_duplicate_measurement_key_rejected() {
+        // Fix 3: Tamper enclave_measurements with duplicate "pcr0"
+        let claims = fixture_claims();
+        let tampered = build_tampered_receipt(&claims, |entries| {
+            for (k, v) in entries.iter_mut() {
+                if *k == Value::Integer(AIR_ENCLAVE_MEASUREMENTS.into()) {
+                    if let Value::Map(ref mut meas) = v {
+                        meas.push((
+                            Value::Text("pcr0".to_string()),
+                            Value::Bytes(vec![0xFF; 48]),
+                        ));
+                    }
+                }
+            }
+        });
+        let result = parse_air_v1(&tampered);
+        assert!(result.is_err());
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("duplicate key in enclave_measurements"));
+    }
+
+    #[test]
+    fn test_unknown_security_mode_rejected_on_build() {
+        // Fix 4: Unknown security_mode fails build
+        let mut claims = fixture_claims();
+        claims.security_mode = "FooMode".to_string();
+        let key = ReceiptSigningKey::generate().unwrap();
+        let result = build_air_v1(&claims, &key);
+        assert!(result.is_err());
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("unknown security_mode"));
+    }
+
+    #[test]
+    fn test_iat_zero_rejected() {
+        // Fix 5: iat=0 is rejected on parse
+        let claims = fixture_claims();
+        let tampered = build_tampered_receipt(&claims, |entries| {
+            for (k, v) in entries.iter_mut() {
+                if *k == Value::Integer(CWT_IAT.into()) {
+                    *v = Value::Integer(0.into());
+                }
+            }
+        });
+        let result = parse_air_v1(&tampered);
+        assert!(result.is_err());
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("iat must not be zero"));
+    }
+
+    #[test]
+    fn test_tdx_with_pcr8_rejected_on_build() {
+        // Fix 6: TDX claims with pcr8 set → build fails
+        let mut claims = fixture_claims();
+        claims.enclave_measurements =
+            EnclaveMeasurements::new_tdx(vec![10u8; 48], vec![20u8; 48], vec![30u8; 48]);
+        claims.enclave_measurements.pcr8 = Some(vec![8u8; 48]);
+        let key = ReceiptSigningKey::generate().unwrap();
+        let result = build_air_v1(&claims, &key);
+        assert!(result.is_err());
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("pcr8 is not allowed for TDX"));
+    }
+
+    #[test]
+    fn test_tdx_with_pcr8_rejected_on_parse() {
+        // Fix 6: Inject pcr8 into TDX measurements via tampered receipt
+        let mut claims = fixture_claims();
+        claims.enclave_measurements =
+            EnclaveMeasurements::new_tdx(vec![10u8; 48], vec![20u8; 48], vec![30u8; 48]);
+        let tampered = build_tampered_receipt(&claims, |entries| {
+            for (k, v) in entries.iter_mut() {
+                if *k == Value::Integer(AIR_ENCLAVE_MEASUREMENTS.into()) {
+                    if let Value::Map(ref mut meas) = v {
+                        meas.push((Value::Text("pcr8".to_string()), Value::Bytes(vec![8u8; 48])));
+                    }
+                }
+            }
+        });
+        let result = parse_air_v1(&tampered);
+        assert!(result.is_err());
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("pcr8 is not allowed for TDX"));
+    }
+
+    #[test]
+    fn test_empty_model_id_rejected() {
+        // Fix 7: Empty model_id fails parse
+        let claims = fixture_claims();
+        let tampered = build_tampered_receipt(&claims, |entries| {
+            for (k, v) in entries.iter_mut() {
+                if *k == Value::Integer(AIR_MODEL_ID.into()) {
+                    *v = Value::Text(String::new());
+                }
+            }
+        });
+        let result = parse_air_v1(&tampered);
+        assert!(result.is_err());
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("must not be empty"));
+    }
+
+    #[test]
+    fn test_oversized_model_id_rejected() {
+        // Fix 7: 300-byte model_id exceeds max 256
+        let claims = fixture_claims();
+        let tampered = build_tampered_receipt(&claims, |entries| {
+            for (k, v) in entries.iter_mut() {
+                if *k == Value::Integer(AIR_MODEL_ID.into()) {
+                    *v = Value::Text("x".repeat(300));
+                }
+            }
+        });
+        let result = parse_air_v1(&tampered);
+        assert!(result.is_err());
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("exceeds max length"));
+    }
+
+    #[test]
+    fn test_current_timestamp_returns_result() {
+        // Fix 8: current_timestamp() returns Result
+        let ts = crate::current_timestamp().unwrap();
+        assert!(ts > 0);
     }
 }

@@ -294,7 +294,7 @@ impl AttestationProvider for TeeAttestationProvider {
         Ok(AttestationDocument {
             module_id: "tdx-cvm".to_string(),
             digest: vec![],
-            timestamp: ephemeral_ml_common::current_timestamp(),
+            timestamp: ephemeral_ml_common::current_timestamp()?,
             pcrs: measurements,
             // TDX quotes carry their signature inline (ECDSA-P256 in the quote body).
             // There is no separate X.509 certificate chain like Nitro's COSE_Sign1.
@@ -437,7 +437,7 @@ impl TeeAttestationProvider {
         Ok(AttestationDocument {
             module_id: "tdx-cvm".to_string(),
             digest: vec![],
-            timestamp: ephemeral_ml_common::current_timestamp(),
+            timestamp: ephemeral_ml_common::current_timestamp()?,
             pcrs: measurements,
             // Empty for TDX — see comment in generate_attestation() above.
             certificate: vec![],

@@ -138,7 +138,7 @@ pub fn verify_receipt(
     let ts_status = if options.max_age_secs == 0 {
         CheckStatus::Skip
     } else {
-        let now = crate::current_timestamp();
+        let now = crate::current_timestamp().unwrap_or(0);
         if receipt.execution_timestamp > now {
             errors.push(format!(
                 "Receipt timestamp is in the future: {} > now {}",
@@ -366,7 +366,7 @@ mod tests {
             64,
         );
         // Set timestamp to 2 hours ago
-        receipt.execution_timestamp = crate::current_timestamp().saturating_sub(7200);
+        receipt.execution_timestamp = crate::current_timestamp().unwrap().saturating_sub(7200);
         receipt.sign(&key).unwrap();
 
         let options = VerifyOptions {
@@ -597,7 +597,7 @@ mod tests {
         let key = ReceiptSigningKey::generate().unwrap();
         let mut receipt = make_signed_receipt("model", &key);
         receipt.destroy_evidence = Some(DestroyEvidence {
-            timestamp: crate::current_timestamp(),
+            timestamp: crate::current_timestamp().unwrap(),
             actions: vec![DestroyAction {
                 target: "dek".to_string(),
                 mechanism: "explicit_zeroize".to_string(),
@@ -635,7 +635,7 @@ mod tests {
         let key = ReceiptSigningKey::generate().unwrap();
         let mut receipt = make_signed_receipt("model", &key);
         receipt.destroy_evidence = Some(DestroyEvidence {
-            timestamp: crate::current_timestamp(),
+            timestamp: crate::current_timestamp().unwrap(),
             actions: vec![],
         });
         receipt.sign(&key).unwrap();

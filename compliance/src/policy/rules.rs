@@ -171,7 +171,7 @@ pub fn check_meas_002(receipt: &AttestationReceipt) -> RuleResult {
 
 /// FRESH-001: Receipt is not older than `max_age_secs`.
 pub fn check_fresh_001(receipt: &AttestationReceipt, max_age_secs: u64) -> RuleResult {
-    let now = ephemeral_ml_common::current_timestamp();
+    let now = ephemeral_ml_common::current_timestamp().unwrap_or(0);
     if receipt.execution_timestamp > now {
         return RuleResult {
             rule_id: "FRESH-001".to_string(),
@@ -199,7 +199,7 @@ pub fn check_fresh_001(receipt: &AttestationReceipt, max_age_secs: u64) -> RuleR
 
 /// FRESH-002: Receipt timestamp is not in the future.
 pub fn check_fresh_002(receipt: &AttestationReceipt) -> RuleResult {
-    let now = ephemeral_ml_common::current_timestamp();
+    let now = ephemeral_ml_common::current_timestamp().unwrap_or(0);
     let passed = receipt.execution_timestamp <= now;
     RuleResult {
         rule_id: "FRESH-002".to_string(),
@@ -559,7 +559,7 @@ mod tests {
     #[test]
     fn test_fresh_002_future() {
         let mut receipt = make_receipt("model", 0);
-        receipt.execution_timestamp = ephemeral_ml_common::current_timestamp() + 3600;
+        receipt.execution_timestamp = ephemeral_ml_common::current_timestamp().unwrap() + 3600;
         let result = check_fresh_002(&receipt);
         assert!(!result.passed);
     }

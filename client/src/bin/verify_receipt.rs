@@ -205,7 +205,7 @@ fn main() -> Result<()> {
     }
 
     // Step 6: Verify timestamp freshness
-    let now = ephemeral_ml_common::current_timestamp();
+    let now = ephemeral_ml_common::current_timestamp()?;
     let age = now.saturating_sub(receipt.execution_timestamp);
     report.timestamp_fresh = age <= args.max_age_secs;
     if !report.timestamp_fresh {

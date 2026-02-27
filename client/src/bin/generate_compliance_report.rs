@@ -191,7 +191,7 @@ fn load_receipts(dir: &PathBuf, args: &Args) -> Result<Vec<AttestationReceipt>> 
 }
 
 fn generate_report(receipts: Vec<AttestationReceipt>) -> Result<ComplianceReport> {
-    let now = ephemeral_ml_common::current_timestamp();
+    let now = ephemeral_ml_common::current_timestamp()?;
 
     // Calculate summary
     let total_receipts = receipts.len();

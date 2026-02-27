@@ -83,7 +83,7 @@ impl NonceManager {
 
         // Track as pending
         let entry = NonceEntry {
-            timestamp: current_timestamp(),
+            timestamp: current_timestamp().map_err(ClientError::Client)?,
             _context: context.to_string(),
         };
 
@@ -102,7 +102,7 @@ impl NonceManager {
         })?;
 
         // Check nonce age
-        let current_time = current_timestamp();
+        let current_time = current_timestamp().map_err(ClientError::Client)?;
         let age = current_time.saturating_sub(entry.timestamp);
 
         if age > self.max_nonce_age {
@@ -137,7 +137,7 @@ impl NonceManager {
 
     /// Clean up expired nonces
     pub fn cleanup_expired(&mut self) {
-        let current_time = current_timestamp();
+        let current_time = current_timestamp().unwrap_or(0);
 
         // Remove expired pending nonces
         self.pending_nonces
@@ -195,7 +195,7 @@ impl FreshnessValidator {
 
     /// Validate timestamp freshness
     pub fn validate_timestamp(&self, timestamp: u64) -> Result<()> {
-        let current_time = current_timestamp();
+        let current_time = current_timestamp().map_err(ClientError::Client)?;
 
         // Check for future timestamps (clock skew)
         if timestamp > current_time + self.max_time_skew {
@@ -223,7 +223,7 @@ impl FreshnessValidator {
 
     /// Get current timestamp for comparison
     pub fn current_timestamp(&self) -> u64 {
-        current_timestamp()
+        current_timestamp().unwrap_or(0)
     }
 }
 

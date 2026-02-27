@@ -23,7 +23,7 @@ impl AuditLogEntry {
     ) -> Self {
         Self {
             entry_id: generate_id(),
-            timestamp: current_timestamp(),
+            timestamp: current_timestamp().unwrap_or(0),
             event_type,
             session_id,
             client_id,
@@ -37,7 +37,7 @@ impl AuditLogEntry {
     pub fn metric(event_type: AuditEventType, session_id: Option<String>) -> Self {
         Self {
             entry_id: generate_id(),
-            timestamp: current_timestamp(),
+            timestamp: current_timestamp().unwrap_or(0),
             event_type,
             session_id,
             client_id: None,

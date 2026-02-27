@@ -43,7 +43,7 @@ impl ApiVerifyResponse {
         Self {
             result,
             api_version: "v1",
-            verified_at: ephemeral_ml_common::current_timestamp(),
+            verified_at: ephemeral_ml_common::current_timestamp().unwrap_or(0),
         }
     }
 }

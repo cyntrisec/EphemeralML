@@ -22,6 +22,10 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum AirCheckCode {
     // Layer 1: parse
+    /// Receipt exceeds MAX_RECEIPT_BYTES (64 KB)
+    ReceiptTooLarge,
+    /// Non-empty unprotected header (AIR v1 requires all headers in protected bucket)
+    NonEmptyUnprotectedHeader,
     /// COSE_Sign1 envelope could not be decoded
     CoseDecodeFailed,
     /// Missing or wrong `alg` in protected header
@@ -81,6 +85,8 @@ pub enum AirCheckCode {
 impl std::fmt::Display for AirCheckCode {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
+            Self::ReceiptTooLarge => write!(f, "RECEIPT_TOO_LARGE"),
+            Self::NonEmptyUnprotectedHeader => write!(f, "NON_EMPTY_UNPROTECTED"),
             Self::CoseDecodeFailed => write!(f, "COSE_DECODE_FAILED"),
             Self::BadAlg => write!(f, "BAD_ALG"),
             Self::BadContentType => write!(f, "BAD_CONTENT_TYPE"),
@@ -274,6 +280,20 @@ pub fn verify_air_v1_receipt(
 // ── Layer 1: Parse ──────────────────────────────────────────────────
 
 fn layer1_parse(data: &[u8], checks: &mut Vec<AirCheck>) -> Option<ParsedAirReceipt> {
+    // Fix 1: Pre-parse receipt size limit
+    if data.len() > air_receipt::MAX_RECEIPT_BYTES {
+        checks.push(AirCheck::fail(
+            "SIZE",
+            AirCheckCode::ReceiptTooLarge,
+            format!(
+                "{} bytes exceeds max {}",
+                data.len(),
+                air_receipt::MAX_RECEIPT_BYTES
+            ),
+        ));
+        return None;
+    }
+
     // COSE decode
     let cose = match coset::CoseSign1::from_tagged_slice(data) {
         Ok(c) => {
@@ -289,6 +309,16 @@ fn layer1_parse(data: &[u8], checks: &mut Vec<AirCheck>) -> Option<ParsedAirRece
             return None;
         }
     };
+
+    // Fix 2: Reject non-empty unprotected headers (tamper-prone, not signed)
+    if !cose.unprotected.is_empty() {
+        checks.push(AirCheck::fail(
+            "UNPROTECTED",
+            AirCheckCode::NonEmptyUnprotectedHeader,
+            "unprotected header must be empty for AIR v1",
+        ));
+        return None;
+    }
 
     // Protected header: alg
     let alg_ok = match cose.protected.header.alg.as_ref() {
@@ -501,7 +531,7 @@ fn layer4_policy(claims: &AirReceiptClaims, policy: &AirVerifyPolicy, checks: &m
     if policy.max_age_secs == 0 {
         checks.push(AirCheck::skip("FRESH"));
     } else {
-        let now = crate::current_timestamp();
+        let now = crate::current_timestamp().unwrap_or(0);
         let skew = policy.clock_skew_secs;
         if claims.iat > now + skew {
             checks.push(AirCheck::fail(
@@ -645,7 +675,7 @@ mod tests {
     fn fixture_claims() -> AirReceiptClaims {
         AirReceiptClaims {
             iss: "cyntrisec.com".to_string(),
-            iat: crate::current_timestamp(),
+            iat: crate::current_timestamp().unwrap(),
             cti: *uuid::Uuid::new_v4().as_bytes(),
             eat_nonce: None,
             model_id: "minilm-l6-v2".to_string(),
@@ -754,7 +784,7 @@ mod tests {
     fn test_stale_timestamp_fails() {
         let key = ReceiptSigningKey::generate().unwrap();
         let mut claims = fixture_claims();
-        claims.iat = crate::current_timestamp().saturating_sub(7200); // 2 hours ago
+        claims.iat = crate::current_timestamp().unwrap().saturating_sub(7200); // 2 hours ago
         let bytes = build_receipt(&claims, &key);
 
         let policy = AirVerifyPolicy {
@@ -772,7 +802,7 @@ mod tests {
     fn test_future_timestamp_fails() {
         let key = ReceiptSigningKey::generate().unwrap();
         let mut claims = fixture_claims();
-        claims.iat = crate::current_timestamp() + 600; // 10 min in future
+        claims.iat = crate::current_timestamp().unwrap() + 600; // 10 min in future
         let bytes = build_receipt(&claims, &key);
 
         let policy = AirVerifyPolicy {
@@ -1024,7 +1054,7 @@ mod tests {
         let key1 = ReceiptSigningKey::generate().unwrap();
         let key2 = ReceiptSigningKey::generate().unwrap();
         let mut claims = fixture_claims();
-        claims.iat = crate::current_timestamp().saturating_sub(7200);
+        claims.iat = crate::current_timestamp().unwrap().saturating_sub(7200);
         let bytes = build_receipt(&claims, &key1);
 
         let policy = AirVerifyPolicy {

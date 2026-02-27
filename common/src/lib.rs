@@ -55,12 +55,15 @@ pub fn generate_id() -> String {
     uuid::Uuid::new_v4().to_string()
 }
 
-/// Get current Unix timestamp
-pub fn current_timestamp() -> u64 {
+/// Get current Unix timestamp.
+///
+/// Returns an error if the system clock is before the Unix epoch (practically
+/// impossible, but avoids silent fallback to 0 via `unwrap_or_default`).
+pub fn current_timestamp() -> Result<u64> {
     std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_secs()
+        .map(|d| d.as_secs())
+        .map_err(|_| EphemeralError::Internal("system clock before Unix epoch".to_string()))
 }
 
 /// Generate a cryptographically secure random nonce
@@ -91,7 +94,7 @@ mod tests {
         let id = generate_id();
         assert!(!id.is_empty());
 
-        let timestamp = current_timestamp();
+        let timestamp = current_timestamp().unwrap();
         assert!(timestamp > 0);
     }
 }

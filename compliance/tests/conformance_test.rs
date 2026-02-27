@@ -160,7 +160,9 @@ fn ct_006_stale_receipt() {
         100,
         64,
     );
-    receipt.execution_timestamp = ephemeral_ml_common::current_timestamp().saturating_sub(7200);
+    receipt.execution_timestamp = ephemeral_ml_common::current_timestamp()
+        .unwrap()
+        .saturating_sub(7200);
     receipt.sign(&key).unwrap();
 
     let opts = VerifyOptions {
@@ -192,7 +194,7 @@ fn ct_007_future_receipt() {
         100,
         64,
     );
-    receipt.execution_timestamp = ephemeral_ml_common::current_timestamp() + 3600;
+    receipt.execution_timestamp = ephemeral_ml_common::current_timestamp().unwrap() + 3600;
     receipt.sign(&key).unwrap();
 
     let opts = VerifyOptions {
@@ -957,7 +959,7 @@ fn ct_025_enriched_destroy_evidence() {
         64,
     )
     .with_destroy_evidence(DestroyEvidence {
-        timestamp: ephemeral_ml_common::current_timestamp(),
+        timestamp: ephemeral_ml_common::current_timestamp().unwrap(),
         actions: vec![
             DestroyAction {
                 target: "output_bytes".to_string(),

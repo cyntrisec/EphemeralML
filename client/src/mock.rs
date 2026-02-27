@@ -72,7 +72,7 @@ impl MockSecureClient {
             ),
             (
                 Value::Text("timestamp".to_string()),
-                Value::Integer((current_timestamp() as i64).into()),
+                Value::Integer((current_timestamp().unwrap_or(0) as i64).into()),
             ),
             (
                 Value::Text("nonce".to_string()),
@@ -90,7 +90,7 @@ impl MockSecureClient {
         AttestationDocument {
             module_id: "mock-enclave".to_string(),
             digest: vec![0u8; 48],
-            timestamp: current_timestamp(),
+            timestamp: current_timestamp().unwrap_or(0),
             pcrs: PcrMeasurements {
                 pcr0: pcr0_bytes,
                 pcr1: pcr1_bytes,
@@ -131,7 +131,7 @@ impl SecureClient for MockSecureClient {
     ) -> Result<InferenceResult> {
         use crate::{AttestationReceipt, EnclaveMeasurements, SecurityMode};
         let output_tensor: Vec<f32> = input_tensor.iter().map(|x| x + 0.1).collect();
-        let now = current_timestamp();
+        let now = current_timestamp().map_err(ClientError::Client)?;
         let receipt = AttestationReceipt::new(
             model_id.to_string(),
             1,
@@ -167,7 +167,7 @@ impl SecureClient for MockSecureClient {
         let dim = 384;
         let seed = text.len() as f32;
         let output_tensor: Vec<f32> = (0..dim).map(|i| ((i as f32 + seed) * 0.01).sin()).collect();
-        let now = current_timestamp();
+        let now = current_timestamp().map_err(ClientError::Client)?;
         let receipt = AttestationReceipt::new(
             model_id.to_string(),
             1,
@@ -208,7 +208,7 @@ impl SecureClient for MockSecureClient {
             &text[..text.len().min(50)],
             token_count
         );
-        let now = current_timestamp();
+        let now = current_timestamp().map_err(ClientError::Client)?;
         let receipt = AttestationReceipt::new(
             model_id.to_string(),
             1,

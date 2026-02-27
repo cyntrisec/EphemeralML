@@ -146,7 +146,7 @@ impl MockAttestationProvider {
         Ok(AttestationDocument {
             module_id: "mock-enclave".to_string(),
             digest,
-            timestamp: current_timestamp(),
+            timestamp: current_timestamp()?,
             pcrs: PcrMeasurements {
                 pcr0: pcr0_bytes,
                 pcr1: pcr1_bytes,

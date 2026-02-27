@@ -94,7 +94,7 @@ fn main() {
     // Ensure output directory exists.
     fs::create_dir_all(OUTPUT_DIR).expect("failed to create output directory");
 
-    let now = current_timestamp();
+    let now = current_timestamp().unwrap();
     let (_sk_a, rsk_a) = deterministic_key_a();
     let (_sk_b, rsk_b) = deterministic_key_b();
 
