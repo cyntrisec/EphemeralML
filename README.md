@@ -161,22 +161,24 @@ AIR v1 is **single-inference only** (pipeline proof chaining is planned for vNEX
 - **Attested Inference Receipts (AIR)** — Ed25519-signed, CBOR-canonical, binding input/output hashes to enclave attestation
 - **Policy update system** with signature verification and hot-reload
 - **Model format validation** (safetensors, dtype enforcement)
-- **500+ tests** across the workspace and CI (including pipeline integration and GCP tests)
+- **574 tests** across the workspace and CI (including pipeline integration, GCP tests, and 16 AIR v1 conformance vector tests)
 - **Deterministic builds** for reproducibility
 
 ---
 
 ## Performance
 
-Measured on AWS EC2 m6i.xlarge (4 vCPU, 16GB RAM) with MiniLM-L6-v2 (22.7M params), 3 independent runs of 100 iterations each. Commit `b00bab1`. Paper (\S7) uses canonical release-gate data from commit `057a85a`. Raw JSON available in [GitHub Releases](https://github.com/cyntrisec/EphemeralML/releases).
+All benchmarks use MiniLM-L6-v2 (22.7M params) on AWS EC2 m6i.xlarge (4 vCPU, 16 GiB). Two measurement campaigns exist — see `docs/publication/claim_definitions.md` for full methodology and disambiguation.
 
 ### Inference Overhead
 
-| Metric | Bare Metal | Nitro Enclave | Overhead |
-|--------|-----------|---------------|----------|
-| Mean latency | 78.55ms | 88.45ms | **+12.6%** |
-| P95 latency | 79.09ms | 89.58ms | +13.3% |
-| Throughput | 12.73 inf/s | 11.31 inf/s | -11.2% |
+| Measurement | Bare Metal | Enclave | Overhead | Scope |
+|-------------|-----------|---------|----------|-------|
+| Fully instrumented (commit `b00bab1`, 100 iters) | 78.55ms | 88.45ms | **+12.6%** | Host-observed, includes VSock transport |
+| Enclave execution (commit `f1ba30d`, 10 iters) | 74.61ms | 77.00ms | **+3.2%** | Enclave-side only, excludes transport |
+| Host E2E latency (10-run mean) | — | 117.1ms | — | Full client round-trip |
+
+The +12.6% and +3.2% measure different boundaries. The ~10ms gap is VSock transport overhead. See `docs/publication/claim_definitions.md` §4 for the full disambiguation diagram.
 
 ### Cold Start Breakdown
 
@@ -224,14 +226,12 @@ Measured on AWS EC2 m6i.xlarge (4 vCPU, 16GB RAM) with MiniLM-L6-v2 (22.7M param
 
 ### Key Findings
 
-- **~12.6% inference overhead** — on par with AMD SEV-SNP BERT numbers (~16%), competitive with SGX/TDX
-- **Latest 3-model campaign (2026-02-05)** — weighted mean overhead **+12.9%** (MiniLM-L6 +14.0%, MiniLM-L12 +12.9%, BERT-base +11.9%)
-- **Embedding quality preserved** — near-identical embeddings (cosine similarity ≈ 1.0; tiny FP-level differences expected across CPU allocations)
-- **Per-inference crypto cost negligible** — 0.028ms vs 88ms inference (0.03%)
-- **E2E crypto overhead** — 0.164ms per request (0.19% of inference time)
+- **+3–13% inference overhead** depending on measurement boundary (enclave-execution-only vs host-observed-with-transport). On par with AMD SEV-SNP BERT numbers (~16%), competitive with SGX/TDX.
+- **Multi-model campaign (2026-02-05, commit `b00bab1`)** — weighted mean +12.9% (MiniLM-L6 +14.0%, MiniLM-L12 +12.9%, BERT-base +11.9%). Historical; not reproducible on current main.
+- **Per-inference crypto cost negligible** — 0.028ms per request (< 0.04% of inference time)
 - **Throughput plateaus at ~14.7 inf/s** — CPU-bound on 2 vCPUs; latency scales linearly with concurrency
-- **$4.72 per 1M inferences** in enclave (1.13x bare metal cost)
-- **First published per-inference latency benchmark on AWS Nitro Enclaves**
+- **$4.11–4.72 per 1M inferences** in enclave (1.03–1.13x bare metal cost, depending on measurement)
+- **3/3 cross-cloud E2E PASS** — AWS Nitro + GCP CPU TDX + GCP GPU H100 CC (functional + security validation, not cross-provider overhead comparison)
 
 ### GPU Performance (GCP Confidential Space, H100 CC-mode)
 

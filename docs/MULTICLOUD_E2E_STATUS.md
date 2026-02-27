@@ -1,25 +1,27 @@
 # Multicloud E2E Validation Status
 
-**Last updated:** 2026-02-25
+**Last updated:** 2026-02-28
+**Canonical claims:** See `docs/publication/claim_definitions.md` for formal definitions and `docs/publication/claim_evidence_matrix.md` for traceability.
 
-EphemeralML has been validated single-stage E2E on AWS Nitro Enclaves and GCP Confidential Space (CPU and H100 GPU). All three runs completed inference with MiniLM-L6-v2, produced Ed25519-signed attestation receipts, and verified them.
+EphemeralML has been validated single-stage E2E on AWS Nitro Enclaves and GCP Confidential Space (CPU and H100 GPU). All three platforms completed inference with MiniLM-L6-v2, produced Ed25519-signed attestation receipts, and verified them. Cross-cloud results validate functional and security correctness — they are NOT cross-provider overhead comparisons (different CPUs, different TEE architectures).
 
 ## Summary
 
-| Platform | Machine | TEE | Model | Inference | Receipt | Status |
-|----------|---------|-----|-------|-----------|---------|--------|
-| AWS Nitro | m6i.xlarge | Nitro Enclave (KVM) | MiniLM-L6-v2 | 78ms | Verified | **PASS** |
-| GCP TDX CPU | c3-standard-4 | Intel TDX | MiniLM-L6-v2 | 76ms | Verified | **PASS** |
-| GCP TDX GPU | a3-highgpu-1g | Intel TDX + H100 CC | MiniLM-L6-v2 | 12,319ms* | Verified | **PASS** |
+| Platform | Machine | TEE | Model | Execution | AIR v1 | Negative | Compliance | Evidence | Status |
+|----------|---------|-----|-------|-----------|--------|----------|------------|----------|--------|
+| AWS Nitro | m6i.xlarge | Nitro Enclave | MiniLM-L6-v2 | 76ms | Legacy JSON | PCR-pinned | N/A | `nitro-e2e-20260227T095832Z/` | **PASS** |
+| GCP TDX CPU | c3-standard-4 | Intel TDX | MiniLM-L6-v2 | 75ms | 11/11 PASS | 2/2 PASS | 16/16 | `mvp-20260227_092628/` | **PASS** |
+| GCP TDX GPU | a3-highgpu-1g | TDX + H100 CC | MiniLM-L6-v2 | pipeline* | 11/11 PASS | 2/2 PASS | 16/16 | `mvp-20260227_095900/` | **PASS** |
 
-\*GPU inference time is dominated by first-run CUDA kernel JIT warmup. MiniLM (22.7M params) is far too small to benefit from H100 parallelism; steady-state GPU inference for this model would be comparable to or slower than CPU due to memory-transfer overhead. The H100 E2E validates the pipeline, not GPU performance. Real GPU benchmarks require 7B+ parameter models.
+\*GPU inference time for MiniLM is dominated by CUDA JIT warmup and is NOT representative of GPU performance. MiniLM (22.7M params) is far too small to benefit from H100 parallelism. The H100 E2E validates the pipeline, not GPU performance. Real GPU benchmarks require 7B+ parameter models. Do not cite GPU inference time as a performance metric.
 
 ---
 
 ## 1. AWS Nitro Enclaves
 
-**Date:** 2026-02-25
-**Commit:** `f1ba30d`
+**Date:** 2026-02-27 (latest), 2026-02-25 (benchmark)
+**Commit:** `f1ba30d` (build), `a33dc8b` (HEAD at evidence collection)
+**Evidence:** `evidence/nitro-e2e-20260227T095832Z/` (latest), `benchmark_results_aws_nitro_modern_20260225_clean/` (benchmark)
 **Docs:** [`docs/AWS_NITRO_E2E_REPORT.md`](AWS_NITRO_E2E_REPORT.md), [`docs/AWS_NITRO_E2E_RUNBOOK.md`](AWS_NITRO_E2E_RUNBOOK.md)
 
 ### Configuration
