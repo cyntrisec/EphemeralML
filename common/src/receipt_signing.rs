@@ -55,7 +55,8 @@ impl ReceiptSigningKey {
         Self {
             private_key,
             public_key,
-            created_at: crate::current_timestamp().unwrap_or(0),
+            created_at: crate::current_timestamp()
+                .expect("system clock must be available to create signing key metadata"),
             expires_at: None,
         }
     }
@@ -88,7 +89,10 @@ impl ReceiptSigningKey {
     /// Check if key is expired
     pub fn is_expired(&self) -> bool {
         if let Some(expires_at) = self.expires_at {
-            crate::current_timestamp().unwrap_or(0) >= expires_at
+            match crate::current_timestamp() {
+                Ok(now) => now >= expires_at,
+                Err(_) => true, // fail closed if local time is unavailable
+            }
         } else {
             false
         }
@@ -123,7 +127,8 @@ impl AttestationUserData {
             receipt_signing_key,
             protocol_version,
             supported_features,
-            key_generation_timestamp: crate::current_timestamp().unwrap_or(0),
+            key_generation_timestamp: crate::current_timestamp()
+                .expect("system clock must be available for attestation user data"),
         }
     }
 
@@ -329,7 +334,8 @@ impl AttestationReceipt {
             response_hash,
             policy_version,
             sequence_number,
-            execution_timestamp: crate::current_timestamp().unwrap_or(0),
+            execution_timestamp: crate::current_timestamp()
+                .expect("system clock must be available when creating a receipt"),
             model_id,
             model_version,
             execution_time_ms,

@@ -51,6 +51,8 @@ pub const MAX_RECEIPT_BYTES: usize = 65_536;
 const MODEL_HASH_SCHEME_SHA256_SINGLE: &str = "sha256-single";
 const MODEL_HASH_SCHEME_SHA256_CONCAT: &str = "sha256-concat";
 const MODEL_HASH_SCHEME_SHA256_MANIFEST: &str = "sha256-manifest";
+const KNOWN_SECURITY_MODES: &[&str] = &["GatewayOnly", "ShieldMode"];
+const KNOWN_MEASUREMENT_KEYS: &[&str] = &["measurement_type", "pcr0", "pcr1", "pcr2", "pcr8"];
 
 pub(crate) fn is_known_model_hash_scheme(s: &str) -> bool {
     matches!(
@@ -99,11 +101,21 @@ impl AirReceiptClaims {
                 "cti must not be all zeros".to_string(),
             ));
         }
+        if self.iat == 0 {
+            return Err(EphemeralError::ValidationError(
+                "iat must not be zero (Unix epoch)".to_string(),
+            ));
+        }
         if self.model_hash.iter().all(|&b| b == 0) {
             return Err(EphemeralError::ValidationError(
                 "model_hash must not be all zeros".to_string(),
             ));
         }
+        validate_text_claim("iss", &self.iss, 256)?;
+        validate_text_claim("model_id", &self.model_id, 256)?;
+        validate_text_claim("model_version", &self.model_version, 128)?;
+        validate_text_claim("policy_version", &self.policy_version, 256)?;
+        validate_text_claim("security_mode", &self.security_mode, 64)?;
         if !self.enclave_measurements.is_valid() {
             return Err(EphemeralError::ValidationError(
                 "enclave measurements must be 48 bytes each (SHA-384)".to_string(),
@@ -122,8 +134,7 @@ impl AirReceiptClaims {
                 "pcr8 is not allowed for TDX measurements (tdx-mrtd-rtmr)".to_string(),
             ));
         }
-        // Fix 4: security_mode must be a known value on the build path
-        const KNOWN_SECURITY_MODES: &[&str] = &["GatewayOnly", "ShieldMode"];
+        // security_mode is allowlisted on build path; verifier remains forward-compatible.
         if !KNOWN_SECURITY_MODES.contains(&self.security_mode.as_str()) {
             return Err(EphemeralError::ValidationError(format!(
                 "unknown security_mode: {}",
@@ -140,6 +151,7 @@ impl AirReceiptClaims {
             }
         }
         if let Some(ref scheme) = self.model_hash_scheme {
+            validate_text_claim("model_hash_scheme", scheme, 64)?;
             if !is_known_model_hash_scheme(scheme) {
                 return Err(EphemeralError::ValidationError(format!(
                     "unknown model_hash_scheme: {}",
@@ -190,6 +202,21 @@ impl AirReceiptClaims {
             model_hash_scheme: None,
         })
     }
+}
+
+fn validate_text_claim(name: &str, value: &str, max_len: usize) -> Result<()> {
+    if value.is_empty() {
+        return Err(EphemeralError::ValidationError(format!(
+            "{name} must not be empty"
+        )));
+    }
+    if value.len() > max_len {
+        return Err(EphemeralError::ValidationError(format!(
+            "{name} exceeds max length ({} > {max_len})",
+            value.len()
+        )));
+    }
+    Ok(())
 }
 
 // ── CBOR payload encoding ───────────────────────────────────────────
@@ -408,6 +435,16 @@ pub fn parse_air_v1(data: &[u8]) -> Result<ParsedAirReceipt> {
             alg
         )));
     }
+    let content_type = cose.protected.header.content_type.as_ref().ok_or_else(|| {
+        EphemeralError::ValidationError("missing content_type in protected header".to_string())
+    })?;
+    let expected_ct = coset::ContentType::Assigned(coset::iana::CoapContentFormat::Cwt);
+    if *content_type != expected_ct {
+        return Err(EphemeralError::ValidationError(format!(
+            "unexpected content_type: expected CWT, got {:?}",
+            content_type
+        )));
+    }
 
     let payload_bytes = cose.payload.as_ref().ok_or_else(|| {
         EphemeralError::ValidationError("missing payload in COSE_Sign1".to_string())
@@ -603,16 +640,29 @@ fn decode_measurements(entries: &[(Value, Value)]) -> Result<EnclaveMeasurements
         }
     };
 
-    // Fix 3: Duplicate key check for nested measurements map (max 5 keys)
+    // Enclave measurements are a closed map. Reject unknown/non-text keys and duplicates.
     let mut seen_meas_keys: Vec<String> = Vec::with_capacity(5);
     for (mk, _) in meas_entries {
-        if let Value::Text(t) = mk {
-            if seen_meas_keys.contains(t) {
-                return Err(EphemeralError::ValidationError(format!(
-                    "duplicate key in enclave_measurements: {t}"
-                )));
+        match mk {
+            Value::Text(t) => {
+                if !KNOWN_MEASUREMENT_KEYS.contains(&t.as_str()) {
+                    return Err(EphemeralError::ValidationError(format!(
+                        "unknown key in enclave_measurements: {t}"
+                    )));
+                }
+                if seen_meas_keys.contains(t) {
+                    return Err(EphemeralError::ValidationError(format!(
+                        "duplicate key in enclave_measurements: {t}"
+                    )));
+                }
+                seen_meas_keys.push(t.clone());
             }
-            seen_meas_keys.push(t.clone());
+            _ => {
+                return Err(EphemeralError::ValidationError(format!(
+                    "non-text key in enclave_measurements: {:?}",
+                    mk
+                )))
+            }
         }
     }
 
@@ -1509,6 +1559,32 @@ mod tests {
     }
 
     #[test]
+    fn test_missing_content_type_rejected() {
+        // parse_air_v1 must reject receipts without protected content_type=CWT.
+        let key = super::golden::key();
+        let claims = fixture_claims();
+        let payload_bytes = encode_claims(&claims).unwrap();
+
+        let protected = coset::HeaderBuilder::new()
+            .algorithm(coset::iana::Algorithm::EdDSA)
+            .build();
+        let sign1 = coset::CoseSign1Builder::new()
+            .protected(protected)
+            .payload(payload_bytes)
+            .try_create_signature(b"", |tbs| Ok::<_, String>(key.raw_sign(tbs)))
+            .unwrap()
+            .build();
+        let bytes = sign1.to_tagged_vec().unwrap();
+
+        let result = parse_air_v1(&bytes);
+        assert!(result.is_err());
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("missing content_type"));
+    }
+
+    #[test]
     fn test_duplicate_claim_key_rejected() {
         // Fix 3: Inject duplicate iss key
         let claims = fixture_claims();
@@ -1551,6 +1627,49 @@ mod tests {
     }
 
     #[test]
+    fn test_unknown_measurement_key_rejected() {
+        let claims = fixture_claims();
+        let tampered = build_tampered_receipt(&claims, |entries| {
+            for (k, v) in entries.iter_mut() {
+                if *k == Value::Integer(AIR_ENCLAVE_MEASUREMENTS.into()) {
+                    if let Value::Map(ref mut meas) = v {
+                        meas.push((
+                            Value::Text("rogue_field".to_string()),
+                            Value::Bytes(vec![0x01]),
+                        ));
+                    }
+                }
+            }
+        });
+        let result = parse_air_v1(&tampered);
+        assert!(result.is_err());
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("unknown key in enclave_measurements"));
+    }
+
+    #[test]
+    fn test_non_text_measurement_key_rejected() {
+        let claims = fixture_claims();
+        let tampered = build_tampered_receipt(&claims, |entries| {
+            for (k, v) in entries.iter_mut() {
+                if *k == Value::Integer(AIR_ENCLAVE_MEASUREMENTS.into()) {
+                    if let Value::Map(ref mut meas) = v {
+                        meas.push((Value::Integer(123.into()), Value::Bytes(vec![0xAB; 48])));
+                    }
+                }
+            }
+        });
+        let result = parse_air_v1(&tampered);
+        assert!(result.is_err());
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("non-text key in enclave_measurements"));
+    }
+
+    #[test]
     fn test_unknown_security_mode_rejected_on_build() {
         // Fix 4: Unknown security_mode fails build
         let mut claims = fixture_claims();
@@ -1576,6 +1695,19 @@ mod tests {
             }
         });
         let result = parse_air_v1(&tampered);
+        assert!(result.is_err());
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("iat must not be zero"));
+    }
+
+    #[test]
+    fn test_iat_zero_rejected_on_build() {
+        let mut claims = fixture_claims();
+        claims.iat = 0;
+        let key = ReceiptSigningKey::generate().unwrap();
+        let result = build_air_v1(&claims, &key);
         assert!(result.is_err());
         assert!(result
             .unwrap_err()
@@ -1658,6 +1790,32 @@ mod tests {
             .unwrap_err()
             .to_string()
             .contains("exceeds max length"));
+    }
+
+    #[test]
+    fn test_empty_iss_rejected_on_build() {
+        let mut claims = fixture_claims();
+        claims.iss.clear();
+        let key = ReceiptSigningKey::generate().unwrap();
+        let result = build_air_v1(&claims, &key);
+        assert!(result.is_err());
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("iss must not be empty"));
+    }
+
+    #[test]
+    fn test_oversized_policy_version_rejected_on_build() {
+        let mut claims = fixture_claims();
+        claims.policy_version = "x".repeat(300);
+        let key = ReceiptSigningKey::generate().unwrap();
+        let result = build_air_v1(&claims, &key);
+        assert!(result.is_err());
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("policy_version exceeds max length"));
     }
 
     #[test]

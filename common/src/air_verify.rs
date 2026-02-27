@@ -68,6 +68,8 @@ pub enum AirCheckCode {
     TimestampFuture,
     /// Receipt is older than `max_age` seconds
     TimestampStale,
+    /// Local system clock could not be read
+    ClockError,
     /// `model_hash` does not match expected value
     ModelHashMismatch,
     /// `model_id` does not match expected value
@@ -105,6 +107,7 @@ impl std::fmt::Display for AirCheckCode {
             Self::UnknownModelHashScheme(s) => write!(f, "UNKNOWN_MODEL_HASH_SCHEME:{s}"),
             Self::TimestampFuture => write!(f, "TIMESTAMP_FUTURE"),
             Self::TimestampStale => write!(f, "TIMESTAMP_STALE"),
+            Self::ClockError => write!(f, "CLOCK_ERROR"),
             Self::ModelHashMismatch => write!(f, "MODEL_HASH_MISMATCH"),
             Self::ModelIdMismatch => write!(f, "MODEL_ID_MISMATCH"),
             Self::PlatformMismatch => write!(f, "PLATFORM_MISMATCH"),
@@ -531,7 +534,17 @@ fn layer4_policy(claims: &AirReceiptClaims, policy: &AirVerifyPolicy, checks: &m
     if policy.max_age_secs == 0 {
         checks.push(AirCheck::skip("FRESH"));
     } else {
-        let now = crate::current_timestamp().unwrap_or(0);
+        let now = match crate::current_timestamp() {
+            Ok(ts) => ts,
+            Err(e) => {
+                checks.push(AirCheck::fail(
+                    "FRESH",
+                    AirCheckCode::ClockError,
+                    format!("failed to read system clock: {e}"),
+                ));
+                return;
+            }
+        };
         let skew = policy.clock_skew_secs;
         if claims.iat > now + skew {
             checks.push(AirCheck::fail(
