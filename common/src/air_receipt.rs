@@ -112,6 +112,15 @@ impl AirReceiptClaims {
                 mt
             )));
         }
+        // RFC 9711 §4.1: eat_nonce must be 8-64 bytes when present
+        if let Some(ref nonce) = self.eat_nonce {
+            if nonce.len() < 8 || nonce.len() > 64 {
+                return Err(EphemeralError::ValidationError(format!(
+                    "eat_nonce must be 8-64 bytes per RFC 9711, got {}",
+                    nonce.len()
+                )));
+            }
+        }
         if let Some(ref scheme) = self.model_hash_scheme {
             if !is_known_model_hash_scheme(scheme) {
                 return Err(EphemeralError::ValidationError(format!(
@@ -252,9 +261,8 @@ fn encode_claims(claims: &AirReceiptClaims) -> Result<Vec<u8>> {
     ));
 
     // Sort by CBOR deterministic encoding rules (RFC 8949 §4.2.1):
-    // shorter encoded key sorts first, then lexicographic byte comparison.
-    // For integer keys: positive < negative, smaller magnitude first.
-    // Our cmp_cbor_keys in cbor.rs handles this via variant_idx + i128 comparison.
+    // shorter encoded key sorts first, then bytewise lexicographic comparison.
+    // For integer keys: positive (major type 0) sorts before negative (major type 1).
     entries.sort_by(|(k1, _), (k2, _)| crate::cbor::cmp_cbor_keys(k1, k2));
 
     let map = Value::Map(entries);
@@ -402,6 +410,28 @@ pub fn verify_air_v1(
 
 // ── Claim decoding ──────────────────────────────────────────────────
 
+/// All known AIR v1 claim keys (closed-map enforcement).
+const KNOWN_CLAIM_KEYS: &[i64] = &[
+    CWT_ISS,
+    CWT_IAT,
+    CWT_CTI,
+    EAT_NONCE,
+    EAT_PROFILE,
+    AIR_MODEL_ID,
+    AIR_MODEL_VERSION,
+    AIR_MODEL_HASH,
+    AIR_REQUEST_HASH,
+    AIR_RESPONSE_HASH,
+    AIR_ATTESTATION_DOC_HASH,
+    AIR_ENCLAVE_MEASUREMENTS,
+    AIR_POLICY_VERSION,
+    AIR_SEQUENCE_NUMBER,
+    AIR_EXECUTION_TIME_MS,
+    AIR_MEMORY_PEAK_MB,
+    AIR_SECURITY_MODE,
+    AIR_MODEL_HASH_SCHEME,
+];
+
 fn decode_claims(payload: &[u8]) -> Result<AirReceiptClaims> {
     let value: Value = crate::cbor::from_slice(payload)
         .map_err(|e| EphemeralError::SerializationError(format!("payload CBOR decode: {e}")))?;
@@ -414,6 +444,29 @@ fn decode_claims(payload: &[u8]) -> Result<AirReceiptClaims> {
             ))
         }
     };
+
+    // Closed-map enforcement: reject unknown claims per CDDL schema
+    for (k, _) in entries {
+        if let Value::Integer(n) = k {
+            let key_val: i128 = (*n).into();
+            if key_val < i64::MIN as i128 || key_val > i64::MAX as i128 {
+                return Err(EphemeralError::ValidationError(format!(
+                    "claim key out of i64 range: {key_val}"
+                )));
+            }
+            let key_i64 = key_val as i64;
+            if !KNOWN_CLAIM_KEYS.contains(&key_i64) {
+                return Err(EphemeralError::ValidationError(format!(
+                    "unknown claim key: {key_i64}"
+                )));
+            }
+        } else {
+            return Err(EphemeralError::ValidationError(format!(
+                "non-integer claim key: {:?}",
+                k
+            )));
+        }
+    }
 
     // Check eat_profile
     let profile = get_text(entries, EAT_PROFILE)?;
@@ -435,7 +488,16 @@ fn decode_claims(payload: &[u8]) -> Result<AirReceiptClaims> {
     let mut cti = [0u8; 16];
     cti.copy_from_slice(&cti_bytes);
 
-    let eat_nonce = get_bstr_opt(entries, EAT_NONCE);
+    let eat_nonce = get_bstr_opt(entries, EAT_NONCE)?;
+    // RFC 9711 §4.1: eat_nonce must be 8-64 bytes when present
+    if let Some(ref nonce) = eat_nonce {
+        if nonce.len() < 8 || nonce.len() > 64 {
+            return Err(EphemeralError::ValidationError(format!(
+                "eat_nonce must be 8-64 bytes per RFC 9711, got {}",
+                nonce.len()
+            )));
+        }
+    }
 
     let model_id = get_text(entries, AIR_MODEL_ID)?;
     let model_version = get_text(entries, AIR_MODEL_VERSION)?;
@@ -450,7 +512,7 @@ fn decode_claims(payload: &[u8]) -> Result<AirReceiptClaims> {
     let execution_time_ms = get_uint(entries, AIR_EXECUTION_TIME_MS)?;
     let memory_peak_mb = get_uint(entries, AIR_MEMORY_PEAK_MB)?;
     let security_mode = get_text(entries, AIR_SECURITY_MODE)?;
-    let model_hash_scheme = get_text_opt(entries, AIR_MODEL_HASH_SCHEME);
+    let model_hash_scheme = get_text_opt(entries, AIR_MODEL_HASH_SCHEME)?;
 
     Ok(AirReceiptClaims {
         iss,
@@ -562,17 +624,23 @@ fn get_bstr(entries: &[(Value, Value)], key: i64) -> Result<Vec<u8>> {
     }
 }
 
-fn get_text_opt(entries: &[(Value, Value)], key: i64) -> Option<String> {
+fn get_text_opt(entries: &[(Value, Value)], key: i64) -> Result<Option<String>> {
     match get_by_int(entries, key) {
-        Some(Value::Text(s)) => Some(s.clone()),
-        _ => None,
+        Some(Value::Text(s)) => Ok(Some(s.clone())),
+        Some(_) => Err(EphemeralError::ValidationError(format!(
+            "claim {key} is not a text string"
+        ))),
+        None => Ok(None),
     }
 }
 
-fn get_bstr_opt(entries: &[(Value, Value)], key: i64) -> Option<Vec<u8>> {
+fn get_bstr_opt(entries: &[(Value, Value)], key: i64) -> Result<Option<Vec<u8>>> {
     match get_by_int(entries, key) {
-        Some(Value::Bytes(b)) => Some(b.clone()),
-        _ => None,
+        Some(Value::Bytes(b)) => Ok(Some(b.clone())),
+        Some(_) => Err(EphemeralError::ValidationError(format!(
+            "claim {key} is not a byte string"
+        ))),
+        None => Ok(None),
     }
 }
 
@@ -851,10 +919,34 @@ mod tests {
     fn test_eat_nonce_roundtrip() {
         let key = ReceiptSigningKey::generate().unwrap();
         let mut claims = fixture_claims();
-        claims.eat_nonce = Some(vec![0xDE, 0xAD, 0xBE, 0xEF]);
+        // RFC 9711 §4.1: minimum 8 bytes
+        claims.eat_nonce = Some(vec![0xDE, 0xAD, 0xBE, 0xEF, 0xCA, 0xFE, 0xBA, 0xBE]);
         let bytes = build_air_v1(&claims, &key).unwrap();
         let parsed = parse_air_v1(&bytes).unwrap();
-        assert_eq!(parsed.claims.eat_nonce, Some(vec![0xDE, 0xAD, 0xBE, 0xEF]));
+        assert_eq!(
+            parsed.claims.eat_nonce,
+            Some(vec![0xDE, 0xAD, 0xBE, 0xEF, 0xCA, 0xFE, 0xBA, 0xBE])
+        );
+    }
+
+    #[test]
+    fn test_eat_nonce_too_short_rejected() {
+        let key = ReceiptSigningKey::generate().unwrap();
+        let mut claims = fixture_claims();
+        claims.eat_nonce = Some(vec![0xDE, 0xAD, 0xBE, 0xEF]); // 4 bytes < 8 minimum
+        let result = build_air_v1(&claims, &key);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("eat_nonce must be 8-64 bytes"));
+    }
+
+    #[test]
+    fn test_eat_nonce_too_long_rejected() {
+        let key = ReceiptSigningKey::generate().unwrap();
+        let mut claims = fixture_claims();
+        claims.eat_nonce = Some(vec![0xAA; 65]); // 65 bytes > 64 maximum
+        let result = build_air_v1(&claims, &key);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("eat_nonce must be 8-64 bytes"));
     }
 
     #[test]

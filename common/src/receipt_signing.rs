@@ -290,9 +290,14 @@ impl EnclaveMeasurements {
         }
     }
 
-    /// Validate measurement lengths (should be 48 bytes each for SHA-384)
+    /// Validate measurement lengths (must be 48 bytes each for SHA-384)
     pub fn is_valid(&self) -> bool {
-        self.pcr0.len() == 48 && self.pcr1.len() == 48 && self.pcr2.len() == 48
+        let base = self.pcr0.len() == 48 && self.pcr1.len() == 48 && self.pcr2.len() == 48;
+        let pcr8_ok = match &self.pcr8 {
+            Some(p) => p.len() == 48,
+            None => true,
+        };
+        base && pcr8_ok
     }
 }
 

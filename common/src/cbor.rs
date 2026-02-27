@@ -46,15 +46,15 @@ pub fn from_slice<T: DeserializeOwned>(bytes: &[u8]) -> Result<T, CborError> {
 
 /// Convert a serializable value to `ciborium::Value` with recursively sorted map keys.
 ///
-/// Replacement for `serde_cbor::value::to_value`. Map keys are sorted to match
-/// serde_cbor's `BTreeMap`-based ordering (variant index then content), ensuring
-/// deterministic canonical encoding for receipt signing.
+/// Replacement for `serde_cbor::value::to_value`. Map keys are sorted per
+/// RFC 8949 §4.2.1 (shorter encoded key first, then bytewise lexicographic),
+/// ensuring deterministic canonical encoding for receipt signing.
 pub fn to_value<T: Serialize>(val: &T) -> Result<Value, CborError> {
     let value = Value::serialized(val).map_err(|e| CborError(e.to_string()))?;
     Ok(sort_value_maps(value))
 }
 
-/// Recursively sort all Map entries to match serde_cbor's BTreeMap key ordering.
+/// Recursively sort all Map entries per RFC 8949 §4.2.1 deterministic encoding.
 fn sort_value_maps(val: Value) -> Value {
     match val {
         Value::Map(entries) => {
@@ -70,39 +70,24 @@ fn sort_value_maps(val: Value) -> Value {
     }
 }
 
-/// Compare CBOR map keys matching serde_cbor's derived `Ord` on `Value`.
+/// Compare CBOR map keys per RFC 8949 Section 4.2.1 (Deterministically Encoded CBOR).
 ///
-/// serde_cbor orders variants: Integer, Bytes, Text, Array, Map, Tag, Bool, Null, Float.
-/// Within a variant, standard Rust comparison applies (i128 for Integer, String for Text, etc.).
+/// Keys are compared by their encoded byte representations:
+/// shorter encoded key sorts first, then bytewise lexicographic comparison.
+/// This replaces the previous serde_cbor-derived ordering which incorrectly
+/// sorted integer keys by logical value (putting negatives before positives).
 pub fn cmp_cbor_keys(a: &Value, b: &Value) -> Ordering {
-    fn variant_idx(v: &Value) -> u8 {
-        match v {
-            Value::Integer(_) => 0,
-            Value::Bytes(_) => 1,
-            Value::Text(_) => 2,
-            Value::Array(_) => 3,
-            Value::Map(_) => 4,
-            Value::Tag(_, _) => 5,
-            Value::Bool(_) => 6,
-            Value::Null => 7,
-            Value::Float(_) => 8,
-            _ => 9,
-        }
+    fn encode_key(v: &Value) -> Vec<u8> {
+        let mut buf = Vec::new();
+        ciborium::into_writer(v, &mut buf).expect("CBOR key encoding should not fail");
+        buf
     }
 
-    variant_idx(a)
-        .cmp(&variant_idx(b))
-        .then_with(|| match (a, b) {
-            (Value::Integer(x), Value::Integer(y)) => {
-                let xv: i128 = (*x).into();
-                let yv: i128 = (*y).into();
-                xv.cmp(&yv)
-            }
-            (Value::Text(x), Value::Text(y)) => x.cmp(y),
-            (Value::Bytes(x), Value::Bytes(y)) => x.cmp(y),
-            (Value::Bool(x), Value::Bool(y)) => x.cmp(y),
-            _ => Ordering::Equal,
-        })
+    let a_enc = encode_key(a);
+    let b_enc = encode_key(b);
+    // RFC 8949 §4.2.1: shorter encoded form sorts first,
+    // then bytewise lexicographic comparison for equal lengths.
+    a_enc.len().cmp(&b_enc.len()).then_with(|| a_enc.cmp(&b_enc))
 }
 
 /// Serialize a `ciborium::Value` to CBOR bytes.
