@@ -73,8 +73,7 @@ async fn main() -> anyhow::Result<()> {
 
     // Spawn background reconnect loops if enabled.
     if config.reconnect_enabled {
-        let health_interval =
-            Duration::from_secs(config.reconnect_health_interval_secs);
+        let health_interval = Duration::from_secs(config.reconnect_health_interval_secs);
 
         let _main_reconnect = spawn_reconnect_loop(
             ReconnectHandle {

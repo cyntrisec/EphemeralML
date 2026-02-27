@@ -89,8 +89,7 @@ pub fn spawn_reconnect_loop(
             let reconnected = {
                 // Acquire lock with a timeout to avoid indefinitely blocking
                 // request handlers that also need this mutex.
-                let lock_result =
-                    tokio::time::timeout(CONNECT_TIMEOUT, client.lock()).await;
+                let lock_result = tokio::time::timeout(CONNECT_TIMEOUT, client.lock()).await;
                 let mut c = match lock_result {
                     Ok(guard) => guard,
                     Err(_) => {
@@ -112,11 +111,8 @@ pub fn spawn_reconnect_loop(
 
                 // Bound the establish_channel call so a hanging TCP connect
                 // doesn't hold the mutex indefinitely.
-                tokio::time::timeout(
-                    CONNECT_TIMEOUT,
-                    c.establish_channel(&handle.backend_addr),
-                )
-                .await
+                tokio::time::timeout(CONNECT_TIMEOUT, c.establish_channel(&handle.backend_addr))
+                    .await
             };
 
             match reconnected {
@@ -181,7 +177,12 @@ async fn tcp_probe(addr: &str, timeout: Duration) -> bool {
 ///
 /// Returns a duration in `[0, min(base * 2^(attempt-1), cap)]`.
 /// Same algorithm as `host/src/retry.rs` — duplicated to avoid cross-crate dep.
-pub fn compute_backoff(attempt: u32, base_ms: u64, cap_ms: u64, rng: &mut impl RngCore) -> Duration {
+pub fn compute_backoff(
+    attempt: u32,
+    base_ms: u64,
+    cap_ms: u64,
+    rng: &mut impl RngCore,
+) -> Duration {
     let exp = attempt.saturating_sub(1);
     let shift = exp.min(16);
     let factor = 1u64.checked_shl(shift).unwrap_or(u64::MAX);

@@ -244,7 +244,11 @@ async fn health_returns_ok_status_code_even_when_unavailable() {
         .body(axum::body::Body::empty())
         .unwrap();
     let resp = app.oneshot(req).await.unwrap();
-    assert_eq!(resp.status(), StatusCode::OK, "/health must always return 200");
+    assert_eq!(
+        resp.status(),
+        StatusCode::OK,
+        "/health must always return 200"
+    );
     let json = body_json(resp).await;
     assert_eq!(json["status"], "unavailable");
 }

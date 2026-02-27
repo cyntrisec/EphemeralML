@@ -96,18 +96,15 @@ impl AppState {
         if self.embedding_connected.load(Ordering::Acquire) {
             return Ok(());
         }
-        tokio::time::timeout(
-            CONNECT_TIMEOUT,
-            client.establish_channel(emb_addr),
-        )
-        .await
-        .map_err(|_| {
-            format!(
-                "Embedding backend handshake timed out after {}s",
-                CONNECT_TIMEOUT.as_secs()
-            )
-        })?
-        .map_err(|e| format!("Embedding backend handshake failed: {e}"))?;
+        tokio::time::timeout(CONNECT_TIMEOUT, client.establish_channel(emb_addr))
+            .await
+            .map_err(|_| {
+                format!(
+                    "Embedding backend handshake timed out after {}s",
+                    CONNECT_TIMEOUT.as_secs()
+                )
+            })?
+            .map_err(|e| format!("Embedding backend handshake failed: {e}"))?;
         self.embedding_connected.store(true, Ordering::Release);
         tracing::info!(
             backend = %emb_addr,
