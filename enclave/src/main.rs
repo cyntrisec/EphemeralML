@@ -1312,6 +1312,8 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
         let tokenizer_bytes = std::fs::read(args.model_dir.join("tokenizer.json"))
             .map_err(|e| format!("Failed to read tokenizer.json: {}", e))?;
 
+        let model_hash: Option<[u8; 32]>;
+
         if model_format == "gguf" {
             let gguf_bytes = std::fs::read(args.model_dir.join("model.gguf"))
                 .map_err(|e| format!("Failed to read model.gguf: {}", e))?;
@@ -1321,6 +1323,12 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
                 size_mb = gguf_bytes.len() as f64 / (1024.0 * 1024.0),
                 "GGUF model file loaded into memory"
             );
+
+            // Compute model hash for AIR v1 receipts
+            {
+                use sha2::{Digest, Sha256};
+                model_hash = Some(Sha256::digest(&gguf_bytes).into());
+            }
 
             engine.register_model_gguf(&args.model_id, &gguf_bytes, &tokenizer_bytes)?;
         } else if model_format == "safetensors" {
@@ -1334,6 +1342,12 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
                 size_mb = weights_bytes.len() as f64 / (1024.0 * 1024.0),
                 "Safetensors model files loaded into memory"
             );
+
+            // Compute model hash for AIR v1 receipts
+            {
+                use sha2::{Digest, Sha256};
+                model_hash = Some(Sha256::digest(&weights_bytes).into());
+            }
 
             engine.register_model(
                 &args.model_id,
@@ -1357,9 +1371,15 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
             "Model registered successfully"
         );
 
-        // Build stage executor and attestation bridge
-        let executor =
-            EphemeralStageExecutor::new(engine, attestation_provider.clone(), receipt_key, None);
+        // Build stage executor and attestation bridge (with AIR v1 receipt support)
+        let executor = EphemeralStageExecutor::with_air_v1(
+            engine,
+            attestation_provider.clone(),
+            receipt_key,
+            None,
+            model_hash,
+            args.receipt_issuer.clone(),
+        );
         let bridge = AttestationBridge::new(attestation_provider, receipt_pk);
 
         // Use MockVerifier for host connections: the host orchestrator is NOT inside a
