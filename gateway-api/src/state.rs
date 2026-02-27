@@ -1,7 +1,7 @@
 //! Shared application state — holds the backend client behind a Mutex.
 
 use std::sync::Arc;
-use tokio::sync::Mutex;
+use tokio::sync::{Mutex, Notify};
 
 use ephemeral_ml_client::{SecureClient, SecureEnclaveClient};
 
@@ -18,6 +18,10 @@ pub struct AppState {
     pub embedding_client: Option<Arc<Mutex<SecureEnclaveClient>>>,
     /// Set to `true` once the embedding backend channel is established.
     pub embedding_connected: Arc<std::sync::atomic::AtomicBool>,
+    /// Wakes the background reconnect loop for the main backend.
+    pub reconnect_notify: Arc<Notify>,
+    /// Wakes the background reconnect loop for the embedding backend.
+    pub embedding_reconnect_notify: Arc<Notify>,
 }
 
 impl AppState {
@@ -32,6 +36,8 @@ impl AppState {
             connected: Arc::new(std::sync::atomic::AtomicBool::new(false)),
             embedding_client: embedding_client.map(|c| Arc::new(Mutex::new(c))),
             embedding_connected: Arc::new(std::sync::atomic::AtomicBool::new(false)),
+            reconnect_notify: Arc::new(Notify::new()),
+            embedding_reconnect_notify: Arc::new(Notify::new()),
         }
     }
 

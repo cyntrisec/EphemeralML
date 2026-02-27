@@ -1,8 +1,10 @@
 use clap::Parser;
 use ephemeral_ml_client::SecureEnclaveClient;
 use ephemeralml_gateway::config::GatewayConfig;
+use ephemeralml_gateway::reconnect::{spawn_reconnect_loop, ReconnectHandle};
 use ephemeralml_gateway::state::AppState;
 use std::net::SocketAddr;
+use std::time::Duration;
 use tracing_subscriber::EnvFilter;
 
 #[tokio::main]
@@ -67,7 +69,51 @@ async fn main() -> anyhow::Result<()> {
         "Active endpoints"
     );
 
-    let state = AppState::new(client, config, embedding_client);
+    let state = AppState::new(client, config.clone(), embedding_client);
+
+    // Spawn background reconnect loops if enabled.
+    if config.reconnect_enabled {
+        let health_interval =
+            Duration::from_secs(config.reconnect_health_interval_secs);
+
+        let _main_reconnect = spawn_reconnect_loop(
+            ReconnectHandle {
+                backend_name: "main".to_string(),
+                backend_addr: config.backend_addr.clone(),
+                backoff_base_ms: config.reconnect_backoff_base_ms,
+                backoff_cap_ms: config.reconnect_backoff_cap_ms,
+                health_interval,
+            },
+            state.client.clone(),
+            state.connected.clone(),
+            state.reconnect_notify.clone(),
+        );
+
+        if let (Some(ref emb_addr), Some(ref emb_client)) =
+            (&config.embedding_backend_addr, &state.embedding_client)
+        {
+            let _emb_reconnect = spawn_reconnect_loop(
+                ReconnectHandle {
+                    backend_name: "embedding".to_string(),
+                    backend_addr: emb_addr.clone(),
+                    backoff_base_ms: config.reconnect_backoff_base_ms,
+                    backoff_cap_ms: config.reconnect_backoff_cap_ms,
+                    health_interval,
+                },
+                emb_client.clone(),
+                state.embedding_connected.clone(),
+                state.embedding_reconnect_notify.clone(),
+            );
+        }
+
+        tracing::info!(
+            backoff_base_ms = config.reconnect_backoff_base_ms,
+            backoff_cap_ms = config.reconnect_backoff_cap_ms,
+            health_interval_secs = config.reconnect_health_interval_secs,
+            "Background reconnect enabled"
+        );
+    }
+
     let app = ephemeralml_gateway::build_router(state);
 
     let listener = tokio::net::TcpListener::bind(addr).await?;

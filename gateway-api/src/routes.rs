@@ -60,17 +60,26 @@ pub async fn health(State(state): State<AppState>) -> Json<serde_json::Value> {
     let emb_connected = state
         .embedding_connected
         .load(std::sync::atomic::Ordering::Relaxed);
+    let reconnect_enabled = state.config.reconnect_enabled;
 
     let status = if emb_configured {
         if connected && emb_connected {
             "ok"
         } else if connected || emb_connected {
-            "degraded"
+            if reconnect_enabled {
+                "reconnecting"
+            } else {
+                "degraded"
+            }
+        } else if reconnect_enabled {
+            "reconnecting"
         } else {
             "unavailable"
         }
     } else if connected {
         "ok"
+    } else if reconnect_enabled {
+        "reconnecting"
     } else {
         "degraded"
     };
@@ -80,6 +89,10 @@ pub async fn health(State(state): State<AppState>) -> Json<serde_json::Value> {
         "backend_connected": connected,
         "version": env!("CARGO_PKG_VERSION"),
     });
+
+    if reconnect_enabled {
+        body["reconnect_enabled"] = serde_json::json!(true);
+    }
 
     if emb_configured {
         body["embedding_backend_configured"] = serde_json::json!(true);
@@ -325,6 +338,7 @@ pub async fn chat_completions(
                 state
                     .connected
                     .store(false, std::sync::atomic::Ordering::Release);
+                state.reconnect_notify.notify_one();
             }
             return error_response_with_id(
                 StatusCode::BAD_GATEWAY,
@@ -342,6 +356,7 @@ pub async fn chat_completions(
             state
                 .connected
                 .store(false, std::sync::atomic::Ordering::Release);
+            state.reconnect_notify.notify_one();
             return error_response_with_id(
                 StatusCode::GATEWAY_TIMEOUT,
                 ErrorResponse::server_error("Backend inference timed out."),
@@ -560,6 +575,7 @@ pub async fn responses(
                 state
                     .connected
                     .store(false, std::sync::atomic::Ordering::Release);
+                state.reconnect_notify.notify_one();
             }
             return error_response_with_id(
                 StatusCode::BAD_GATEWAY,
@@ -577,6 +593,7 @@ pub async fn responses(
             state
                 .connected
                 .store(false, std::sync::atomic::Ordering::Release);
+            state.reconnect_notify.notify_one();
             return error_response_with_id(
                 StatusCode::GATEWAY_TIMEOUT,
                 ErrorResponse::server_error("Backend inference timed out."),
@@ -766,10 +783,12 @@ pub async fn embeddings(
                         state
                             .embedding_connected
                             .store(false, std::sync::atomic::Ordering::Release);
+                        state.embedding_reconnect_notify.notify_one();
                     } else {
                         state
                             .connected
                             .store(false, std::sync::atomic::Ordering::Release);
+                        state.reconnect_notify.notify_one();
                     }
                 }
                 return error_response_with_id(
@@ -789,10 +808,12 @@ pub async fn embeddings(
                     state
                         .embedding_connected
                         .store(false, std::sync::atomic::Ordering::Release);
+                    state.embedding_reconnect_notify.notify_one();
                 } else {
                     state
                         .connected
                         .store(false, std::sync::atomic::Ordering::Release);
+                    state.reconnect_notify.notify_one();
                 }
                 return error_response_with_id(
                     StatusCode::GATEWAY_TIMEOUT,

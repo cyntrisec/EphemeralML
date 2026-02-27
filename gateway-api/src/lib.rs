@@ -7,6 +7,7 @@
 
 pub mod auth;
 pub mod config;
+pub mod reconnect;
 pub mod routes;
 pub mod state;
 pub mod types;

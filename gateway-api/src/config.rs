@@ -62,6 +62,24 @@ pub struct GatewayConfig {
     /// Model ID for the embedding backend. Required when `EPHEMERALML_EMBEDDING_BACKEND_ADDR` is set.
     #[arg(long, env = "EPHEMERALML_EMBEDDING_MODEL")]
     pub embedding_model: Option<String>,
+
+    /// Enable background reconnect loop with exponential backoff.
+    /// When true, a background task monitors connectivity and reconnects
+    /// automatically when a backend disconnects.
+    #[arg(long, env = "EPHEMERALML_RECONNECT_ENABLED", default_value = "true")]
+    pub reconnect_enabled: bool,
+
+    /// Base delay in milliseconds for exponential backoff on reconnect.
+    #[arg(long, env = "EPHEMERALML_RECONNECT_BACKOFF_BASE_MS", default_value = "100")]
+    pub reconnect_backoff_base_ms: u64,
+
+    /// Maximum delay in milliseconds for exponential backoff on reconnect.
+    #[arg(long, env = "EPHEMERALML_RECONNECT_BACKOFF_CAP_MS", default_value = "30000")]
+    pub reconnect_backoff_cap_ms: u64,
+
+    /// Interval in seconds between health-check pings when connected.
+    #[arg(long, env = "EPHEMERALML_RECONNECT_HEALTH_INTERVAL_SECS", default_value = "5")]
+    pub reconnect_health_interval_secs: u64,
 }
 
 impl GatewayConfig {
@@ -126,6 +144,17 @@ impl GatewayConfig {
                 "EPHEMERALML_EMBEDDING_BACKEND_ADDR is set but 'embeddings' capability is not \
                  enabled — the embedding backend will not be used. Add 'embeddings' to \
                  EPHEMERALML_MODEL_CAPABILITIES."
+            );
+        }
+
+        // Reconnect backoff base exceeds cap — cap will always apply.
+        if self.reconnect_backoff_base_ms > self.reconnect_backoff_cap_ms {
+            tracing::warn!(
+                base_ms = self.reconnect_backoff_base_ms,
+                cap_ms = self.reconnect_backoff_cap_ms,
+                "EPHEMERALML_RECONNECT_BACKOFF_BASE_MS exceeds \
+                 EPHEMERALML_RECONNECT_BACKOFF_CAP_MS — backoff will be capped at {cap_ms}ms",
+                cap_ms = self.reconnect_backoff_cap_ms
             );
         }
 

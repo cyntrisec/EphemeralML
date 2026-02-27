@@ -39,6 +39,10 @@ fn test_router_with_capabilities(
         model_capabilities: model_capabilities.to_string(),
         embedding_backend_addr: None,
         embedding_model: None,
+        reconnect_enabled: false,
+        reconnect_backoff_base_ms: 100,
+        reconnect_backoff_cap_ms: 30_000,
+        reconnect_health_interval_secs: 5,
     };
     let client = SecureEnclaveClient::new("test-gateway".to_string());
     let state = AppState::new(client, config, None);
@@ -59,6 +63,10 @@ fn test_router_with_embedding_backend(model_capabilities: &str, embedding_model:
         model_capabilities: model_capabilities.to_string(),
         embedding_backend_addr: Some("127.0.0.1:0".to_string()),
         embedding_model: Some(embedding_model.to_string()),
+        reconnect_enabled: false,
+        reconnect_backoff_base_ms: 100,
+        reconnect_backoff_cap_ms: 30_000,
+        reconnect_health_interval_secs: 5,
     };
     let client = SecureEnclaveClient::new("test-gateway".to_string());
     let emb_client = SecureEnclaveClient::new("test-gateway-embedding".to_string());
@@ -125,6 +133,56 @@ async fn health_with_embedding_backend_shows_both() {
     assert_eq!(json["embedding_backend_connected"], false);
     // Both backends disconnected → "unavailable"
     assert_eq!(json["status"], "unavailable");
+}
+
+#[tokio::test]
+async fn health_shows_reconnecting_when_enabled() {
+    // reconnect_enabled=true, not connected → "reconnecting"
+    let config = GatewayConfig {
+        backend_addr: "127.0.0.1:0".to_string(),
+        default_model: "test-model".to_string(),
+        api_key: None,
+        host: "127.0.0.1".to_string(),
+        port: 0,
+        request_timeout_secs: 5,
+        include_metadata_json: false,
+        receipt_header_full: false,
+        model_capabilities: "chat".to_string(),
+        embedding_backend_addr: None,
+        embedding_model: None,
+        reconnect_enabled: true,
+        reconnect_backoff_base_ms: 100,
+        reconnect_backoff_cap_ms: 30_000,
+        reconnect_health_interval_secs: 5,
+    };
+    let client = SecureEnclaveClient::new("test".to_string());
+    let state = AppState::new(client, config, None);
+    let app = ephemeralml_gateway::build_router(state);
+    let req = axum::http::Request::builder()
+        .uri("/health")
+        .body(axum::body::Body::empty())
+        .unwrap();
+    let resp = app.oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let json = body_json(resp).await;
+    assert_eq!(json["status"], "reconnecting");
+    assert_eq!(json["reconnect_enabled"], true);
+    assert_eq!(json["backend_connected"], false);
+}
+
+#[tokio::test]
+async fn health_shows_degraded_when_reconnect_disabled() {
+    // reconnect_enabled=false, not connected → "degraded"
+    let app = test_router(None, false, false);
+    let req = axum::http::Request::builder()
+        .uri("/health")
+        .body(axum::body::Body::empty())
+        .unwrap();
+    let resp = app.oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let json = body_json(resp).await;
+    assert_eq!(json["status"], "degraded");
+    assert!(json.get("reconnect_enabled").is_none());
 }
 
 // ---------------------------------------------------------------------------
@@ -704,6 +762,10 @@ fn config_rejects_embedding_backend_without_model() {
         model_capabilities: "chat,embeddings".to_string(),
         embedding_backend_addr: Some("127.0.0.1:9999".to_string()),
         embedding_model: None,
+        reconnect_enabled: false,
+        reconnect_backoff_base_ms: 100,
+        reconnect_backoff_cap_ms: 30_000,
+        reconnect_health_interval_secs: 5,
     };
     let result = config.validate();
     assert!(result.is_err());
@@ -724,6 +786,10 @@ fn config_rejects_unknown_capability() {
         model_capabilities: "chat,banana".to_string(),
         embedding_backend_addr: None,
         embedding_model: None,
+        reconnect_enabled: false,
+        reconnect_backoff_base_ms: 100,
+        reconnect_backoff_cap_ms: 30_000,
+        reconnect_health_interval_secs: 5,
     };
     let result = config.validate();
     assert!(result.is_err());
@@ -744,6 +810,10 @@ fn config_rejects_duplicate_model_ids() {
         model_capabilities: "chat,embeddings".to_string(),
         embedding_backend_addr: Some("127.0.0.1:9999".to_string()),
         embedding_model: Some("test-model".to_string()), // same as default
+        reconnect_enabled: false,
+        reconnect_backoff_base_ms: 100,
+        reconnect_backoff_cap_ms: 30_000,
+        reconnect_health_interval_secs: 5,
     };
     let result = config.validate();
     assert!(result.is_err());
@@ -764,6 +834,10 @@ fn config_accepts_valid_dual_backend() {
         model_capabilities: "chat,embeddings".to_string(),
         embedding_backend_addr: Some("127.0.0.1:9999".to_string()),
         embedding_model: Some("emb-model".to_string()),
+        reconnect_enabled: false,
+        reconnect_backoff_base_ms: 100,
+        reconnect_backoff_cap_ms: 30_000,
+        reconnect_health_interval_secs: 5,
     };
     assert!(config.validate().is_ok());
 }
