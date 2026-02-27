@@ -1034,8 +1034,9 @@ mod tests {
 
     #[test]
     fn test_unknown_model_hash_scheme_claim_fails() {
-        // Build a signed receipt with an unknown scheme to isolate verifier behavior
-        // (build_air_v1 validates the allowlist and would reject this earlier).
+        // Unknown model_hash_scheme is now rejected at parse time (decode_claims).
+        // The verifier receives a CLAIMS_DECODE failure because the parse path
+        // enforces the allowlist before the verifier's layer-3 check runs.
         let key = ReceiptSigningKey::generate().unwrap();
         let mut claims = fixture_claims();
         claims.model_hash_scheme = Some("sha256-custom".to_string());
@@ -1054,10 +1055,9 @@ mod tests {
         let bytes = sign1.to_tagged_vec().unwrap();
 
         let result = verify_air_v1_receipt(&bytes, &key.public_key, &AirVerifyPolicy::default());
-        assert!(!result.verified);
-        assert!(result.has_failure(&AirCheckCode::UnknownModelHashScheme(
-            "sha256-custom".to_string()
-        )));
+        assert!(!result.verified, "receipt with unknown scheme must fail");
+        // Parse-path rejection surfaces as CLAIMS_DECODE failure in the verifier
+        assert!(result.has_failure(&AirCheckCode::PayloadNotMap));
     }
 
     // ── Multiple failures reported ──────────────────────────────────

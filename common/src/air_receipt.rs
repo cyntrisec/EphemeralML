@@ -605,6 +605,16 @@ fn decode_claims(payload: &[u8]) -> Result<AirReceiptClaims> {
     let security_mode = get_text_bounded(entries, AIR_SECURITY_MODE, 64)?;
     let model_hash_scheme = get_text_opt_bounded(entries, AIR_MODEL_HASH_SCHEME, 64)?;
 
+    // Spec §3 model_hash_scheme: "Unknown schemes MUST be rejected (fail-closed)."
+    if let Some(ref scheme) = model_hash_scheme {
+        if !is_known_model_hash_scheme(scheme) {
+            return Err(EphemeralError::ValidationError(format!(
+                "unknown model_hash_scheme in parse path: {}",
+                scheme
+            )));
+        }
+    }
+
     Ok(AirReceiptClaims {
         iss,
         iat,
@@ -1476,6 +1486,30 @@ mod tests {
             .unwrap_err()
             .to_string()
             .contains("is not a text string"));
+    }
+
+    #[test]
+    fn test_unknown_model_hash_scheme_rejected_in_parse_path() {
+        // Regression: parse_air_v1 must reject unknown model_hash_scheme values
+        // even when build_air_v1 is bypassed (e.g., attacker-crafted receipt).
+        let mut claims = fixture_claims();
+        claims.model_hash_scheme = Some("sha256-single".to_string());
+        let tampered = build_tampered_receipt(&claims, |entries| {
+            for (k, v) in entries.iter_mut() {
+                if *k == Value::Integer(AIR_MODEL_HASH_SCHEME.into()) {
+                    *v = Value::Text("sha256-custom-evil".to_string());
+                }
+            }
+        });
+        let result = parse_air_v1(&tampered);
+        assert!(result.is_err(), "parse must reject unknown model_hash_scheme");
+        assert!(
+            result
+                .unwrap_err()
+                .to_string()
+                .contains("unknown model_hash_scheme"),
+            "error message must mention model_hash_scheme"
+        );
     }
 
     #[test]
