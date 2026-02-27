@@ -53,11 +53,15 @@ docker run -p 8090:8090 \
 
 | Method | Path | Description |
 |--------|------|-------------|
-| `GET` | `/health` | Liveness probe + backend connection status |
+| `GET` | `/health` | Liveness probe — always 200; includes backend connection status |
+| `GET` | `/readyz` | Readiness probe — 200 when all backends connected, 503 otherwise |
 | `GET` | `/v1/models` | List available models (OpenAI-compatible) |
 | `POST` | `/v1/chat/completions` | Text generation (non-streaming) |
 | `POST` | `/v1/responses` | Text generation (OpenAI Responses API, non-streaming) |
 | `POST` | `/v1/embeddings` | Text embeddings |
+
+See [`docs/HEALTH.md`](docs/HEALTH.md) for the full health contract: status
+values, state transitions, K8s/ECS probe mapping, and operator actions.
 
 ## Attestation Metadata
 
@@ -126,6 +130,10 @@ All configuration is via environment variables (or CLI flags):
 | `EPHEMERALML_MODEL_CAPABILITIES` | No | `chat` | Comma-separated: `chat`, `embeddings`, or `chat,embeddings` |
 | `EPHEMERALML_EMBEDDING_BACKEND_ADDR` | No | — | Dedicated embedding backend address (`host:port`) |
 | `EPHEMERALML_EMBEDDING_MODEL` | No | — | Model ID for embedding backend (required when `EMBEDDING_BACKEND_ADDR` is set, must differ from `DEFAULT_MODEL`) |
+| `EPHEMERALML_RECONNECT_ENABLED` | No | `true` | Enable background reconnect loop with exponential backoff |
+| `EPHEMERALML_RECONNECT_BACKOFF_BASE_MS` | No | `100` | Base delay (ms) for exponential backoff on reconnect |
+| `EPHEMERALML_RECONNECT_BACKOFF_CAP_MS` | No | `30000` | Maximum delay (ms) for backoff cap |
+| `EPHEMERALML_RECONNECT_HEALTH_INTERVAL_SECS` | No | `5` | Seconds between TCP liveness probes when connected |
 
 ## Model Capabilities
 

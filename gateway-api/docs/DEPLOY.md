@@ -80,20 +80,65 @@ docker run -d --name gateway -p 8090:8090 \
 | `EPHEMERALML_MODEL_CAPABILITIES` | No | `chat` | `chat`, `embeddings`, or `chat,embeddings` |
 | `EPHEMERALML_EMBEDDING_BACKEND_ADDR` | No | — | Dedicated embedding backend IP:port |
 | `EPHEMERALML_EMBEDDING_MODEL` | No | — | Model ID for embedding backend |
+| `EPHEMERALML_RECONNECT_ENABLED` | No | `true` | Background reconnect with exponential backoff |
+| `EPHEMERALML_RECONNECT_BACKOFF_BASE_MS` | No | `100` | Base delay (ms) for backoff |
+| `EPHEMERALML_RECONNECT_BACKOFF_CAP_MS` | No | `30000` | Maximum delay (ms) cap |
+| `EPHEMERALML_RECONNECT_HEALTH_INTERVAL_SECS` | No | `5` | Seconds between TCP liveness probes |
 
 ## Health Checks
 
-```bash
-# Liveness probe
-curl http://gateway:8090/health
-# Returns: {"status": "ok", "backend_connected": true, ...}
+The gateway exposes two health endpoints. See [`HEALTH.md`](HEALTH.md) for the
+full contract (state machine, JSON schemas, operator action table).
 
-# Readiness (backend must be connected)
-curl -sf http://gateway:8090/health | jq -e '.backend_connected == true'
+```bash
+# Liveness — always returns 200 (process alive)
+curl http://gateway:8090/health
+# Returns: {"status": "ok", "backend_connected": true, "version": "...", ...}
+
+# Readiness — 200 when all backends connected, 503 otherwise
+curl -sf http://gateway:8090/readyz
+# Returns: {"ready": true, "backend_connected": true}
 ```
 
-Use `/health` for container orchestrator probes (ECS, K8s, Cloud Run).
-The gateway reports `"degraded"` when the backend channel is not yet established.
+**Status values** in `/health`:
+
+| Status | Condition | `reconnect_enabled` |
+|--------|-----------|---------------------|
+| `ok` | All configured backends connected | any |
+| `reconnecting` | At least one backend disconnected | `true` |
+| `degraded` | Some backends disconnected | `false` |
+| `unavailable` | All backends disconnected (dual-backend only) | `false` |
+
+### Kubernetes Probes
+
+```yaml
+livenessProbe:
+  httpGet:
+    path: /health
+    port: 8090
+  initialDelaySeconds: 5
+  periodSeconds: 10
+readinessProbe:
+  httpGet:
+    path: /readyz
+    port: 8090
+  initialDelaySeconds: 2
+  periodSeconds: 5
+```
+
+### ECS Health Check
+
+```json
+{
+  "healthCheck": {
+    "command": ["CMD-SHELL", "curl -sf http://localhost:8090/readyz || exit 1"],
+    "interval": 10,
+    "timeout": 5,
+    "retries": 3,
+    "startPeriod": 15
+  }
+}
+```
 
 ## Auth
 
@@ -132,7 +177,9 @@ RUST_LOG=ephemeralml_gateway=debug  # verbose
 | `502 Backend unavailable` | Enclave not running or unreachable | Check enclave health, VPC firewall |
 | `504 Gateway Timeout` | Inference >120s | Increase `EPHEMERALML_REQUEST_TIMEOUT_SECS` |
 | `401 Invalid API key` | Missing or wrong bearer token | Check `EPHEMERALML_API_KEY` |
-| `"degraded"` in `/health` | Channel not yet established | First request triggers connection |
+| `"degraded"` in `/health` | Backend disconnected, reconnect disabled | Check backend, send inference request (lazy connect), or enable `EPHEMERALML_RECONNECT_ENABLED=true` |
+| `"reconnecting"` in `/health` | Backend disconnected, auto-reconnecting | Wait; check logs for backoff progress. If >2 min, check backend health |
+| `"unavailable"` in `/health` | All backends disconnected, reconnect disabled | Check all backend processes, enable reconnect or restart gateway |
 | Proxy returns 431/502 on large responses | Full receipt header too large | Keep `EPHEMERALML_RECEIPT_HEADER_FULL=false` (default) |
 
 ## TLS

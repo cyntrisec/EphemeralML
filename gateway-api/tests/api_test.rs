@@ -231,6 +231,193 @@ async fn readyz_skips_auth() {
 }
 
 // ---------------------------------------------------------------------------
+// Health contract: /health always returns 200 (liveness semantics)
+// ---------------------------------------------------------------------------
+
+#[tokio::test]
+async fn health_returns_ok_status_code_even_when_unavailable() {
+    // Dual-backend, both disconnected, reconnect disabled → status "unavailable",
+    // but HTTP status must still be 200 (liveness probe semantics).
+    let app = test_router_with_embedding_backend("chat,embeddings", "emb-model");
+    let req = axum::http::Request::builder()
+        .uri("/health")
+        .body(axum::body::Body::empty())
+        .unwrap();
+    let resp = app.oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK, "/health must always return 200");
+    let json = body_json(resp).await;
+    assert_eq!(json["status"], "unavailable");
+}
+
+// ---------------------------------------------------------------------------
+// Readiness: /readyz returns 200 when connected
+// ---------------------------------------------------------------------------
+
+#[tokio::test]
+async fn readyz_returns_200_when_connected() {
+    // Manually mark the backend as connected, then verify /readyz returns 200.
+    let config = GatewayConfig {
+        backend_addr: "127.0.0.1:0".to_string(),
+        default_model: "test-model".to_string(),
+        api_key: None,
+        host: "127.0.0.1".to_string(),
+        port: 0,
+        request_timeout_secs: 5,
+        include_metadata_json: false,
+        receipt_header_full: false,
+        model_capabilities: "chat".to_string(),
+        embedding_backend_addr: None,
+        embedding_model: None,
+        reconnect_enabled: false,
+        reconnect_backoff_base_ms: 100,
+        reconnect_backoff_cap_ms: 30_000,
+        reconnect_health_interval_secs: 5,
+    };
+    let client = SecureEnclaveClient::new("test".to_string());
+    let state = AppState::new(client, config, None);
+    state
+        .connected
+        .store(true, std::sync::atomic::Ordering::Release);
+    let app = ephemeralml_gateway::build_router(state);
+    let req = axum::http::Request::builder()
+        .uri("/readyz")
+        .body(axum::body::Body::empty())
+        .unwrap();
+    let resp = app.oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let json = body_json(resp).await;
+    assert_eq!(json["ready"], true);
+    assert_eq!(json["backend_connected"], true);
+}
+
+#[tokio::test]
+async fn readyz_embedding_both_connected_returns_200() {
+    // Dual-backend: mark both connected → /readyz should return 200.
+    let config = GatewayConfig {
+        backend_addr: "127.0.0.1:0".to_string(),
+        default_model: "test-model".to_string(),
+        api_key: None,
+        host: "127.0.0.1".to_string(),
+        port: 0,
+        request_timeout_secs: 5,
+        include_metadata_json: false,
+        receipt_header_full: false,
+        model_capabilities: "chat,embeddings".to_string(),
+        embedding_backend_addr: Some("127.0.0.1:0".to_string()),
+        embedding_model: Some("emb-model".to_string()),
+        reconnect_enabled: false,
+        reconnect_backoff_base_ms: 100,
+        reconnect_backoff_cap_ms: 30_000,
+        reconnect_health_interval_secs: 5,
+    };
+    let client = SecureEnclaveClient::new("test".to_string());
+    let emb_client = SecureEnclaveClient::new("test-emb".to_string());
+    let state = AppState::new(client, config, Some(emb_client));
+    state
+        .connected
+        .store(true, std::sync::atomic::Ordering::Release);
+    state
+        .embedding_connected
+        .store(true, std::sync::atomic::Ordering::Release);
+    let app = ephemeralml_gateway::build_router(state);
+    let req = axum::http::Request::builder()
+        .uri("/readyz")
+        .body(axum::body::Body::empty())
+        .unwrap();
+    let resp = app.oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let json = body_json(resp).await;
+    assert_eq!(json["ready"], true);
+    assert_eq!(json["backend_connected"], true);
+    assert_eq!(json["embedding_backend_connected"], true);
+}
+
+// ---------------------------------------------------------------------------
+// Health: dual-backend partial connectivity
+// ---------------------------------------------------------------------------
+
+#[tokio::test]
+async fn health_embedding_partial_reconnecting() {
+    // Dual-backend: chat connected, embedding not, reconnect enabled → "reconnecting"
+    let config = GatewayConfig {
+        backend_addr: "127.0.0.1:0".to_string(),
+        default_model: "test-model".to_string(),
+        api_key: None,
+        host: "127.0.0.1".to_string(),
+        port: 0,
+        request_timeout_secs: 5,
+        include_metadata_json: false,
+        receipt_header_full: false,
+        model_capabilities: "chat,embeddings".to_string(),
+        embedding_backend_addr: Some("127.0.0.1:0".to_string()),
+        embedding_model: Some("emb-model".to_string()),
+        reconnect_enabled: true,
+        reconnect_backoff_base_ms: 100,
+        reconnect_backoff_cap_ms: 30_000,
+        reconnect_health_interval_secs: 5,
+    };
+    let client = SecureEnclaveClient::new("test".to_string());
+    let emb_client = SecureEnclaveClient::new("test-emb".to_string());
+    let state = AppState::new(client, config, Some(emb_client));
+    // Only chat backend connected
+    state
+        .connected
+        .store(true, std::sync::atomic::Ordering::Release);
+    let app = ephemeralml_gateway::build_router(state);
+    let req = axum::http::Request::builder()
+        .uri("/health")
+        .body(axum::body::Body::empty())
+        .unwrap();
+    let resp = app.oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let json = body_json(resp).await;
+    assert_eq!(json["status"], "reconnecting");
+    assert_eq!(json["backend_connected"], true);
+    assert_eq!(json["embedding_backend_connected"], false);
+    assert_eq!(json["reconnect_enabled"], true);
+}
+
+#[tokio::test]
+async fn health_embedding_partial_degraded() {
+    // Dual-backend: chat connected, embedding not, reconnect disabled → "degraded"
+    let config = GatewayConfig {
+        backend_addr: "127.0.0.1:0".to_string(),
+        default_model: "test-model".to_string(),
+        api_key: None,
+        host: "127.0.0.1".to_string(),
+        port: 0,
+        request_timeout_secs: 5,
+        include_metadata_json: false,
+        receipt_header_full: false,
+        model_capabilities: "chat,embeddings".to_string(),
+        embedding_backend_addr: Some("127.0.0.1:0".to_string()),
+        embedding_model: Some("emb-model".to_string()),
+        reconnect_enabled: false,
+        reconnect_backoff_base_ms: 100,
+        reconnect_backoff_cap_ms: 30_000,
+        reconnect_health_interval_secs: 5,
+    };
+    let client = SecureEnclaveClient::new("test".to_string());
+    let emb_client = SecureEnclaveClient::new("test-emb".to_string());
+    let state = AppState::new(client, config, Some(emb_client));
+    // Only chat backend connected
+    state
+        .connected
+        .store(true, std::sync::atomic::Ordering::Release);
+    let app = ephemeralml_gateway::build_router(state);
+    let req = axum::http::Request::builder()
+        .uri("/health")
+        .body(axum::body::Body::empty())
+        .unwrap();
+    let resp = app.oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let json = body_json(resp).await;
+    assert_eq!(json["status"], "degraded");
+    assert_eq!(json["backend_connected"], true);
+    assert_eq!(json["embedding_backend_connected"], false);
+}
+
+// ---------------------------------------------------------------------------
 // Models endpoint
 // ---------------------------------------------------------------------------
 
