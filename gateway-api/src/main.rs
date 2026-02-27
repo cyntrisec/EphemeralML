@@ -31,7 +31,7 @@ async fn main() -> anyhow::Result<()> {
         backend = %config.backend_addr,
         model = %config.default_model,
         capabilities = %config.model_capabilities,
-        auth = config.api_key.is_some(),
+        auth = config.api_key.as_ref().is_some_and(|k| !k.is_empty()),
         embedding_backend = ?config.embedding_backend_addr,
         embedding_model = ?config.embedding_model,
         "Starting EphemeralML OpenAI-compatible gateway"

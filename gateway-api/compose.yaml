@@ -27,7 +27,8 @@ services:
     command: >
       --model-dir /app/test_assets/minilm
       --model-id stage-0
-      --listen 0.0.0.0:9000
+      --direct
+      --control-addr 0.0.0.0:9000
 
   # OpenAI-compatible gateway
   gateway:
@@ -42,5 +43,6 @@ services:
       EPHEMERALML_GATEWAY_PORT: "8090"
       EPHEMERALML_API_KEY: "${EPHEMERALML_API_KEY:-}"
       EPHEMERALML_INCLUDE_METADATA_JSON: "${EPHEMERALML_INCLUDE_METADATA_JSON:-false}"
+      EPHEMERALML_MODEL_CAPABILITIES: "${EPHEMERALML_MODEL_CAPABILITIES:-chat,embeddings}"
     depends_on:
       - backend

@@ -1214,13 +1214,14 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
             info!(
                 step = "boot_evidence",
                 mode = "direct",
-                "Mock direct mode: accepting client connections on 127.0.0.1:9000"
+                addr = %args.control_addr,
+                "Mock direct mode: accepting client connections"
             );
             run_direct_tcp(
                 engine,
                 mock_provider,
                 receipt_key,
-                "127.0.0.1:9000",
+                &args.control_addr,
                 &mock_transport,
                 &client_verifier,
                 mock_attestation_hash,

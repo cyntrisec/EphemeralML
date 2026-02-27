@@ -1,8 +1,8 @@
 # Builds the EphemeralML enclave binary in mock mode for local eval.
 # This is NOT a production image — it simulates attestation locally.
 
-FROM rust:1.83-slim-bookworm AS builder
-RUN apt-get update && apt-get install -y pkg-config libssl-dev && rm -rf /var/lib/apt/lists/*
+FROM rust:slim-bookworm AS builder
+RUN apt-get update && apt-get install -y pkg-config libssl-dev g++ && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /build
 COPY Cargo.toml Cargo.lock ./
@@ -19,7 +19,15 @@ RUN for d in common client host enclave verifier-api gateway-api compliance; do 
     done
 RUN echo "fn main() {}" > enclave/src/main.rs && \
     echo "fn main() {}" > gateway-api/src/main.rs && \
-    echo "fn main() {}" > verifier-api/src/main.rs
+    echo "fn main() {}" > verifier-api/src/main.rs && \
+    echo "fn main() {}" > host/src/main.rs && \
+    mkdir -p enclave/src/bin host/src/bin compliance/src/bin && \
+    echo "fn main() {}" > enclave/src/bin/orchestrator.rs && \
+    echo "fn main() {}" > enclave/src/bin/benchmark_baseline.rs && \
+    echo "fn main() {}" > enclave/src/bin/vsock_echo.rs && \
+    echo "fn main() {}" > host/src/bin/spy_host.rs && \
+    echo "fn main() {}" > host/src/bin/kms_proxy_host.rs && \
+    echo "fn main() {}" > compliance/src/bin/compliance_cli.rs
 
 RUN cargo build --release -p ephemeral-ml-enclave --features mock 2>/dev/null || true
 
@@ -28,6 +36,9 @@ COPY client/ client/
 COPY enclave/ enclave/
 COPY host/ host/
 COPY test_assets/ test_assets/
+
+# Invalidate cargo cache for crates whose source was overwritten from stubs
+RUN touch common/src/lib.rs client/src/lib.rs enclave/src/main.rs host/src/lib.rs
 
 RUN cargo build --release -p ephemeral-ml-enclave --features mock
 

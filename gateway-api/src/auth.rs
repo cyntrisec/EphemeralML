@@ -17,8 +17,8 @@ pub async fn auth_middleware(
     next: Next,
 ) -> Response {
     let api_key = match &state.config.api_key {
-        Some(key) => key,
-        None => return next.run(request).await,
+        Some(key) if !key.is_empty() => key,
+        _ => return next.run(request).await,
     };
 
     // Skip auth on operational endpoints

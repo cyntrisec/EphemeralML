@@ -1,8 +1,8 @@
 # Multi-stage build for the EphemeralML OpenAI gateway.
 # Produces a minimal image (~30MB) with just the gateway binary.
 
-FROM rust:1.83-slim-bookworm AS builder
-RUN apt-get update && apt-get install -y pkg-config libssl-dev && rm -rf /var/lib/apt/lists/*
+FROM rust:slim-bookworm AS builder
+RUN apt-get update && apt-get install -y pkg-config libssl-dev g++ && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /build
 # Copy workspace manifests first (layer cache)
@@ -19,9 +19,18 @@ COPY compliance/Cargo.toml compliance/Cargo.toml
 RUN for d in common client host enclave verifier-api gateway-api compliance; do \
       mkdir -p "$d/src" && echo "" > "$d/src/lib.rs"; \
     done
-# Create stub bin files
+# Create stub bin files for all workspace members with binaries
 RUN echo "fn main() {}" > gateway-api/src/main.rs && \
-    echo "fn main() {}" > verifier-api/src/main.rs
+    echo "fn main() {}" > verifier-api/src/main.rs && \
+    echo "fn main() {}" > enclave/src/main.rs && \
+    echo "fn main() {}" > host/src/main.rs && \
+    mkdir -p enclave/src/bin host/src/bin compliance/src/bin && \
+    echo "fn main() {}" > enclave/src/bin/orchestrator.rs && \
+    echo "fn main() {}" > enclave/src/bin/benchmark_baseline.rs && \
+    echo "fn main() {}" > enclave/src/bin/vsock_echo.rs && \
+    echo "fn main() {}" > host/src/bin/spy_host.rs && \
+    echo "fn main() {}" > host/src/bin/kms_proxy_host.rs && \
+    echo "fn main() {}" > compliance/src/bin/compliance_cli.rs
 
 RUN cargo build --release -p ephemeralml-gateway --features mock 2>/dev/null || true
 
@@ -29,6 +38,9 @@ RUN cargo build --release -p ephemeralml-gateway --features mock 2>/dev/null || 
 COPY common/ common/
 COPY client/ client/
 COPY gateway-api/ gateway-api/
+
+# Invalidate cargo cache for crates whose source was overwritten from stubs
+RUN touch common/src/lib.rs client/src/lib.rs gateway-api/src/main.rs
 
 RUN cargo build --release -p ephemeralml-gateway --features mock
 
