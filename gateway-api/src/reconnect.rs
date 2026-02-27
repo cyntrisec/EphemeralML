@@ -3,6 +3,10 @@
 //! Spawns a tokio task per backend that monitors connectivity and re-establishes
 //! the secure channel when disconnected. Request handlers signal disconnection
 //! via `Notify` for instant wakeup instead of waiting for the health interval.
+//!
+//! While connected, the loop performs a TCP liveness probe every
+//! `health_interval`. If the probe fails, it marks the backend disconnected
+//! and begins reconnect attempts immediately.
 
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
@@ -10,9 +14,13 @@ use std::time::Duration;
 
 use rand::rngs::StdRng;
 use rand::{RngCore, SeedableRng};
+use tokio::net::TcpStream;
 use tokio::sync::{Mutex, Notify};
 
 use ephemeral_ml_client::{SecureClient, SecureEnclaveClient};
+
+/// Default timeout for TCP liveness probes and reconnect attempts.
+const CONNECT_TIMEOUT: Duration = Duration::from_secs(5);
 
 /// Configuration for a single reconnect loop.
 pub struct ReconnectHandle {
@@ -25,9 +33,12 @@ pub struct ReconnectHandle {
 
 /// Spawn a background reconnect loop for one backend.
 ///
-/// The task runs until the tokio runtime shuts down. When connected, it sleeps
-/// for `health_interval` or until woken by `notify`. When disconnected, it
-/// attempts to reconnect with exponential backoff + full jitter.
+/// The task runs until the tokio runtime shuts down. When connected, it
+/// performs a TCP liveness probe every `health_interval` and marks the backend
+/// disconnected if the probe fails. When disconnected, it attempts to
+/// reconnect with exponential backoff + full jitter. All lock-holding
+/// operations (establish_channel) are bounded by `CONNECT_TIMEOUT` to avoid
+/// blocking request handlers.
 pub fn spawn_reconnect_loop(
     handle: ReconnectHandle,
     client: Arc<Mutex<SecureEnclaveClient>>,
@@ -47,32 +58,67 @@ pub fn spawn_reconnect_loop(
                     _ = notify.notified() => {}
                 }
 
-                // Re-check after wakeup; if still connected, loop back to sleep.
-                if connected.load(Ordering::Acquire) {
-                    continue;
+                // Re-check after wakeup.
+                if !connected.load(Ordering::Acquire) {
+                    tracing::info!(
+                        backend = %handle.backend_name,
+                        "Disconnect detected via notify, starting reconnect"
+                    );
+                    // Fall through to reconnect below.
+                } else {
+                    // Timer fired — perform active TCP liveness probe.
+                    let probe_ok = tcp_probe(&handle.backend_addr, CONNECT_TIMEOUT).await;
+                    if probe_ok {
+                        continue; // Still healthy, loop back to sleep.
+                    }
+                    // Probe failed — mark disconnected.
+                    connected.store(false, Ordering::Release);
+                    tracing::warn!(
+                        backend = %handle.backend_name,
+                        "Health probe failed, marking disconnected"
+                    );
+                    // Fall through to reconnect below.
                 }
-
-                tracing::info!(
-                    backend = %handle.backend_name,
-                    "Disconnect detected, starting reconnect"
-                );
             }
 
             // Disconnected — try to reconnect.
             attempt = attempt.saturating_add(1);
 
             let reconnected = {
-                let mut c = client.lock().await;
+                // Acquire lock with a timeout to avoid indefinitely blocking
+                // request handlers that also need this mutex.
+                let lock_result =
+                    tokio::time::timeout(CONNECT_TIMEOUT, client.lock()).await;
+                let mut c = match lock_result {
+                    Ok(guard) => guard,
+                    Err(_) => {
+                        tracing::warn!(
+                            backend = %handle.backend_name,
+                            attempt,
+                            "Reconnect skipped: timed out acquiring client lock"
+                        );
+                        tokio::time::sleep(Duration::from_millis(100)).await;
+                        continue;
+                    }
+                };
+
                 // Double-check: another task (e.g. ensure_connected) may have
                 // reconnected while we waited for the lock.
                 if connected.load(Ordering::Acquire) {
                     continue;
                 }
-                c.establish_channel(&handle.backend_addr).await
+
+                // Bound the establish_channel call so a hanging TCP connect
+                // doesn't hold the mutex indefinitely.
+                tokio::time::timeout(
+                    CONNECT_TIMEOUT,
+                    c.establish_channel(&handle.backend_addr),
+                )
+                .await
             };
 
             match reconnected {
-                Ok(()) => {
+                Ok(Ok(())) => {
                     connected.store(true, Ordering::Release);
                     tracing::info!(
                         backend = %handle.backend_name,
@@ -81,7 +127,7 @@ pub fn spawn_reconnect_loop(
                     );
                     attempt = 0;
                 }
-                Err(e) => {
+                Ok(Err(e)) => {
                     let delay = compute_backoff(
                         attempt,
                         handle.backoff_base_ms,
@@ -97,9 +143,36 @@ pub fn spawn_reconnect_loop(
                     );
                     tokio::time::sleep(delay).await;
                 }
+                Err(_) => {
+                    let delay = compute_backoff(
+                        attempt,
+                        handle.backoff_base_ms,
+                        handle.backoff_cap_ms,
+                        &mut rng,
+                    );
+                    tracing::warn!(
+                        backend = %handle.backend_name,
+                        attempt,
+                        delay_ms = delay.as_millis() as u64,
+                        "Background reconnect timed out, backing off"
+                    );
+                    tokio::time::sleep(delay).await;
+                }
             }
         }
     })
+}
+
+/// TCP liveness probe — attempts a connect + immediate close.
+///
+/// Returns `true` if the backend port is reachable. This does not test the
+/// secure channel itself, but catches the common case of a dead/restarted
+/// backend process.
+async fn tcp_probe(addr: &str, timeout: Duration) -> bool {
+    match tokio::time::timeout(timeout, TcpStream::connect(addr)).await {
+        Ok(Ok(_stream)) => true, // connect succeeded; drop closes the socket
+        _ => false,              // timeout or connect error
+    }
 }
 
 /// Exponential backoff with full jitter.
@@ -161,5 +234,19 @@ mod tests {
         let mut rng = StdRng::from_seed([3u8; 32]);
         let d = compute_backoff(100, 100, 30_000, &mut rng);
         assert!(d.as_millis() <= 30_000);
+    }
+
+    #[tokio::test]
+    async fn tcp_probe_fails_on_unbound_port() {
+        // Port 1 is almost certainly not listening.
+        let result = tcp_probe("127.0.0.1:1", Duration::from_millis(200)).await;
+        assert!(!result);
+    }
+
+    #[tokio::test]
+    async fn tcp_probe_times_out_on_unreachable() {
+        // Non-routable address — should timeout, not hang.
+        let result = tcp_probe("192.0.2.1:1", Duration::from_millis(200)).await;
+        assert!(!result);
     }
 }

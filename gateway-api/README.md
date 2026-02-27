@@ -268,9 +268,13 @@ See [`docs/DEPLOY.md`](docs/DEPLOY.md) for a production deployment guide
   includes `embeddings`. This prevents generative models from returning misleading
   logit vectors instead of real embeddings.
 - **`/v1/responses`** — minimal subset: no tools, no tool_choice, no streaming.
-- **Reconnection** — if the backend channel breaks, the gateway marks itself
-  disconnected and attempts to reconnect on the next request. There is no
-  background reconnection loop.
+- **Reconnection** — a background task per backend performs TCP liveness probes
+  every `EPHEMERALML_RECONNECT_HEALTH_INTERVAL_SECS` (default 5 s). When a
+  disconnect is detected (probe failure or request-path error), the loop
+  reconnects with exponential backoff + full jitter (base 100 ms, cap 30 s).
+  Request handlers also trigger instant reconnect via `Notify`. All reconnect
+  attempts are bounded by a 5 s connect timeout to avoid blocking request
+  handlers. Disable with `EPHEMERALML_RECONNECT_ENABLED=false`.
 - **PHI-safe logging** — prompts/outputs never logged; only request IDs, model, latency, receipt presence.
 
 ## Architecture

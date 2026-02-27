@@ -77,7 +77,9 @@ pub struct GatewayConfig {
     #[arg(long, env = "EPHEMERALML_RECONNECT_BACKOFF_CAP_MS", default_value = "30000")]
     pub reconnect_backoff_cap_ms: u64,
 
-    /// Interval in seconds between health-check pings when connected.
+    /// Interval in seconds between TCP liveness probes when connected.
+    /// Each probe attempts a TCP connect to the backend; if it fails, the
+    /// gateway marks the backend disconnected and starts reconnecting.
     #[arg(long, env = "EPHEMERALML_RECONNECT_HEALTH_INTERVAL_SECS", default_value = "5")]
     pub reconnect_health_interval_secs: u64,
 }
