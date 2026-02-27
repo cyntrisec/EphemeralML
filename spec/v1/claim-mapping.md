@@ -35,6 +35,8 @@ The signature covers `Sig_structure1 = ["Signature1", protected, external_aad, p
 |-------|------|-------|-------|
 | 4 | kid | bstr | Optional. Key identifier for the signing key. |
 
+> **Implementation note (v1.0):** The reference implementation rejects non-empty unprotected headers. This is stricter than the CDDL, which permits optional `kid`. Rationale: unprotected headers are not covered by the COSE signature and can be tampered in transit. If `kid` is needed in a future v1.x, it should move to the protected header.
+
 ## 2. Standard CWT/EAT Claims
 
 These claims use IANA-registered CWT integer keys.
@@ -263,7 +265,29 @@ TDX registers are mapped to `pcr0`/`pcr1`/`pcr2` field names for verifier simpli
 | _(new)_ | `model_hash` | -65539 | New required claim, no v0.1 equivalent |
 | _(new)_ | `eat_nonce` | 10 | New optional claim for replay resistance |
 
-## 6. v1.x Extension Rules
+## 6. EAT Profile Declaration (RFC 9711 §6.3)
+
+This section consolidates the mandatory profile positions per RFC 9711 §6.3.
+
+| Declaration | AIR v1 Position |
+|---|---|
+| **Profile identifier** | URI: `"https://spec.cyntrisec.com/air/v1"` (carried in `eat_profile`, key 265) |
+| **Encoding** | CBOR only (RFC 8949). JSON serialization is not defined. |
+| **Envelope** | COSE_Sign1 (RFC 9052 §4.2), CBOR tag 18. Untagged COSE_Sign1 MUST be rejected. |
+| **Payload content type** | COSE content_type = 61 (`application/cwt`). The payload is a CWT claims map. |
+| **HTTP media type** | `application/eat+cwt` (RFC 9782). Receivers SHOULD accept both `application/cwt` and `application/eat+cwt`. |
+| **Signing algorithm** | Ed25519 only (COSE alg = -8). `verify_strict` required (canonical S per RFC 8032 §5.1.7). No algorithm negotiation in v1. |
+| **Detached bundles** | Not supported in v1. The attestation document is referenced by hash (`attestation_doc_hash`), not embedded. |
+| **Key identification** | Out of band. The verifier obtains the Ed25519 public key through a platform-specific channel (e.g., attestation document, key registry). Optional `kid` in unprotected header is reserved but currently rejected by the reference implementation (see §1.2 note). |
+| **Mandatory claims** | 16 required: iss, iat, cti, eat_profile, model_id, model_version, model_hash, request_hash, response_hash, attestation_doc_hash, enclave_measurements, policy_version, sequence_number, execution_time_ms, memory_peak_mb, security_mode. |
+| **Optional claims** | 2 optional: eat_nonce (replay resistance), model_hash_scheme (hash computation method). |
+| **Freshness** | `iat` carries execution timestamp (Unix seconds). Verifier applies `max_age` + `clock_skew` policy. `eat_nonce` provides optional challenge-response replay resistance (RFC 9711 §4.1, 8–64 bytes). |
+| **Deterministic encoding** | Required. Map keys sorted per RFC 8949 §4.2.1 (shorter encoded form first, then bytewise lexicographic). |
+| **Closed map** | The claims map is closed: unknown integer keys MUST be rejected. Duplicate keys MUST be rejected. |
+| **Unprotected header** | MUST be empty. AIR v1 requires all header parameters in the protected bucket. The CDDL permits `? 4 => bstr` (kid) for forward compatibility, but the reference implementation rejects non-empty unprotected headers since they are not signed and can be tampered. |
+| **Private claim keys** | -65537 to -65549 (private use per RFC 8392). No IANA registration required. Keys -65550 to -65599 reserved for v1.x extensions. |
+
+## 7. v1.x Extension Rules
 
 1. New optional claims MAY be added in v1.x minor versions using keys -65550 to -65599.
 2. New claims MUST NOT be required — a v1.0 verifier must still accept v1.x receipts.

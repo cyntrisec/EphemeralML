@@ -46,6 +46,7 @@ These specifications are relevant but not required for conformance.
 | IETF SCITT (draft) | Supply Chain Integrity, Transparency, and Trust | Future transparency log integration |
 | RFC 4122 | UUID | receipt_id format (v4) |
 | RFC 9334 | RATS Architecture | Attester/Verifier/Relying Party model |
+| RFC 9782 | Entity Attestation Token (EAT) Media Types | HTTP/CoAP media type `application/eat+cwt` (Content-Format 263) |
 
 ## 4. COSE Header Parameters
 

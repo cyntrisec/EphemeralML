@@ -119,6 +119,12 @@ A conformant verifier MUST implement these checks:
 - [ ] **MHASH**: model_hash is exactly 32 bytes, not all zeros
 - [ ] **MEAS**: All pcr0/pcr1/pcr2 values are exactly 48 bytes
 - [ ] **MTYPE**: measurement_type is `"nitro-pcr"` or `"tdx-mrtd-rtmr"`
+- [ ] **SIZE**: Receipt must be ≤ 65,536 bytes (64 KB)
+- [ ] **UNPROTECTED**: Unprotected header must be empty
+- [ ] **CLOSED_MAP**: Reject unknown integer claim keys. Reject duplicate keys in both the claims map and the enclave_measurements map.
+- [ ] **IAT_NONZERO**: `iat` must not be zero (Unix epoch is not a valid receipt timestamp)
+- [ ] **TEXT_BOUNDS**: Text claims must be non-empty. Max lengths: iss ≤ 256, model_id ≤ 256, model_version ≤ 128, policy_version ≤ 256, security_mode ≤ 64, model_hash_scheme ≤ 64.
+- [ ] **TDX_NO_PCR8**: If `measurement_type` is `"tdx-mrtd-rtmr"`, `pcr8` must be absent
 
 Optional policy checks (verifier-configured):
 
@@ -185,3 +191,13 @@ def verify_air_v1(receipt_bytes, public_key_bytes):
 | Python | `spec/v1/scripts/interop_test.py` | Same-team independent verifier (third-party validation pending) | AIR v1 vector verification harness (COSE parse + Sig_structure verify + claims/policy checks) | 2026-02-25 (local + fresh VM `10/10`) | M4b: external third-party interop run pending |
 
 To register your implementation, open an issue or PR.
+
+## 9. Media Types
+
+| Context | Value | Reference |
+|---------|-------|-----------|
+| COSE protected header (label 3) | 61 (`application/cwt`) | RFC 8392 |
+| HTTP Content-Type | `application/eat+cwt` | RFC 9782 |
+| CoAP Content-Format | 263 | RFC 9782 |
+
+The COSE content_type (61) describes the **payload** encoding (CWT claims). The HTTP/CoAP media type describes the **outer token** (EAT). These are complementary: AIR v1 is an EAT token whose payload is CWT-encoded.

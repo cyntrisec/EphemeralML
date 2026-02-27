@@ -14,7 +14,7 @@ Attested Inference Receipt (AIR) v1.0 is the first frozen release of the receipt
 | Document | Description |
 |----------|-------------|
 | `scope-v1.md` | What v1 defines and what it does not |
-| `claim-mapping.md` | 17 claims mapped to CWT/EAT integer keys with verification semantics |
+| `claim-mapping.md` | 18 claims (16 required + 2 optional) mapped to CWT/EAT integer keys with verification semantics |
 | `dependencies.md` | 7 normative RFCs, MTI algorithms, crate dependencies |
 | `threat-model.md` | 13 threats analyzed with trust assumptions |
 | `limitations-v1.md` | 9 explicit non-claims (L-1 through L-9) |
@@ -33,8 +33,8 @@ Attested Inference Receipt (AIR) v1.0 is the first frozen release of the receipt
 ### Reference implementation
 
 - `ephemeral-ml-common` crate: `build_air_v1()`, `parse_air_v1()`, `verify_air_v1()`
-- 197+ tests in `common`, 16 conformance vector tests
-- 477 total tests across the workspace
+- 230+ tests in `common`, 16 conformance vector tests
+- 568 total tests across the workspace
 
 ## Key decisions
 
@@ -43,6 +43,7 @@ Attested Inference Receipt (AIR) v1.0 is the first frozen release of the receipt
 3. **Ed25519 verify_strict** — single MTI algorithm, no negotiation
 4. **Negative integer keys** for private claims (-65537 to -65549) — avoids IANA collision
 5. **Issue #80 resolved**: `model_hash_scheme` (key -65549) is optional, RECOMMENDED. Three defined values: `sha256-single`, `sha256-concat`, `sha256-manifest`.
+6. **Tier 1+2 parse hardening** (2026-02-28): Pre-parse size limit (64 KB), unprotected header rejection, duplicate CBOR key detection, iat=0 rejection, text claim length bounds, pcr8/TDX cross-check, security_mode allowlist, `current_timestamp()` error propagation. 12 new tests added. Wire format unchanged; golden vectors byte-stable.
 
 ## Breaking changes from v0.1
 
