@@ -6,6 +6,7 @@ use tokio::sync::{Mutex, Notify};
 use ephemeral_ml_client::{SecureClient, SecureEnclaveClient};
 
 use crate::config::GatewayConfig;
+use crate::reconnect::CONNECT_TIMEOUT;
 
 /// Shared state accessible from all Axum handlers via `State<AppState>`.
 #[derive(Clone)]
@@ -42,7 +43,8 @@ impl AppState {
     }
 
     /// Ensure the backend channel is established. Connects lazily on first call.
-    /// Subsequent calls are no-ops if already connected.
+    /// Subsequent calls are no-ops if already connected. The connect attempt is
+    /// bounded by `CONNECT_TIMEOUT` to avoid holding the mutex indefinitely.
     pub async fn ensure_connected(&self) -> Result<(), String> {
         use std::sync::atomic::Ordering;
         if self.connected.load(Ordering::Acquire) {
@@ -53,10 +55,18 @@ impl AppState {
         if self.connected.load(Ordering::Acquire) {
             return Ok(());
         }
-        client
-            .establish_channel(&self.config.backend_addr)
-            .await
-            .map_err(|e| format!("Backend handshake failed: {e}"))?;
+        tokio::time::timeout(
+            CONNECT_TIMEOUT,
+            client.establish_channel(&self.config.backend_addr),
+        )
+        .await
+        .map_err(|_| {
+            format!(
+                "Backend handshake timed out after {}s",
+                CONNECT_TIMEOUT.as_secs()
+            )
+        })?
+        .map_err(|e| format!("Backend handshake failed: {e}"))?;
         self.connected.store(true, Ordering::Release);
         tracing::info!(
             backend = %self.config.backend_addr,
@@ -86,10 +96,18 @@ impl AppState {
         if self.embedding_connected.load(Ordering::Acquire) {
             return Ok(());
         }
-        client
-            .establish_channel(emb_addr)
-            .await
-            .map_err(|e| format!("Embedding backend handshake failed: {e}"))?;
+        tokio::time::timeout(
+            CONNECT_TIMEOUT,
+            client.establish_channel(emb_addr),
+        )
+        .await
+        .map_err(|_| {
+            format!(
+                "Embedding backend handshake timed out after {}s",
+                CONNECT_TIMEOUT.as_secs()
+            )
+        })?
+        .map_err(|e| format!("Embedding backend handshake failed: {e}"))?;
         self.embedding_connected.store(true, Ordering::Release);
         tracing::info!(
             backend = %emb_addr,

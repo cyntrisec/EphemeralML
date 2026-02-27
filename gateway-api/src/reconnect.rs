@@ -19,8 +19,10 @@ use tokio::sync::{Mutex, Notify};
 
 use ephemeral_ml_client::{SecureClient, SecureEnclaveClient};
 
-/// Default timeout for TCP liveness probes and reconnect attempts.
-const CONNECT_TIMEOUT: Duration = Duration::from_secs(5);
+/// Default timeout for TCP liveness probes and connect attempts.
+/// Used by both the background reconnect loop and request-path
+/// `ensure_connected()` to bound how long the client mutex is held.
+pub const CONNECT_TIMEOUT: Duration = Duration::from_secs(5);
 
 /// Configuration for a single reconnect loop.
 pub struct ReconnectHandle {
