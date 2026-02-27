@@ -1,13 +1,17 @@
+#[cfg(any(feature = "mock", feature = "gcp", feature = "production"))]
 use ephemeral_ml_enclave::candle_engine::CandleInferenceEngine;
 #[cfg(any(feature = "mock", feature = "gcp"))]
 use ephemeral_ml_enclave::server::run_direct_tcp;
 #[cfg(any(feature = "mock", feature = "gcp"))]
 use ephemeral_ml_enclave::server::run_stage_tcp;
+#[cfg(any(feature = "mock", feature = "gcp", feature = "production"))]
 use ephemeral_ml_enclave::stage_executor::EphemeralStageExecutor;
 
+#[cfg(any(feature = "mock", feature = "gcp", feature = "production"))]
 use confidential_ml_pipeline::StageConfig;
 #[cfg(feature = "mock")]
 use confidential_ml_transport::MockVerifier;
+#[cfg(any(feature = "mock", feature = "gcp", feature = "production"))]
 use ephemeral_ml_common::ReceiptSigningKey;
 
 use clap::Parser;

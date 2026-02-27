@@ -562,7 +562,7 @@ fn decode_measurements(entries: &[(Value, Value)]) -> Result<EnclaveMeasurements
     let pcr0 = get_text_bstr(meas_entries, "pcr0")?;
     let pcr1 = get_text_bstr(meas_entries, "pcr1")?;
     let pcr2 = get_text_bstr(meas_entries, "pcr2")?;
-    let pcr8 = get_text_bstr_opt(meas_entries, "pcr8");
+    let pcr8 = get_text_bstr_opt(meas_entries, "pcr8")?;
 
     Ok(EnclaveMeasurements {
         pcr0,
@@ -670,11 +670,14 @@ fn get_text_bstr(entries: &[(Value, Value)], name: &str) -> Result<Vec<u8>> {
     }
 }
 
-fn get_text_bstr_opt(entries: &[(Value, Value)], name: &str) -> Option<Vec<u8>> {
+fn get_text_bstr_opt(entries: &[(Value, Value)], name: &str) -> Result<Option<Vec<u8>>> {
     let key = Value::Text(name.to_string());
     match crate::cbor::map_get(entries, &key) {
-        Some(Value::Bytes(b)) => Some(b.clone()),
-        _ => None,
+        Some(Value::Bytes(b)) => Ok(Some(b.clone())),
+        Some(_) => Err(EphemeralError::ValidationError(format!(
+            "{name} is not a byte string in enclave_measurements"
+        ))),
+        None => Ok(None),
     }
 }
 
@@ -1227,5 +1230,112 @@ mod tests {
         let bytes = build_air_v1(&air_claims, &key).unwrap();
         let parsed = parse_air_v1(&bytes).unwrap();
         assert!(verify_air_v1(&parsed, &key.public_key).unwrap());
+    }
+
+    // ── Closed-map / type-safety regression tests ────────────────
+
+    #[test]
+    fn test_unknown_claim_key_rejected() {
+        let claims = fixture_claims();
+        let tampered = build_tampered_receipt(&claims, |entries| {
+            entries.push((
+                Value::Integer(999.into()), // unknown key
+                Value::Text("injected".to_string()),
+            ));
+        });
+        let result = parse_air_v1(&tampered);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("unknown claim key"));
+    }
+
+    #[test]
+    fn test_non_integer_claim_key_rejected() {
+        let claims = fixture_claims();
+        let tampered = build_tampered_receipt(&claims, |entries| {
+            entries.push((
+                Value::Text("rogue".to_string()), // text key, not integer
+                Value::Integer(42.into()),
+            ));
+        });
+        let result = parse_air_v1(&tampered);
+        assert!(result.is_err());
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("non-integer claim key"));
+    }
+
+    #[test]
+    fn test_eat_nonce_wrong_type_rejected() {
+        let claims = fixture_claims();
+        let tampered = build_tampered_receipt(&claims, |entries| {
+            // Add eat_nonce as text instead of bstr
+            entries.push((
+                Value::Integer(EAT_NONCE.into()),
+                Value::Text("not-bytes".to_string()),
+            ));
+        });
+        let result = parse_air_v1(&tampered);
+        assert!(result.is_err());
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("is not a byte string"));
+    }
+
+    #[test]
+    fn test_model_hash_scheme_wrong_type_rejected() {
+        let mut claims = fixture_claims();
+        claims.model_hash_scheme = Some("sha256-single".to_string());
+        let tampered = build_tampered_receipt(&claims, |entries| {
+            // Replace model_hash_scheme text with integer
+            for (k, v) in entries.iter_mut() {
+                if *k == Value::Integer(AIR_MODEL_HASH_SCHEME.into()) {
+                    *v = Value::Integer(42.into());
+                }
+            }
+        });
+        let result = parse_air_v1(&tampered);
+        assert!(result.is_err());
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("is not a text string"));
+    }
+
+    #[test]
+    fn test_pcr8_wrong_type_rejected() {
+        let mut claims = fixture_claims();
+        claims.enclave_measurements.pcr8 = Some(vec![8u8; 48]);
+        let tampered = build_tampered_receipt(&claims, |entries| {
+            // Find enclave_measurements and replace pcr8 bytes with text
+            for (k, v) in entries.iter_mut() {
+                if *k == Value::Integer(AIR_ENCLAVE_MEASUREMENTS.into()) {
+                    if let Value::Map(ref mut meas) = v {
+                        for (mk, mv) in meas.iter_mut() {
+                            if *mk == Value::Text("pcr8".to_string()) {
+                                *mv = Value::Text("not-bytes".to_string());
+                            }
+                        }
+                    }
+                }
+            }
+        });
+        let result = parse_air_v1(&tampered);
+        assert!(result.is_err());
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("is not a byte string"));
+    }
+
+    #[test]
+    fn test_pcr8_wrong_length_rejected() {
+        let mut claims = fixture_claims();
+        claims.enclave_measurements.pcr8 = Some(vec![8u8; 32]); // 32 instead of 48
+        let key = ReceiptSigningKey::generate().unwrap();
+        let result = build_air_v1(&claims, &key);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("48 bytes"));
     }
 }
