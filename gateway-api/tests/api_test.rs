@@ -883,3 +883,109 @@ async fn missing_content_type_returns_openai_error() {
     assert!(json["error"]["message"].is_string());
     assert_eq!(json["error"]["type"], "invalid_request_error");
 }
+
+// ---------------------------------------------------------------------------
+// Request-path connect timeout (ensure_connected / ensure_embedding_connected)
+// ---------------------------------------------------------------------------
+
+/// Spawn a TCP listener that accepts connections but never sends data,
+/// causing the handshake to hang indefinitely. Returns the bound address.
+async fn stalling_listener() -> (tokio::net::TcpListener, String) {
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap().to_string();
+    (listener, addr)
+}
+
+#[tokio::test]
+async fn ensure_connected_times_out_on_hanging_backend() {
+    let (listener, addr) = stalling_listener().await;
+    // Accept connections in background but never write — hangs the handshake.
+    tokio::spawn(async move {
+        loop {
+            let (_stream, _) = listener.accept().await.unwrap();
+            // Hold stream open, never send handshake.
+            std::future::pending::<()>().await;
+        }
+    });
+
+    let config = GatewayConfig {
+        backend_addr: addr,
+        default_model: "test-model".to_string(),
+        api_key: None,
+        host: "127.0.0.1".to_string(),
+        port: 0,
+        request_timeout_secs: 5,
+        include_metadata_json: false,
+        receipt_header_full: false,
+        model_capabilities: "chat".to_string(),
+        embedding_backend_addr: None,
+        embedding_model: None,
+        reconnect_enabled: false,
+        reconnect_backoff_base_ms: 100,
+        reconnect_backoff_cap_ms: 30_000,
+        reconnect_health_interval_secs: 5,
+    };
+    let client = SecureEnclaveClient::new("test".to_string());
+    let state = AppState::new(client, config, None);
+
+    let start = std::time::Instant::now();
+    let result = state.ensure_connected().await;
+    let elapsed = start.elapsed();
+
+    assert!(result.is_err());
+    assert!(
+        result.unwrap_err().contains("timed out"),
+        "Expected timeout error message"
+    );
+    // Should complete near CONNECT_TIMEOUT (5 s), not hang forever.
+    assert!(
+        elapsed.as_secs() <= 10,
+        "ensure_connected took too long: {elapsed:?}"
+    );
+}
+
+#[tokio::test]
+async fn ensure_embedding_connected_times_out_on_hanging_backend() {
+    let (listener, addr) = stalling_listener().await;
+    tokio::spawn(async move {
+        loop {
+            let (_stream, _) = listener.accept().await.unwrap();
+            std::future::pending::<()>().await;
+        }
+    });
+
+    let config = GatewayConfig {
+        backend_addr: "127.0.0.1:0".to_string(),
+        default_model: "test-model".to_string(),
+        api_key: None,
+        host: "127.0.0.1".to_string(),
+        port: 0,
+        request_timeout_secs: 5,
+        include_metadata_json: false,
+        receipt_header_full: false,
+        model_capabilities: "chat,embeddings".to_string(),
+        embedding_backend_addr: Some(addr),
+        embedding_model: Some("emb-model".to_string()),
+        reconnect_enabled: false,
+        reconnect_backoff_base_ms: 100,
+        reconnect_backoff_cap_ms: 30_000,
+        reconnect_health_interval_secs: 5,
+    };
+    let client = SecureEnclaveClient::new("test".to_string());
+    let emb_client = SecureEnclaveClient::new("test-emb".to_string());
+    let state = AppState::new(client, config, Some(emb_client));
+
+    let start = std::time::Instant::now();
+    let result = state.ensure_embedding_connected().await;
+    let elapsed = start.elapsed();
+
+    assert!(result.is_err());
+    assert!(
+        result.unwrap_err().contains("timed out"),
+        "Expected timeout error message"
+    );
+    assert!(
+        elapsed.as_secs() <= 10,
+        "ensure_embedding_connected took too long: {elapsed:?}"
+    );
+}
