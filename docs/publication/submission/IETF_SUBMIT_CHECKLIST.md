@@ -1,6 +1,6 @@
 # IETF Internet-Draft Submission Checklist
 
-**Draft:** `draft-tsyrulb-rats-attested-inference-receipt-00`
+**Draft:** `draft-tsyrulnikov-rats-attested-inference-receipt-00`
 **Target date:** March 2, 2026
 **Submission URL:** https://datatracker.ietf.org/submit/
 
@@ -26,7 +26,7 @@
 - [x] Golden vectors: 10 (2 valid + 8 invalid), layer assignments correct
 - [x] Test count: 575 (verified via `cargo test -q`)
 - [x] No disallowed wording (C-101..C-103 guardrails)
-- [ ] idnits check (run locally before upload: `idnits draft-tsyrulb-rats-attested-inference-receipt-00.txt`)
+- [ ] idnits check (run locally before upload: `idnits draft-tsyrulnikov-rats-attested-inference-receipt-00.txt`)
 
 ## Files to Upload
 
@@ -34,16 +34,16 @@ Upload the **XML** file to the IETF datatracker:
 
 | File | Path | Purpose |
 |------|------|---------|
-| XML (primary) | `spec/v1/ietf/draft-tsyrulb-rats-attested-inference-receipt-00.xml` | Upload to datatracker |
-| Markdown source | `spec/v1/ietf/draft-tsyrulb-rats-attested-inference-receipt-00.md` | Keep in repo (not uploaded) |
-| Text (reference) | `spec/v1/ietf/draft-tsyrulb-rats-attested-inference-receipt-00.txt` | Verify rendering |
-| HTML (reference) | `spec/v1/ietf/draft-tsyrulb-rats-attested-inference-receipt-00.html` | Verify rendering |
+| XML (primary) | `spec/v1/ietf/draft-tsyrulnikov-rats-attested-inference-receipt-00.xml` | Upload to datatracker |
+| Markdown source | `spec/v1/ietf/draft-tsyrulnikov-rats-attested-inference-receipt-00.md` | Keep in repo (not uploaded) |
+| Text (reference) | `spec/v1/ietf/draft-tsyrulnikov-rats-attested-inference-receipt-00.txt` | Verify rendering |
+| HTML (reference) | `spec/v1/ietf/draft-tsyrulnikov-rats-attested-inference-receipt-00.html` | Verify rendering |
 
 ## Datatracker Form Fields
 
 | Field | Value |
 |-------|-------|
-| Document name | `draft-tsyrulb-rats-attested-inference-receipt-00` |
+| Document name | `draft-tsyrulnikov-rats-attested-inference-receipt-00` |
 | Submission type | Individual submission |
 | Stream | IETF |
 | Group | RATS |

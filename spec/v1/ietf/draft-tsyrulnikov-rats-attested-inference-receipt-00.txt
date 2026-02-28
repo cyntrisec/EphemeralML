@@ -10,7 +10,7 @@ Expires: 1 September 2026
 
 Attested Inference Receipt (AIR): A COSE/CWT Profile for Confidential AI
                                Inference
-            draft-tsyrulb-rats-attested-inference-receipt-00
+          draft-tsyrulnikov-rats-attested-inference-receipt-00
 
 Abstract
 

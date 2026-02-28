@@ -139,6 +139,9 @@ docs/papers_llm/
 docs/E2E_DEPLOY_GUIDE.md
 docs/investors/*.pdf
 
+# kramdown-rfc reference cache
+.refcache/
+
 # LaTeX build artifacts
 *.aux
 docs/ephemeralml_paper.pdf

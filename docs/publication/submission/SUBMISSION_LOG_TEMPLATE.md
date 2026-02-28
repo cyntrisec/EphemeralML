@@ -6,10 +6,10 @@
 
 | Field | Value |
 |-------|-------|
-| **Document** | `draft-tsyrulb-rats-attested-inference-receipt-00` |
+| **Document** | `draft-tsyrulnikov-rats-attested-inference-receipt-00` |
 | **Target date** | March 2, 2026 |
 | **Submission URL** | https://datatracker.ietf.org/submit/ |
-| **File uploaded** | `spec/v1/ietf/draft-tsyrulb-rats-attested-inference-receipt-00.xml` |
+| **File uploaded** | `spec/v1/ietf/draft-tsyrulnikov-rats-attested-inference-receipt-00.xml` |
 | **Repo commit at submission** | _(fill after submission)_ |
 | **Submission date** | _(fill after submission)_ |
 | **Datatracker URL** | _(fill after submission)_ |

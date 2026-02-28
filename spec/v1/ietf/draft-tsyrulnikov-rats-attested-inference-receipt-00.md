@@ -1,7 +1,7 @@
 ---
 title: "Attested Inference Receipt (AIR): A COSE/CWT Profile for Confidential AI Inference"
 abbrev: "AIR v1"
-docname: draft-tsyrulb-rats-attested-inference-receipt-00
+docname: draft-tsyrulnikov-rats-attested-inference-receipt-00
 category: info
 ipr: trust200902
 submissiontype: IETF
