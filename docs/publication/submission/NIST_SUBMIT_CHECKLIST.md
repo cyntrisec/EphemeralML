@@ -33,7 +33,7 @@
 | Comment type | Public comment |
 | Submitter name | Borys Tsyrulnikov |
 | Organization | Cyntrisec |
-| Email | contact@cyntrisec.com |
+| Email | borys@cyntrisec.com |
 
 ## Submission Options
 

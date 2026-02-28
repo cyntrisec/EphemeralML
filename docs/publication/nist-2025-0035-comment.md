@@ -3,7 +3,7 @@
 **Docket:** NIST-2025-0035
 **Submitter:** Borys Tsyrulnikov, Cyntrisec
 **Date:** 2026-02-28
-**Contact:** contact@cyntrisec.com
+**Contact:** borys@cyntrisec.com
 **Selected Questions:** 2(a), 3(a), 3(b), 4(a), 4(d)
 
 ---

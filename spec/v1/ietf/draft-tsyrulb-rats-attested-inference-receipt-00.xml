@@ -19,7 +19,7 @@
     <author initials="B." surname="Tsyrulnikov" fullname="Borys Tsyrulnikov">
       <organization>Cyntrisec</organization>
       <address>
-        <email>contact@cyntrisec.com</email>
+        <email>borys@cyntrisec.com</email>
       </address>
     </author>
 
@@ -952,7 +952,7 @@ with structured error codes.</t>
   </dd>
   <dt>Contact:</dt>
   <dd>
-    <t>contact@cyntrisec.com</t>
+    <t>borys@cyntrisec.com</t>
   </dd>
 </dl>
 
@@ -1749,4 +1749,3 @@ k1EJ9/C/APj1z3CulQAA
 -->
 
 </rfc>
-

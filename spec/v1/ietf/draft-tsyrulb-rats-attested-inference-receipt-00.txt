@@ -1101,7 +1101,7 @@ Internet-Draft                   AIR v1                    February 2026
    Coverage:  575 tests passing (including 16 AIR v1 conformance vector
       tests).
 
-   Contact:  contact@cyntrisec.com
+   Contact:  borys@cyntrisec.com
 
 12.2.  Python Interop Verifier
 
@@ -1496,7 +1496,7 @@ Author's Address
 
    Borys Tsyrulnikov
    Cyntrisec
-   Email: contact@cyntrisec.com
+   Email: borys@cyntrisec.com
 
 
 

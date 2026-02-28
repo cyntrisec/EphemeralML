@@ -27,7 +27,7 @@ author:
     ins: B. Tsyrulnikov
     name: Borys Tsyrulnikov
     organization: Cyntrisec
-    email: contact@cyntrisec.com
+    email: borys@cyntrisec.com
 
 normative:
   RFC8032:
@@ -858,7 +858,7 @@ Coverage:
 : 575 tests passing (including 16 AIR v1 conformance vector tests).
 
 Contact:
-: contact@cyntrisec.com
+: borys@cyntrisec.com
 
 ## Python Interop Verifier
 

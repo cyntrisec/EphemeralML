@@ -11,7 +11,7 @@
 
 | Phase | Test | Result | Notes |
 |-------|------|--------|-------|
-| A | Preflight — gcloud auth | PASS | contact@cyntrisec.com |
+| A | Preflight — gcloud auth | PASS | borys@cyntrisec.com |
 | A | Preflight — project/zone | PASS | project-d3c20737-eec2-453d-8e5, us-central1-a |
 | A | Preflight — C3 CPU quota | PASS | C3_CPUS: 11 (need 4) |
 | A | Preflight — GPU quota | **BLOCKED** | A100=0, H100=0, A100_80GB=0 |

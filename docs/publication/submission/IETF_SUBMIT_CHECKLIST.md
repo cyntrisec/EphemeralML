@@ -48,12 +48,12 @@ Upload the **XML** file to the IETF datatracker:
 | Stream | IETF |
 | Group | RATS |
 | Author name | Borys Tsyrulnikov |
-| Author email | contact@cyntrisec.com |
+| Author email | borys@cyntrisec.com |
 
 ## Post-Submission Steps
 
 1. [ ] Upload XML to https://datatracker.ietf.org/submit/
-2. [ ] Confirm email verification (sent to contact@cyntrisec.com)
+2. [ ] Confirm email verification (sent to borys@cyntrisec.com)
 3. [ ] Verify rendered HTML/text on datatracker matches local builds
 4. [ ] Record submission URL and date in `SUBMISSION_LOG_TEMPLATE.md`
 5. [ ] Announce on RATS mailing list (rats@ietf.org) with brief intro
