@@ -26,7 +26,7 @@
 | C-6 | AIR v1 verification pass | 11/11 mandatory checks | `evidence/publication-airv1-20260228/gcp-{cpu-tdx,gpu-h100cc}/receipt_air_v1_verify_log.txt` | `ephemeralml-verify receipt.cbor --public-key receipt.pubkey` | `f1ba30d` | Policy-optional checks (FRESH, MHASH, MODEL, PLATFORM, NONCE, REPLAY) skipped when unconstrained. |
 | C-7 | Compliance baseline pass | 16/16 rules | `evidence/publication-airv1-20260228/gcp-cpu-tdx/compliance_verify_log.txt` | `ephemeralml-compliance verify --profile baseline` | `f1ba30d` | Baseline profile only. Advanced profiles not tested. |
 | C-8 | Negative test coverage | 2/2 per GCP platform | `evidence/publication-airv1-20260228/gcp-{cpu-tdx,gpu-h100cc}/negative_wrong_{hash,key}_{deploy,verify}.txt` | `scripts/gcp/mvp_gpu_e2e.sh` step 10 | `f1ba30d` | GCP only (hash + key mismatch). Nitro uses PCR mismatch separately. |
-| C-9 | Test suite size | 574 tests, 0 failures | `cargo test -q` output | `cargo test -q` | `a33dc8b` | Includes unit, integration, conformance. Some tests marked `#[ignore]` for cloud-only scenarios not counted. |
+| C-9 | Test suite size | 575 tests, 0 failures | `cargo test -q` output | `cargo test -q` | `a33dc8b` | Includes unit, integration, conformance. Some tests marked `#[ignore]` for cloud-only scenarios not counted. |
 
 ### Specification Claims
 
