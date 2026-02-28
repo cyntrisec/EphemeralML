@@ -1,1 +1,41 @@
-../../../benchmark_results_aws_nitro_modern_20260225_clean/paper_tables_generated.tex
+% === Inference latency comparison (generated) ===
+\begin{tabular}{lrrr}
+\hline
+\textbf{Metric} & \textbf{Bare Metal} & \textbf{Enclave} & \textbf{Overhead} \\
+\hline
+Mean latency     & 74.61\,ms  & 77.00\,ms  & +3.2\% \\
+P95 latency      & 76.80\,ms  & 78.00\,ms  & +1.6\% \\
+Throughput       & 13.4\,inf/s & 13.0\,inf/s & -3.1\% \\
+Peak RSS         & 266\,MB    & 0\,MB & -100.0\% \\
+\hline
+\end{tabular}
+
+% === Cold start breakdown (generated) ===
+\begin{tabular}{lr}
+\hline
+\textbf{Phase} & \textbf{Latency} \\
+\hline
+NSM attestation generation & 0\,ms \\
+KMS key release            & 0\,ms \\
+S3 model fetch (via VSock) & 0\,ms \\
+Model decryption           & 0\,ms \\
+Model load (Candle)        & 0\,ms \\
+Tokenizer setup            & 0\,ms \\
+\hline
+\textbf{Total}             & \textbf{0\,ms} \\
+\hline
+\end{tabular}
+
+% Quality: unavailable (no embeddings in results)
+
+% === COSE attestation verification (generated) ===
+\begin{tabular}{lrr}
+\hline
+\textbf{Operation} & \textbf{Mean} & \textbf{P99} \\
+\hline
+COSE\_Sign1 verify (ECDSA-P384) & 0.477\,ms & 0.524\,ms \\
+Certificate chain walk & 1.427\,ms & 1.469\,ms \\
+CBOR payload parse & 0.002\,ms & 0.002\,ms \\
+\textbf{Full verification pipeline} & \textbf{1.921\,ms} & \textbf{2.093\,ms} \\
+\hline
+\end{tabular}

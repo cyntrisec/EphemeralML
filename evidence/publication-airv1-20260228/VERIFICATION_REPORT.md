@@ -22,7 +22,8 @@
 ### Platform-Specific Notes
 
 **AWS Nitro:**
-- Evidence: `evidence/nitro-e2e-20260227T095832Z/`
+- Evidence: `evidence/publication-airv1-20260228/aws-nitro/`
+- Source run: `nitro-e2e-20260227T095832Z` → `nitro-e2e-20260228` (rerun with AIR v1 CBOR)
 - E2E client latency: 113ms
 - Enclave execution: 76ms
 - PCR pinning enforced (PCR0/1/2, non-zero SHA-384)
@@ -30,7 +31,8 @@
 - AIR v1 CBOR receipt: PASS (emitted since commit `63db588`)
 
 **GCP CPU TDX:**
-- Evidence: `evidence/mvp-20260227_092628/`
+- Evidence: `evidence/publication-airv1-20260228/gcp-cpu-tdx/`
+- Source run: `mvp-20260227_092628` (10/10 steps, AIR v1 CBOR verified, compliance 16/16)
 - Steps: 10/10
 - Negative tests: 2/2 (wrong model hash, wrong KMS key)
 - AIR v1 receipt: verified via `ephemeralml-verify`
@@ -38,7 +40,8 @@
 - Machine: c3-standard-4 (Intel Sapphire Rapids, TDX)
 
 **GCP GPU H100 CC:**
-- Evidence: `evidence/mvp-20260227_095900/`
+- Evidence: `evidence/publication-airv1-20260228/gcp-gpu-h100cc/`
+- Source run: `mvp-20260227_095900` (10/10 steps, AIR v1 CBOR verified, compliance 16/16)
 - Steps: 10/10
 - Negative tests: 2/2 (wrong model hash, wrong KMS key)
 - AIR v1 receipt: verified
@@ -46,14 +49,18 @@
 - Machine: a3-highgpu-1g (1x H100 80GB, TDX + H100 CC-mode)
 - MiniLM inference time is NOT representative of GPU performance (CUDA JIT warmup dominates)
 
+**Benchmark (Nitro):**
+- Evidence: `evidence/publication-airv1-20260228/benchmark-nitro/`
+- Source: `benchmark_results_aws_nitro_modern_20260225_clean/` (dereferenced copy)
+
 ## Benchmark Summary (AWS Nitro Canonical)
 
 | Metric | Value | Source |
 |--------|-------|--------|
-| Enclave execution overhead | +3.2% (77.00 vs 74.61ms) | C-2, `benchmark_results_aws_nitro_modern_20260225_clean/` |
+| Enclave execution overhead | +3.2% (77.00 vs 74.61ms) | C-2, `evidence/publication-airv1-20260228/benchmark-nitro/` |
 | Fully instrumented overhead | +12.6% (88.45 vs 78.55ms) | C-1, commit `b00bab1`, legacy pipeline |
 | Host E2E latency (mean) | 117.1ms | C-3, 10-run aggregate |
-| Host E2E latency (latest) | 113ms | C-3, `evidence/nitro-e2e-20260227T095832Z/timing.json` |
+| Host E2E latency (latest) | 113ms | C-3, `evidence/publication-airv1-20260228/aws-nitro/timing.json` |
 | Per-inference crypto | 0.028ms | C-10, negligible |
 | COSE verification | 1.92ms | One-time per session |
 
@@ -66,6 +73,30 @@
 | GPU benchmark uses MiniLM | Not representative of GPU perf | Pipeline validation only; 7B+ model benchmark needed (Phase 3) |
 | Legacy benchmark not reproducible | +12.6% cannot be regenerated on current main | Use +3.2% for reproducible claims, reference +12.6% as historical |
 | Nitro negative tests differ from GCP | Not apples-to-apples negative coverage | Nitro uses PCR mismatch; GCP uses hash/key mismatch |
+
+## Publication Directory Structure
+
+All evidence is self-contained under `evidence/publication-airv1-20260228/`:
+
+```
+evidence/publication-airv1-20260228/
+  VERIFICATION_REPORT.md        # This file
+  manifest.json                 # SHA-256 inventory
+  aws-nitro/                    # Real files (Nitro rerun, Feb 28)
+  gcp-cpu-tdx/                  # Real files (from mvp-20260227_092628)
+  gcp-gpu-h100cc/               # Real files (from mvp-20260227_095900)
+  benchmark-nitro/              # Real files (from benchmark_results_aws_nitro_modern_20260225_clean)
+```
+
+All subdirectories contain dereferenced regular files (no symlinks).
+The publication bundle is portable without dependency on ad-hoc run directories.
+
+### GCP Evidence Selection Rationale
+
+| Platform | Selected Run | Why |
+|----------|-------------|-----|
+| GCP CPU TDX | `mvp-20260227_092628` | Latest complete run (10/10 steps, 2/2 negatives) with AIR v1 CBOR receipt and verification. Earlier runs (Feb 25) lacked CBOR or were incomplete (Feb 27 morning). Later runs (Feb 28) were 8/10 incomplete. |
+| GCP GPU H100 CC | `mvp-20260227_095900` | Only complete GPU run (10/10 steps, 2/2 negatives) with AIR v1 CBOR receipt and verification. Earlier GPU run (Feb 25) lacked CBOR. |
 
 ## Artifact Integrity
 

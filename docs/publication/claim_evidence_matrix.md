@@ -21,11 +21,11 @@
 | # | Claim | Exact Value | Source Artifact | Script / Command | Commit | Caveats |
 |---|-------|-------------|-----------------|------------------|--------|---------|
 | C-5a | AWS Nitro E2E PASS | 1/1 positive, receipt verified, AIR v1 CBOR | `evidence/publication-airv1-20260228/aws-nitro/` | `scripts/nitro_e2e.sh` | `2664132` | AIR v1 COSE_Sign1 receipt (585 bytes). PCR pinning verified. 113ms e2e, 77ms enclave. |
-| C-5b | GCP CPU TDX E2E PASS | 10/10 steps, 2/2 negative | `evidence/mvp-20260227_092628/metadata.json` | `scripts/gcp/mvp_gpu_e2e.sh --cpu-only` | `f1ba30d` (image) | c3-standard-4, us-central1-a. AIR v1 CBOR receipt verified. |
-| C-5c | GCP GPU H100 CC E2E PASS | 10/10 steps, 2/2 negative | `evidence/mvp-20260227_095900/metadata.json` | `scripts/gcp/mvp_gpu_e2e.sh` | `f1ba30d` (image) | a3-highgpu-1g, us-central1-a. MiniLM inference time NOT representative. |
-| C-6 | AIR v1 verification pass | 11/11 mandatory checks | `evidence/mvp-20260227_*/receipt_air_v1_verify_log.txt` | `ephemeralml-verify receipt.cbor --public-key receipt.pubkey` | `f1ba30d` | Policy-optional checks (FRESH, MHASH, MODEL, PLATFORM, NONCE, REPLAY) skipped when unconstrained. |
-| C-7 | Compliance baseline pass | 16/16 rules | `evidence/mvp-20260227_092628/compliance_verify_log.txt` | `ephemeralml-compliance verify --profile baseline` | `f1ba30d` | Baseline profile only. Advanced profiles not tested. |
-| C-8 | Negative test coverage | 2/2 per GCP platform | `evidence/mvp-20260227_*/negative_wrong_{hash,key}_{deploy,verify}.txt` | `scripts/gcp/mvp_gpu_e2e.sh` step 10 | `f1ba30d` | GCP only (hash + key mismatch). Nitro uses PCR mismatch separately. |
+| C-5b | GCP CPU TDX E2E PASS | 10/10 steps, 2/2 negative | `evidence/publication-airv1-20260228/gcp-cpu-tdx/metadata.json` | `scripts/gcp/mvp_gpu_e2e.sh --cpu-only` | `f1ba30d` (image) | c3-standard-4, us-central1-a. AIR v1 CBOR receipt verified. Source run: `mvp-20260227_092628`. |
+| C-5c | GCP GPU H100 CC E2E PASS | 10/10 steps, 2/2 negative | `evidence/publication-airv1-20260228/gcp-gpu-h100cc/metadata.json` | `scripts/gcp/mvp_gpu_e2e.sh` | `f1ba30d` (image) | a3-highgpu-1g, us-central1-a. MiniLM inference time NOT representative. Source run: `mvp-20260227_095900`. |
+| C-6 | AIR v1 verification pass | 11/11 mandatory checks | `evidence/publication-airv1-20260228/gcp-{cpu-tdx,gpu-h100cc}/receipt_air_v1_verify_log.txt` | `ephemeralml-verify receipt.cbor --public-key receipt.pubkey` | `f1ba30d` | Policy-optional checks (FRESH, MHASH, MODEL, PLATFORM, NONCE, REPLAY) skipped when unconstrained. |
+| C-7 | Compliance baseline pass | 16/16 rules | `evidence/publication-airv1-20260228/gcp-cpu-tdx/compliance_verify_log.txt` | `ephemeralml-compliance verify --profile baseline` | `f1ba30d` | Baseline profile only. Advanced profiles not tested. |
+| C-8 | Negative test coverage | 2/2 per GCP platform | `evidence/publication-airv1-20260228/gcp-{cpu-tdx,gpu-h100cc}/negative_wrong_{hash,key}_{deploy,verify}.txt` | `scripts/gcp/mvp_gpu_e2e.sh` step 10 | `f1ba30d` | GCP only (hash + key mismatch). Nitro uses PCR mismatch separately. |
 | C-9 | Test suite size | 574 tests, 0 failures | `cargo test -q` output | `cargo test -q` | `a33dc8b` | Includes unit, integration, conformance. Some tests marked `#[ignore]` for cloud-only scenarios not counted. |
 
 ### Specification Claims

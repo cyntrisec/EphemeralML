@@ -1,1 +1,15 @@
-../../../benchmark_results_aws_nitro_modern_20260225_clean/run_metadata.json
+{
+  "timestamp": "2026-02-25T10:37:33Z",
+  "git_commit": "f1ba30d",
+  "instance_type": "m6i.xlarge",
+  "model_id": "minilm-l6",
+  "require_kms_compat_flag": true,
+  "mode": "modern_fallback",
+  "nitro_runs": 10,
+  "nitro_warmup": 2,
+  "notes": [
+    "Legacy vsock-pingpong benchmark pipeline is absent on this branch.",
+    "Enclave benchmark statistics are aggregated from repeated scripts/nitro_e2e.sh runs using receipt.execution_time_ms.",
+    "git_commit normalized locally to exact source commit because benchmark host checkout had no .git metadata"
+  ]
+}
