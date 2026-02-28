@@ -150,3 +150,12 @@ benchmark_run_log.md
 
 # Hardware test reports (internal only)
 docs/GCP_HARDWARE_TEST_REPORT.md
+
+# Ad-hoc evidence runs (transient; canonical evidence lives in evidence/publication-*)
+evidence/mvp-*/
+evidence/nitro-e2e-*/
+# Keep committed publication evidence:
+!evidence/publication-airv1-20260228/
+
+# Evidence archives (local backup, not committed)
+evidence/archives/
