@@ -155,7 +155,7 @@ docs/GCP_HARDWARE_TEST_REPORT.md
 evidence/mvp-*/
 evidence/nitro-e2e-*/
 # Keep committed publication evidence:
-!evidence/publication-airv1-20260228/
+!evidence/publication-*/
 
 # Evidence archives (local backup, not committed)
 evidence/archives/
