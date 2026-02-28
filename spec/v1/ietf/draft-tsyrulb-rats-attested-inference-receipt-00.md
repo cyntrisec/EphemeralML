@@ -855,7 +855,7 @@ Maturity:
 : Production. Emitted in E2E paths on three platforms.
 
 Coverage:
-: 574 tests passing (including 16 AIR v1 conformance vector tests).
+: 575 tests passing (including 16 AIR v1 conformance vector tests).
 
 Contact:
 : contact@cyntrisec.com

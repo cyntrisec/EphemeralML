@@ -1098,7 +1098,7 @@ Internet-Draft                   AIR v1                    February 2026
 
    Maturity:  Production.  Emitted in E2E paths on three platforms.
 
-   Coverage:  574 tests passing (including 16 AIR v1 conformance vector
+   Coverage:  575 tests passing (including 16 AIR v1 conformance vector
       tests).
 
    Contact:  contact@cyntrisec.com
