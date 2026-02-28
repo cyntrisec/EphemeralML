@@ -1,7 +1,7 @@
 # Claim-to-Evidence Integrity Matrix
 
 **Date:** 2026-02-28
-**HEAD:** `2664132`
+**Baseline commit:** `2664132` (publication tag `publication-airv1-20260228`)
 **Purpose:** For every public claim, this file traces the exact value, source artifact, reproduction command, commit, and caveats. No claim without evidence. No evidence without context.
 
 ## Matrix
