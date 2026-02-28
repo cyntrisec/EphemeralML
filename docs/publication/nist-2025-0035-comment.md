@@ -24,11 +24,11 @@ We describe the Attested Inference Receipt (AIR), an open receipt format for cry
 
 2. **Hardware-isolated execution:** The model runs inside a Trusted Execution Environment (TEE) where the host cannot access plaintext inputs, outputs, or model decryption keys. On AWS Nitro Enclaves, attestation-gated key release (via KMS with PCR conditions) ensures the model decryption key is only available to measured enclave code. On GCP Confidential Space, Intel TDX hardware isolation with Workload Identity Pool-based key release provides equivalent protection.
 
-3. **Four-layer verification framework:** Receipt verification proceeds through parse (COSE/CBOR structural validity), cryptographic (Ed25519 signature), claims (value constraints, measurement lengths, profile match), and policy (freshness, nonce binding, expected model hash, platform type). Each layer produces structured diagnostic codes (36 defined variants), enabling automated compliance tooling.
+3. **Four-layer verification framework:** Receipt verification proceeds through parse (COSE/CBOR structural validity), cryptographic (Ed25519 signature), claims (value constraints, measurement lengths, profile match), and policy (freshness, nonce binding, expected model hash, platform type). Each layer produces structured diagnostic codes (27 defined codes for receipt verification, 38 for attestation verification), enabling automated compliance tooling.
 
 4. **Standards alignment:** AIR v1 is profiled per RFC 9711 (Entity Attestation Token), with all 15 mandatory profile positions documented. It uses IETF RATS architecture roles (RFC 9334) for its trust model. The CDDL schema (RFC 8610) defines the wire format. This standards foundation means AIR receipts can be processed by any COSE/CWT implementation without vendor-specific tooling.
 
-**Evidence:** 574 tests passing across the workspace. AIR v1 spec frozen with 10 golden test vectors (2 valid, 8 invalid). Tri-cloud E2E validation as of February 27-28, 2026 (evidence archived under tag `publication-airv1-20260228`).
+**Evidence:** 575 tests passing across the workspace. AIR v1 spec frozen with 10 golden test vectors (2 valid, 8 invalid). Tri-cloud E2E validation as of February 27-28, 2026 (evidence archived under tag `publication-airv1-20260228`).
 
 ---
 
@@ -63,7 +63,7 @@ The AIR v1 four-layer verification model provides a concrete assessment methodol
 | L3: Claims | Value constraints | model_hash non-zero and 32 bytes, measurements 48 bytes each, measurement_type allowlist, model_hash_scheme allowlist, closed claims map | Receipt contains invalid or unexpected data |
 | L4: Policy | Deployment rules | Timestamp freshness, nonce binding, expected model hash, expected platform, replay deduplication | Receipt does not meet policy requirements |
 
-**36 diagnostic codes** map to specific check failures (e.g., `COSE_DECODE`, `SIG_FAILED`, `BAD_ALG`, `ZERO_MODEL_HASH`, `BAD_MEASUREMENT_LENGTH`, `NONCE_MISMATCH`, `TIMESTAMP_STALE`). These codes enable automated compliance baselines: our reference implementation enforces a 16-rule baseline profile where each rule maps to one or more verification checks.
+**Structured diagnostic codes** map to specific check failures (e.g., `COSE_DECODE`, `SIG_FAILED`, `BAD_ALG`, `ZERO_MODEL_HASH`, `BAD_MEASUREMENT_LENGTH`, `NONCE_MISMATCH`, `TIMESTAMP_STALE`). The receipt verifier defines 27 codes; the attestation verifier defines 38 additional codes. These codes enable automated compliance baselines: our reference implementation enforces a 16-rule baseline profile where each rule maps to one or more verification checks.
 
 **Reproducible evidence:** Assessment artifacts include the receipt itself (COSE_Sign1 bytes), the verification log (per-check PASS/FAIL with diagnostic codes), and the compliance report (rules mapped to checks). All three are machine-readable and can feed into existing GRC tooling.
 
@@ -127,7 +127,7 @@ AIR receipts support operational monitoring through several mechanisms:
 | **Platforms validated** | AWS Nitro Enclaves (m6i.xlarge), GCP Confidential Space TDX (c3-standard-4), GCP GPU H100 CC (a3-highgpu-1g) |
 | **E2E status** | 3/3 PASS (Feb 27-28, 2026) |
 | **Publication tag** | `publication-airv1-20260228` (commit `2664132`) |
-| **Test count** | 574 passing, zero failures |
+| **Test count** | 575 passing, zero failures |
 | **Spec status** | AIR v1.0 FROZEN (8 normative documents locked, Feb 25 2026) |
 | **Golden vectors** | 10 (2 valid + 8 invalid), byte-stable |
 | **Reference verifier** | Rust (4-layer, 36 diagnostic codes, production E2E) |
