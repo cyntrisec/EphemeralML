@@ -1502,7 +1502,10 @@ mod tests {
             }
         });
         let result = parse_air_v1(&tampered);
-        assert!(result.is_err(), "parse must reject unknown model_hash_scheme");
+        assert!(
+            result.is_err(),
+            "parse must reject unknown model_hash_scheme"
+        );
         assert!(
             result
                 .unwrap_err()
