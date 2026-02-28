@@ -4,6 +4,7 @@ abbrev: "AIR v1"
 docname: draft-tsyrulb-rats-attested-inference-receipt-00
 category: info
 ipr: trust200902
+submissiontype: IETF
 area: Security
 workgroup: RATS
 keyword:
@@ -29,22 +30,13 @@ author:
     email: contact@cyntrisec.com
 
 normative:
-  RFC2119:
-  RFC8174:
   RFC8032:
-    title: "Edwards-Curve Digital Signature Algorithm (EdDSA)"
   RFC8392:
-    title: "CBOR Web Token (CWT)"
   RFC8610:
-    title: "Concise Data Definition Language (CDDL)"
   RFC8949:
-    title: "Concise Binary Object Representation (CBOR)"
   RFC9052:
-    title: "CBOR Object Signing and Encryption (COSE): Structures and Process"
   RFC9334:
-    title: "Remote ATtestation procedureS (RATS) Architecture"
   RFC9711:
-    title: "Entity Attestation Token (EAT)"
   FIPS180-4:
     title: "Secure Hash Standard (SHS)"
     author:
@@ -54,9 +46,7 @@ normative:
 
 informative:
   RFC7942:
-    title: "Improving Awareness of Running Code: The Implementation Status Section"
   RFC9782:
-    title: "Registering Media Types for EAT"
   I-D.messous-rats-eat-ai:
     title: "AI Claims for Entity Attestation Token (EAT)"
     author:
@@ -540,6 +530,19 @@ This section consolidates the mandatory profile positions per
     {{RFC8949}} Section 4.2.1 (shorter encoded form first, then
     bytewise lexicographic).
 
+13. **Closed claims map**: The claims map is closed. Unknown integer
+    keys MUST be rejected. Duplicate keys MUST be rejected.
+
+14. **Unprotected header**: MUST be empty. All header parameters are
+    carried in the protected header. The CDDL permits an optional
+    `kid` (label 4) for forward compatibility, but unprotected
+    parameters are not signed and can be tampered in transit.
+
+15. **Private claim keys**: Keys -65537 through -65549 are assigned
+    in the CWT private-use range ({{RFC8392}}). No IANA registration
+    is required. Keys -65550 through -65599 are reserved for v1.x
+    extensions.
+
 
 # Verification Procedure
 
@@ -560,25 +563,30 @@ report the specific failure.
 4.  Decode the protected header. Confirm it is a well-formed CBOR
     map.
 
-5.  Decode the payload. Confirm it is a well-formed CBOR map.
+5.  Confirm `alg` (label 1) in the protected header is -8 (EdDSA).
+    Reject receipts with any other algorithm.
+
+6.  Confirm `content type` (label 3) in the protected header is 61
+    (`application/cwt`).
+
+7.  Decode the payload. Confirm it is a well-formed CBOR map.
+
+8.  Confirm `eat_profile` (key 265) equals
+    `"https://spec.cyntrisec.com/air/v1"`. Reject receipts with
+    unknown profile values.
 
 ## Layer 2: Cryptographic Verification
 
-1.  Confirm `alg` (label 1) in the protected header is -8 (EdDSA).
-
-2.  Confirm `content type` (label 3) in the protected header is 61.
-
-3.  Construct Sig_structure1 = \["Signature1", protected, h'',
+1.  Construct Sig_structure1 = \["Signature1", protected, h'',
     payload\].
 
-4.  Verify the Ed25519 signature over Sig_structure1 using the
+2.  Verify the Ed25519 signature over Sig_structure1 using the
     provided public key. The verification MUST use `verify_strict`
     semantics (reject non-canonical S values).
 
 ## Layer 3: Claim Validation
 
-1.  Confirm `eat_profile` (key 265) equals
-    `"https://spec.cyntrisec.com/air/v1"`.
+1.  Confirm `cti` (key 7) is exactly 16 bytes.
 
 2.  Confirm `cti` (key 7) is exactly 16 bytes.
 
@@ -891,7 +899,7 @@ The COSE_Sign1 envelope (tagged with CBOR tag 18):
 
 ~~~
 18([
-  h'A20126036118',           / protected: {1: -8, 3: 61} /
+  h'A2012703183D',           / protected: {1: -8, 3: 61} /
   {},                         / unprotected: empty /
   h'B0...',                   / payload: CWT claims map /
   h'<64 bytes>'               / signature: Ed25519 /
@@ -947,7 +955,7 @@ modes across all verification layers:
 | Vector               | Layer | Expected Failure         |
 |:---------------------|:------|:-------------------------|
 | wrong-key            | L2    | SIG_FAILED               |
-| wrong-alg            | L2    | BAD_ALG                  |
+| wrong-alg            | L1    | BAD_ALG                  |
 | zero-model-hash      | L3    | ZERO_MODEL_HASH          |
 | bad-measurement-length | L3  | BAD_MEASUREMENT_LENGTH   |
 | nonce-mismatch       | L4    | NONCE_MISMATCH           |
