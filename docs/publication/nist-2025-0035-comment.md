@@ -130,7 +130,7 @@ AIR receipts support operational monitoring through several mechanisms:
 | **Test count** | 575 passing, zero failures |
 | **Spec status** | AIR v1.0 FROZEN (8 normative documents locked, Feb 25 2026) |
 | **Golden vectors** | 10 (2 valid + 8 invalid), byte-stable |
-| **Reference verifier** | Rust (4-layer, 36 diagnostic codes, production E2E) |
+| **Reference verifier** | Rust (4-layer, 27 receipt + 38 attestation diagnostic codes, production E2E) |
 | **Interop verifier** | Python (pycose/cbor2, same-team independent) |
 | **Confidential overhead** | +3.2% enclave execution only (reproducible); +3-13% depending on measurement boundary |
 | **Per-inference crypto cost** | < 0.03ms |
