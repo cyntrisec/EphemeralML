@@ -1,0 +1,149 @@
+# Comment on NIST AI 600-1: Artificial Intelligence Risk Management Framework
+
+**Docket:** NIST-2025-0035
+**Submitter:** Borys Tsyrulnikov, Cyntrisec
+**Date:** 2026-02-28
+**Contact:** contact@cyntrisec.com
+**Selected Questions:** 2(a), 3(a), 3(b), 4(a), 4(d)
+
+---
+
+## Executive Summary
+
+We describe the Attested Inference Receipt (AIR), an open receipt format for cryptographically proving what happened during a single AI inference inside a hardware-isolated environment. AIR v1 uses IETF standards (COSE_Sign1, CWT, EAT) to bind model identity, input/output hashes, platform attestation metadata, and operational telemetry in a signed envelope verified by any party with the Ed25519 public key. The format has been validated end-to-end on three confidential computing platforms (AWS Nitro Enclaves, GCP Confidential Space with Intel TDX, and GCP GPU with NVIDIA H100 CC-mode). We offer implementation-grounded answers to five NIST questions, covering technical controls, threat assessment, system assurance, environment constraints, and monitoring.
+
+---
+
+## Question 2(a): What technical approaches or controls effectively reduce the risk of AI systems?
+
+**Per-inference cryptographic receipts reduce audit risk by creating verifiable evidence for every inference event.** Traditional AI deployments produce logs (mutable, operator-controlled) but no cryptographically verifiable record of what model processed what data. AIR receipts address this gap.
+
+**Concrete technical controls implemented and validated:**
+
+1. **Receipt signing (Ed25519 verify_strict):** Every inference produces a COSE_Sign1 envelope (RFC 9052) containing a CWT payload (RFC 8392) signed with Ed25519. The signature binds 16 required claims including model identity (SHA-256 hash of weights), input/output hashes, attestation metadata hash, platform measurements, and a monotonic sequence number. Verification requires only the public key and standard COSE libraries.
+
+2. **Hardware-isolated execution:** The model runs inside a Trusted Execution Environment (TEE) where the host cannot access plaintext inputs, outputs, or model decryption keys. On AWS Nitro Enclaves, attestation-gated key release (via KMS with PCR conditions) ensures the model decryption key is only available to measured enclave code. On GCP Confidential Space, Intel TDX hardware isolation with Workload Identity Pool-based key release provides equivalent protection.
+
+3. **Four-layer verification framework:** Receipt verification proceeds through parse (COSE/CBOR structural validity), cryptographic (Ed25519 signature), claims (value constraints, measurement lengths, profile match), and policy (freshness, nonce binding, expected model hash, platform type). Each layer produces structured diagnostic codes (36 defined variants), enabling automated compliance tooling.
+
+4. **Standards alignment:** AIR v1 is profiled per RFC 9711 (Entity Attestation Token), with all 12 mandatory profile positions documented. It uses IETF RATS architecture roles (RFC 9334) for its trust model. The CDDL schema (RFC 8610) defines the wire format. This standards foundation means AIR receipts can be processed by any COSE/CWT implementation without vendor-specific tooling.
+
+**Evidence:** 574 tests passing across the workspace. AIR v1 spec frozen with 10 golden test vectors (2 valid, 8 invalid). Tri-cloud E2E validation as of February 27-28, 2026 (evidence archived under tag `publication-airv1-20260228`).
+
+---
+
+## Question 3(a): What are the most significant threats or vulnerabilities to AI systems, and how can they be addressed?
+
+**Model substitution and environment integrity are significant threats that per-inference receipts help detect.**
+
+AIR v1 addresses these through concrete mechanisms:
+
+1. **Model substitution detection:** The `model_hash` claim (key -65539) carries the SHA-256 hash of the loaded model weights. A verifier comparing this hash against a known-good reference value detects substitution of a different model. The optional `model_hash_scheme` claim (key -65549) declares how the hash was computed (single file, concatenated files, or manifest), enabling verifiers to independently reproduce the hash. Unknown scheme values are rejected (fail-closed).
+
+2. **Environment integrity via platform measurements:** The `enclave_measurements` claim (key -65543) carries TEE-specific measurement registers: PCR0/PCR1/PCR2 (SHA-384) for AWS Nitro Enclaves, MRTD/RTMR0/RTMR1 for Intel TDX. These measurements are produced by the hardware during measured boot and cannot be forged by software. A verifier comparing measurements against a policy allowlist detects unauthorized code changes.
+
+3. **Input/output binding:** The `request_hash` and `response_hash` claims (SHA-256) bind the receipt to specific inputs and outputs. A client holding the original data can recompute and compare, detecting output tampering.
+
+**Formal threat model:** AIR v1 documents 13 threats explicitly. Six are mitigated (receipt forgery, tampering, replay, algorithm confusion, stale receipts, wrong model). Seven are explicitly not mitigated and documented as limitations: TEE hardware compromise, key exfiltration via side channels, attestation document forgery (out of scope for receipt format), input inference from hashes, denial of receipt, compromised verifier, and data destruction proof. This explicit treatment of non-claims prevents overstatement of security guarantees.
+
+**Golden vectors for testing:** The specification includes 10 conformance vectors exercising specific failure modes (wrong signing key, wrong algorithm, zero model hash, bad measurement length, nonce mismatch, model hash mismatch, platform mismatch, stale timestamp). These enable automated validation of verifier implementations against known-bad inputs.
+
+---
+
+## Question 3(b): What are the best practices for assessing AI systems for trustworthiness?
+
+**A layered verification framework with structured diagnostic codes enables systematic assessment of AI system trustworthiness.**
+
+The AIR v1 four-layer verification model provides a concrete assessment methodology:
+
+| Layer | Scope | Example Checks | Failure Impact |
+|-------|-------|----------------|----------------|
+| L1: Parse | Structural validity | CBOR tag 18 present, COSE_Sign1 shape, size limit (64 KB) | Receipt cannot be processed |
+| L2: Crypto | Signature integrity | Ed25519 verify_strict, algorithm = EdDSA, content_type = 61 | Receipt may be forged or tampered |
+| L3: Claims | Value constraints | Profile URI match, model_hash non-zero and 32 bytes, measurements 48 bytes each, measurement_type allowlist, model_hash_scheme allowlist | Receipt contains invalid or unexpected data |
+| L4: Policy | Deployment rules | Timestamp freshness, nonce binding, expected model hash, expected platform, replay deduplication | Receipt does not meet policy requirements |
+
+**36 diagnostic codes** map to specific check failures (e.g., `COSE_DECODE`, `SIG_FAILED`, `BAD_ALG`, `ZERO_MODEL_HASH`, `BAD_MEASUREMENT_LENGTH`, `NONCE_MISMATCH`, `TIMESTAMP_STALE`). These codes enable automated compliance baselines: our reference implementation enforces a 16-rule baseline profile where each rule maps to one or more verification checks.
+
+**Reproducible evidence:** Assessment artifacts include the receipt itself (COSE_Sign1 bytes), the verification log (per-check PASS/FAIL with diagnostic codes), and the compliance report (rules mapped to checks). All three are machine-readable and can feed into existing GRC tooling.
+
+**Interoperability testing:** The frozen specification includes a CDDL schema, an interop kit with a deterministic test keypair, and conformance vectors. An independent Python implementation (using pycose and cbor2) successfully verifies receipts produced by the Rust reference implementation. External third-party interop testing is planned but not yet completed.
+
+---
+
+## Question 4(a): What existing or proposed methods constrain the environments or conditions in which AI systems operate?
+
+**Hardware-isolated execution combined with attestation-gated key release constrains AI execution environments to measured, policy-compliant configurations.**
+
+Three constraint mechanisms are implemented and validated:
+
+1. **TEE hardware isolation:** The inference workload runs inside a hardware-isolated environment (AWS Nitro Enclave or Intel TDX Confidential VM). The host operating system forwards ciphertext only and cannot access plaintext prompts, model weights, or outputs. The TEE boundary is enforced by hardware (Nitro hypervisor isolation, Intel TDX module), not software.
+
+2. **Attestation-gated key release:** Model decryption keys are released only when the platform attestation document proves the workload matches expected measurements. On AWS, KMS key policies condition on PCR0/PCR1/PCR2 values from the NSM attestation document. On GCP, Workload Identity Pool conditions gate Cloud KMS key access on Confidential Space attestation token claims. A workload with different code, configuration, or platform cannot obtain model keys.
+
+3. **Receipt as constraint proof:** The AIR receipt documents the constrained execution environment after the fact. Platform measurements in the receipt prove the workload ran inside a specific measured configuration. The attestation_doc_hash links the receipt to the full attestation document. The model_hash proves the specific model binary that executed. Together, these claims provide verifiable evidence that the AI system operated within its intended constraints.
+
+**Validation evidence:** Negative tests on GCP Confidential Space confirm that deploying with a wrong model hash or wrong KMS key is rejected. On AWS Nitro, PCR mismatch causes KMS AccessDeniedException. These constraint enforcement tests are part of the E2E validation suite (2/2 negative tests pass per GCP platform).
+
+---
+
+## Question 4(d): What monitoring approaches most effectively detect and respond to AI system issues in operation?
+
+**Continuous receipt streams with replay detection, model integrity monitoring, and platform drift alerts provide operational monitoring for confidential AI systems.**
+
+AIR receipts support operational monitoring through several mechanisms:
+
+1. **Continuous receipt stream:** Every inference produces a receipt. The `sequence_number` claim (monotonically increasing within a session) enables gap detection: a missing sequence number indicates a missed or dropped inference. The `iat` (issued-at) timestamp enables latency monitoring and freshness alerting.
+
+2. **Replay detection:** The `cti` claim (UUID v4, 16 raw bytes) uniquely identifies each receipt. A monitoring system maintaining a seen-cti store can detect replayed receipts. The optional `eat_nonce` claim provides challenge-response freshness for verifiers that cannot maintain state.
+
+3. **Model integrity monitoring:** The `model_hash` claim in every receipt enables continuous verification that the correct model is serving requests. A hash change across receipts without a corresponding policy update indicates unauthorized model replacement. The `model_hash_scheme` claim enables automated hash reproduction from model artifacts.
+
+4. **Platform drift detection:** The `enclave_measurements` claim in every receipt carries the platform measurement registers (PCR or MRTD/RTMR values). Changes in measurement values across receipts indicate workload code changes, configuration updates, or platform firmware updates. Monitoring systems can alert on unexpected measurement changes.
+
+5. **Anomaly signals:** The `execution_time_ms` and `memory_peak_mb` claims provide per-inference telemetry. Sustained deviations from baseline values may indicate resource contention, model degradation, or adversarial inputs. The `security_mode` claim confirms the workload is operating in the expected security configuration.
+
+**Operational overhead:** Receipt generation adds less than 0.03ms per inference (Ed25519 signing + CBOR serialization), which is negligible relative to typical inference latency. The receipt size is bounded at 64 KB (typically under 1 KB), enabling high-volume streaming without significant bandwidth impact.
+
+---
+
+## Explicit Limits
+
+| Limit | Detail |
+|-------|--------|
+| No cryptographic deletion proof | AIR receipts do not prove data was destroyed after inference. Destruction evidence is self-reported, not cryptographically verified. Provable deletion remains an open research problem. |
+| Hash proves identity, not correctness | model_hash proves byte-level model identity. It does not prove the model is correct, unbiased, or safe. |
+| No regulatory certification | AIR v1 is a technical specification. It is not certified, accredited, or endorsed by any regulatory body. Receipts may support compliance evidence (e.g., for HIPAA 164.312 audit controls), but they do not confer automatic compliance. |
+| Single-inference scope | AIR v1 covers one inference event. Multi-stage pipeline proof chaining is deferred to a future version. |
+| GPU validation limited | GPU inference (NVIDIA H100 CC-mode) has been validated functionally but not benchmarked with production-scale models. Performance overhead characterization used CPU-only workloads on AWS m6i.xlarge. |
+| Attestation document out of scope | AIR receipts reference the attestation document by hash. Verification of the attestation document itself (Nitro COSE, TDX DCAP) is platform-specific and not defined by the receipt format. |
+
+---
+
+## Evidence Summary
+
+| Item | Value |
+|------|-------|
+| **Platforms validated** | AWS Nitro Enclaves (m6i.xlarge), GCP Confidential Space TDX (c3-standard-4), GCP GPU H100 CC (a3-highgpu-1g) |
+| **E2E status** | 3/3 PASS (Feb 27-28, 2026) |
+| **Publication tag** | `publication-airv1-20260228` (commit `2664132`) |
+| **Test count** | 574 passing, zero failures |
+| **Spec status** | AIR v1.0 FROZEN (8 normative documents locked, Feb 25 2026) |
+| **Golden vectors** | 10 (2 valid + 8 invalid), byte-stable |
+| **Reference verifier** | Rust (4-layer, 36 diagnostic codes, production E2E) |
+| **Interop verifier** | Python (pycose/cbor2, same-team independent) |
+| **Confidential overhead** | +3.2% enclave execution only (reproducible); +3-13% depending on measurement boundary |
+| **Per-inference crypto cost** | < 0.03ms |
+
+---
+
+## Standards References
+
+- RFC 9052: CBOR Object Signing and Encryption (COSE)
+- RFC 8392: CBOR Web Token (CWT)
+- RFC 9711: Entity Attestation Token (EAT)
+- RFC 9334: Remote ATtestation procedureS (RATS) Architecture
+- RFC 8949: Concise Binary Object Representation (CBOR)
+- RFC 8610: Concise Data Definition Language (CDDL)
+- RFC 8032: Edwards-Curve Digital Signature Algorithm (EdDSA)
+- FIPS 180-4: Secure Hash Standard (SHA-256, SHA-384)

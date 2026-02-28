@@ -7,7 +7,9 @@
 > | C-1 (fully instrumented) | +12.6% | Host-observed, includes VSock | `b00bab1` | No (legacy pipeline removed) |
 > | C-2 (enclave execution) | +3.2% | Enclave-side only | `f1ba30d` | Yes (`scripts/run_benchmark.sh`) |
 >
-> For external claims, use "+3–13% depending on measurement boundary" or cite C-1 with the historical caveat. See `docs/publication/claim_evidence_matrix.md` for full traceability.
+> For external claims, use "+3\u201313% depending on measurement boundary" or cite C-1 with the historical caveat. See `docs/publication/claim_evidence_matrix.md` for full traceability.
+
+> **Overhead disambiguation (claim_definitions.md \u00a74):** The +12.6% (C-1) and +3.2% (C-2) numbers measure different boundaries of the same system. C-1 includes VSock transport round-trip (~10ms). C-2 isolates enclave-side inference execution only. The canonical headline for external publication is "+3\u201313% depending on measurement boundary" (see `docs/publication/claim_definitions.md` \u00a73). Neither number alone tells the full story\u2014always cite the measurement scope alongside the percentage.
 
 > Benchmark freshness status (2026-02-25): the legacy Nitro benchmark pipeline (`enclaves/vsock-pingpong` + several `benchmark_*.rs` bins) is not present on `main` (`f1ba30d`), but `scripts/run_benchmark.sh` now auto-falls back to `scripts/run_benchmark_modern.sh` for a current-architecture benchmark path. The historical benchmark tables below still refer to commit `b00bab1` (February 4, 2026). Fresh multicloud E2E timings from the latest reruns are tracked in `docs/MULTICLOUD_E2E_STATUS.md`.
 
