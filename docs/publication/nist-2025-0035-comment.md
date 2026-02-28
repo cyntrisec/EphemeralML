@@ -26,7 +26,7 @@ We describe the Attested Inference Receipt (AIR), an open receipt format for cry
 
 3. **Four-layer verification framework:** Receipt verification proceeds through parse (COSE/CBOR structural validity), cryptographic (Ed25519 signature), claims (value constraints, measurement lengths, profile match), and policy (freshness, nonce binding, expected model hash, platform type). Each layer produces structured diagnostic codes (36 defined variants), enabling automated compliance tooling.
 
-4. **Standards alignment:** AIR v1 is profiled per RFC 9711 (Entity Attestation Token), with all 12 mandatory profile positions documented. It uses IETF RATS architecture roles (RFC 9334) for its trust model. The CDDL schema (RFC 8610) defines the wire format. This standards foundation means AIR receipts can be processed by any COSE/CWT implementation without vendor-specific tooling.
+4. **Standards alignment:** AIR v1 is profiled per RFC 9711 (Entity Attestation Token), with all 15 mandatory profile positions documented. It uses IETF RATS architecture roles (RFC 9334) for its trust model. The CDDL schema (RFC 8610) defines the wire format. This standards foundation means AIR receipts can be processed by any COSE/CWT implementation without vendor-specific tooling.
 
 **Evidence:** 574 tests passing across the workspace. AIR v1 spec frozen with 10 golden test vectors (2 valid, 8 invalid). Tri-cloud E2E validation as of February 27-28, 2026 (evidence archived under tag `publication-airv1-20260228`).
 
@@ -58,9 +58,9 @@ The AIR v1 four-layer verification model provides a concrete assessment methodol
 
 | Layer | Scope | Example Checks | Failure Impact |
 |-------|-------|----------------|----------------|
-| L1: Parse | Structural validity | CBOR tag 18 present, COSE_Sign1 shape, size limit (64 KB) | Receipt cannot be processed |
-| L2: Crypto | Signature integrity | Ed25519 verify_strict, algorithm = EdDSA, content_type = 61 | Receipt may be forged or tampered |
-| L3: Claims | Value constraints | Profile URI match, model_hash non-zero and 32 bytes, measurements 48 bytes each, measurement_type allowlist, model_hash_scheme allowlist | Receipt contains invalid or unexpected data |
+| L1: Parse | Structural validity | CBOR tag 18 present, COSE_Sign1 shape, size limit (64 KB), algorithm = EdDSA, content_type = 61, profile URI match | Receipt cannot be processed |
+| L2: Crypto | Signature integrity | Ed25519 verify_strict over COSE Sig_structure1 | Receipt may be forged or tampered |
+| L3: Claims | Value constraints | model_hash non-zero and 32 bytes, measurements 48 bytes each, measurement_type allowlist, model_hash_scheme allowlist, closed claims map | Receipt contains invalid or unexpected data |
 | L4: Policy | Deployment rules | Timestamp freshness, nonce binding, expected model hash, expected platform, replay deduplication | Receipt does not meet policy requirements |
 
 **36 diagnostic codes** map to specific check failures (e.g., `COSE_DECODE`, `SIG_FAILED`, `BAD_ALG`, `ZERO_MODEL_HASH`, `BAD_MEASUREMENT_LENGTH`, `NONCE_MISMATCH`, `TIMESTAMP_STALE`). These codes enable automated compliance baselines: our reference implementation enforces a 16-rule baseline profile where each rule maps to one or more verification checks.
