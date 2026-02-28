@@ -1,8 +1,8 @@
 [
   {
     "EnclaveName": "ephemeral-ml-enclave",
-    "EnclaveID": "i-0c5d21eb981b85f59-enc19c9e792bb12798",
-    "ProcessID": 47743,
+    "EnclaveID": "i-0a2b9faf0dffc7c02-enc19ca3b4e461afb1",
+    "ProcessID": 65721,
     "EnclaveCID": 16,
     "NumberOfCPUs": 2,
     "CPUIDs": [
@@ -14,9 +14,9 @@
     "Flags": "NONE",
     "Measurements": {
       "HashAlgorithm": "Sha384 { ... }",
-      "PCR0": "0f90643bcc2d469945abd2b4e21faeb6e19391c379a6abcf121a69f729cf0ad4d07a38b584fbade4a52df69ec04170c3",
+      "PCR0": "adb25d65f611e28bff1e8e441f203accf61d5619853c628f075574dba0b919cbc410c05c9644e3924d1aa21ceec383da",
       "PCR1": "4b4d5b3661b3efc12920900c80e126e4ce783c522de6c02a2a5bf7af3a2b9327b86776f188e4be1c1c404a129dbda493",
-      "PCR2": "4f8a2cb5617a9203092926c2ece3b11f542f2bc38ec728b2b2706bdb94b39cedb709c8370d213d19f464257c815165a2"
+      "PCR2": "00e1fa24ef430dc469bc0c415d61461b933cb361ef0890469ce7d47881ea2c27f70b41f692f5fc2d3ffdab257e94e372"
     }
   }
 ]

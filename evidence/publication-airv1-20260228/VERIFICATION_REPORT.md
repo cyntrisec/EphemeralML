@@ -27,7 +27,7 @@
 - Enclave execution: 76ms
 - PCR pinning enforced (PCR0/1/2, non-zero SHA-384)
 - Negative tests via PCR mismatch (separate from MVP script)
-- AIR v1 CBOR receipt NOT emitted in Nitro E2E path (known gap, uses legacy JSON receipt)
+- AIR v1 CBOR receipt: PASS (emitted since commit `63db588`)
 
 **GCP CPU TDX:**
 - Evidence: `evidence/mvp-20260227_092628/`
@@ -61,7 +61,7 @@
 
 | Gap | Impact | Mitigation |
 |-----|--------|------------|
-| AIR v1 CBOR receipt not emitted in Nitro E2E | Nitro uses legacy JSON receipt | AIR v1 verified on GCP; Nitro emission is backlog item |
+| ~~AIR v1 CBOR receipt not emitted in Nitro E2E~~ | **RESOLVED** (commit `63db588`) | Nitro now emits AIR v1 CBOR receipts |
 | Enclave memory RSS = 0 | Cannot verify memory claims | Known limitation in current host path |
 | GPU benchmark uses MiniLM | Not representative of GPU perf | Pipeline validation only; 7B+ model benchmark needed (Phase 3) |
 | Legacy benchmark not reproducible | +12.6% cannot be regenerated on current main | Use +3.2% for reproducible claims, reference +12.6% as historical |
