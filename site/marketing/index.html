@@ -659,6 +659,46 @@
       ::-webkit-scrollbar-track { background:var(--bg-0); }
       ::-webkit-scrollbar-thumb { background:var(--border);border-radius:2px; }
     </style>
+
+    <!-- Structured Data -->
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@graph": [
+        {
+          "@type": "Organization",
+          "@id": "https://cyntrisec.com/#org",
+          "name": "Cyntrisec",
+          "url": "https://cyntrisec.com",
+          "logo": "https://cyntrisec.com/logo-mark-64.png",
+          "description": "Confidential AI infrastructure with hardware-proven security and per-inference cryptographic receipts.",
+          "sameAs": [
+            "https://github.com/cyntrisec"
+          ]
+        },
+        {
+          "@type": "SoftwareApplication",
+          "@id": "https://cyntrisec.com/#ephemeralml",
+          "name": "EphemeralML",
+          "applicationCategory": "SecurityApplication",
+          "operatingSystem": "Linux",
+          "description": "Run AI inference inside hardware-isolated enclaves. Every inference produces a signed receipt attesting model identity, data hashes, and execution metadata.",
+          "url": "https://cyntrisec.com/docs",
+          "author": { "@id": "https://cyntrisec.com/#org" },
+          "license": "https://opensource.org/licenses/Apache-2.0",
+          "codeRepository": "https://github.com/cyntrisec/EphemeralML",
+          "programmingLanguage": "Rust"
+        },
+        {
+          "@type": "WebSite",
+          "@id": "https://cyntrisec.com/#website",
+          "url": "https://cyntrisec.com",
+          "name": "Cyntrisec",
+          "publisher": { "@id": "https://cyntrisec.com/#org" }
+        }
+      ]
+    }
+    </script>
   </head>
   <body>
 

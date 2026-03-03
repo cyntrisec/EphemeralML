@@ -977,6 +977,57 @@
       ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
       ::-webkit-scrollbar-thumb:hover { background: var(--border-hi); }
     </style>
+
+    <!-- Structured Data -->
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@graph": [
+        {
+          "@type": "SoftwareApplication",
+          "@id": "https://cyntrisec.com/docs#ephemeralml",
+          "name": "EphemeralML",
+          "applicationCategory": "SecurityApplication",
+          "operatingSystem": "Linux",
+          "description": "Run AI inference inside hardware-isolated enclaves. Get a signed receipt covering model identity, data hashes, and lifecycle evidence events.",
+          "url": "https://cyntrisec.com/docs",
+          "author": {
+            "@type": "Organization",
+            "name": "Cyntrisec",
+            "url": "https://cyntrisec.com"
+          },
+          "license": "https://opensource.org/licenses/Apache-2.0",
+          "codeRepository": "https://github.com/cyntrisec/EphemeralML",
+          "programmingLanguage": "Rust",
+          "featureList": [
+            "Per-inference cryptographic receipts (AIR v1)",
+            "Hardware-isolated enclaves (Intel TDX, AMD SEV-SNP, AWS Nitro)",
+            "Encrypted transport (X25519 + ChaCha20-Poly1305)",
+            "NVIDIA H100 Confidential Computing support",
+            "HIPAA compliance evidence mapping"
+          ]
+        },
+        {
+          "@type": "BreadcrumbList",
+          "@id": "https://cyntrisec.com/docs#breadcrumb",
+          "itemListElement": [
+            {
+              "@type": "ListItem",
+              "position": 1,
+              "name": "Home",
+              "item": "https://cyntrisec.com"
+            },
+            {
+              "@type": "ListItem",
+              "position": 2,
+              "name": "Technical Docs",
+              "item": "https://cyntrisec.com/docs"
+            }
+          ]
+        }
+      ]
+    }
+    </script>
   </head>
   <body>
 
