@@ -1,3 +1,0 @@
-Error (--strict): missing evidence types:
-  - attestation (required by ATT-001, ATT-002, KEY-001)
-  - model manifest (required by MODEL-002)

@@ -155,13 +155,22 @@ benchmark_run_log.md
 docs/GCP_HARDWARE_TEST_REPORT.md
 
 # Ad-hoc evidence runs (transient; canonical evidence lives in evidence/publication-*)
-evidence/mvp-*/
-evidence/nitro-e2e-*/
-# Keep committed publication evidence:
+evidence/*
+# Keep committed publication evidence only:
 !evidence/publication-*/
+!evidence/publication-*/**
 
 # Evidence archives (local backup, not committed)
 evidence/archives/
+
+# Local attestation captures (host-path and machine-specific)
+attestation-evidence/
+
+# Publication process docs (personal workflow records)
+docs/publication/submission/
+docs/publication/nist-2025-0035-comment.md
+docs/publication/nist-2025-0035-comment.txt
+docs/REAL_USER_FLOW_VALIDATION.md
 
 # Marketing local previews/backups
 site/marketing/index-preview.html

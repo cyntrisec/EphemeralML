@@ -7,7 +7,10 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 MODEL_DIR="$PROJECT_DIR/test_assets/minilm"
 
-SYMLINK_SRC="/home/tsyrulb/vsock/confidential-ml-transport/examples/nitro-inference/model/model.safetensors"
+# Optional local shortcut to reuse an existing model file from a sibling repo.
+# Can be overridden with EPHEMERALML_MODEL_SYMLINK_SRC.
+SYMLINK_SRC_DEFAULT="$PROJECT_DIR/../confidential-ml-transport/examples/nitro-inference/model/model.safetensors"
+SYMLINK_SRC="${EPHEMERALML_MODEL_SYMLINK_SRC:-$SYMLINK_SRC_DEFAULT}"
 HF_URL="https://huggingface.co/sentence-transformers/all-MiniLM-L6-v2/resolve/main"
 
 mkdir -p "$MODEL_DIR"

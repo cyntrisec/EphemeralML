@@ -1,120 +1,0 @@
-  ==============================================================
-  EphemeralML — Verify Deployment
-  ==============================================================
-
-  [1/4] Resolving instance IP...
-  Instance IP:  34.173.61.34
-
-  [2/4] Waiting for 34.173.61.34:9000 to be reachable (max 300s)...
-  Waiting... [5/300s]  Waiting... [10/300s]  Waiting... [15/300s]  Waiting... [20/300s]  Waiting... [25/300s]  Waiting... [30/300s]  Waiting... [35/300s]  Waiting... [40/300s]  Waiting... [45/300s]  Waiting... [50/300s]  Waiting... [55/300s]  Waiting... [60/300s]  Waiting... [65/300s]  Waiting... [70/300s]  Waiting... [75/300s]  Waiting... [80/300s]  Waiting... [85/300s]  Waiting... [90/300s]  Waiting... [95/300s]  Waiting... [100/300s]  Waiting... [105/300s]  Port 9000 is reachable.
-
-  [3/4] Running inference against 34.173.61.34:9000...
-  Text:         "Verify EphemeralML on Confidential Space"
-  Mode:         gcp (TDX attestation + handshake)
-  Request model ID: stage-0
-  Receipt model ID: minilm-l6-v2
-
-[3/4] Building GCP client...  [OK] Building GCP client (1s)          
-    Finished `release` profile [optimized] target(s) in 0.18s
-     Running `target/release/ephemeral-ml-client`
-EphemeralML Client (GCP Mode)
-[client] WARNING: No expected MRTD configured (EPHEMERALML_REQUIRE_MRTD=false). TDX peer measurements are NOT pinned. This is unsafe for production.
-Secure channel established with GCP enclave
-Receipt public key saved to /tmp/ephemeralml-receipt.json.pubkey
-Using model_id=stage-0
-Inference succeeded: 384 floats returned
-First 5 values: [0.34142268, 0.75955725, 0.071208164, 0.23890182, -0.15010901]
-Receipt saved to /tmp/ephemeralml-receipt.json
-Receipt ID: c7776b27-ff6a-41d5-9157-47deaa58b148
-AIR v1 receipt saved to /tmp/ephemeralml-receipt.cbor
-Attestation saved to /tmp/ephemeralml-attestation.bin
-Manifest saved to /tmp/ephemeralml-manifest.json
-
-  Inference completed successfully.
-  Client log:   /tmp/ephemeralml-client_output.log
-
-  [4/4] Verifying receipt...
-  Receipt:      /tmp/ephemeralml-receipt.json
-  Public key:   abc4b317b340b412e7e46c042ed46d448dae292560035339f8ac536444eec564
-
-    Finished `release` profile [optimized] target(s) in 0.37s
-     Running `target/release/ephemeralml-verify /tmp/ephemeralml-receipt.json --public-key abc4b317b340b412e7e46c042ed46d448dae292560035339f8ac536444eec564 --max-age 0 --format text`
-
-  ==============================================================
-  EphemeralML Receipt Verification
-  ==============================================================
-
-  Receipt:     c7776b27-ff6a-41d5-9157-47deaa58b148
-  Model:       minilm-l6-v2 vv1.0.0
-  Platform:    tdx-mrtd-rtmr
-  Sequence:    #0
-
-  --------------------------------------------------------------
-  Checks:
-  --------------------------------------------------------------
-  Signature (Ed25519)         [PASS]
-  Model ID match              [SKIP]
-  Measurement type            [SKIP]
-  Timestamp freshness         [SKIP]
-  Measurements present        [PASS]
-  Attestation source          [SKIP]
-  Image digest                [SKIP]
-  Destroy evidence            [SKIP]
-  --------------------------------------------------------------
-
-  VERIFIED
-
-  --------------------------------------------------------------
-
-  AIR v1 receipt verification...
-    Finished `release` profile [optimized] target(s) in 0.25s
-     Running `target/release/ephemeralml-verify /tmp/ephemeralml-receipt.cbor --public-key abc4b317b340b412e7e46c042ed46d448dae292560035339f8ac536444eec564 --max-age 0 --format text`
-
-  ==============================================================
-  EphemeralML AIR v1 Receipt Verification
-  ==============================================================
-
-  Receipt:     c7776b27ff6a41d5915747deaa58b148
-  Model:       minilm-l6-v2 vv1.0.0
-  Platform:    tdx-mrtd-rtmr
-  Sequence:    #0
-  Issuer:      cyntrisec.com
-
-  --------------------------------------------------------------
-  4-Layer Verification:
-  --------------------------------------------------------------
-  COSE_DECODE                 [PASS]
-  ALG                         [PASS]
-  CONTENT_TYPE                [PASS]
-  PAYLOAD                     [PASS]
-  EAT_PROFILE                 [PASS]
-  SIG                         [PASS]
-  CTI                         [PASS]
-  MHASH_PRESENT               [PASS]
-  MEAS                        [PASS]
-  MTYPE                       [PASS]
-  MHASH_SCHEME                [PASS]
-  FRESH                       [SKIP]
-  MHASH                       [SKIP]
-  MODEL                       [SKIP]
-  PLATFORM                    [SKIP]
-  NONCE                       [SKIP]
-  REPLAY                      [SKIP]
-  --------------------------------------------------------------
-
-  VERIFIED (AIR v1)
-
-  --------------------------------------------------------------
-
-  Timing:       /tmp/ephemeralml-timing.json
-  Manifest:     /tmp/ephemeralml-artifact_manifest.json
-  ==============================================================
-  PASS — Inference + receipt verification succeeded
-  ==============================================================
-
-  Instance:     ephemeralml-gpu (34.173.61.34)
-  Client:       exit 0
-  Receipt:      VERIFIED
-  AIR v1:       VERIFIED
-
-  Next: bash scripts/gcp/teardown.sh

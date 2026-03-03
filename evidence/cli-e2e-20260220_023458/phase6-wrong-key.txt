@@ -1,5 +1,0 @@
-Error: Invalid Ed25519 public key
-
-Caused by:
-    0: signature error: Cannot decompress Edwards point
-    1: Cannot decompress Edwards point
