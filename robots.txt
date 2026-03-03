@@ -1,4 +1,5 @@
 User-agent: *
-Allow: /
+Disallow: /
 
-Sitemap: https://ephemeralml.cyntrisec.com/sitemap.xml
+# This domain redirects to cyntrisec.com/docs
+# See https://cyntrisec.com/docs for the canonical site

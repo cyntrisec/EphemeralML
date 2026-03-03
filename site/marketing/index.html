@@ -4,22 +4,13 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Cyntrisec - Confidential AI Inference with Hardware-Proven Security</title>
-    <meta name="description" content="Run AI inference inside hardware-isolated enclaves. Every inference produces a signed receipt proving model identity, data handling, and execution integrity." />
-
-    <!-- Canonical -->
+    <meta name="description" content="Run AI inference inside hardware-isolated enclaves. Every inference produces a signed receipt attesting model identity, data hashes, and execution metadata." />
     <link rel="canonical" href="https://cyntrisec.com" />
+    <link rel="icon" type="image/png" href="favicon.png" />
+    <meta name="theme-color" content="#050505" />
 
-    <!-- Favicon -->
-    <link rel="icon" type="image/svg+xml" href="favicon.svg" />
-    <link rel="apple-touch-icon" href="favicon.svg" />
-    <meta name="theme-color" content="#0a0a0a" />
-
-    <!-- Content Security Policy -->
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'" />
-
-    <!-- Open Graph -->
     <meta property="og:title" content="Cyntrisec - Confidential AI Inference with Hardware-Proven Security" />
-    <meta property="og:description" content="Run AI inference inside hardware-isolated enclaves. Every inference produces a signed receipt proving model identity, data handling, and execution integrity." />
+    <meta property="og:description" content="Run AI inference inside hardware-isolated enclaves. Every inference produces a signed receipt attesting model identity, data hashes, and execution metadata." />
     <meta property="og:type" content="website" />
     <meta property="og:url" content="https://cyntrisec.com" />
     <meta property="og:image" content="https://cyntrisec.com/og-image.svg" />
@@ -27,17 +18,48 @@
     <meta property="og:image:height" content="630" />
     <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:site" content="@cyntrisec" />
-    <meta name="twitter:creator" content="@cyntrisec" />
     <meta name="twitter:title" content="Cyntrisec - Confidential AI Inference" />
     <meta name="twitter:description" content="Hardware-proven confidential AI. Every inference produces a cryptographic receipt." />
     <meta name="twitter:image" content="https://cyntrisec.com/og-image.svg" />
 
-    <style>
-      @import url("../shared/brand.css");
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'" />
 
-      /* ================================================================
-         RESET & BASE
-         ================================================================ */
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet" />
+
+    <style>
+      :root {
+        --bg-0:        #050505;
+        --bg-1:        #0a0a0a;
+        --bg-2:        #111111;
+        --bg-3:        #181818;
+        --bg-card:     #0c0c0c;
+        --border:      #1a1a1a;
+        --border-hi:   #252525;
+        --border-focus:#3a3a3a;
+        --text-0:      #ffffff;
+        --text-1:      #e0e0e0;
+        --text-2:      #888888;
+        --text-3:      #555555;
+        --text-4:      #333333;
+        --accent:      #00d4ff;
+        --accent-dim:  rgba(0, 212, 255, 0.06);
+        --accent-mid:  rgba(0, 212, 255, 0.12);
+        --green:       #00cc88;
+        --green-dim:   rgba(0, 204, 136, 0.08);
+        --red:         #ff3355;
+        --red-dim:     rgba(255, 51, 85, 0.08);
+        --amber:       #ffaa00;
+        --amber-dim:   rgba(255, 170, 0, 0.08);
+        --font-sans:   "Inter", -apple-system, BlinkMacSystemFont, sans-serif;
+        --font-mono:   "JetBrains Mono", "Fira Code", monospace;
+        --max-w:       1100px;
+        --radius-sm:   4px;
+        --radius-md:   8px;
+        --radius-lg:   12px;
+      }
+
       *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
       html { scroll-behavior: smooth; }
       body {
@@ -50,558 +72,1011 @@
       }
       ::selection { background: var(--accent-mid); color: var(--text-0); }
       a { color: inherit; text-decoration: none; }
-      code, pre { font-family: var(--font-mono); }
-      img { display: block; max-width: 100%; }
 
-      /* ================================================================
-         ANIMATIONS
-         ================================================================ */
-      @keyframes fadeUp {
-        from { opacity: 0; transform: translateY(20px); }
-        to   { opacity: 1; transform: translateY(0); }
-      }
-      @keyframes ghostFloat {
-        0%, 100% { transform: translateY(0); }
-        50%      { transform: translateY(-8px); }
-      }
-      @keyframes ghostPulse {
-        0%, 100% { opacity: 0.6; }
-        50%      { opacity: 1; }
-      }
-      .anim-fade { opacity: 0; animation: fadeUp 0.6s ease-out forwards; }
-      .anim-delay-1 { animation-delay: 0.1s; }
-      .anim-delay-2 { animation-delay: 0.2s; }
-      .anim-delay-3 { animation-delay: 0.3s; }
-      .anim-delay-4 { animation-delay: 0.4s; }
-      .anim-delay-5 { animation-delay: 0.5s; }
-
-      @media (prefers-reduced-motion: reduce) {
-        *, *::before, *::after {
-          animation-duration: 0.01ms !important;
-          animation-iteration-count: 1 !important;
-          transition-duration: 0.01ms !important;
-        }
+      /* Grain overlay */
+      body::after {
+        content: ""; position: fixed; inset: 0; pointer-events: none; z-index: 9999; opacity: 0.018;
+        background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+        background-size: 256px;
       }
 
-      /* ================================================================
-         LAYOUT
-         ================================================================ */
-      .wrap { max-width: var(--max-w); margin: 0 auto; padding: 0 var(--space-lg); }
-      section { padding: var(--space-2xl) 0; }
-      section.alt { background: var(--bg-1); }
+      /* ---- Animations ---- */
+      @keyframes fadeUp { from { opacity:0; transform:translateY(28px); } to { opacity:1; transform:translateY(0); } }
+      @keyframes fadeIn { from { opacity:0; } to { opacity:1; } }
+      @keyframes blink { 0%,50%{opacity:1}51%,100%{opacity:0} }
+      @keyframes ghostFloat { 0%,100%{transform:translateY(0)}50%{transform:translateY(-6px)} }
+      @keyframes pulseRing { 0%{transform:scale(1);opacity:0.5}100%{transform:scale(2.5);opacity:0} }
+      @keyframes countUp { from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)} }
+      @keyframes gridPan { from{transform:translate(0,0)}to{transform:translate(48px,48px)} }
 
-      /* ================================================================
-         HEADER
-         ================================================================ */
+      .af { opacity:0; transform:translateY(28px); transition: opacity 0.8s cubic-bezier(0.16,1,0.3,1), transform 0.8s cubic-bezier(0.16,1,0.3,1); }
+      .af.v { opacity:1; transform:translateY(0); }
+
+      @media(prefers-reduced-motion:reduce){
+        *,*::before,*::after{animation-duration:0.01ms!important;transition-duration:0.01ms!important;}
+        .af{opacity:1;transform:none;}
+      }
+
+      /* ---- Layout ---- */
+      .w { max-width: var(--max-w); margin: 0 auto; padding: 0 2rem; }
+      section { padding: 7rem 0; position: relative; }
+      .divider { border: none; border-top: 1px solid var(--border); margin: 0; }
+
+      /* ---- Header ---- */
       header {
         position: fixed; top: 0; width: 100%; z-index: 100;
-        background: rgba(5, 5, 5, 0.9);
-        backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px);
+        background: rgba(5,5,5,0.88);
+        backdrop-filter: blur(20px) saturate(1.2); -webkit-backdrop-filter: blur(20px) saturate(1.2);
         border-bottom: 1px solid var(--border);
       }
-      header .wrap {
-        display: flex; justify-content: space-between; align-items: center; height: 56px;
-      }
+      header .w { display:flex; justify-content:space-between; align-items:center; height:60px; }
       .logo {
-        font-family: var(--font-mono); font-size: 1rem; font-weight: 700;
+        font-family: var(--font-mono); font-size: 0.88rem; font-weight: 700;
+        color: var(--text-0); display:flex; align-items:center; gap:0.6rem;
+      }
+      .logo-img {
+        display: inline-block;
+        vertical-align: middle;
+        object-fit: contain;
+      }
+      nav a {
+        font-family: var(--font-mono); font-size: 0.7rem; font-weight: 500;
+        color: var(--text-3); padding: 0.4rem 0.7rem; border-radius: var(--radius-sm);
+        transition: color 0.2s, background 0.2s;
+      }
+      nav a:hover { color: var(--text-1); background: var(--bg-2); }
+      nav { display:flex; gap:0.15rem; }
+
+      /* ================================================================
+         HERO — Investor-focused
+         ================================================================ */
+      .hero {
+        padding: calc(60px + 6rem) 0 5rem;
+        text-align: center;
+        position: relative;
+        overflow: hidden;
+        min-height: 100vh;
+        display: flex;
+        align-items: center;
+      }
+      .hero::before {
+        content:""; position:absolute; inset: 0;
+        background-image: radial-gradient(circle, rgba(0,212,255,0.05) 1px, transparent 1px);
+        background-size: 48px 48px;
+        animation: gridPan 24s linear infinite;
+        pointer-events:none;
+      }
+      .hero::after {
+        content:""; position:absolute; top:5%; left:50%; transform:translateX(-50%);
+        width:900px; height:600px;
+        background: radial-gradient(ellipse, rgba(0,212,255,0.05) 0%, rgba(0,204,136,0.02) 35%, transparent 70%);
+        pointer-events:none;
+      }
+      .hero .w { position:relative; z-index:1; width:100%; }
+
+      .hero-eyebrow {
+        font-family: var(--font-mono); font-size: 0.68rem; font-weight: 600;
+        color: var(--text-3); letter-spacing: 0.1em; text-transform: uppercase;
+        margin-bottom: 1.5rem;
+        animation: fadeIn 0.6s ease-out;
+      }
+      .hero-eyebrow span { color: var(--accent); }
+
+      .hero h1 {
+        font-size: 3.8rem; font-weight: 800; letter-spacing: -0.05em;
+        line-height: 1.08; color: var(--text-0);
+        margin-bottom: 1.5rem; max-width: 800px; margin-left: auto; margin-right: auto;
+        animation: fadeUp 0.9s ease-out 0.1s both;
+      }
+      .hero h1 .gr {
+        background: linear-gradient(135deg, var(--accent), var(--green));
+        -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
+      }
+
+      .hero-sub {
+        font-size: 1.12rem; color: var(--text-2); max-width: 540px;
+        margin: 0 auto 2.5rem; line-height: 1.75;
+        animation: fadeUp 0.9s ease-out 0.2s both;
+      }
+
+      .hero-ctas {
+        display:flex; gap:1rem; justify-content:center; flex-wrap:wrap;
+        animation: fadeUp 0.9s ease-out 0.3s both;
+        margin-bottom: 4rem;
+      }
+
+      .btn {
+        display:inline-flex; align-items:center; gap:0.5rem;
+        font-family:var(--font-mono); font-size:0.78rem; font-weight:600;
+        padding:0.7rem 1.5rem; border-radius:var(--radius-md);
+        border:1px solid transparent; transition:all 0.2s; cursor:pointer;
+      }
+      .btn-primary {
+        background:var(--text-0); color:var(--bg-0); border-color:var(--text-0);
+        box-shadow:0 0 24px rgba(255,255,255,0.05);
+      }
+      .btn-primary:hover { background:transparent; color:var(--text-0); box-shadow:0 0 30px rgba(0,212,255,0.08); }
+      .btn-ghost { background:transparent; color:var(--text-2); border-color:var(--border-hi); }
+      .btn-ghost:hover { color:var(--text-0); border-color:var(--accent); }
+
+      /* Hero market stats — the big numbers investors see first */
+      .hero-metrics {
+        display: grid; grid-template-columns: repeat(3, 1fr);
+        border: 1px solid var(--border); border-radius: var(--radius-lg);
+        overflow: hidden; max-width: 680px; margin: 0 auto;
+        animation: fadeUp 0.9s ease-out 0.45s both;
+      }
+      .hero-metric {
+        padding: 1.8rem 1.5rem; text-align: center;
+        border-right: 1px solid var(--border);
+        background: rgba(10,10,10,0.6);
+        backdrop-filter: blur(8px);
+      }
+      .hero-metric:last-child { border-right: none; }
+      .hero-metric .hm-val {
+        font-family: var(--font-mono); font-size: 1.6rem; font-weight: 700;
         color: var(--text-0); letter-spacing: -0.02em;
       }
-      .nav-links { display: flex; gap: 1.5rem; list-style: none; }
-      .nav-links a {
-        font-family: var(--font-mono); font-size: 0.75rem; font-weight: 500;
-        color: var(--text-3); letter-spacing: 0.02em; transition: color 0.15s;
+      .hero-metric .hm-val .hm-unit { font-size: 0.7rem; font-weight: 500; color: var(--text-3); }
+      .hero-metric .hm-lbl {
+        font-size: 0.68rem; color: var(--text-3); margin-top: 0.3rem; line-height: 1.4;
       }
-      .nav-links a:hover, .nav-links a:focus { color: var(--text-1); }
+
+      /* ================================================================
+         TRUST BAR — logos / credibility
+         ================================================================ */
+      .trust-bar {
+        padding: 2.5rem 0;
+        border-bottom: 1px solid var(--border);
+      }
+      .trust-bar .w { text-align: center; }
+      .trust-bar .tb-label {
+        font-family: var(--font-mono); font-size: 0.6rem; font-weight: 600;
+        text-transform: uppercase; letter-spacing: 0.14em; color: var(--text-4);
+        margin-bottom: 1.5rem;
+      }
+      .trust-pills {
+        display: flex; justify-content: center; gap: 0.6rem; flex-wrap: wrap;
+      }
+      .trust-pill {
+        font-family: var(--font-mono); font-size: 0.68rem; font-weight: 500;
+        color: var(--text-3); padding: 0.45rem 1rem; border-radius: 100px;
+        border: 1px solid var(--border); background: var(--bg-1);
+        transition: border-color 0.2s;
+      }
+      .trust-pill:hover { border-color: var(--border-hi); }
+      .trust-pill .tp-dot {
+        display: inline-block; width: 5px; height: 5px; border-radius: 50%;
+        margin-right: 0.4rem; vertical-align: middle;
+      }
+      .trust-pill .tp-dot.g { background: var(--green); }
+      .trust-pill .tp-dot.b { background: var(--accent); }
+
+      /* ================================================================
+         MARKET OPPORTUNITY
+         ================================================================ */
+      .market-grid {
+        display: grid; grid-template-columns: 1fr 1fr; gap: 2rem;
+      }
+      .market-left { }
+      .market-left .ml-stat {
+        font-size: 4rem; font-weight: 900; letter-spacing: -0.05em;
+        line-height: 1; color: var(--text-0); margin-bottom: 0.5rem;
+      }
+      .market-left .ml-stat .ml-pct {
+        background: linear-gradient(135deg, var(--accent), var(--green));
+        -webkit-background-clip:text; -webkit-text-fill-color:transparent; background-clip:text;
+      }
+      .market-left .ml-cite {
+        font-size: 0.72rem; color: var(--text-3); margin-bottom: 2.5rem; line-height: 1.5;
+      }
+      .market-left .ml-desc {
+        font-size: 0.95rem; color: var(--text-2); line-height: 1.75; max-width: 440px;
+      }
+      .market-right {
+        display: flex; flex-direction: column; gap: 1rem;
+      }
+      .mkt-card {
+        background: var(--bg-card); border: 1px solid var(--border);
+        border-radius: var(--radius-lg); padding: 1.5rem 1.8rem;
+        transition: border-color 0.3s;
+      }
+      .mkt-card:hover { border-color: var(--border-hi); }
+      .mkt-card .mc-val {
+        font-family: var(--font-mono); font-size: 1.5rem; font-weight: 700;
+        color: var(--text-0); letter-spacing: -0.02em;
+      }
+      .mkt-card .mc-lbl {
+        font-size: 0.78rem; color: var(--text-3); margin-top: 0.2rem;
+      }
 
       /* ================================================================
          SECTION LABELS
          ================================================================ */
-      .section-label {
-        font-family: var(--font-mono); font-size: 0.7rem; font-weight: 600;
-        text-transform: uppercase; letter-spacing: 0.12em; color: var(--text-3);
-        margin-bottom: var(--space-md);
+      .sl {
+        font-family:var(--font-mono); font-size:0.63rem; font-weight:600;
+        text-transform:uppercase; letter-spacing:0.14em; color:var(--accent);
+        margin-bottom:0.75rem;
+        display:flex; align-items:center; gap:0.5rem;
       }
-      .section-label::before { content: "[ "; color: var(--accent); }
-      .section-label::after  { content: " ]"; color: var(--accent); }
-      .section-title {
-        font-size: 1.75rem; font-weight: 700; letter-spacing: -0.03em;
-        color: var(--text-0); margin-bottom: var(--space-md); line-height: 1.25;
+      .sl::before { content:""; width:20px; height:1px; background:var(--accent); }
+      .st {
+        font-size:2.1rem; font-weight:700; letter-spacing:-0.04em;
+        color:var(--text-0); margin-bottom:1rem; line-height:1.15;
       }
-      .section-desc {
-        font-size: 0.95rem; color: var(--text-2); max-width: 600px; line-height: 1.7;
-      }
-      .section-header { margin-bottom: var(--space-xl); }
-      .section-header.center { text-align: center; }
-      .section-header.center .section-desc { margin-left: auto; margin-right: auto; }
+      .sd { font-size:0.92rem; color:var(--text-2); max-width:560px; line-height:1.75; }
+      .sh { margin-bottom:3rem; }
+      .sh.c { text-align:center; }
+      .sh.c .sl { justify-content:center; }
+      .sh.c .sd { margin:0 auto; }
 
       /* ================================================================
-         GHOST MASCOT
+         THE PRODUCT — Receipt
          ================================================================ */
-      .ghost-svg { display: block; }
-      .ghost-hero {
-        width: 80px; height: 80px; margin: 0 auto var(--space-lg);
-        animation: ghostFloat 4s ease-in-out infinite, ghostPulse 4s ease-in-out infinite;
+      .product-split {
+        display: grid; grid-template-columns: 1fr 1fr; gap: 3rem; align-items: center;
       }
-      .ghost-corner {
-        position: fixed; bottom: 24px; right: 24px; width: 36px; height: 36px;
-        opacity: 0.15; animation: ghostFloat 6s ease-in-out infinite;
-        pointer-events: none; z-index: 50; transition: opacity 0.3s;
+      .product-text .pt-quote {
+        font-size: 1.4rem; font-weight: 600; color: var(--text-0);
+        line-height: 1.4; letter-spacing: -0.02em;
+        margin-bottom: 1.5rem;
+        border-left: 2px solid var(--accent);
+        padding-left: 1.5rem;
       }
-      body:hover .ghost-corner { opacity: 0.3; }
-
-      /* ================================================================
-         HERO
-         ================================================================ */
-      .hero {
-        padding-top: calc(56px + var(--space-3xl)); padding-bottom: var(--space-2xl);
-        text-align: center; position: relative; overflow: hidden;
+      .product-text .pt-explain {
+        font-size: 0.88rem; color: var(--text-2); line-height: 1.75;
+        margin-bottom: 2rem;
       }
-      .hero::before {
-        content: ""; position: absolute; top: 56px; left: 50%; transform: translateX(-50%);
-        width: 600px; height: 400px;
-        background: radial-gradient(ellipse, rgba(0, 212, 255, 0.04) 0%, transparent 70%);
-        pointer-events: none;
+      .receipt-steps {
+        display: flex; flex-direction: column; gap: 0.75rem;
       }
-      .hero h1 {
-        font-size: 3rem; font-weight: 700; letter-spacing: -0.04em;
-        line-height: 1.15; margin-bottom: var(--space-md); color: var(--text-0);
+      .receipt-step {
+        display: flex; align-items: flex-start; gap: 0.75rem;
+        font-size: 0.82rem; color: var(--text-2);
       }
-      .hero h1 .hl { color: var(--accent); }
-      .hero .subtitle {
-        font-size: 1.1rem; color: var(--text-2); max-width: 580px;
-        margin: 0 auto var(--space-lg); line-height: 1.7;
-      }
-      .hero-actions {
-        display: flex; gap: var(--space-md); justify-content: center; flex-wrap: wrap;
-      }
-
-      /* ================================================================
-         BUTTONS
-         ================================================================ */
-      .btn {
-        display: inline-flex; align-items: center; gap: 0.4rem;
-        font-family: var(--font-mono); font-size: 0.8rem; font-weight: 600;
-        padding: 0.65rem 1.4rem; border-radius: var(--radius-md);
-        border: 1px solid transparent; transition: all 0.15s; cursor: pointer;
-      }
-      .btn-primary {
-        background: var(--text-0); color: var(--black); border-color: var(--text-0);
-      }
-      .btn-primary:hover { background: transparent; color: var(--text-0); }
-      .btn-ghost {
-        background: transparent; color: var(--text-2); border-color: var(--border-hi);
-      }
-      .btn-ghost:hover { color: var(--text-0); border-color: var(--border-focus); }
-
-      /* ================================================================
-         CARDS & GRIDS
-         ================================================================ */
-      .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-lg); }
-      .grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--space-md); }
-      .card {
-        background: var(--bg-card); border: 1px solid var(--border);
-        border-radius: var(--radius-lg); padding: var(--space-lg);
-        transition: border-color 0.2s;
-      }
-      .card:hover { border-color: var(--border-hi); }
-      .card-icon {
-        width: 40px; height: 40px; border-radius: var(--radius-sm);
-        display: flex; align-items: center; justify-content: center;
-        font-family: var(--font-mono); font-size: 1rem; font-weight: 700;
-        margin-bottom: var(--space-md);
-      }
-      .card-icon.accent { background: var(--accent-dim); color: var(--accent); }
-      .card-icon.green  { background: var(--green-dim); color: var(--green); }
-      .card-icon.red    { background: var(--red-dim); color: var(--red); }
-      .card-icon.amber  { background: rgba(255, 170, 0, 0.10); color: var(--amber); }
-      .card h3 { font-size: 0.95rem; font-weight: 600; color: var(--text-0); margin-bottom: var(--space-sm); }
-      .card p  { font-size: 0.85rem; color: var(--text-2); line-height: 1.6; }
-
-      /* ================================================================
-         STATS BAR (proof points)
-         ================================================================ */
-      .stats-row {
-        display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-        gap: 1px; background: var(--border); border: 1px solid var(--border);
-        border-radius: var(--radius-lg); overflow: hidden; max-width: 840px; margin: 0 auto;
-      }
-      .stat { background: var(--bg-1); padding: 1.4rem var(--space-md); text-align: center; }
-      .stat-val {
-        font-family: var(--font-mono); font-size: 1.4rem; font-weight: 700; color: var(--text-0);
-      }
-      .stat-lbl { font-size: 0.72rem; color: var(--text-3); font-weight: 500; margin-top: 0.2rem; }
-
-      /* ================================================================
-         STEPS (How It Works)
-         ================================================================ */
-      .steps-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--space-lg); }
-      .step-card { text-align: center; }
-      .step-num {
-        width: 48px; height: 48px; border-radius: 50%; margin: 0 auto var(--space-md);
-        display: flex; align-items: center; justify-content: center;
-        font-family: var(--font-mono); font-size: 1.1rem; font-weight: 700;
+      .receipt-step .rs-num {
+        font-family: var(--font-mono); font-size: 0.7rem; font-weight: 700;
         color: var(--accent); background: var(--accent-dim);
-        border: 1px solid rgba(0, 212, 255, 0.2);
+        width: 24px; height: 24px; border-radius: 50%;
+        display: flex; align-items: center; justify-content: center;
+        flex-shrink: 0; border: 1px solid rgba(0,212,255,0.1);
+        margin-top: 0.1rem;
       }
-      .step-card h3 { font-size: 0.95rem; font-weight: 600; color: var(--text-0); margin-bottom: var(--space-sm); }
-      .step-card p  { font-size: 0.85rem; color: var(--text-2); line-height: 1.6; }
+
+      /* Terminal */
+      .term {
+        background: var(--bg-1); border: 1px solid var(--border);
+        border-radius: var(--radius-lg); overflow: hidden;
+        box-shadow: 0 12px 80px rgba(0,0,0,0.5), 0 0 0 1px rgba(255,255,255,0.02);
+      }
+      .term-bar {
+        display:flex; align-items:center; gap:0.5rem;
+        padding:0.7rem 1rem; background:var(--bg-2);
+        border-bottom:1px solid var(--border);
+      }
+      .td { width:8px;height:8px;border-radius:50%; }
+      .td.r{background:#ff5f57}.td.y{background:#febc2e}.td.g{background:#28c840}
+      .term-title { font-family:var(--font-mono);font-size:0.65rem;color:var(--text-4);margin-left:0.5rem; }
+      .term-body {
+        padding:1.2rem 1.5rem; font-family:var(--font-mono);
+        font-size:0.72rem; line-height:1.95; color:var(--text-2);
+      }
+      .term-body .p { color:var(--green); user-select:none; }
+      .term-body .c { color:var(--text-0); }
+      .term-body .h { color:var(--text-0); font-weight:600; }
+      .term-body .sep { color:var(--border-focus); user-select:none; }
+      .term-body .k { color:var(--text-3); display:inline-block; min-width:150px; }
+      .term-body .v { color:var(--text-1); }
+      .term-body .vh { color:var(--accent); font-size:0.66rem; }
+      .term-body .vp { color:var(--green); }
+      .term-body .cur { display:inline-block;width:7px;height:13px;background:var(--accent);animation:blink 1s step-end infinite;vertical-align:middle;margin-left:2px; }
 
       /* ================================================================
-         RECEIPT VISUAL
+         DIFFERENTIATION LIST
          ================================================================ */
-      .receipt-visual {
-        background: var(--bg-2); border: 1px solid var(--border);
-        border-radius: var(--radius-lg); padding: var(--space-lg) var(--space-lg);
-        font-family: var(--font-mono); font-size: 0.78rem;
-        line-height: 1.8; color: var(--text-2); max-width: 560px; margin: 0 auto;
-        position: relative; overflow: hidden;
+      .diff-list {
+        display: grid; grid-template-columns: 1fr 1fr;
+        gap: 0.75rem;
       }
-      .receipt-visual::before {
-        content: ""; position: absolute; top: 0; left: 0; right: 0; height: 3px;
-        background: linear-gradient(90deg, var(--accent), var(--green));
-      }
-      .receipt-visual .field { display: flex; gap: 0.5rem; }
-      .receipt-visual .field-key { color: var(--text-3); min-width: 140px; }
-      .receipt-visual .field-val { color: var(--text-1); }
-      .receipt-visual .field-val.pass { color: var(--green); }
-      .receipt-visual .field-val.hash {
-        color: var(--accent); word-break: break-all; font-size: 0.72rem;
-      }
-      .receipt-heading {
-        font-size: 0.8rem; font-weight: 600; color: var(--text-0);
-        margin-bottom: var(--space-sm); margin-top: var(--space-md);
-      }
-      .receipt-heading:first-child { margin-top: 0; }
-      .receipt-divider { border: none; border-top: 1px solid var(--border); margin: var(--space-sm) 0; }
-
-      /* ================================================================
-         ZONE CARDS (architecture)
-         ================================================================ */
-      .zone {
-        border-radius: var(--radius-lg); padding: var(--space-lg); text-align: center;
-      }
-      .zone h4 {
-        font-family: var(--font-mono); font-size: 0.7rem; font-weight: 600;
-        text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: var(--space-sm);
-      }
-      .zone p { font-size: 0.8rem; color: var(--text-2); }
-      .zone.trusted  { background: var(--accent-dim); border: 1px solid rgba(0, 212, 255, 0.15); }
-      .zone.trusted h4  { color: var(--accent); }
-      .zone.untrusted { background: var(--red-dim); border: 1px solid rgba(255, 51, 85, 0.15); }
-      .zone.untrusted h4 { color: var(--red); }
-      .zone.enclave  { background: var(--green-dim); border: 1px solid rgba(0, 204, 136, 0.15); }
-      .zone.enclave h4  { color: var(--green); }
-
-      /* ================================================================
-         PLATFORM PILLS
-         ================================================================ */
-      .platforms { display: flex; flex-wrap: wrap; gap: var(--space-md); justify-content: center; }
-      .platform-pill {
-        display: flex; align-items: center; gap: var(--space-sm);
+      .diff-item {
+        display: flex; align-items: flex-start; gap: 1rem;
         background: var(--bg-card); border: 1px solid var(--border);
-        border-radius: var(--radius-md); padding: 0.7rem 1.2rem;
-        font-family: var(--font-mono); font-size: 0.78rem; color: var(--text-2);
-        transition: border-color 0.15s;
+        border-radius: var(--radius-lg); padding: 1.3rem 1.5rem;
+        transition: border-color 0.3s;
       }
-      .platform-pill:hover { border-color: var(--border-focus); color: var(--text-1); }
-      .platform-pill .status {
-        width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0;
+      .diff-item:hover { border-color: var(--border-hi); }
+      .diff-check {
+        flex-shrink: 0;
+        width: 28px; height: 28px;
+        display: flex; align-items: center; justify-content: center;
+        border-radius: 50%;
+        background: var(--green-dim);
+        border: 1px solid rgba(0,204,136,0.15);
+        color: var(--green);
+        font-size: 0.82rem; font-weight: 700;
+        margin-top: 0.1rem;
       }
-      .platform-pill .status.ga { background: var(--green); }
-      .platform-pill .status.preview { background: var(--amber); }
+      .diff-item h3 {
+        font-size: 0.85rem; font-weight: 600; color: var(--text-0);
+        margin-bottom: 0.25rem;
+      }
+      .diff-item p {
+        font-size: 0.78rem; color: var(--text-2); line-height: 1.6;
+      }
 
       /* ================================================================
-         GUARANTEE LISTS
+         REGULATORY TIMELINE
          ================================================================ */
-      .guar-list { list-style: none; }
+      .reg-grid { display:grid; grid-template-columns:repeat(4,1fr); gap:1rem; }
+      .reg-card {
+        background:var(--bg-card); border:1px solid var(--border);
+        border-radius:var(--radius-lg); padding:1.5rem; text-align:center;
+        position: relative; overflow: hidden;
+        transition: border-color 0.3s;
+      }
+      .reg-card:hover { border-color: var(--border-hi); }
+      .reg-card::before {
+        content:""; position:absolute; top:0; left:0; right:0; height:2px;
+      }
+      .reg-card.urgent::before { background: var(--red); }
+      .reg-card.active::before { background: var(--amber); }
+      .reg-card.upcoming::before { background: var(--green); }
+      .reg-card .rc-when {
+        font-family:var(--font-mono); font-size:0.6rem; font-weight:600;
+        text-transform:uppercase; letter-spacing:0.08em; margin-bottom:0.5rem;
+      }
+      .reg-card.urgent .rc-when { color: var(--red); }
+      .reg-card.active .rc-when { color: var(--amber); }
+      .reg-card.upcoming .rc-when { color: var(--green); }
+      .reg-card .rc-title { font-size:0.85rem; font-weight:600; color:var(--text-0); margin-bottom:0.3rem; }
+      .reg-card .rc-desc { font-size:0.72rem; color:var(--text-3); line-height:1.5; }
+
+      .hipaa-row {
+        display: grid; grid-template-columns: repeat(4, 1fr); gap: 1rem;
+        margin-top: 1.5rem;
+      }
+      .hipaa-cell {
+        background: var(--bg-card); border: 1px solid var(--border);
+        border-radius: var(--radius-lg); padding: 1.2rem; text-align: center;
+        transition: border-color 0.3s;
+      }
+      .hipaa-cell:hover { border-color: var(--border-hi); }
+      .hipaa-cell .hc-code {
+        font-family: var(--font-mono); font-size: 0.62rem; color: var(--accent);
+        margin-bottom: 0.4rem; font-weight: 600;
+      }
+      .hipaa-cell .hc-map {
+        font-size: 0.72rem; color: var(--text-3); line-height: 1.4;
+      }
+      .hipaa-cell .hc-map .arrow { color: var(--green); }
+
+      /* ================================================================
+         HOW IT WORKS
+         ================================================================ */
+      .steps { display:grid; grid-template-columns:repeat(3,1fr); gap:0; position:relative; }
+      .steps::before {
+        content:""; position:absolute; top:32px;
+        left:calc(16.66% + 24px); right:calc(16.66% + 24px);
+        height:1px; background:linear-gradient(90deg,var(--accent),var(--green)); opacity:0.2;
+      }
+      .step { text-align:center; padding:0 1.2rem; position:relative; }
+      .step-n {
+        width:48px;height:48px;border-radius:50%;margin:0 auto 1.2rem;
+        display:flex;align-items:center;justify-content:center;
+        font-family:var(--font-mono);font-size:1rem;font-weight:700;
+        color:var(--accent);background:var(--bg-0);
+        border:1px solid rgba(0,212,255,0.15);position:relative;z-index:1;
+      }
+      .step h3 { font-size:0.88rem; font-weight:600; color:var(--text-0); margin-bottom:0.4rem; }
+      .step p { font-size:0.82rem; color:var(--text-2); line-height:1.65; }
+
+      /* ================================================================
+         TRACTION
+         ================================================================ */
+      .traction-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:1px; background:var(--border); border:1px solid var(--border); border-radius:var(--radius-lg); overflow:hidden; }
+      .traction-cell { background:var(--bg-1); padding:2rem 1.2rem; text-align:center; }
+      .traction-cell .tc-val { font-family:var(--font-mono);font-size:1.8rem;font-weight:700;color:var(--text-0);letter-spacing:-0.02em; }
+      .traction-cell .tc-val .tc-sm { font-size:0.75rem;font-weight:500;color:var(--text-3); }
+      .traction-cell .tc-lbl { font-size:0.68rem;color:var(--text-3);margin-top:0.3rem; }
+
+      /* ================================================================
+         OPEN SOURCE
+         ================================================================ */
+      .oss-row { display:grid; grid-template-columns:repeat(3,1fr); gap:1rem; }
+      .oss-card {
+        background:var(--bg-card); border:1px solid var(--border);
+        border-radius:var(--radius-lg); padding:1.5rem; transition:border-color 0.3s;
+      }
+      .oss-card:hover { border-color:var(--border-hi); }
+      .oss-card .oc-name { font-family:var(--font-mono);font-size:0.82rem;font-weight:600;color:var(--text-0);margin-bottom:0.2rem; }
+      .oss-card .oc-ver { font-family:var(--font-mono);font-size:0.65rem;color:var(--accent);margin-bottom:0.6rem; }
+      .oss-card .oc-desc { font-size:0.78rem;color:var(--text-3);line-height:1.55;margin-bottom:1rem; }
+      .oss-card .oc-stats { display:flex;gap:1rem;flex-wrap:wrap;font-family:var(--font-mono);font-size:0.62rem;color:var(--text-3); }
+      .oss-card .oc-stats span { display:flex;align-items:center;gap:0.3rem; }
+
+      /* ================================================================
+         PLATFORMS
+         ================================================================ */
+      .plat-row { display:flex;flex-wrap:wrap;gap:0.75rem;justify-content:center; }
+      .plat-pill {
+        display:flex;align-items:center;gap:0.5rem;
+        background:var(--bg-card);border:1px solid var(--border);
+        border-radius:var(--radius-md);padding:0.7rem 1.2rem;
+        font-family:var(--font-mono);font-size:0.72rem;color:var(--text-2);
+        transition:border-color 0.2s;
+      }
+      .plat-pill:hover { border-color:var(--border-focus);color:var(--text-1); }
+      .plat-dot { width:6px;height:6px;border-radius:50%;flex-shrink:0; }
+      .plat-dot.ga { background:var(--green);box-shadow:0 0 6px var(--green); }
+      .plat-dot.prev { background:var(--amber);box-shadow:0 0 6px var(--amber); }
+
+      .plat-stats {
+        display:flex;justify-content:center;gap:3rem;flex-wrap:wrap;
+        margin-top:2rem; padding-top:2rem; border-top:1px solid var(--border);
+      }
+      .plat-stat { text-align:center; }
+      .plat-stat .ps-val { font-family:var(--font-mono);font-size:0.85rem;font-weight:600;color:var(--text-1); }
+      .plat-stat .ps-lbl { font-size:0.62rem;color:var(--text-3);margin-top:0.15rem; }
+
+      /* ================================================================
+         SECURITY
+         ================================================================ */
+      .sec-grid { display:grid; grid-template-columns:1fr 1fr; gap:2rem; }
+      .guar-list { list-style:none; }
       .guar-list li {
-        padding: 0.4rem 0 0.4rem 1.3rem; position: relative;
-        font-size: 0.85rem; color: var(--text-2);
+        padding:0.45rem 0 0.45rem 1.3rem;position:relative;
+        font-size:0.82rem;color:var(--text-2);line-height:1.6;
       }
       .guar-list li::before {
-        content: ""; position: absolute; left: 0; top: 0.7rem;
-        width: 6px; height: 6px; border-radius: 1px;
+        content:"";position:absolute;left:0;top:0.75rem;
+        width:6px;height:6px;border-radius:1px;
       }
-      .guar-list.yes li::before { background: var(--green); }
-      .guar-list.no  li::before { background: var(--red); }
-      .guar-list strong { color: var(--text-1); font-weight: 600; }
+      .guar-list.yes li::before { background:var(--green); }
+      .guar-list.no li::before { background:var(--red); }
+      .guar-list strong { color:var(--text-1);font-weight:600; }
+
+      .zones { display:grid;grid-template-columns:repeat(3,1fr);gap:1rem;margin-top:2rem; }
+      .zone {
+        border-radius:var(--radius-lg);padding:1.5rem;text-align:center;
+        transition:transform 0.2s;
+      }
+      .zone:hover { transform:translateY(-2px); }
+      .zone h4 { font-family:var(--font-mono);font-size:0.65rem;font-weight:600;text-transform:uppercase;letter-spacing:0.1em;margin-bottom:0.4rem; }
+      .zone p { font-size:0.78rem;color:var(--text-2);line-height:1.55; }
+      .zone.trusted { background:var(--accent-dim);border:1px solid rgba(0,212,255,0.08); }
+      .zone.trusted h4 { color:var(--accent); }
+      .zone.untrusted { background:var(--red-dim);border:1px solid rgba(255,51,85,0.08); }
+      .zone.untrusted h4 { color:var(--red); }
+      .zone.enclave { background:var(--green-dim);border:1px solid rgba(0,204,136,0.08); }
+      .zone.enclave h4 { color:var(--green); }
 
       /* ================================================================
-         CTA BLOCK
+         CTA
          ================================================================ */
-      .cta-block { text-align: center; max-width: 560px; margin: 0 auto; }
-      .cta-block h2 {
-        font-size: 1.5rem; font-weight: 700; letter-spacing: -0.02em;
-        margin-bottom: var(--space-sm); color: var(--text-0);
+      .cta-s { position:relative;overflow:hidden; }
+      .cta-s::before {
+        content:"";position:absolute;top:0;left:50%;transform:translateX(-50%);
+        width:600px;height:300px;
+        background:radial-gradient(ellipse,rgba(0,212,255,0.04) 0%,transparent 70%);
+        pointer-events:none;
       }
-      .cta-block .sub { font-size: 0.9rem; color: var(--text-2); margin-bottom: var(--space-lg); }
-      .cta-btns { display: flex; gap: var(--space-sm); justify-content: center; flex-wrap: wrap; }
+      .cta-block { text-align:center;max-width:540px;margin:0 auto;position:relative; }
+      .cta-block h2 { font-size:1.8rem;font-weight:700;letter-spacing:-0.03em;color:var(--text-0);margin-bottom:0.6rem; }
+      .cta-block .cta-sub { font-size:0.9rem;color:var(--text-2);margin-bottom:2rem;line-height:1.7; }
+      .cta-btns { display:flex;gap:0.75rem;justify-content:center;flex-wrap:wrap; }
 
       /* ================================================================
          FOOTER
          ================================================================ */
-      footer { border-top: 1px solid var(--border); padding: var(--space-lg); }
-      footer .wrap {
-        display: flex; justify-content: space-between; align-items: center;
-        flex-wrap: wrap; gap: var(--space-md);
-      }
-      .footer-left { display: flex; align-items: center; gap: var(--space-md); }
-      .footer-links { display: flex; gap: var(--space-md); }
-      .footer-links a {
-        font-family: var(--font-mono); font-size: 0.7rem; color: var(--text-3);
-        transition: color 0.15s;
-      }
-      .footer-links a:hover { color: var(--text-2); }
-      .footer-copy { font-size: 0.7rem; color: var(--text-3); }
+      footer { border-top:1px solid var(--border);padding:2rem 0; }
+      footer .w { display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:1rem; }
+      .ft-left { display:flex;align-items:center;gap:1.5rem; }
+      .ft-links { display:flex;gap:1rem; }
+      .ft-links a { font-family:var(--font-mono);font-size:0.65rem;color:var(--text-3);transition:color 0.2s; }
+      .ft-links a:hover { color:var(--text-1); }
+      .ft-copy { font-size:0.65rem;color:var(--text-4); }
 
-      /* ================================================================
-         CROSS-LINK BANNER
-         ================================================================ */
-      .cross-link {
-        text-align: center; padding: 0.6rem var(--space-md);
-        background: var(--bg-2); border-bottom: 1px solid var(--border);
-        font-family: var(--font-mono); font-size: 0.72rem; color: var(--text-3);
+      /* ---- Footnotes ---- */
+      .footnotes {
+        padding: 3rem 0 2rem;
+        border-top: 1px solid var(--border);
       }
-      .cross-link a { color: var(--accent); transition: color 0.15s; }
-      .cross-link a:hover { color: var(--text-0); }
+      .footnotes .fn-title {
+        font-family: var(--font-mono); font-size: 0.6rem; font-weight: 600;
+        text-transform: uppercase; letter-spacing: 0.12em; color: var(--text-4);
+        margin-bottom: 1.2rem;
+      }
+      .footnotes ol {
+        list-style: none; counter-reset: fn;
+        display: flex; flex-direction: column; gap: 0.5rem;
+      }
+      .footnotes li {
+        counter-increment: fn;
+        font-size: 0.68rem; color: var(--text-3); line-height: 1.55;
+        padding-left: 1.5rem; position: relative;
+      }
+      .footnotes li::before {
+        content: counter(fn);
+        position: absolute; left: 0;
+        font-family: var(--font-mono); font-size: 0.58rem; font-weight: 600;
+        color: var(--text-4);
+      }
+      .footnotes li a {
+        color: var(--text-3); text-decoration: underline;
+        text-decoration-color: var(--border-hi);
+        transition: color 0.2s;
+      }
+      .footnotes li a:hover { color: var(--text-2); }
+      sup.fn {
+        font-family: var(--font-mono); font-size: 0.55rem; font-weight: 600;
+        color: var(--text-3); margin-left: 1px; vertical-align: super;
+        text-decoration: none;
+      }
+      sup.fn a { color: var(--text-3); text-decoration: none; }
+      sup.fn a:hover { color: var(--accent); }
+
+      /* Ghost */
+      .ghost-corner {
+        position:fixed;bottom:24px;right:24px;width:28px;height:28px;
+        opacity:0.08;animation:ghostFloat 6s ease-in-out infinite;
+        pointer-events:none;z-index:50;transition:opacity 0.3s;
+      }
+      body:hover .ghost-corner { opacity:0.15; }
 
       /* ================================================================
          RESPONSIVE
          ================================================================ */
-      @media (max-width: 768px) {
-        .hero h1 { font-size: 2rem; }
-        .hero { padding-top: calc(56px + var(--space-xl)); }
-        .nav-links { display: none; }
-        .grid-2, .grid-3 { grid-template-columns: 1fr; }
-        .steps-row { grid-template-columns: 1fr; }
-        .stats-row { grid-template-columns: repeat(2, 1fr); }
-        section { padding: var(--space-xl) 0; }
-        .section-title { font-size: 1.4rem; }
-        footer .wrap { flex-direction: column; text-align: center; }
-        .footer-left { flex-direction: column; }
-        .ghost-corner { display: none; }
-        .receipt-visual .field { flex-direction: column; gap: 0.15rem; }
-        .receipt-visual .field-key { min-width: auto; }
+      @media(max-width:1000px) {
+        .product-split { grid-template-columns:1fr; gap:2rem; }
+        .reg-grid, .hipaa-row { grid-template-columns:repeat(2,1fr); }
+        .traction-grid { grid-template-columns:repeat(2,1fr); }
+        .oss-row { grid-template-columns:1fr; }
+      }
+      @media(max-width:768px) {
+        .hero h1 { font-size:2.4rem; }
+        .hero { min-height:auto; padding-top:calc(60px + 3rem); }
+        .hero-metrics { grid-template-columns:1fr; }
+        .hero-metric { border-right:none; border-bottom:1px solid var(--border); }
+        .hero-metric:last-child { border-bottom:none; }
+        nav { display:none; }
+        .market-grid { grid-template-columns:1fr; }
+        .market-left .ml-stat { font-size:3rem; }
+        .sec-grid { grid-template-columns:1fr; }
+        .steps { grid-template-columns:1fr; gap:2rem; }
+        .steps::before { display:none; }
+        .zones { grid-template-columns:1fr; }
+        .reg-grid, .hipaa-row { grid-template-columns:1fr; }
+        section { padding:4rem 0; }
+        .st { font-size:1.6rem; }
+        .grid-3, .diff-list { grid-template-columns:1fr; }
+        footer .w { flex-direction:column;text-align:center; }
+        .ft-left { flex-direction:column; }
+        .ghost-corner { display:none; }
+        .plat-stats { gap:1.5rem; }
       }
 
-      /* ================================================================
-         SCROLLBAR
-         ================================================================ */
-      ::-webkit-scrollbar { width: 5px; }
-      ::-webkit-scrollbar-track { background: var(--bg-0); }
-      ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
-      ::-webkit-scrollbar-thumb:hover { background: var(--border-hi); }
+      ::-webkit-scrollbar { width:4px; }
+      ::-webkit-scrollbar-track { background:var(--bg-0); }
+      ::-webkit-scrollbar-thumb { background:var(--border);border-radius:2px; }
     </style>
   </head>
   <body>
 
-    <!-- Ghost mascot (corner float) -->
-    <svg class="ghost-svg ghost-corner" viewBox="0 0 40 48" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+    <svg class="ghost-corner" viewBox="0 0 40 48" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
       <path d="M20 4C11.16 4 4 11.16 4 20v16l4-4 4 4 4-4 4 4 4-4 4 4 4-4 4 4V20C36 11.16 28.84 4 20 4z" stroke="currentColor" stroke-width="1.5" fill="none" opacity="0.7"/>
       <circle cx="14" cy="19" r="2" fill="currentColor" opacity="0.5"/>
       <circle cx="26" cy="19" r="2" fill="currentColor" opacity="0.5"/>
     </svg>
 
-    <!-- ============================================================
-         CROSS-LINK BANNER
-         ============================================================ -->
-    <div class="cross-link">
-      Developer documentation and integration guides &rarr; <a href="https://ephemeralml.cyntrisec.com">ephemeralml.cyntrisec.com</a>
-    </div>
-
-    <!-- ============================================================
-         HEADER
-         ============================================================ -->
-    <header style="top: 28px;">
-      <div class="wrap">
-        <span class="logo">Cyntrisec</span>
-        <ul class="nav-links">
-          <li><a href="#how-it-works">How It Works</a></li>
-          <li><a href="#proof-points">Proof Points</a></li>
-          <li><a href="#security">Security</a></li>
-          <li><a href="#contact">Contact</a></li>
-        </ul>
+    <!-- HEADER -->
+    <header>
+      <div class="w">
+        <span class="logo">
+          <img src="logo-mark-64.png" alt="Cyntrisec" class="logo-img" width="24" height="24" />
+          Cyntrisec
+        </span>
+        <nav>
+          <a href="#market">Market</a>
+          <a href="#product">Product</a>
+          <a href="#moat">Differentiation</a>
+          <a href="#traction">Traction</a>
+          <a href="#security">Security</a>
+          <a href="#contact">Contact</a>
+        </nav>
       </div>
     </header>
 
     <!-- ============================================================
          HERO
          ============================================================ -->
-    <section class="hero" style="padding-top: calc(56px + 28px + var(--space-3xl));">
-      <div class="wrap">
-        <svg class="ghost-svg ghost-hero anim-fade" viewBox="0 0 40 48" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-          <path d="M20 4C11.16 4 4 11.16 4 20v16l4-4 4 4 4-4 4 4 4-4 4 4 4-4 4 4V20C36 11.16 28.84 4 20 4z" stroke="url(#ghostGrad)" stroke-width="1.5" fill="none"/>
-          <circle cx="14" cy="19" r="2" fill="#00d4ff" opacity="0.6"/>
-          <circle cx="26" cy="19" r="2" fill="#00d4ff" opacity="0.6"/>
-          <defs>
-            <linearGradient id="ghostGrad" x1="4" y1="4" x2="36" y2="44">
-              <stop offset="0%" stop-color="#00d4ff" stop-opacity="0.8"/>
-              <stop offset="100%" stop-color="#00cc88" stop-opacity="0.4"/>
-            </linearGradient>
-          </defs>
-        </svg>
+    <section class="hero">
+      <div class="w">
+        <div class="hero-eyebrow">
+          <span>IETF Internet-Draft</span> &middot; AIR v1 spec frozen &middot; Multi-environment E2E verified
+        </div>
 
-        <h1 class="anim-fade anim-delay-1">
-          Confidential AI inference.<br>
-          <span class="hl">Hardware-proven.</span>
+        <h1>
+          High-stakes enterprise AI inference<br>
+          needs a <span class="gr">receipt</span>.
         </h1>
-        <p class="subtitle anim-fade anim-delay-2">
-          Run AI models inside hardware-isolated enclaves. Every inference produces a cryptographic receipt proving exactly what happened &mdash; which model ran, what data was processed, and that it all happened inside an attested environment.
+
+        <p class="hero-sub">
+          We're building the standard. Cyntrisec provides per-inference cryptographic evidence bundles for AI running inside hardware-isolated enclaves &mdash; turning "trust us" into "verify this."
         </p>
-        <div class="hero-actions anim-fade anim-delay-3">
-          <a href="mailto:contact@cyntrisec.com?subject=Pilot%20Inquiry" class="btn btn-primary">Contact Us</a>
-          <a href="#security" class="btn btn-ghost">Security Model</a>
+
+        <div class="hero-ctas">
+          <a href="mailto:contact@cyntrisec.com?subject=Pilot%20Inquiry" class="btn btn-primary">Request a Pilot</a>
+          <a href="/docs" class="btn btn-ghost">Technical Docs &rarr;</a>
+        </div>
+
+        <div class="hero-metrics">
+          <div class="hero-metric">
+            <div class="hm-val">53<span class="hm-unit">%</span></div>
+            <div class="hm-lbl">of enterprises cite privacy as #1 AI barrier<sup class="fn"><a href="#fn1">1</a></sup></div>
+          </div>
+          <div class="hero-metric">
+            <div class="hm-val">$9&ndash;24<span class="hm-unit">B</span></div>
+            <div class="hm-lbl">Confidential computing market<sup class="fn"><a href="#fn2">2</a></sup></div>
+          </div>
+          <div class="hero-metric">
+            <div class="hm-val">40<span class="hm-unit">%+</span></div>
+            <div class="hm-lbl">Annual market growth (CAGR)<sup class="fn"><a href="#fn2">2</a></sup></div>
+          </div>
         </div>
       </div>
     </section>
+
+    <!-- TRUST BAR -->
+    <div class="trust-bar">
+      <div class="w">
+        <div class="tb-label">Product and standards milestones</div>
+        <div class="trust-pills">
+          <span class="trust-pill"><span class="tp-dot b"></span>IETF Internet-Draft (AIR v1)</span>
+          <span class="trust-pill"><span class="tp-dot b"></span>NIST Public Comment</span>
+          <span class="trust-pill"><span class="tp-dot b"></span>crates.io (2 published crates)</span>
+          <span class="trust-pill"><span class="tp-dot g"></span>Multi-environment E2E verified</span>
+        </div>
+      </div>
+    </div>
 
     <!-- ============================================================
-         PROBLEM
+         MARKET
          ============================================================ -->
-    <section class="alt">
-      <div class="wrap">
-        <div class="section-header center">
-          <div class="section-label">The Problem</div>
-          <h2 class="section-title">Cloud AI requires trust you can't verify</h2>
-        </div>
-        <div class="grid-3">
-          <div class="card anim-fade">
-            <div class="card-icon red">!</div>
-            <h3>The cloud sees your data</h3>
-            <p>Standard AI APIs process your prompts and data in plaintext. The cloud operator has full access to inputs, outputs, and model weights.</p>
+    <section id="market">
+      <div class="w">
+        <div class="market-grid af">
+          <div class="market-left">
+            <div class="sl">Market Opportunity</div>
+            <div class="ml-stat">
+              <span class="ml-pct">53%</span> of<br>enterprises
+            </div>
+            <div class="ml-cite">cite data privacy as their #1 AI adoption barrier &mdash; Cloudera, April 2025, ~1,500 IT leaders across 14 countries<sup class="fn"><a href="#fn1">1</a></sup></div>
+            <p class="ml-desc">
+              Many organizations delay cloud AI adoption until they can verify what happened to their data. Standard cloud AI usually provides logs, but not portable cryptographic evidence of each inference event. The real competitor isn't another TEE vendor &mdash; it's "we just won't use cloud AI."
+            </p>
           </div>
-          <div class="card anim-fade anim-delay-1">
-            <div class="card-icon red">?</div>
-            <h3>No audit trail</h3>
-            <p>There is no cryptographic evidence that a specific model processed your data, or that your data was handled according to policy.</p>
-          </div>
-          <div class="card anim-fade anim-delay-2">
-            <div class="card-icon red">&times;</div>
-            <h3>Trust-me security</h3>
-            <p>Compliance relies on vendor promises and SOC 2 reports. No hardware-level enforcement, no verifiable receipts, no way to prove data handling to auditors.</p>
+          <div class="market-right">
+            <div class="mkt-card">
+              <div class="mc-val">$9&ndash;24B</div>
+              <div class="mc-lbl">Confidential computing market today<sup class="fn"><a href="#fn2">2</a></sup></div>
+            </div>
+            <div class="mkt-card">
+              <div class="mc-val">40%+ CAGR</div>
+              <div class="mc-lbl">Annual market growth rate<sup class="fn"><a href="#fn2">2</a></sup></div>
+            </div>
+            <div class="mkt-card">
+              <div class="mc-val">0</div>
+              <div class="mc-lbl">Widely adopted open standard for per-inference receipts</div>
+            </div>
           </div>
         </div>
       </div>
     </section>
+
+    <hr class="divider" />
+
+    <!-- ============================================================
+         PRODUCT — THE RECEIPT
+         ============================================================ -->
+    <section id="product">
+      <div class="w">
+        <div class="sh"><div class="sl">The Product</div><h2 class="st">The receipt is the product</h2></div>
+        <div class="product-split">
+          <div class="product-text af">
+            <div class="pt-quote">
+              A compliance officer sends data to an endpoint, gets a result, and receives a receipt they can show to auditors.
+            </div>
+            <p class="pt-explain">
+              Not the encryption. Not the TEE. Those are infrastructure. The receipt is a signed, portable, machine-verifiable evidence bundle covering model identity, data hashes, and attestation linkage metadata for each inference event.
+            </p>
+            <div class="receipt-steps">
+              <div class="receipt-step"><span class="rs-num">1</span><span>Send request via OpenAI-compatible API (just change <code style="color:var(--accent);">base_url</code>)</span></div>
+              <div class="receipt-step"><span class="rs-num">2</span><span>Model runs inside attested hardware enclave (AWS Nitro / GCP TDX / H100 CC)</span></div>
+              <div class="receipt-step"><span class="rs-num">3</span><span>Get result + signed receipt (AIR v1: COSE_Sign1 + CWT + EAT, Ed25519)</span></div>
+              <div class="receipt-step"><span class="rs-num">4</span><span>Run <code style="color:var(--accent);">ephemeralml verify receipt.cbor</code> &mdash; show green checkmark to auditors</span></div>
+            </div>
+          </div>
+          <div class="af">
+            <div class="term">
+              <div class="term-bar">
+                <span class="td r"></span><span class="td y"></span><span class="td g"></span>
+                <span class="term-title">ephemeralml verify receipt.cbor</span>
+              </div>
+              <div class="term-body">
+                <div><span class="p">$ </span><span class="c">ephemeralml verify receipt.cbor</span></div>
+                <br>
+                <div class="h">Execution Receipt (AIR v1)</div>
+                <div class="sep">────────────────────────────────────────</div>
+                <div><span class="k">receipt_id</span><span class="v">68796942-19cf-4b60-a17c-91e5a0de8555</span></div>
+                <div><span class="k">model</span><span class="v">minilm-l6-v2 v1.0.0</span></div>
+                <div><span class="k">platform</span><span class="v">GCP Confidential Space (TDX)</span></div>
+                <div><span class="k">format</span><span class="v">COSE_Sign1 + CWT (RFC 9052/8392)</span></div>
+                <div><span class="k">issued_at</span><span class="v">2026-02-27T09:26:28Z</span></div>
+                <br>
+                <div class="h">Hashes</div>
+                <div class="sep">────────────────────────────────────────</div>
+                <div><span class="k">input_hash</span><span class="vh">sha256:a1b2c3d4e5f67890abcdef...</span></div>
+                <div><span class="k">output_hash</span><span class="vh">sha256:f6e5d4c3b2a109876fedcb...</span></div>
+                <div><span class="k">model_hash</span><span class="vh">sha256:9f8e7d6c5b4a3210fedc...</span></div>
+                <br>
+                <div class="h">Verification</div>
+                <div class="sep">────────────────────────────────────────</div>
+                <div><span class="k">signature</span><span class="vp">Ed25519 VERIFIED</span></div>
+                <div><span class="k">attestation</span><span class="vp">Hardware measurements PASS</span></div>
+                <div><span class="k">lifecycle_events</span><span class="vp">5 actions recorded</span></div>
+                <div><span class="k">air_verify</span><span class="vp">16/16 rules PASS</span></div>
+                <br>
+                <div><span class="p">$ </span><span class="cur"></span></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <hr class="divider" />
+
+    <!-- ============================================================
+         COMPETITIVE LANDSCAPE
+         ============================================================ -->
+    <section id="moat">
+      <div class="w">
+        <div class="sh"><div class="sl">Differentiation</div><h2 class="st">What existing approaches don't cover</h2><p class="sd">TEE platforms and confidential computing vendors provide hardware isolation and attestation. What's missing is a portable, per-inference proof artifact.</p></div>
+        <div class="diff-list af">
+          <div class="diff-item">
+            <span class="diff-check">&#10003;</span>
+            <div><h3>Per-inference receipt</h3><p>Each inference produces a signed, machine-verifiable evidence bundle &mdash; not just a deployment-level attestation token.</p></div>
+          </div>
+          <div class="diff-item">
+            <span class="diff-check">&#10003;</span>
+            <div><h3>Portable open format</h3><p>AIR v1 uses COSE/CWT/EAT (RFC 9052, 8392, 9711) &mdash; not a proprietary schema locked to one cloud vendor.</p></div>
+          </div>
+          <div class="diff-item">
+            <span class="diff-check">&#10003;</span>
+            <div><h3>Standards-track spec</h3><p>Receipt format submitted as IETF Internet-Draft. NIST comment submitted. Open interop kit with 10 golden vectors.</p></div>
+          </div>
+          <div class="diff-item">
+            <span class="diff-check">&#10003;</span>
+            <div><h3>Multi-environment</h3><p>Verified on AWS Nitro, GCP Confidential Space (TDX), and NVIDIA H100 CC. Azure SEV-SNP in progress.</p></div>
+          </div>
+          <div class="diff-item">
+            <span class="diff-check">&#10003;</span>
+            <div><h3>Compliance-mappable</h3><p>Receipt fields can be mapped to HIPAA 164.312 control categories (access, audit, integrity, transmission). Built for regulated verticals.</p></div>
+          </div>
+          <div class="diff-item">
+            <span class="diff-check">&#10003;</span>
+            <div><h3>Open-source verifier</h3><p>Verification CLI + spec are open. Auditors can independently verify receipts without trusting the issuer.</p></div>
+          </div>
+        </div>
+        <p style="font-size:0.75rem; color:var(--text-3); text-align:center; margin-top:1.5rem; line-height:1.6;">
+          Existing confidential computing platforms provide hardware isolation and attestation infrastructure.<br>
+          We deploy on that infrastructure and add the per-inference evidence layer.
+        </p>
+      </div>
+    </section>
+
+    <hr class="divider" />
+
+    <!-- ============================================================
+         REGULATORY TAILWINDS
+         ============================================================ -->
+    <section id="regulation">
+      <div class="w">
+        <div class="sh c"><div class="sl">Regulatory Tailwinds</div><h2 class="st">Timing is favorable</h2><p class="sd">Regulatory pressure for stronger AI logging, traceability, and controls is increasing. Receipts can strengthen evidence quality for regulated AI workflows.</p></div>
+        <div class="reg-grid af">
+          <div class="reg-card urgent">
+            <div class="rc-when">Active now</div>
+            <div class="rc-title">SEC 2025 Priorities</div>
+            <div class="rc-desc">AI risk explicitly included in SEC examination focus areas<sup class="fn"><a href="#fn3">3</a></sup></div>
+          </div>
+          <div class="reg-card active">
+            <div class="rc-when">Proposed</div>
+            <div class="rc-title">HIPAA Security Rule</div>
+            <div class="rc-desc">Proposed updates emphasize stronger encryption and audit controls for PHI workloads<sup class="fn"><a href="#fn4">4</a></sup></div>
+          </div>
+          <div class="reg-card active">
+            <div class="rc-when">2026</div>
+            <div class="rc-title">US State AI Laws</div>
+            <div class="rc-desc">State-level AI accountability and risk management requirements are expanding</div>
+          </div>
+          <div class="reg-card upcoming">
+            <div class="rc-when">Aug 2026+</div>
+            <div class="rc-title">EU AI Act Art. 12</div>
+            <div class="rc-desc">Automatic logging and traceability for high-risk AI<sup class="fn"><a href="#fn5">5</a></sup></div>
+          </div>
+        </div>
+        <div class="hipaa-row af">
+          <div class="hipaa-cell">
+            <div class="hc-code">HIPAA 164.312(a)</div>
+            <div class="hc-map">Access control <span class="arrow">&rarr;</span> enclave isolation evidence</div>
+          </div>
+          <div class="hipaa-cell">
+            <div class="hc-code">HIPAA 164.312(b)</div>
+            <div class="hc-map">Audit controls <span class="arrow">&rarr;</span> signed receipt evidence</div>
+          </div>
+          <div class="hipaa-cell">
+            <div class="hc-code">HIPAA 164.312(c)</div>
+            <div class="hc-map">Integrity <span class="arrow">&rarr;</span> model hash + attestation linkage</div>
+          </div>
+          <div class="hipaa-cell">
+            <div class="hc-code">HIPAA 164.312(e)</div>
+            <div class="hc-map">Transmission security <span class="arrow">&rarr;</span> AEAD encryption</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <hr class="divider" />
 
     <!-- ============================================================
          HOW IT WORKS
          ============================================================ -->
-    <section id="how-it-works">
-      <div class="wrap">
-        <div class="section-header center">
-          <div class="section-label">How It Works</div>
-          <h2 class="section-title">Three steps to verifiable AI</h2>
-          <p class="section-desc">EphemeralML reduces trust in cloud operators via hardware attestation, policy-gated key release, and cryptographically signed execution receipts.</p>
-        </div>
-        <div class="steps-row">
-          <div class="step-card anim-fade">
-            <div class="step-num">1</div>
+    <section id="how">
+      <div class="w">
+        <div class="sh c"><div class="sl">How It Works</div><h2 class="st">Three steps to verifiable AI</h2></div>
+        <div class="steps af">
+          <div class="step">
+            <div class="step-n">1</div>
             <h3>Attest</h3>
-            <p>The client verifies the enclave's identity and code measurements before sending any data. Hardware attestation confirms the exact software running inside the TEE.</p>
+            <p>Client verifies enclave identity and code measurements via hardware attestation before sending any data.</p>
           </div>
-          <div class="step-card anim-fade anim-delay-1">
-            <div class="step-num">2</div>
+          <div class="step">
+            <div class="step-n">2</div>
             <h3>Infer</h3>
-            <p>Data is encrypted end-to-end. The model runs inside a hardware-isolated enclave. The host forwards ciphertext only &mdash; it never sees plaintext prompts or outputs.</p>
+            <p>Data encrypted end-to-end. Model runs inside hardware-isolated enclave. Host forwards ciphertext only.</p>
           </div>
-          <div class="step-card anim-fade anim-delay-2">
-            <div class="step-num">3</div>
+          <div class="step">
+            <div class="step-n">3</div>
             <h3>Receipt</h3>
-            <p>Every inference produces an Ed25519-signed receipt covering model identity, input/output hashes, attestation evidence, and session lifecycle events.</p>
+            <p>Every inference produces an Ed25519-signed receipt: model ID, input/output hashes, attestation, session lifecycle.</p>
           </div>
         </div>
       </div>
     </section>
 
+    <hr class="divider" />
+
     <!-- ============================================================
-         TRUST PROOF POINTS
+         TRACTION
          ============================================================ -->
-    <section class="alt" id="proof-points">
-      <div class="wrap">
-        <div class="section-header center">
-          <div class="section-label">Proof Points</div>
-          <h2 class="section-title">Measured, tested, verified</h2>
-          <p class="section-desc">Benchmark metrics (overhead, cost, quality) measured on AWS m6i.xlarge. Test and compliance counts from CI.</p>
-        </div>
-        <div class="stats-row anim-fade">
-          <div class="stat">
-            <div class="stat-val">3&ndash;13%</div>
-            <div class="stat-lbl">Confidential Overhead (range)</div>
+    <section id="traction">
+      <div class="w">
+        <div class="sh c"><div class="sl">Traction</div><h2 class="st">Built, tested, and verified on production hardware</h2></div>
+        <div class="traction-grid af">
+          <div class="traction-cell">
+            <div class="tc-val">3</div>
+            <div class="tc-lbl">Execution environments E2E verified</div>
           </div>
-          <div class="stat">
-            <div class="stat-val">$4.72</div>
-            <div class="stat-lbl">Per 1M Inferences</div>
+          <div class="traction-cell">
+            <div class="tc-val">657</div>
+            <div class="tc-lbl">Tests passing (CI green)</div>
           </div>
-          <div class="stat">
-            <div class="stat-val">16</div>
-            <div class="stat-lbl">Compliance Rules</div>
+          <div class="traction-cell">
+            <div class="tc-val">1,400<span class="tc-sm">+</span></div>
+            <div class="tc-lbl">crates.io downloads</div>
           </div>
-          <div class="stat">
-            <div class="stat-val">574</div>
-            <div class="stat-lbl">Tests Passing</div>
+          <div class="traction-cell">
+            <div class="tc-val">3<span class="tc-sm">-</span>13<span class="tc-sm">%</span></div>
+            <div class="tc-lbl">Confidential overhead</div>
           </div>
-          <div class="stat">
-            <div class="stat-val">&asymp;1.0</div>
-            <div class="stat-lbl">Output Cosine Similarity</div>
+          <div class="traction-cell">
+            <div class="tc-val">113<span class="tc-sm">ms</span></div>
+            <div class="tc-lbl">E2E inference (AWS Nitro)</div>
+          </div>
+          <div class="traction-cell">
+            <div class="tc-val">16/16</div>
+            <div class="tc-lbl">AIR verification rules passing</div>
           </div>
         </div>
       </div>
     </section>
 
+    <hr class="divider" />
+
     <!-- ============================================================
-         THE RECEIPT
+         PLATFORMS
          ============================================================ -->
-    <section id="receipt">
-      <div class="wrap">
-        <div class="section-header center">
-          <div class="section-label">The Receipt</div>
-          <h2 class="section-title">Cryptographic proof for every inference</h2>
-          <p class="section-desc">The receipt is the product. A compliance officer sends data to an endpoint, gets a result back, and receives a verifiable receipt they can show to auditors.</p>
+    <section id="platforms">
+      <div class="w">
+        <div class="sh c"><div class="sl">Platforms</div><h2 class="st">Multi-environment with multi-cloud path</h2><p class="sd">End-to-end verified on production hardware. OpenAI-compatible gateway &mdash; switch your base_url and go.</p></div>
+        <div class="plat-row af">
+          <div class="plat-pill"><span class="plat-dot ga"></span>AWS Nitro Enclaves</div>
+          <div class="plat-pill"><span class="plat-dot ga"></span>GCP Confidential Space (TDX)</div>
+          <div class="plat-pill"><span class="plat-dot ga"></span>NVIDIA H100 CC (GCP)</div>
+          <div class="plat-pill"><span class="plat-dot prev"></span>Azure SEV-SNP (in progress)</div>
         </div>
-        <div class="receipt-visual anim-fade">
-          <div class="receipt-heading">Execution Receipt</div>
-          <hr class="receipt-divider" />
-          <div class="field"><span class="field-key">receipt_id</span><span class="field-val">68796942-19cf-4b60-a17c-91e5a0de8555</span></div>
-          <div class="field"><span class="field-key">model</span><span class="field-val">minilm-l6-v2 v1.0.0</span></div>
-          <div class="field"><span class="field-key">platform</span><span class="field-val">tdx-mrtd-rtmr</span></div>
-          <div class="receipt-heading">Hashes</div>
-          <hr class="receipt-divider" />
-          <div class="field"><span class="field-key">input_hash</span><span class="field-val hash">sha256:a1b2c3d4e5f6...</span></div>
-          <div class="field"><span class="field-key">output_hash</span><span class="field-val hash">sha256:f6e5d4c3b2a1...</span></div>
-          <div class="field"><span class="field-key">model_hash</span><span class="field-val hash">sha256:9f8e7d6c5b4a...</span></div>
-          <div class="receipt-heading">Verification</div>
-          <hr class="receipt-divider" />
-          <div class="field"><span class="field-key">signature</span><span class="field-val pass">Ed25519 VERIFIED</span></div>
-          <div class="field"><span class="field-key">attestation</span><span class="field-val pass">Hardware measurements PASS</span></div>
-          <div class="field"><span class="field-key">destroy_evidence</span><span class="field-val pass">5 actions confirmed</span></div>
-          <div class="field"><span class="field-key">compliance</span><span class="field-val pass">16/16 rules PASS</span></div>
+        <div class="plat-stats af">
+          <div class="plat-stat"><div class="ps-val">113ms</div><div class="ps-lbl">AWS Nitro E2E</div></div>
+          <div class="plat-stat"><div class="ps-val">10/10</div><div class="ps-lbl">GCP TDX steps</div></div>
+          <div class="plat-stat"><div class="ps-val">16/16</div><div class="ps-lbl">GPU AIR checks</div></div>
+          <div class="plat-stat"><div class="ps-val">&lt;5%</div><div class="ps-lbl">H100 CC overhead</div></div>
         </div>
       </div>
     </section>
+
+    <hr class="divider" />
+
+    <!-- ============================================================
+         OPEN SOURCE
+         ============================================================ -->
+    <section id="open-source">
+      <div class="w">
+        <div class="sh c"><div class="sl">Open Source &amp; Standards</div><h2 class="st">Built in the open, backed by standards</h2><p class="sd">Published on crates.io. Receipt format submitted as an IETF Internet-Draft. Public comment submitted to NIST on AI agent safeguarding (NIST-2025-0035).</p></div>
+        <div class="oss-row af">
+          <div class="oss-card">
+            <div class="oc-name">confidential-ml-transport</div>
+            <div class="oc-ver">v0.4.0 &middot; crates.io</div>
+            <div class="oc-desc">Attestation-bound encrypted tensor transport. X25519 + ChaCha20Poly1305, 3-message attested handshake.</div>
+            <div class="oc-stats">
+              <span>&#9733; 8</span>
+              <span>777+ downloads</span>
+              <span>105 tests</span>
+            </div>
+          </div>
+          <div class="oss-card">
+            <div class="oc-name">confidential-ml-pipeline</div>
+            <div class="oc-ver">v0.3.1 &middot; crates.io</div>
+            <div class="oc-desc">Multi-enclave pipeline orchestration. Stage manifests, encrypted activation relay, failure semantics.</div>
+            <div class="oc-stats">
+              <span>&#9733; 2</span>
+              <span>646+ downloads</span>
+              <span>87 tests</span>
+            </div>
+          </div>
+          <div class="oss-card">
+            <div class="oc-name">AIR v1 Specification</div>
+            <div class="oc-ver">IETF Internet-Draft &middot; v1.0 frozen</div>
+            <div class="oc-desc">Attested Inference Receipt. COSE_Sign1 + CWT + EAT profile. 17 core claims, 10 golden vectors, interop kit.</div>
+            <div class="oc-stats">
+              <span>RFC 9052/8392/9711</span>
+              <span>NIST comment</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <hr class="divider" />
 
     <!-- ============================================================
          SECURITY MODEL
          ============================================================ -->
-    <section class="alt" id="security">
-      <div class="wrap">
-        <div class="section-header">
-          <div class="section-label">Security</div>
-          <h2 class="section-title">What we guarantee, and what we don't</h2>
-        </div>
-        <div class="grid-2">
-          <div>
-            <h3 style="font-family: var(--font-mono); font-size: 0.7rem; font-weight: 600; color: var(--green); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: var(--space-md);">Guaranteed</h3>
+    <section id="security">
+      <div class="w">
+        <div class="sh"><div class="sl">Security Model</div><h2 class="st">Security properties and limits</h2></div>
+        <div class="sec-grid">
+          <div class="af">
+            <h3 style="font-family:var(--font-mono);font-size:0.65rem;font-weight:600;color:var(--green);text-transform:uppercase;letter-spacing:0.1em;margin-bottom:1rem;">Designed properties (under stated assumptions)</h3>
             <ul class="guar-list yes">
-              <li><strong>Host blindness</strong> &mdash; the host relays ciphertext only; cannot decrypt prompts, outputs, or model keys</li>
-              <li><strong>Attestation-gated key release</strong> &mdash; model decryption keys released only to approved enclave measurements</li>
-              <li><strong>Session binding</strong> &mdash; encryption keys bound to attestation + nonce to prevent key swapping</li>
-              <li><strong>Model integrity</strong> &mdash; Ed25519-signed manifests prevent serving a different model</li>
-              <li><strong>Auditability</strong> &mdash; each inference produces a verifiable receipt with destroy evidence</li>
+              <li><strong>Host ciphertext-only handling</strong> &mdash; host relays encrypted traffic and cannot directly decrypt prompts, outputs, or model keys under normal operation</li>
+              <li><strong>Attestation-gated key release</strong> &mdash; model keys released only to approved enclave measurements</li>
+              <li><strong>Session binding</strong> &mdash; encryption keys bound to attestation + nonce</li>
+              <li><strong>Model integrity</strong> &mdash; Ed25519-signed manifests prevent model substitution</li>
+              <li><strong>Per-inference auditability</strong> &mdash; each receipt carries verifiable model/input/output hash and attestation linkage metadata</li>
             </ul>
           </div>
-          <div>
-            <h3 style="font-family: var(--font-mono); font-size: 0.7rem; font-weight: 600; color: var(--red); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: var(--space-md);">Explicitly not claimed</h3>
+          <div class="af">
+            <h3 style="font-family:var(--font-mono);font-size:0.65rem;font-weight:600;color:var(--red);text-transform:uppercase;letter-spacing:0.1em;margin-bottom:1rem;">Explicitly not claimed</h3>
             <ul class="guar-list no">
               <li>Protection against all microarchitectural side-channels</li>
               <li>Availability guarantees (the host can deny service)</li>
@@ -609,119 +1084,89 @@
             </ul>
           </div>
         </div>
-
-        <div style="margin-top: var(--space-xl);">
-          <div class="section-header center">
-            <div class="section-label">Architecture</div>
-            <h2 class="section-title">Three-zone trust model</h2>
-          </div>
-          <div class="grid-3">
-            <div class="zone trusted">
-              <h4>Client (Trusted)</h4>
-              <p>Verifies attestation, holds policy allowlists, establishes encrypted sessions</p>
-            </div>
-            <div class="zone untrusted">
-              <h4>Host (Untrusted)</h4>
-              <p>Networking, storage, API proxy. Forwards ciphertext only.</p>
-            </div>
-            <div class="zone enclave">
-              <h4>Enclave (TEE)</h4>
-              <p>Decrypts data, loads models, runs inference, signs receipts</p>
-            </div>
-          </div>
+        <div class="zones af">
+          <div class="zone trusted"><h4>Client (Trusted)</h4><p>Verifies attestation, holds policy allowlists, establishes encrypted sessions</p></div>
+          <div class="zone untrusted"><h4>Host (Untrusted)</h4><p>Networking, storage, API proxy. Forwards ciphertext only.</p></div>
+          <div class="zone enclave"><h4>Enclave (TEE)</h4><p>Decrypts data, loads models, runs inference, signs receipts</p></div>
         </div>
       </div>
     </section>
 
-    <!-- ============================================================
-         PLATFORMS
-         ============================================================ -->
-    <section id="platforms">
-      <div class="wrap">
-        <div class="section-header center">
-          <div class="section-label">Platforms</div>
-          <h2 class="section-title">Multi-cloud confidential compute</h2>
-          <p class="section-desc">EphemeralML targets confidential computing platforms from AWS, GCP, and Azure.</p>
-        </div>
-        <div class="platforms">
-          <div class="platform-pill"><span class="status ga"></span>AWS Nitro Enclaves</div>
-          <div class="platform-pill"><span class="status ga"></span>GCP Confidential Space (TDX)</div>
-          <div class="platform-pill"><span class="status ga"></span>NVIDIA H100 CC (Azure/GCP)</div>
-          <div class="platform-pill"><span class="status preview"></span>Azure SEV-SNP</div>
-        </div>
-      </div>
-    </section>
+    <hr class="divider" />
 
     <!-- ============================================================
          CTA
          ============================================================ -->
-    <section class="alt" id="contact">
-      <div class="wrap">
+    <section class="cta-s" id="contact">
+      <div class="w">
         <div class="cta-block">
-          <svg class="ghost-svg" viewBox="0 0 40 48" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" style="width: 36px; height: 36px; margin: 0 auto var(--space-md); opacity: 0.3;">
-            <path d="M20 4C11.16 4 4 11.16 4 20v16l4-4 4 4 4-4 4 4 4-4 4 4 4-4 4 4V20C36 11.16 28.84 4 20 4z" stroke="currentColor" stroke-width="1.5" fill="none"/>
-            <circle cx="14" cy="19" r="2" fill="currentColor" opacity="0.5"/>
-            <circle cx="26" cy="19" r="2" fill="currentColor" opacity="0.5"/>
+          <svg viewBox="0 0 40 48" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" style="width:36px;height:36px;margin:0 auto 1rem;opacity:0.2;animation:ghostFloat 4s ease-in-out infinite;">
+            <path d="M20 4C11.16 4 4 11.16 4 20v16l4-4 4 4 4-4 4 4 4-4 4 4 4-4 4 4V20C36 11.16 28.84 4 20 4z" stroke="url(#lC)" stroke-width="1.5" fill="none"/>
+            <circle cx="14" cy="19" r="2" fill="#00d4ff" opacity="0.5"/>
+            <circle cx="26" cy="19" r="2" fill="#00d4ff" opacity="0.5"/>
+            <defs><linearGradient id="lC" x1="4" y1="4" x2="36" y2="44"><stop stop-color="#00d4ff"/><stop offset="1" stop-color="#00cc88"/></linearGradient></defs>
           </svg>
-          <h2>Deploy confidential AI</h2>
-          <p class="sub">If you run AI in a regulated environment and need verifiable confidentiality, let's talk about a pilot.</p>
+          <h2>Let's scope a pilot</h2>
+          <p class="cta-sub">If you run AI in healthcare, finance, or legal &mdash; and need auditable, hardware-proven confidentiality with verifiable receipts.</p>
           <div class="cta-btns">
-            <a href="mailto:contact@cyntrisec.com?subject=Pilot%20Inquiry" class="btn btn-primary">Contact Us</a>
+            <a href="mailto:contact@cyntrisec.com?subject=Pilot%20Inquiry" class="btn btn-primary">Request a Pilot</a>
             <a href="mailto:contact@cyntrisec.com?subject=Engineering%20Discussion" class="btn btn-ghost">Talk to Engineering</a>
           </div>
         </div>
       </div>
     </section>
 
-    <!-- ============================================================
-         FOOTER
-         ============================================================ -->
+    <!-- FOOTNOTES -->
+    <div class="footnotes" id="sources">
+      <div class="w">
+        <div class="fn-title">Sources</div>
+        <ol>
+          <li id="fn1">Cloudera, "96 Percent of Enterprises Are Expanding Use of AI Agents," April 2025. Survey of ~1,500 IT leaders across 14 countries. <a href="https://www.cloudera.com/about/news-and-blogs/press-releases/2025-04-16-96-percent-of-enterprises-are-expanding-use-of-ai-agents-according-to-latest-data-from-cloudera.html" target="_blank" rel="noopener">cloudera.com</a></li>
+          <li id="fn2">Market size range from Everest Group and MarketsandMarkets confidential computing market reports (2024&ndash;2025). Estimates vary by methodology; $9B (Everest Group 2024) to $24B (MarketsandMarkets 2025 projection). CAGR estimates range 40&ndash;48% across reports.</li>
+          <li id="fn3">SEC, "2025 Examination Priorities," October 2024. <a href="https://www.sec.gov/newsroom/press-releases/2024-172" target="_blank" rel="noopener">sec.gov</a></li>
+          <li id="fn4">HHS, "HIPAA Security Rule NPRM," proposed December 2024, published January 6, 2025. <a href="https://www.hhs.gov/hipaa/for-professionals/security/hipaa-security-rule-nprm/index.html" target="_blank" rel="noopener">hhs.gov</a></li>
+          <li id="fn5">EU AI Act, Regulation 2024/1689, Article 12 &mdash; automatic logging for high-risk AI. Obligations phase in from August 2026; the Commission's November 2025 Digital Omnibus proposal may adjust timelines for some categories. <a href="https://eur-lex.europa.eu/eli/reg/2024/1689/2024-07-12/eng" target="_blank" rel="noopener">eur-lex.europa.eu</a></li>
+        </ol>
+      </div>
+    </div>
+
+    <!-- FOOTER -->
     <footer>
-      <div class="wrap">
-        <div class="footer-left">
-          <span class="logo" style="font-size: 0.85rem;">Cyntrisec</span>
-          <div class="footer-links">
-            <a href="https://ephemeralml.cyntrisec.com">Technical Docs</a>
-            <a href="https://github.com/cyntrisec/EphemeralML">GitHub</a>
+      <div class="w">
+        <div class="ft-left">
+          <span class="logo" style="font-size:0.8rem;">
+            <img src="logo-mark-64.png" alt="Cyntrisec" class="logo-img" width="18" height="18" />
+            Cyntrisec
+          </span>
+          <div class="ft-links">
+            <a href="/docs">Docs</a>
+            <a href="https://github.com/cyntrisec">GitHub</a>
+            <a href="https://crates.io/crates/confidential-ml-transport">crates.io</a>
             <a href="https://x.com/cyntrisec">X</a>
             <a href="mailto:contact@cyntrisec.com">contact@cyntrisec.com</a>
           </div>
         </div>
-        <div class="footer-copy">&copy; 2026 Cyntrisec. All rights reserved.</div>
+        <div class="ft-copy">&copy; 2026 Cyntrisec. All rights reserved.</div>
       </div>
     </footer>
 
-    <!-- ============================================================
-         SCRIPTS
-         ============================================================ -->
     <script>
-      // Smooth scroll for anchor links
-      document.querySelectorAll('a[href^="#"]').forEach(function(a) {
-        a.addEventListener("click", function(e) {
+      document.querySelectorAll('a[href^="#"]').forEach(function(a){
+        a.addEventListener("click",function(e){
           e.preventDefault();
-          var t = document.querySelector(this.getAttribute("href"));
-          if (t) t.scrollIntoView({ behavior: "smooth" });
+          var t=document.querySelector(this.getAttribute("href"));
+          if(t)t.scrollIntoView({behavior:"smooth"});
         });
       });
-
-      // Intersection Observer for scroll-triggered fade-in
-      if ('IntersectionObserver' in window && !window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
-        var obs = new IntersectionObserver(function(entries) {
-          entries.forEach(function(entry) {
-            if (entry.isIntersecting) {
-              entry.target.style.opacity = '1';
-              entry.target.style.transform = 'translateY(0)';
-              obs.unobserve(entry.target);
-            }
+      if('IntersectionObserver' in window && !window.matchMedia('(prefers-reduced-motion:reduce)').matches){
+        var obs=new IntersectionObserver(function(entries){
+          entries.forEach(function(entry){
+            if(entry.isIntersecting){entry.target.classList.add('v');obs.unobserve(entry.target);}
           });
-        }, { threshold: 0.1 });
-
-        document.querySelectorAll('.card, .zone, .step-card, .receipt-visual').forEach(function(el) {
-          el.style.opacity = '0';
-          el.style.transform = 'translateY(16px)';
-          el.style.transition = 'opacity 0.5s ease, transform 0.5s ease';
-          obs.observe(el);
-        });
+        },{threshold:0.06,rootMargin:'0px 0px -30px 0px'});
+        document.querySelectorAll('.af').forEach(function(el){obs.observe(el);});
+      }else{
+        document.querySelectorAll('.af').forEach(function(el){el.classList.add('v');});
       }
     </script>
   </body>

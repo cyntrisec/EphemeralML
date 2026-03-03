@@ -162,3 +162,14 @@ evidence/nitro-e2e-*/
 
 # Evidence archives (local backup, not committed)
 evidence/archives/
+
+# Marketing local previews/backups
+site/marketing/index-preview.html
+site/marketing/index-backup-*.html
+site/marketing/index-investor.html
+site/marketing/logo-full-80.png
+site/marketing/logo-full.png
+site/marketing/logo-mark.png
+
+# Local Claude config
+**/.claude/
