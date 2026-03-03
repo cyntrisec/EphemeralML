@@ -10,6 +10,7 @@ echo "Deploying marketing site to s3://${BUCKET}/ ..."
 aws s3 sync site/marketing/ "s3://${BUCKET}/" \
   --delete \
   --exclude "shared/*" \
+  --exclude ".claude/*" \
   --exclude "index-preview.html" \
   --exclude "index-backup-*.html" \
   --exclude "index-investor.html" \

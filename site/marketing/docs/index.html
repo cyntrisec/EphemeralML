@@ -11,7 +11,7 @@
     <meta name="theme-color" content="#050505" />
 
     <!-- Content Security Policy -->
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self'; object-src 'none'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'" />
 
     <!-- Canonical -->
     <link rel="canonical" href="https://cyntrisec.com/docs" />
@@ -1049,7 +1049,7 @@
           <a href="#security" class="btn btn-ghost">Security Model</a>
         </div>
         <div class="anim-fade anim-delay-4" style="display: flex; justify-content: center;">
-          <button class="install-block" type="button" aria-label="Copy install command" onclick="navigator.clipboard.writeText('curl -fsSL https://github.com/cyntrisec/EphemeralML/releases/latest/download/install.sh | bash')">
+          <button class="install-block" type="button" aria-label="Copy install command">
             <span class="prompt">$</span>
             <span class="cmd">curl -fsSL https://github.com/cyntrisec/EphemeralML/releases/latest/download/install.sh | bash</span>
             <span class="copy-hint">click to copy</span>
@@ -1401,7 +1401,7 @@
 
         <!-- Panel 1: Receipt Verify -->
         <div class="term-panel" style="margin-bottom: var(--space-md);">
-          <div class="term-bar" role="button" tabindex="0" aria-expanded="false" aria-controls="term-verify" onclick="toggleTerm(this)">
+          <div class="term-bar" role="button" tabindex="0" aria-expanded="false" aria-controls="term-verify">
             <div class="term-dots"><span></span><span></span><span></span></div>
             <div class="term-title">ephemeralml-verify receipt.json --require-destroy-event</div>
             <div class="term-toggle" aria-hidden="true">&#9654;</div>
@@ -1435,7 +1435,7 @@
 
         <!-- Panel 2: Compliance Verify -->
         <div class="term-panel">
-          <div class="term-bar" role="button" tabindex="0" aria-expanded="false" aria-controls="term-compliance" onclick="toggleTerm(this)">
+          <div class="term-bar" role="button" tabindex="0" aria-expanded="false" aria-controls="term-compliance">
             <div class="term-dots"><span></span><span></span><span></span></div>
             <div class="term-title">ephemeralml-compliance verify --profile baseline</div>
             <div class="term-toggle" aria-hidden="true">&#9654;</div>
@@ -1566,6 +1566,11 @@
         }
       }
 
+      // Attach click handlers to term-bar elements (no inline onclick)
+      document.querySelectorAll('.term-bar').forEach(function(bar) {
+        bar.addEventListener('click', function() { toggleTerm(this); });
+      });
+
       // Keyboard support for terminal panels and install block
       document.querySelectorAll('.term-bar, .install-block').forEach(function(el) {
         el.addEventListener("keydown", function(e) {
@@ -1576,8 +1581,9 @@
         });
       });
 
-      // Copy feedback for install block
+      // Install block: copy command + feedback (no inline onclick)
       document.querySelector('.install-block').addEventListener('click', function() {
+        navigator.clipboard.writeText('curl -fsSL https://github.com/cyntrisec/EphemeralML/releases/latest/download/install.sh | bash');
         var hint = this.querySelector('.copy-hint');
         var orig = hint.textContent;
         hint.textContent = 'copied!';
