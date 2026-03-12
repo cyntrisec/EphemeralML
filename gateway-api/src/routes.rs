@@ -936,7 +936,11 @@ fn build_metadata(
         .clone()
         .or_else(|| {
             infer_attestation_mode_from_measurements(
-                result.receipt.enclave_measurements.measurement_type.as_str(),
+                result
+                    .receipt
+                    .enclave_measurements
+                    .measurement_type
+                    .as_str(),
             )
             .map(str::to_string)
         })

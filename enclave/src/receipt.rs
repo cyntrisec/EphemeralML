@@ -58,8 +58,8 @@ impl ReceiptBuilder {
 mod tests {
     use super::ReceiptBuilder;
     use crate::mock::MockAttestationProvider;
-    use ephemeral_ml_common::ReceiptSigningKey;
     use ephemeral_ml_common::transport_types::ConnectionState;
+    use ephemeral_ml_common::ReceiptSigningKey;
 
     #[test]
     fn receipt_builder_sets_mock_attestation_source() {
