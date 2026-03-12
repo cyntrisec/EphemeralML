@@ -934,6 +934,12 @@ fn build_metadata(
         .receipt
         .attestation_source
         .clone()
+        .or_else(|| {
+            infer_attestation_mode_from_measurements(
+                result.receipt.enclave_measurements.measurement_type.as_str(),
+            )
+            .map(str::to_string)
+        })
         .unwrap_or_else(|| "unknown".to_string());
 
     let receipt_sha256 = result.air_v1_receipt_b64.as_ref().map(|b64| {
@@ -950,6 +956,15 @@ fn build_metadata(
         air_v1_receipt_b64: result.air_v1_receipt_b64.clone(),
         model_manifest_sha256: manifest_sha256,
     })
+}
+
+fn infer_attestation_mode_from_measurements(measurement_type: &str) -> Option<&'static str> {
+    match measurement_type {
+        "tdx-mrtd-rtmr" => Some("cs-tdx"),
+        "nitro-pcr" => Some("nitro-pcr"),
+        "sev-snp" => Some("sev-snp"),
+        _ => None,
+    }
 }
 
 /// Attach attestation metadata as response headers.
@@ -1118,6 +1133,14 @@ mod tests {
         let json = serde_json::to_value(&resp).unwrap();
         assert_eq!(json["_ephemeralml"]["receipt_sha256"], "deadbeef");
         assert_eq!(json["_ephemeralml"]["air_v1_receipt_b64"], "base64data");
+    }
+
+    #[test]
+    fn measurement_type_fallback_maps_tdx_to_cs_tdx() {
+        assert_eq!(
+            infer_attestation_mode_from_measurements("tdx-mrtd-rtmr"),
+            Some("cs-tdx")
+        );
     }
 
     #[test]

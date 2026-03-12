@@ -3,6 +3,7 @@
 
 FROM rust:slim-bookworm AS builder
 RUN apt-get update && apt-get install -y pkg-config libssl-dev g++ && rm -rf /var/lib/apt/lists/*
+ARG GATEWAY_FEATURES=mock
 
 WORKDIR /build
 # Copy workspace manifests first (layer cache)
@@ -32,7 +33,9 @@ RUN echo "fn main() {}" > gateway-api/src/main.rs && \
     echo "fn main() {}" > host/src/bin/kms_proxy_host.rs && \
     echo "fn main() {}" > compliance/src/bin/compliance_cli.rs
 
-RUN cargo build --release -p ephemeralml-gateway --features mock 2>/dev/null || true
+RUN if [ "${GATEWAY_FEATURES}" = "mock" ]; then \
+      cargo build --release --no-default-features -p ephemeralml-gateway --features "${GATEWAY_FEATURES}" 2>/dev/null || true; \
+    fi
 
 # Copy real source
 COPY common/ common/
@@ -42,7 +45,7 @@ COPY gateway-api/ gateway-api/
 # Invalidate cargo cache for crates whose source was overwritten from stubs
 RUN touch common/src/lib.rs client/src/lib.rs gateway-api/src/main.rs
 
-RUN cargo build --release -p ephemeralml-gateway --features mock
+RUN cargo build --release --no-default-features -p ephemeralml-gateway --features "${GATEWAY_FEATURES}"
 
 # Runtime image
 FROM debian:bookworm-slim

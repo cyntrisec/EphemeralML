@@ -384,6 +384,10 @@ impl AttestationProvider for TeeAttestationProvider {
     fn measurement_type(&self) -> &str {
         "tdx-mrtd-rtmr"
     }
+
+    fn attestation_source(&self) -> Option<&'static str> {
+        Some("cs-tdx")
+    }
 }
 
 impl TeeAttestationProvider {

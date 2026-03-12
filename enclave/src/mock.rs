@@ -253,4 +253,8 @@ impl AttestationProvider for MockAttestationProvider {
             Err(_) => self.decrypt_hpke(ciphertext),
         }
     }
+
+    fn attestation_source(&self) -> Option<&'static str> {
+        Some("mock")
+    }
 }

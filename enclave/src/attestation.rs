@@ -125,6 +125,12 @@ pub trait AttestationProvider: Send + Sync {
     fn measurement_type(&self) -> &str {
         "nitro-pcr"
     }
+
+    /// Return the stable attestation source label exposed in receipts and
+    /// gateway metadata.
+    fn attestation_source(&self) -> Option<&'static str> {
+        None
+    }
 }
 
 /// NSM client for production attestation document generation
@@ -404,6 +410,10 @@ impl AttestationProvider for NSMAttestationProvider {
                 )))
             })
     }
+
+    fn attestation_source(&self) -> Option<&'static str> {
+        Some("aws-nitro")
+    }
 }
 
 /// Default attestation provider that uses mock in development, NSM in production.
@@ -531,6 +541,30 @@ impl AttestationProvider for DefaultAttestationProvider {
         #[cfg(all(feature = "mock", not(feature = "production")))]
         {
             self.mock_provider.decrypt_kms(ciphertext)
+        }
+    }
+
+    fn measurement_type(&self) -> &str {
+        #[cfg(feature = "production")]
+        {
+            self.nsm_provider.measurement_type()
+        }
+
+        #[cfg(all(feature = "mock", not(feature = "production")))]
+        {
+            self.mock_provider.measurement_type()
+        }
+    }
+
+    fn attestation_source(&self) -> Option<&'static str> {
+        #[cfg(feature = "production")]
+        {
+            self.nsm_provider.attestation_source()
+        }
+
+        #[cfg(all(feature = "mock", not(feature = "production")))]
+        {
+            self.mock_provider.attestation_source()
         }
     }
 }
