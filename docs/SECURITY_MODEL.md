@@ -30,7 +30,7 @@ compliance bundle. The evidence chain is:
 Receipt (signed, per-inference)
   ├── attestation_doc_hash → SHA-256 of boot attestation bytes
   ├── model_id / model_version → matches model manifest
-  └── destroy_evidence → 5 cleanup actions documented
+  └── destroy_evidence → optional self-reported cleanup actions (legacy product field, not AIR v1 proof)
 Boot Attestation (raw TDX quote, captured at boot)
   └── Binding: signing-key-attestation (receipt → attestation)
 Model Manifest (JSON, from GCS/local)
@@ -44,6 +44,10 @@ The client receives all three artifacts:
 
 The `compliance collect --strict` command verifies all evidence types are present
 before building the bundle.
+
+`destroy_evidence` is a product/compliance field carried by legacy EphemeralML
+receipts. It is useful for reporting cleanup actions, but it is not
+cryptographic proof of deletion and is not part of frozen AIR v1.
 
 ## Data Lifecycle
 
@@ -87,7 +91,7 @@ hardware and cryptographic mechanisms; others are best-effort software measures.
 
 - **Cryptographic proof of data deletion**: Proving that data no longer exists anywhere is
   not possible with current technology. We provide *evidence of cleanup actions taken*
-  (destroy evidence event in the receipt), not proof of data non-existence.
+  (a legacy `destroy_evidence` event in the product receipt path), not proof of data non-existence.
 - **GPU memory scrubbing**: NVIDIA H100 CC-mode provides memory isolation and encryption,
   but EphemeralML cannot independently verify that GPU memory is scrubbed on release.
 - **Compiler/allocator residuals**: The Rust allocator (`jemalloc` or system) may retain

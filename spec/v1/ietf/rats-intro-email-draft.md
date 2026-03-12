@@ -1,73 +1,54 @@
 # Draft Email — `rats@ietf.org` Introduction (Not Sent)
 
-**Status:** Draft for M5 prep (do not send until at least one external interop run is complete)
+**Status:** Updated 2026-03-07 after archive review-pattern analysis. Draft is scoped for the first architectural intro on `rats@ietf.org`.
 
 ## Subject (draft)
 
-`[RATS] Feedback request: AIR (Attested Inference Receipt) COSE/CWT profile for confidential AI inference`
+`Introducing draft-tsyrulnikov-rats-attested-inference-receipt-00`
 
 ## Body (draft)
 
 Hello RATS WG,
 
-I am working on an open receipt format for confidential AI inference called **AIR** (Attested
-Inference Receipt), and I would appreciate feedback on whether the problem/scope is a good fit for
-RATS.
+I would appreciate feedback on `draft-tsyrulnikov-rats-attested-inference-receipt-00`:
 
-Problem we are trying to solve:
+https://datatracker.ietf.org/doc/draft-tsyrulnikov-rats-attested-inference-receipt/
 
-- Existing attestation mechanisms prove platform identity / evidence validity.
-- In practice, there is no widely used interoperable receipt format for a **single AI inference**
-  that binds:
-  - model identity (`model_hash`)
-  - input/output hashes
-  - timestamp / nonce
-  - attestation-linked execution metadata
-  - signature
+AIR defines an application-layer EAT/CWT profile for **per-inference** receipts. The goal is to carry a signed record of one inference event that binds:
 
-Current approach:
+- model identity / hash
+- request and response hashes
+- attestation-linked metadata
+- limited runtime fields
 
-- AIR v1 is a **COSE_Sign1** envelope (RFC 9052)
-- payload is **CWT/EAT-style claims** with an AIR-specific profile (`eat_profile`)
-- single-inference scope only (no pipeline chaining in v1)
+The scope is intentionally narrow:
 
-What is already available publicly:
+- one receipt per inference
+- COSE_Sign1 envelope with CWT/EAT claims
+- attestation-linked, but not a replacement for platform-specific attestation verification
+- not an Attestation Result format
+- not transport, appraisal policy, or transparency-log protocol
 
-- draft spec (frozen v1.0 docs)
-- CDDL schema
-- conformance vectors (valid + invalid)
-- reference Rust verifier (4-layer verification model)
-- implementation status / limitations documentation
+The main questions I would value feedback on are:
 
-Planned next step before any submission:
+1. Does this kind of per-inference evidence artifact fit the RATS problem space?
+2. Is the current role split reasonable, where AIR-local verification is separate from platform-specific attestation verification and key binding?
+3. Does the current claim shape look like a reasonable use of CWT/EAT for this scope?
 
-- complete at least one external interoperability run using the public vectors and interop kit
+IPR disclosure:
+https://datatracker.ietf.org/ipr/7182/
 
-Questions for the WG:
+I have also reviewed `draft-messous-eat-ai` and see AIR as complementary: AIR is focused on per-inference execution evidence rather than general AI-agent identity or provenance claims.
 
-1. Does a COSE/CWT/EAT-based "inference receipt" profile fit the RATS problem space?
-2. Would this be better framed as an individual RATS profile draft, or outside RATS initially?
-3. Are there existing RATS/EAT efforts we should align with before publishing a `-00` draft?
+Thanks for any feedback.
 
-Draft materials (placeholders to fill before sending):
-
-- Spec root: `<LINK>`
-- CDDL: `<LINK>`
-- Conformance vectors: `<LINK>`
-- Reference verifier: `<LINK>`
-- Implementation status / limitations: `<LINK>`
-
-I am happy to post a short architecture summary or draft text if this appears in-scope.
-
-Thanks,
-
-`<Name>`
-`<Affiliation (optional)>`
+Borys Tsyrulnikov
+Cyntrisec
 
 ## Notes Before Sending
 
-- Replace placeholder links with stable public URLs
-- Include implementation/interoperability status (do not overstate)
-- Keep the message technical and narrow (single-inference receipt profile only)
-- Avoid claims about pipeline chaining / deletion proof / SCITT integration in v1
-
+- Keep the first post architectural. Do not add compliance, healthcare, legal, or NIST framing.
+- Do not mention local `-01` until it is actually posted.
+- If challenged on charter fit, answer narrowly: AIR is an application-layer EAT/CWT profile for per-inference evidence, not an Attestation Result format or appraisal-policy protocol.
+- If challenged on "why not just attestation + logs?", answer: platform evidence proves workload state; ordinary logs are implementation-specific and often unsigned; AIR standardizes a signed per-inference artifact that a third party can verify independently.
+- If challenged on malicious signers, answer: AIR only has end-to-end value when the receipt signing key is bound to an attested workload accepted by the verifier.

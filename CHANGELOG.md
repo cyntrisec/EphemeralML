@@ -41,8 +41,8 @@
 - **`collect --manifest`**: New flag to include model manifest JSON in compliance bundles.
 - **`collect --strict`**: Fail if attestation or manifest evidence is missing (required by ATT-001, ATT-002, MODEL-002, KEY-001).
 - **`collect --auto-discover`**: Scan a directory for `*.bin` attestation and `manifest.json` files, auto-adding them to the bundle.
-- **Enriched destroy evidence**: Receipts now include 5 destroy actions (3 `explicit_zeroize` + 2 `drop_on_scope_exit`) covering output bytes, output tensor, generated text, session DEK, and ephemeral keypair.
-- **6 new conformance tests**: CT-020 (strict receipt-only fails), CT-021 (complete bundle types), CT-022 (auto-discover), CT-023 (all 16 baseline rules pass), CT-024 (ATT-002 hash mismatch), CT-025 (enriched destroy evidence).
+- **Enriched cleanup-event reporting**: Legacy EphemeralML receipts now include 5 destroy actions (3 `explicit_zeroize` + 2 `drop_on_scope_exit`) covering output bytes, output tensor, generated text, session DEK, and ephemeral keypair.
+- **6 new conformance tests**: CT-020 (strict receipt-only fails), CT-021 (complete bundle types), CT-022 (auto-discover), CT-023 (all 16 baseline rules pass), CT-024 (ATT-002 hash mismatch), CT-025 (enriched cleanup-event reporting).
 - **E2E script**: Updated to copy sidecar evidence files and use `--strict`/`--manifest`/`--attestation` flags in compliance collect.
 
 ### Changed
@@ -59,14 +59,14 @@
 ## [0.2.7] - 2026-02-19
 
 ### Added
-- **Destroy evidence in receipts**: `DestroyEvidence` and `DestroyAction` types in receipt schema. Receipts from v0.2.7+ enclaves include cryptographic proof of data cleanup (session key zeroization, DEK wipe, buffer clearing).
-- **Verifier strict mode**: `--require-destroy-event` flag on `ephemeralml verify`. When set, verification fails if destroy evidence is absent or empty. Fail-closed by default.
-- **DESTROY-001 compliance rule**: New rule in baseline and HIPAA profiles. Checks that receipts contain destroy evidence with at least one cleanup action.
-- **EML-DESTROY-001 baseline control**: Destroy evidence mapped to baseline control registry.
+- **Cleanup-event reporting in legacy receipts**: `DestroyEvidence` and `DestroyAction` types were added to the legacy EphemeralML receipt schema. Receipts from v0.2.7+ enclaves can include self-reported cleanup actions (session key zeroization, DEK wipe, buffer clearing). This is not cryptographic proof of deletion and is not part of frozen AIR v1.
+- **Verifier strict mode**: `--require-destroy-event` flag on `ephemeralml verify`. When set, verification fails if cleanup-event reporting is absent or empty. Fail-closed by default.
+- **DESTROY-001 compliance rule**: New rule in baseline and HIPAA profiles. Checks that legacy receipts contain cleanup-event reporting with at least one action.
+- **EML-DESTROY-001 baseline control**: Cleanup-event reporting mapped to baseline control registry.
 - **HIPAA audit mapping**: DESTROY-001 added to HIPAA-AUDIT-001 control (164.312(b) audit controls).
 - **Zeroization throughout**: Enclave request/response buffers, DEK/model decrypt buffers, transport payload buffers, and pipeline stage intermediates all wrapped in zeroizing types.
 - **Security model documentation**: `docs/SECURITY_MODEL.md` and `docs/PRODUCTION_GCP.md` updated with data destruction guarantees, best-effort vs guaranteed behavior, and trust model boundaries.
-- **6 new conformance tests**: CT-017 (missing destroy evidence fails), CT-018 (empty actions fails), CT-019 (verifier require-destroy-event flag positive/negative/strict).
+- **6 new conformance tests**: CT-017 (missing cleanup-event reporting fails), CT-018 (empty actions fail), CT-019 (verifier require-destroy-event flag positive/negative/strict).
 
 ### Changed
 - **Version bump**: All crates from 0.2.5 to 0.2.7
@@ -74,7 +74,7 @@
 - **HIPAA audit control**: Now includes DESTROY-001 alongside SIG-001, SEQ-001, CHAIN-001
 
 ### Security
-- Destroy evidence is backward-compatible: old receipts without `destroy_evidence` deserialize successfully (`Option<DestroyEvidence>`, `#[serde(default)]`).
+- Legacy cleanup-event reporting is backward-compatible: old receipts without `destroy_evidence` deserialize successfully (`Option<DestroyEvidence>`, `#[serde(default)]`).
 - Fail-closed: `--require-destroy-event` defaults to off; when enabled, missing evidence is a hard verification failure.
 
 ## [0.2.5] - 2026-02-18

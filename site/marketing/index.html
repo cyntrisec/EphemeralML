@@ -22,7 +22,7 @@
     <meta name="twitter:description" content="Hardware-proven confidential AI. Every inference produces a cryptographic receipt." />
     <meta name="twitter:image" content="https://cyntrisec.com/og-image.svg" />
 
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self'; object-src 'none'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'" />
 
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -478,6 +478,30 @@
       .traction-cell .tc-val { font-family:var(--font-mono);font-size:1.8rem;font-weight:700;color:var(--text-0);letter-spacing:-0.02em; }
       .traction-cell .tc-val .tc-sm { font-size:0.75rem;font-weight:500;color:var(--text-3); }
       .traction-cell .tc-lbl { font-size:0.68rem;color:var(--text-3);margin-top:0.3rem; }
+      .founder-card {
+        max-width:880px; margin:2rem auto 0; padding:1.5rem;
+        border:1px solid var(--border); border-radius:var(--radius-lg);
+        background:linear-gradient(180deg,rgba(255,255,255,0.03),rgba(255,255,255,0.01));
+      }
+      .founder-name {
+        font-family:var(--font-mono); font-size:0.95rem; font-weight:700;
+        color:var(--text-0); letter-spacing:-0.02em;
+      }
+      .founder-role {
+        margin-top:0.3rem; font-size:0.78rem; color:var(--text-3);
+        text-transform:uppercase; letter-spacing:0.08em;
+      }
+      .founder-desc { margin-top:1rem; font-size:0.98rem; line-height:1.8; color:var(--text-1); }
+      .founder-signal {
+        margin-top:1rem; font-size:0.82rem; line-height:1.7; color:var(--text-2);
+        padding-top:1rem; border-top:1px solid var(--border);
+      }
+      .founder-links { margin-top:1rem; display:flex; gap:1rem; flex-wrap:wrap; }
+      .founder-links a {
+        color:var(--text-0); text-decoration:none;
+        border-bottom:1px solid rgba(255,255,255,0.15); padding-bottom:0.1rem;
+      }
+      .founder-links a:hover { border-color:var(--accent); color:var(--accent); }
 
       /* ================================================================
          OPEN SOURCE
@@ -631,6 +655,7 @@
         .reg-grid, .hipaa-row { grid-template-columns:repeat(2,1fr); }
         .traction-grid { grid-template-columns:repeat(2,1fr); }
         .oss-row { grid-template-columns:1fr; }
+        .founder-card { padding:1.2rem; }
       }
       @media(max-width:768px) {
         .hero h1 { font-size:2.4rem; }
@@ -864,7 +889,7 @@
                 <div><span class="k">signature</span><span class="vp">Ed25519 VERIFIED</span></div>
                 <div><span class="k">attestation</span><span class="vp">Hardware measurements PASS</span></div>
                 <div><span class="k">lifecycle_events</span><span class="vp">5 actions recorded</span></div>
-                <div><span class="k">air_verify</span><span class="vp">16/16 rules PASS</span></div>
+                <div><span class="k">air_verify</span><span class="vp">11/11 mandatory checks PASS</span></div>
                 <br>
                 <div><span class="p">$ </span><span class="cur"></span></div>
               </div>
@@ -1008,24 +1033,39 @@
             <div class="tc-lbl">Execution environments E2E verified</div>
           </div>
           <div class="traction-cell">
-            <div class="tc-val">657</div>
-            <div class="tc-lbl">Tests passing (CI green)</div>
+            <div class="tc-val">500<span class="tc-sm">+</span></div>
+            <div class="tc-lbl">Tests across workspace and CI</div>
           </div>
           <div class="traction-cell">
             <div class="tc-val">1,400<span class="tc-sm">+</span></div>
             <div class="tc-lbl">crates.io downloads</div>
           </div>
           <div class="traction-cell">
-            <div class="tc-val">3<span class="tc-sm">-</span>13<span class="tc-sm">%</span></div>
-            <div class="tc-lbl">Confidential overhead</div>
+            <div class="tc-val">&lt;15<span class="tc-sm">%</span></div>
+            <div class="tc-lbl">Measured total overhead</div>
           </div>
           <div class="traction-cell">
             <div class="tc-val">113<span class="tc-sm">ms</span></div>
             <div class="tc-lbl">E2E inference (AWS Nitro)</div>
           </div>
           <div class="traction-cell">
-            <div class="tc-val">16/16</div>
-            <div class="tc-lbl">AIR verification rules passing</div>
+            <div class="tc-val">11/11</div>
+            <div class="tc-lbl">AIR mandatory checks passing</div>
+          </div>
+        </div>
+        <div class="founder-card af">
+          <div class="founder-name">Borys Tsyrulnikov</div>
+          <div class="founder-role">Founder</div>
+          <p class="founder-desc">
+            Built EphemeralML end-to-end: confidential AI inference, the AIR receipt specification, and the open-source Rust transport and pipeline libraries behind it.
+            Author of the AIR IETF Internet-Draft, contributor of a security fix to Microsoft's Azure CVM attestation library, and merged contributor to tokio.
+          </p>
+          <p class="founder-signal">
+            Current business status: active design-partner discovery across legal, healthcare, and financial-services buyers, focused on confidentiality, audit evidence, and AI governance requirements.
+          </p>
+          <div class="founder-links">
+            <a href="https://www.linkedin.com/in/borystsyrulnikov/" target="_blank" rel="noopener">LinkedIn</a>
+            <a href="https://github.com/tsyrulb" target="_blank" rel="noopener">GitHub</a>
           </div>
         </div>
       </div>
@@ -1048,7 +1088,7 @@
         <div class="plat-stats af">
           <div class="plat-stat"><div class="ps-val">113ms</div><div class="ps-lbl">AWS Nitro E2E</div></div>
           <div class="plat-stat"><div class="ps-val">10/10</div><div class="ps-lbl">GCP TDX steps</div></div>
-          <div class="plat-stat"><div class="ps-val">16/16</div><div class="ps-lbl">GPU AIR checks</div></div>
+          <div class="plat-stat"><div class="ps-val">11/11</div><div class="ps-lbl">GPU AIR checks</div></div>
           <div class="plat-stat"><div class="ps-val">&lt;5%</div><div class="ps-lbl">H100 CC overhead</div></div>
         </div>
       </div>
@@ -1086,7 +1126,7 @@
           <div class="oss-card">
             <div class="oc-name">AIR v1 Specification</div>
             <div class="oc-ver">IETF Internet-Draft &middot; v1.0 frozen</div>
-            <div class="oc-desc">Attested Inference Receipt. COSE_Sign1 + CWT + EAT profile. 18 total claims (16 required + 2 optional), 10 golden vectors, interop kit.</div>
+            <div class="oc-desc">Attested Inference Receipt. COSE_Sign1 + CWT + EAT profile with standard claims and AIR private extensions, 10 golden vectors, and an interop kit.</div>
             <div class="oc-stats">
               <span>RFC 9052/8392/9711</span>
               <span>NIST comment</span>

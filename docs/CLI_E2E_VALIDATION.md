@@ -82,7 +82,7 @@ Full deployment on `c3-standard-4` (Intel Sapphire Rapids, TDX).
 | `package-model` | PASS | ~45s | phase5-package.txt |
 | `deploy` | PASS | ~5min | phase5-deploy.txt |
 | `verify --allow-unpinned-audience` | PASS | ~15s | phase5-verify.txt |
-| Strict verify (--require-destroy-event) | PASS | <1s | phase5-strict-verify.txt |
+| Strict verify (`--require-destroy-event`, cleanup-event reporting) | PASS | <1s | phase5-strict-verify.txt |
 | `teardown --yes` | PASS | ~10s | phase5-teardown.txt |
 | Zero instances after teardown | PASS | — | — |
 

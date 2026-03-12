@@ -11,7 +11,7 @@
     <meta name="theme-color" content="#050505" />
 
     <!-- Content Security Policy -->
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self'; object-src 'none'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'" />
 
     <!-- Canonical -->
     <link rel="canonical" href="https://cyntrisec.com/docs" />
@@ -1116,8 +1116,8 @@
       <div class="wrap">
         <div class="stats-row anim-fade anim-delay-5">
           <div class="stat">
-            <div class="stat-val">657</div>
-            <div class="stat-lbl">Tests Passing</div>
+            <div class="stat-val">500+</div>
+            <div class="stat-lbl">Tests Across Workspace + CI</div>
           </div>
           <div class="stat">
             <div class="stat-val">16</div>
@@ -1173,7 +1173,7 @@
                 <div class="step-n">4</div>
                 <div>
                   <h3>Signed receipt</h3>
-                  <p>Each inference produces an Ed25519-signed AIR v1 receipt with model hash, I/O hashes, attestation evidence, and destroy proof.</p>
+                  <p>Each inference produces an Ed25519-signed AIR v1 receipt with model hash, I/O hashes, and attestation-linked execution evidence.</p>
                 </div>
               </div>
             </div>
@@ -1213,8 +1213,8 @@
         </div>
         <div class="spec-grid">
           <div class="spec-card">
-            <div class="spec-val">18</div>
-            <div class="spec-lbl">Claims (16 required + 2 optional)</div>
+            <div class="spec-val">CWT</div>
+            <div class="spec-lbl">Standard claims + AIR private extensions</div>
           </div>
           <div class="spec-card">
             <div class="spec-val">CDDL</div>
@@ -1325,7 +1325,7 @@
               <li><strong>Attestation-gated key release</strong> &mdash; model DEKs released only to approved enclave measurements</li>
               <li><strong>Session binding</strong> &mdash; encryption keys bound to attestation + nonce to prevent key swapping</li>
               <li><strong>Model integrity</strong> &mdash; Ed25519-signed manifests prevent serving a different model blob</li>
-              <li><strong>Auditability</strong> &mdash; each inference produces a verifiable AIR v1 receipt with destroy evidence</li>
+              <li><strong>Auditability</strong> &mdash; each inference produces a verifiable AIR v1 receipt with attestation-linked execution evidence</li>
             </ul>
           </div>
           <div>
@@ -1350,7 +1350,7 @@
                     <td class="default-val"><span class="tag-deny">--strict</span> opt-in</td>
                   </tr>
                   <tr>
-                    <td class="control">Destroy evidence required</td>
+                    <td class="control">Cleanup-event evidence required</td>
                     <td class="default-val"><span class="tag-deny">--require-destroy-event</span> opt-in</td>
                   </tr>
                   <tr>
@@ -1447,7 +1447,8 @@
         <div class="section-header center">
           <div class="section-label">Evidence</div>
           <h2 class="section-title">See what a verified receipt looks like</h2>
-          <p class="section-desc" style="margin: 0 auto;">Every inference run produces cryptographic evidence. Expand to see real output from <code>ephemeralml-verify</code> and <code>ephemeralml-compliance</code>.</p>
+          <p class="section-desc" style="margin: 0 auto;">Every inference run produces signed execution evidence. Expand to see real output from <code>ephemeralml-verify</code> and <code>ephemeralml-compliance</code>.</p>
+          <p class="section-desc" style="margin: var(--space-sm) auto 0; max-width: 760px;">AIR v1 covers attestation-linked execution evidence. Legacy EphemeralML compliance flows can additionally record self-reported cleanup events, but AIR v1 itself does not claim cryptographic proof of deletion.</p>
         </div>
 
         <!-- Panel 1: Receipt Verify -->
@@ -1476,7 +1477,7 @@
   Measurements present        <span class="t-pass">[PASS]</span>
   Attestation source          <span class="t-skip">[SKIP]</span>
   Image digest                <span class="t-skip">[SKIP]</span>
-  Destroy evidence            <span class="t-pass">[PASS]</span>
+  Cleanup-event evidence      <span class="t-pass">[PASS]</span>
   <span class="t-dim">--------------------------------------------------------------</span>
 
   <span class="t-pass">VERIFIED</span>

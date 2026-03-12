@@ -1,6 +1,6 @@
 # AIR v1 IETF Prep (Non-Normative)
 
-This directory contains M4/M5 planning artifacts for a future AIR Internet-Draft submission.
+This directory contains non-normative AIR Internet-Draft work for `RATS`, including the posted `-00` draft and local preparation for `-01`.
 
 These files are:
 
@@ -17,13 +17,13 @@ These files are:
 
 ## Submission Status
 
-- AIR `-00` has **not** been submitted.
-- `rats@ietf.org` intro email has **not** been sent.
+- AIR `-00` **was submitted** and is posted on Datatracker as `draft-tsyrulnikov-rats-attested-inference-receipt-00`.
+- AIR `-01` is currently local prep in this directory (`draft-tsyrulnikov-rats-attested-inference-receipt-01.*`).
+- `rats@ietf.org` intro email / announcement has **not** been sent yet.
 
 Planned sequencing:
 
-1. External interop proof (M4)
-2. Public implementation status + interop results
-3. AIR `-00` draft assembly (M5)
-4. RATS mailing list introduction and review request
-
+1. Public implementation status + interop results
+2. AIR `-01` architectural cleanup (trust model, closed scope, consistency)
+3. RATS mailing list introduction and review request
+4. Datatracker submission of `-01`

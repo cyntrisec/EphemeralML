@@ -22,6 +22,24 @@
 
 ---
 
+## Fast Diligence Summary
+
+| Question | Short answer |
+|----------|--------------|
+| What exists now? | A working confidential-inference product surface: multi-cloud runtime paths, an OpenAI-compatible gateway, and per-inference AIR receipts. |
+| What has been validated? | Real E2E runs on AWS Nitro, GCP Confidential Space (TDX), and GCP H100 CC-mode, with `500+` tests across the workspace and CI. |
+| Where is the moat? | The AIR receipt format, verifier behavior, and compliance-trust layer around per-inference cryptographic evidence, not raw TEE infrastructure. |
+| What is still missing? | External AIR implementors, design-partner revenue, and vNEXT work such as pipeline-proof chaining. |
+
+If you are reviewing this repo for investment or partnership diligence, start with:
+
+1. [`spec/v1/README.md`](spec/v1/README.md) — AIR v1 scope and frozen normative docs
+2. [`QUICKSTART.md`](QUICKSTART.md) — fastest product proof path
+3. [`docs/benchmarks.md`](docs/benchmarks.md) — measured performance and methodology
+4. [`docs/design.md`](docs/design.md) — threat model and architecture
+
+---
+
 ## Why EphemeralML?
 
 | Problem | Solution |
@@ -161,7 +179,7 @@ AIR v1 is **single-inference only** (pipeline proof chaining is planned for vNEX
 - **Attested Inference Receipts (AIR)** — Ed25519-signed, CBOR-canonical, binding input/output hashes to enclave attestation
 - **Policy update system** with signature verification and hot-reload
 - **Model format validation** (safetensors, dtype enforcement)
-- **574 tests** across the workspace and CI (including pipeline integration, GCP tests, and 16 AIR v1 conformance vector tests)
+- **500+ tests** across the workspace and CI (including pipeline integration, GCP tests, and AIR v1 conformance vectors)
 - **Deterministic builds** for reproducibility
 
 ---
