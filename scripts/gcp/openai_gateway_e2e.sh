@@ -24,6 +24,7 @@ INSTANCE_NAME="ephemeralml-cvm"
 IP=""
 GATEWAY_PORT="${EPHEMERALML_GATEWAY_PORT:-8090}"
 API_KEY="${EPHEMERALML_API_KEY:-test-key}"
+DEFAULT_MODEL="${EPHEMERALML_DEFAULT_MODEL:-stage-0}"
 MODEL_CAPABILITIES="${EPHEMERALML_MODEL_CAPABILITIES:-embeddings}"
 ALLOW_UNPINNED_AUDIENCE=false
 SKIP_BUILD=false
@@ -40,6 +41,7 @@ while [[ $# -gt 0 ]]; do
         --gpu) INSTANCE_NAME="ephemeralml-gpu"; shift ;;
         --gateway-port) GATEWAY_PORT="$2"; shift 2 ;;
         --api-key) API_KEY="$2"; shift 2 ;;
+        --default-model) DEFAULT_MODEL="$2"; shift 2 ;;
         --model-capabilities) MODEL_CAPABILITIES="$2"; shift 2 ;;
         --allow-unpinned-audience) ALLOW_UNPINNED_AUDIENCE=true; shift ;;
         --skip-build) SKIP_BUILD=true; shift ;;
@@ -103,6 +105,7 @@ ui_kv "Project" "${PROJECT}"
 ui_kv "Zone" "${ZONE}"
 ui_kv "Backend IP" "${IP}"
 ui_kv "Gateway port" "${GATEWAY_PORT}"
+ui_kv "Default model" "${DEFAULT_MODEL}"
 ui_kv "Capabilities" "${MODEL_CAPABILITIES}"
 ui_kv "Runtime" "$($USE_DOCKER && echo docker || echo cargo)"
 ui_kv "Docker image" "${DOCKER_IMAGE}"
@@ -147,7 +150,7 @@ if $USE_DOCKER; then
           --name "${DOCKER_CONTAINER_NAME}" \
           -p "127.0.0.1:${GATEWAY_PORT}:${GATEWAY_PORT}" \
           -e EPHEMERALML_BACKEND_ADDR="${IP}:9000" \
-          -e EPHEMERALML_DEFAULT_MODEL="stage-0" \
+          -e EPHEMERALML_DEFAULT_MODEL="${DEFAULT_MODEL}" \
           -e EPHEMERALML_API_KEY="${API_KEY}" \
           -e EPHEMERALML_GATEWAY_PORT="${GATEWAY_PORT}" \
           -e EPHEMERALML_INCLUDE_METADATA_JSON=true \
@@ -159,14 +162,14 @@ if $USE_DOCKER; then
           "${DOCKER_IMAGE}" \
           --backend-addr "${IP}:9000" \
           --port "${GATEWAY_PORT}" \
-          --default-model "stage-0"
+          --default-model "${DEFAULT_MODEL}"
     ) >"${GATEWAY_LOG}" 2>&1 &
     GATEWAY_PID=$!
 else
     (
         cd "${PROJECT_DIR}"
         EPHEMERALML_BACKEND_ADDR="${IP}:9000" \
-        EPHEMERALML_DEFAULT_MODEL="stage-0" \
+        EPHEMERALML_DEFAULT_MODEL="${DEFAULT_MODEL}" \
         EPHEMERALML_API_KEY="${API_KEY}" \
         EPHEMERALML_GATEWAY_PORT="${GATEWAY_PORT}" \
         EPHEMERALML_INCLUDE_METADATA_JSON=true \
@@ -179,7 +182,7 @@ else
         cargo run --release --no-default-features --features gcp -p ephemeralml-gateway -- \
           --backend-addr "${IP}:9000" \
           --port "${GATEWAY_PORT}" \
-          --default-model "stage-0"
+          --default-model "${DEFAULT_MODEL}"
     ) >"${GATEWAY_LOG}" 2>&1 &
     GATEWAY_PID=$!
 fi

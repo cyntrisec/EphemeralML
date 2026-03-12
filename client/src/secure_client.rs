@@ -48,6 +48,22 @@ pub struct InferenceHandlerOutput {
     pub air_v1_receipt_b64: Option<String>,
 }
 
+#[derive(Deserialize)]
+struct InferenceHandlerError {
+    error: String,
+}
+
+fn parse_inference_handler_output(response_bytes: &[u8]) -> Result<InferenceHandlerOutput> {
+    if let Ok(err) = serde_json::from_slice::<InferenceHandlerError>(response_bytes) {
+        return Err(ClientError::Client(EphemeralError::InferenceError(
+            format!("Server error: {}", err.error),
+        )));
+    }
+
+    serde_json::from_slice(response_bytes)
+        .map_err(|e| ClientError::Client(EphemeralError::SerializationError(e.to_string())))
+}
+
 /// Result of an inference request, including the output tensor and the signed receipt.
 pub struct InferenceResult {
     pub output_tensor: Vec<f32>,
@@ -283,8 +299,7 @@ impl SecureClient for SecureEnclaveClient {
         };
 
         // 4. Parse response
-        let output: InferenceHandlerOutput = serde_json::from_slice(&response_bytes)
-            .map_err(|e| ClientError::Client(EphemeralError::SerializationError(e.to_string())))?;
+        let output = parse_inference_handler_output(&response_bytes)?;
 
         // 5. Verify receipt signature
         let signing_pk = self.server_receipt_signing_key.ok_or_else(|| {
@@ -484,8 +499,7 @@ impl SecureClient for SecureEnclaveClient {
             }
         };
 
-        let output: InferenceHandlerOutput = serde_json::from_slice(&response_bytes)
-            .map_err(|e| ClientError::Client(EphemeralError::SerializationError(e.to_string())))?;
+        let output = parse_inference_handler_output(&response_bytes)?;
 
         // Verify receipt (same checks as execute_inference)
         let signing_pk = self.server_receipt_signing_key.ok_or_else(|| {
@@ -674,8 +688,7 @@ impl SecureClient for SecureEnclaveClient {
             }
         };
 
-        let output: InferenceHandlerOutput = serde_json::from_slice(&response_bytes)
-            .map_err(|e| ClientError::Client(EphemeralError::SerializationError(e.to_string())))?;
+        let output = parse_inference_handler_output(&response_bytes)?;
 
         // Verify receipt (same checks as other methods)
         let signing_pk = self.server_receipt_signing_key.ok_or_else(|| {

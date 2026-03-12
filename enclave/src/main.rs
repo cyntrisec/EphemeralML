@@ -726,9 +726,14 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
                         loaded_model_hash = Some(actual);
                     }
 
+                    let effective_model_id = manifest
+                        .as_ref()
+                        .map(|m| m.model_id.as_str())
+                        .unwrap_or(args.model_id.as_str());
+
                     if model_format == "gguf" {
                         engine.register_model_gguf(
-                            &args.model_id,
+                            effective_model_id,
                             &weights_bytes,
                             &tokenizer_bytes,
                         )?;
@@ -737,7 +742,7 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
                             .as_ref()
                             .ok_or("config.json required for safetensors format but not fetched")?;
                         engine.register_model(
-                            &args.model_id,
+                            effective_model_id,
                             config,
                             &weights_bytes,
                             &tokenizer_bytes,
@@ -748,7 +753,7 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
                         step = "model_load",
                         source = "gcs-kms",
                         format = model_format,
-                        model_id = %args.model_id,
+                        model_id = %effective_model_id,
                         elapsed_ms = load_start.elapsed().as_secs_f64() * 1000.0,
                         size_mb = weights_bytes.len() as f64 / (1024.0 * 1024.0),
                         "Model loaded"
@@ -871,9 +876,14 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
                         );
                     }
 
+                    let effective_model_id = manifest
+                        .as_ref()
+                        .map(|m| m.model_id.as_str())
+                        .unwrap_or(args.model_id.as_str());
+
                     if model_format == "gguf" {
                         engine.register_model_gguf(
-                            &args.model_id,
+                            effective_model_id,
                             &weights_bytes,
                             &tokenizer_bytes,
                         )?;
@@ -882,7 +892,7 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
                             .as_ref()
                             .ok_or("config.json required for safetensors format but not fetched")?;
                         engine.register_model(
-                            &args.model_id,
+                            effective_model_id,
                             config,
                             &weights_bytes,
                             &tokenizer_bytes,
@@ -896,7 +906,7 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
                         step = "model_load",
                         source = "gcs",
                         format = model_format,
-                        model_id = %args.model_id,
+                        model_id = %effective_model_id,
                         elapsed_ms = load_start.elapsed().as_secs_f64() * 1000.0,
                         "Model loaded"
                     );
