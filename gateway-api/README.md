@@ -56,7 +56,7 @@ docker run -p 8090:8090 \
 | `GET` | `/health` | Liveness probe — always 200; includes backend connection status |
 | `GET` | `/readyz` | Readiness probe — 200 when all backends connected, 503 otherwise |
 | `GET` | `/v1/models` | List available models (OpenAI-compatible) |
-| `POST` | `/v1/chat/completions` | Text generation (non-streaming) |
+| `POST` | `/v1/chat/completions` | Text generation (streaming via buffered SSE, or non-streaming) |
 | `POST` | `/v1/responses` | Text generation (OpenAI Responses API, non-streaming) |
 | `POST` | `/v1/embeddings` | Text embeddings |
 
@@ -263,12 +263,15 @@ See [`docs/DEPLOY.md`](docs/DEPLOY.md) for a production deployment guide
 
 ## MVP Limitations
 
-- **No streaming** (`stream=true` returns 400). Planned for a future release.
+- **Buffered streaming only** — `stream=true` is supported for `/v1/chat/completions` via
+  buffered SSE replay (the backend response is fully buffered, then replayed as
+  OpenAI-compatible SSE chunks). True token-by-token backend streaming is not yet implemented.
+  `/v1/responses` does not support streaming.
 - **Single backend connection** — the gateway maintains one `SecureChannel` to the backend
   (plus optionally one to a dedicated embedding backend).
   Concurrent requests are serialized through a mutex. For production throughput,
   run multiple gateway instances behind a load balancer.
-- **Token counts are approximate** (whitespace-split estimate, not real tokenizer).
+- **Token counts are approximate** (`chars/4` heuristic, not a real tokenizer).
 - **No model routing** — all requests go to the configured `EPHEMERALML_DEFAULT_MODEL`
   (embeddings go to `EPHEMERALML_EMBEDDING_BACKEND_ADDR` when set).
   The response `model` field reflects the actual executed model.

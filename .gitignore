@@ -179,6 +179,7 @@ site/marketing/index-investor.html
 site/marketing/logo-full-80.png
 site/marketing/logo-full.png
 site/marketing/logo-mark.png
+site/marketing/spec/
 
 # Local Claude config
 **/.claude/
