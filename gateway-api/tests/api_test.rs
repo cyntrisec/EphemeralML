@@ -43,6 +43,9 @@ fn test_router_with_capabilities(
         reconnect_backoff_base_ms: 100,
         reconnect_backoff_cap_ms: 30_000,
         reconnect_health_interval_secs: 5,
+        max_concurrent_requests: 50,
+        rate_limit_per_ip: 0,
+        rate_limit_global: 0,
     };
     let client = SecureEnclaveClient::new("test-gateway".to_string());
     let state = AppState::new(client, config, None);
@@ -67,6 +70,9 @@ fn test_router_with_embedding_backend(model_capabilities: &str, embedding_model:
         reconnect_backoff_base_ms: 100,
         reconnect_backoff_cap_ms: 30_000,
         reconnect_health_interval_secs: 5,
+        max_concurrent_requests: 50,
+        rate_limit_per_ip: 0,
+        rate_limit_global: 0,
     };
     let client = SecureEnclaveClient::new("test-gateway".to_string());
     let emb_client = SecureEnclaveClient::new("test-gateway-embedding".to_string());
@@ -154,6 +160,9 @@ async fn health_shows_reconnecting_when_enabled() {
         reconnect_backoff_base_ms: 100,
         reconnect_backoff_cap_ms: 30_000,
         reconnect_health_interval_secs: 5,
+        max_concurrent_requests: 50,
+        rate_limit_per_ip: 0,
+        rate_limit_global: 0,
     };
     let client = SecureEnclaveClient::new("test".to_string());
     let state = AppState::new(client, config, None);
@@ -276,6 +285,9 @@ async fn readyz_returns_200_when_connected() {
         reconnect_backoff_base_ms: 100,
         reconnect_backoff_cap_ms: 30_000,
         reconnect_health_interval_secs: 5,
+        max_concurrent_requests: 50,
+        rate_limit_per_ip: 0,
+        rate_limit_global: 0,
     };
     let client = SecureEnclaveClient::new("test".to_string());
     let state = AppState::new(client, config, None);
@@ -313,6 +325,9 @@ async fn readyz_embedding_both_connected_returns_200() {
         reconnect_backoff_base_ms: 100,
         reconnect_backoff_cap_ms: 30_000,
         reconnect_health_interval_secs: 5,
+        max_concurrent_requests: 50,
+        rate_limit_per_ip: 0,
+        rate_limit_global: 0,
     };
     let client = SecureEnclaveClient::new("test".to_string());
     let emb_client = SecureEnclaveClient::new("test-emb".to_string());
@@ -359,6 +374,9 @@ async fn health_embedding_partial_reconnecting() {
         reconnect_backoff_base_ms: 100,
         reconnect_backoff_cap_ms: 30_000,
         reconnect_health_interval_secs: 5,
+        max_concurrent_requests: 50,
+        rate_limit_per_ip: 0,
+        rate_limit_global: 0,
     };
     let client = SecureEnclaveClient::new("test".to_string());
     let emb_client = SecureEnclaveClient::new("test-emb".to_string());
@@ -400,6 +418,9 @@ async fn health_embedding_partial_degraded() {
         reconnect_backoff_base_ms: 100,
         reconnect_backoff_cap_ms: 30_000,
         reconnect_health_interval_secs: 5,
+        max_concurrent_requests: 50,
+        rate_limit_per_ip: 0,
+        rate_limit_global: 0,
     };
     let client = SecureEnclaveClient::new("test".to_string());
     let emb_client = SecureEnclaveClient::new("test-emb".to_string());
@@ -470,7 +491,10 @@ async fn models_with_separate_embedding_backend_no_duplicates() {
 // ---------------------------------------------------------------------------
 
 #[tokio::test]
-async fn chat_rejects_stream_true() {
+async fn chat_stream_true_accepted_returns_502_when_backend_unavailable() {
+    // stream=true is now accepted (buffered SSE streaming). Without a connected
+    // backend the request proceeds past validation but fails at the backend
+    // connection step, returning 502 instead of the old 400.
     let app = test_router(None, false, false);
     let body = serde_json::json!({
         "model": "gpt-4",
@@ -479,11 +503,9 @@ async fn chat_rejects_stream_true() {
     });
     let req = json_request("POST", "/v1/chat/completions", body, None);
     let resp = app.oneshot(req).await.unwrap();
-    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+    // Backend is disconnected, so we get 502 (not 400).
+    assert_eq!(resp.status(), StatusCode::BAD_GATEWAY);
     assert!(resp.headers().get("x-request-id").is_some());
-    let json = body_json(resp).await;
-    assert_eq!(json["error"]["code"], "unsupported_stream");
-    assert_eq!(json["error"]["param"], "stream");
 }
 
 #[tokio::test]
@@ -957,6 +979,9 @@ fn config_rejects_embedding_backend_without_model() {
         reconnect_backoff_base_ms: 100,
         reconnect_backoff_cap_ms: 30_000,
         reconnect_health_interval_secs: 5,
+        max_concurrent_requests: 50,
+        rate_limit_per_ip: 0,
+        rate_limit_global: 0,
     };
     let result = config.validate();
     assert!(result.is_err());
@@ -981,6 +1006,9 @@ fn config_rejects_unknown_capability() {
         reconnect_backoff_base_ms: 100,
         reconnect_backoff_cap_ms: 30_000,
         reconnect_health_interval_secs: 5,
+        max_concurrent_requests: 50,
+        rate_limit_per_ip: 0,
+        rate_limit_global: 0,
     };
     let result = config.validate();
     assert!(result.is_err());
@@ -1005,6 +1033,9 @@ fn config_rejects_duplicate_model_ids() {
         reconnect_backoff_base_ms: 100,
         reconnect_backoff_cap_ms: 30_000,
         reconnect_health_interval_secs: 5,
+        max_concurrent_requests: 50,
+        rate_limit_per_ip: 0,
+        rate_limit_global: 0,
     };
     let result = config.validate();
     assert!(result.is_err());
@@ -1029,6 +1060,9 @@ fn config_accepts_valid_dual_backend() {
         reconnect_backoff_base_ms: 100,
         reconnect_backoff_cap_ms: 30_000,
         reconnect_health_interval_secs: 5,
+        max_concurrent_requests: 50,
+        rate_limit_per_ip: 0,
+        rate_limit_global: 0,
     };
     assert!(config.validate().is_ok());
 }
@@ -1115,6 +1149,9 @@ async fn ensure_connected_times_out_on_hanging_backend() {
         reconnect_backoff_base_ms: 100,
         reconnect_backoff_cap_ms: 30_000,
         reconnect_health_interval_secs: 5,
+        max_concurrent_requests: 50,
+        rate_limit_per_ip: 0,
+        rate_limit_global: 0,
     };
     let client = SecureEnclaveClient::new("test".to_string());
     let state = AppState::new(client, config, None);
@@ -1161,6 +1198,9 @@ async fn ensure_embedding_connected_times_out_on_hanging_backend() {
         reconnect_backoff_base_ms: 100,
         reconnect_backoff_cap_ms: 30_000,
         reconnect_health_interval_secs: 5,
+        max_concurrent_requests: 50,
+        rate_limit_per_ip: 0,
+        rate_limit_global: 0,
     };
     let client = SecureEnclaveClient::new("test".to_string());
     let emb_client = SecureEnclaveClient::new("test-emb".to_string());
@@ -1179,4 +1219,194 @@ async fn ensure_embedding_connected_times_out_on_hanging_backend() {
         elapsed.as_secs() <= 10,
         "ensure_embedding_connected took too long: {elapsed:?}"
     );
+}
+
+// ---------------------------------------------------------------------------
+// Rate limiting
+// ---------------------------------------------------------------------------
+
+fn test_router_with_rate_limit(per_ip: u32, global: u32) -> Router {
+    let config = GatewayConfig {
+        backend_addr: "127.0.0.1:0".to_string(),
+        default_model: "test-model".to_string(),
+        api_key: None,
+        host: "127.0.0.1".to_string(),
+        port: 0,
+        request_timeout_secs: 5,
+        include_metadata_json: false,
+        receipt_header_full: false,
+        model_capabilities: "chat".to_string(),
+        embedding_backend_addr: None,
+        embedding_model: None,
+        reconnect_enabled: false,
+        reconnect_backoff_base_ms: 100,
+        reconnect_backoff_cap_ms: 30_000,
+        reconnect_health_interval_secs: 5,
+        max_concurrent_requests: 50,
+        rate_limit_per_ip: per_ip,
+        rate_limit_global: global,
+    };
+    let client = SecureEnclaveClient::new("test-gateway".to_string());
+    let state = AppState::new(client, config, None);
+    ephemeralml_gateway::build_router(state)
+}
+
+#[tokio::test]
+async fn rate_limit_returns_429_when_exceeded() {
+    // Allow only 2 requests per IP per window.
+    let app = test_router_with_rate_limit(2, 0);
+
+    // First 2 requests should pass (get 502 because backend is disconnected,
+    // but NOT 429).
+    for _ in 0..2 {
+        let body = serde_json::json!({
+            "model": "gpt-4",
+            "messages": [{"role": "user", "content": "hi"}]
+        });
+        let req = json_request("POST", "/v1/chat/completions", body, None);
+        let resp = app.clone().oneshot(req).await.unwrap();
+        assert_ne!(resp.status(), StatusCode::TOO_MANY_REQUESTS);
+    }
+
+    // Third request should be rate-limited.
+    let body = serde_json::json!({
+        "model": "gpt-4",
+        "messages": [{"role": "user", "content": "hi"}]
+    });
+    let req = json_request("POST", "/v1/chat/completions", body, None);
+    let resp = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::TOO_MANY_REQUESTS);
+    assert!(resp.headers().get("retry-after").is_some());
+    assert!(resp.headers().get("x-request-id").is_some());
+    let json = body_json(resp).await;
+    assert_eq!(json["error"]["type"], "rate_limit_error");
+    assert_eq!(json["error"]["code"], "rate_limit_exceeded");
+}
+
+#[tokio::test]
+async fn rate_limit_skips_health_endpoint() {
+    // Even with a very tight limit, /health should always work.
+    let app = test_router_with_rate_limit(1, 0);
+
+    // Use up the rate limit on a real endpoint.
+    let body = serde_json::json!({
+        "model": "gpt-4",
+        "messages": [{"role": "user", "content": "hi"}]
+    });
+    let req = json_request("POST", "/v1/chat/completions", body, None);
+    let _ = app.clone().oneshot(req).await.unwrap();
+
+    // /health should still return 200 despite rate limit being exhausted.
+    let req = axum::http::Request::builder()
+        .uri("/health")
+        .body(axum::body::Body::empty())
+        .unwrap();
+    let resp = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+}
+
+#[tokio::test]
+async fn global_rate_limit_returns_429() {
+    // Global limit of 2 across all IPs.
+    let app = test_router_with_rate_limit(0, 2);
+
+    // Two requests should pass.
+    for _ in 0..2 {
+        let body = serde_json::json!({
+            "model": "gpt-4",
+            "messages": [{"role": "user", "content": "hi"}]
+        });
+        let req = json_request("POST", "/v1/chat/completions", body, None);
+        let resp = app.clone().oneshot(req).await.unwrap();
+        assert_ne!(resp.status(), StatusCode::TOO_MANY_REQUESTS);
+    }
+
+    // Third should be denied.
+    let body = serde_json::json!({
+        "model": "gpt-4",
+        "messages": [{"role": "user", "content": "hi"}]
+    });
+    let req = json_request("POST", "/v1/chat/completions", body, None);
+    let resp = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::TOO_MANY_REQUESTS);
+}
+
+// ---------------------------------------------------------------------------
+// Concurrency limiting
+// ---------------------------------------------------------------------------
+
+#[tokio::test]
+async fn concurrency_limit_returns_503_when_all_slots_full() {
+    // Set max_concurrent_requests to 0 — every request should be rejected.
+    let config = GatewayConfig {
+        backend_addr: "127.0.0.1:0".to_string(),
+        default_model: "test-model".to_string(),
+        api_key: None,
+        host: "127.0.0.1".to_string(),
+        port: 0,
+        request_timeout_secs: 5,
+        include_metadata_json: false,
+        receipt_header_full: false,
+        model_capabilities: "chat".to_string(),
+        embedding_backend_addr: None,
+        embedding_model: None,
+        reconnect_enabled: false,
+        reconnect_backoff_base_ms: 100,
+        reconnect_backoff_cap_ms: 30_000,
+        reconnect_health_interval_secs: 5,
+        max_concurrent_requests: 0,
+        rate_limit_per_ip: 0,
+        rate_limit_global: 0,
+    };
+    let client = SecureEnclaveClient::new("test-gateway".to_string());
+    let state = AppState::new(client, config, None);
+    let app = ephemeralml_gateway::build_router(state);
+
+    let body = serde_json::json!({
+        "model": "gpt-4",
+        "messages": [{"role": "user", "content": "hi"}]
+    });
+    let req = json_request("POST", "/v1/chat/completions", body, None);
+    let resp = app.oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::SERVICE_UNAVAILABLE);
+    assert!(resp.headers().get("retry-after").is_some());
+    assert!(resp.headers().get("x-request-id").is_some());
+    let json = body_json(resp).await;
+    assert_eq!(json["error"]["type"], "server_error");
+    assert_eq!(json["error"]["code"], "server_busy");
+}
+
+#[tokio::test]
+async fn concurrency_limit_skips_health_endpoint() {
+    // With 0 concurrent slots, /health should still work.
+    let config = GatewayConfig {
+        backend_addr: "127.0.0.1:0".to_string(),
+        default_model: "test-model".to_string(),
+        api_key: None,
+        host: "127.0.0.1".to_string(),
+        port: 0,
+        request_timeout_secs: 5,
+        include_metadata_json: false,
+        receipt_header_full: false,
+        model_capabilities: "chat".to_string(),
+        embedding_backend_addr: None,
+        embedding_model: None,
+        reconnect_enabled: false,
+        reconnect_backoff_base_ms: 100,
+        reconnect_backoff_cap_ms: 30_000,
+        reconnect_health_interval_secs: 5,
+        max_concurrent_requests: 0,
+        rate_limit_per_ip: 0,
+        rate_limit_global: 0,
+    };
+    let client = SecureEnclaveClient::new("test-gateway".to_string());
+    let state = AppState::new(client, config, None);
+    let app = ephemeralml_gateway::build_router(state);
+
+    let req = axum::http::Request::builder()
+        .uri("/health")
+        .body(axum::body::Body::empty())
+        .unwrap();
+    let resp = app.oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
 }

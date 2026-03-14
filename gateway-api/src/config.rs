@@ -63,6 +63,21 @@ pub struct GatewayConfig {
     #[arg(long, env = "EPHEMERALML_EMBEDDING_MODEL")]
     pub embedding_model: Option<String>,
 
+    /// Maximum concurrent inference requests the gateway will process
+    /// simultaneously. Requests exceeding this limit receive HTTP 503.
+    #[arg(long, env = "EPHEMERALML_MAX_CONCURRENT_REQUESTS", default_value = "50")]
+    pub max_concurrent_requests: usize,
+
+    /// Per-IP rate limit: maximum requests per minute from a single IP.
+    /// Set to 0 to disable per-IP rate limiting.
+    #[arg(long, env = "EPHEMERALML_RATE_LIMIT_PER_IP", default_value = "60")]
+    pub rate_limit_per_ip: u32,
+
+    /// Global rate limit: maximum requests per minute across all clients.
+    /// Set to 0 to disable global rate limiting.
+    #[arg(long, env = "EPHEMERALML_RATE_LIMIT_GLOBAL", default_value = "0")]
+    pub rate_limit_global: u32,
+
     /// Enable background reconnect loop with exponential backoff.
     /// When true, a background task monitors connectivity and reconnects
     /// automatically when a backend disconnects.

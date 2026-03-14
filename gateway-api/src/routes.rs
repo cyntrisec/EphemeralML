@@ -10,6 +10,7 @@ use std::time::Instant;
 use ephemeral_ml_client::{InferenceResult, SecureClient};
 
 use crate::state::AppState;
+use crate::streaming;
 use crate::types::*;
 
 // ---------------------------------------------------------------------------
@@ -244,20 +245,7 @@ pub async fn chat_completions(
         );
     }
 
-    // Reject streaming (MVP)
-    if req.stream == Some(true) {
-        tracing::info!(request_id = %request_id, "Rejected stream=true request");
-        return error_response_with_id(
-            StatusCode::BAD_REQUEST,
-            ErrorResponse::new(
-                "Streaming is not supported in this version. Set stream=false or omit it.",
-                "invalid_request_error",
-                Some("unsupported_stream"),
-            )
-            .with_param("stream"),
-            &request_id,
-        );
-    }
+    let is_streaming = req.stream == Some(true);
 
     // Reject unsupported fields (parity with /v1/responses)
     if req.tools.is_some() {
@@ -367,9 +355,11 @@ pub async fn chat_completions(
 
     let generated_text = inference_result.generated_text.clone().unwrap_or_default();
 
-    // Rough token estimate (whitespace split) — not exact, but compatible enough
-    let prompt_tokens = prompt.split_whitespace().count() as u32;
-    let completion_tokens = generated_text.split_whitespace().count() as u32;
+    // Token estimate: chars/4 is a better approximation for English text than
+    // whitespace splitting (GPT tokenizers average ~4 chars/token). This is
+    // still an estimate — exact counting would require a tokenizer library.
+    let prompt_tokens = estimate_tokens(&prompt);
+    let completion_tokens = estimate_tokens(&generated_text);
 
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -377,6 +367,39 @@ pub async fn chat_completions(
         .as_secs();
 
     let metadata = build_metadata(&state, &inference_result, &req.model, model_id);
+
+    tracing::info!(
+        request_id = %request_id,
+        model = %model_id,
+        latency_ms = %elapsed_ms,
+        streaming = is_streaming,
+        has_receipt = %metadata.is_some(),
+        "Chat completion served"
+    );
+
+    let mut headers = HeaderMap::new();
+    if let Ok(v) = HeaderValue::from_str(&request_id) {
+        headers.insert("x-request-id", v);
+    }
+    attach_metadata_headers(&mut headers, &metadata, &state);
+
+    // Branch: SSE streaming vs standard JSON response.
+    if is_streaming {
+        let stream_id = format!("chatcmpl-{request_id}");
+        let stream_metadata = if state.config.include_metadata_json {
+            metadata.clone()
+        } else {
+            None
+        };
+        return streaming::build_sse_response(
+            &stream_id,
+            &state.config.default_model,
+            now,
+            &generated_text,
+            stream_metadata,
+            headers,
+        );
+    }
 
     // Response `model` reflects the actual backend model, not the caller's alias.
     let body = ChatCompletionResponse {
@@ -403,18 +426,6 @@ pub async fn chat_completions(
             None
         },
     };
-
-    tracing::info!(
-        request_id = %request_id,
-        model = %model_id,
-        latency_ms = %elapsed_ms,
-        has_receipt = %metadata.is_some(),
-        "Chat completion served"
-    );
-
-    let mut headers = HeaderMap::new();
-    headers.insert("x-request-id", HeaderValue::from_str(&request_id).unwrap());
-    attach_metadata_headers(&mut headers, &metadata, &state);
 
     (StatusCode::OK, headers, Json(body)).into_response()
 }
@@ -604,8 +615,8 @@ pub async fn responses(
 
     let generated_text = inference_result.generated_text.clone().unwrap_or_default();
 
-    let prompt_tokens = prompt.split_whitespace().count() as u32;
-    let output_tokens = generated_text.split_whitespace().count() as u32;
+    let prompt_tokens = estimate_tokens(&prompt);
+    let output_tokens = estimate_tokens(&generated_text);
 
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -653,7 +664,9 @@ pub async fn responses(
     );
 
     let mut headers = HeaderMap::new();
-    headers.insert("x-request-id", HeaderValue::from_str(&request_id).unwrap());
+    if let Ok(v) = HeaderValue::from_str(&request_id) {
+        headers.insert("x-request-id", v);
+    }
     attach_metadata_headers(&mut headers, &metadata, &state);
 
     (StatusCode::OK, headers, Json(body)).into_response()
@@ -823,7 +836,7 @@ pub async fn embeddings(
             }
         };
 
-        let tokens = text.split_whitespace().count() as u32;
+        let tokens = estimate_tokens(text);
         total_tokens += tokens;
 
         data.push(EmbeddingData {
@@ -878,7 +891,9 @@ pub async fn embeddings(
     );
 
     let mut headers = HeaderMap::new();
-    headers.insert("x-request-id", HeaderValue::from_str(&request_id).unwrap());
+    if let Ok(v) = HeaderValue::from_str(&request_id) {
+        headers.insert("x-request-id", v);
+    }
     attach_metadata_headers(&mut headers, &metadata, &state);
 
     (StatusCode::OK, headers, Json(body)).into_response()
@@ -887,6 +902,22 @@ pub async fn embeddings(
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
+
+/// Estimate token count from text using chars/4 heuristic.
+///
+/// GPT-style tokenizers average roughly 4 characters per token for English
+/// text. This is more accurate than whitespace splitting (which undercounts
+/// tokens in short or punctuation-heavy text). For exact counts, a proper
+/// tokenizer (e.g. tiktoken) would be needed, but that adds a heavy dependency.
+fn estimate_tokens(text: &str) -> u32 {
+    let char_count = text.len();
+    // Ensure at least 1 token for non-empty text.
+    if char_count == 0 {
+        0
+    } else {
+        ((char_count as f64 / 4.0).ceil() as u32).max(1)
+    }
+}
 
 /// Returns true if the error string indicates a transport/channel failure
 /// (broken connection, send/recv failure) vs. a logical inference error
@@ -1162,7 +1193,7 @@ mod tests {
     }
 
     #[test]
-    fn stream_true_rejected_in_chat_request() {
+    fn stream_true_parses_in_chat_request() {
         let json = serde_json::json!({
             "model": "gpt-4",
             "messages": [{"role": "user", "content": "hi"}],
@@ -1170,6 +1201,43 @@ mod tests {
         });
         let req: ChatCompletionRequest = serde_json::from_value(json).unwrap();
         assert_eq!(req.stream, Some(true));
+    }
+
+    #[test]
+    fn stream_false_parses_in_chat_request() {
+        let json = serde_json::json!({
+            "model": "gpt-4",
+            "messages": [{"role": "user", "content": "hi"}],
+            "stream": false
+        });
+        let req: ChatCompletionRequest = serde_json::from_value(json).unwrap();
+        assert_eq!(req.stream, Some(false));
+    }
+
+    #[test]
+    fn estimate_tokens_empty() {
+        assert_eq!(estimate_tokens(""), 0);
+    }
+
+    #[test]
+    fn estimate_tokens_short_text() {
+        // "hi" = 2 chars -> ceil(2/4) = 1 token
+        assert_eq!(estimate_tokens("hi"), 1);
+    }
+
+    #[test]
+    fn estimate_tokens_longer_text() {
+        // "Hello, world!" = 13 chars -> ceil(13/4) = 4 tokens
+        assert_eq!(estimate_tokens("Hello, world!"), 4);
+    }
+
+    #[test]
+    fn estimate_tokens_sentence() {
+        // Typical English: ~4 chars per token
+        let text = "The quick brown fox jumps over the lazy dog.";
+        let tokens = estimate_tokens(text);
+        // 44 chars -> ceil(44/4) = 11
+        assert_eq!(tokens, 11);
     }
 
     #[test]
@@ -1222,5 +1290,25 @@ mod tests {
         assert_eq!(json["status"], "completed");
         assert_eq!(json["output"][0]["type"], "message");
         assert_eq!(json["output"][0]["content"][0]["type"], "output_text");
+    }
+
+    #[test]
+    fn rate_limit_error_shape() {
+        let err = ErrorResponse::new(
+            "Rate limit exceeded.",
+            "rate_limit_error",
+            Some("rate_limit_exceeded"),
+        );
+        let json = serde_json::to_value(&err).unwrap();
+        assert_eq!(json["error"]["type"], "rate_limit_error");
+        assert_eq!(json["error"]["code"], "rate_limit_exceeded");
+    }
+
+    #[test]
+    fn server_busy_error_shape() {
+        let err = ErrorResponse::new("Server is busy.", "server_error", Some("server_busy"));
+        let json = serde_json::to_value(&err).unwrap();
+        assert_eq!(json["error"]["type"], "server_error");
+        assert_eq!(json["error"]["code"], "server_busy");
     }
 }

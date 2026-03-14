@@ -16,7 +16,9 @@ ephemeral-ml-common = { path = "../common" }
 # Web framework
 axum = { version = "0.8", features = ["json"] }
 tokio = { version = "1.0", features = ["full"] }
+tokio-stream = "0.1"
 tower-http = { version = "0.6", features = ["cors", "trace", "limit"] }
+futures = "0.3"
 
 # Serialization
 serde = { version = "1.0", features = ["derive"] }
@@ -38,6 +40,7 @@ uuid = { version = "1.0", features = ["v4"] }
 subtle = "2.5"
 anyhow = "1.0"
 rand = "0.8"
+dashmap = "6"
 
 [features]
 default = ["mock"]

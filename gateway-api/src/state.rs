@@ -1,11 +1,12 @@
 //! Shared application state — holds the backend client behind a Mutex.
 
 use std::sync::Arc;
-use tokio::sync::{Mutex, Notify};
+use tokio::sync::{Mutex, Notify, Semaphore};
 
 use ephemeral_ml_client::{SecureClient, SecureEnclaveClient};
 
 use crate::config::GatewayConfig;
+use crate::rate_limit::RateLimiter;
 use crate::reconnect::CONNECT_TIMEOUT;
 
 /// Shared state accessible from all Axum handlers via `State<AppState>`.
@@ -23,6 +24,10 @@ pub struct AppState {
     pub reconnect_notify: Arc<Notify>,
     /// Wakes the background reconnect loop for the embedding backend.
     pub embedding_reconnect_notify: Arc<Notify>,
+    /// Concurrency semaphore — limits the number of in-flight inference requests.
+    pub concurrency_semaphore: Arc<Semaphore>,
+    /// Per-IP rate limiter.
+    pub rate_limiter: Arc<RateLimiter>,
 }
 
 impl AppState {
@@ -31,6 +36,9 @@ impl AppState {
         config: GatewayConfig,
         embedding_client: Option<SecureEnclaveClient>,
     ) -> Self {
+        let max_concurrent = config.max_concurrent_requests;
+        let rate_limit_per_ip = config.rate_limit_per_ip;
+        let rate_limit_global = config.rate_limit_global;
         Self {
             client: Arc::new(Mutex::new(client)),
             config: Arc::new(config),
@@ -39,6 +47,8 @@ impl AppState {
             embedding_connected: Arc::new(std::sync::atomic::AtomicBool::new(false)),
             reconnect_notify: Arc::new(Notify::new()),
             embedding_reconnect_notify: Arc::new(Notify::new()),
+            concurrency_semaphore: Arc::new(Semaphore::new(max_concurrent)),
+            rate_limiter: Arc::new(RateLimiter::new(rate_limit_per_ip, rate_limit_global)),
         }
     }
 
