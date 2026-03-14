@@ -65,7 +65,11 @@ pub struct GatewayConfig {
 
     /// Maximum concurrent inference requests the gateway will process
     /// simultaneously. Requests exceeding this limit receive HTTP 503.
-    #[arg(long, env = "EPHEMERALML_MAX_CONCURRENT_REQUESTS", default_value = "50")]
+    #[arg(
+        long,
+        env = "EPHEMERALML_MAX_CONCURRENT_REQUESTS",
+        default_value = "50"
+    )]
     pub max_concurrent_requests: usize,
 
     /// Per-IP rate limit: maximum requests per minute from a single IP.

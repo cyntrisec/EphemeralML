@@ -70,7 +70,12 @@ impl RateLimiter {
                 // Window expired, reset. Use CAS to avoid races.
                 if self
                     .global_window_start
-                    .compare_exchange(window_start, now_millis, Ordering::AcqRel, Ordering::Acquire)
+                    .compare_exchange(
+                        window_start,
+                        now_millis,
+                        Ordering::AcqRel,
+                        Ordering::Acquire,
+                    )
                     .is_ok()
                 {
                     self.global_remaining
@@ -92,7 +97,8 @@ impl RateLimiter {
             if prev.is_err() {
                 let window_start_val = self.global_window_start.load(Ordering::Acquire);
                 let elapsed = now_millis.saturating_sub(window_start_val);
-                let remaining_ms = (self.window_duration.as_millis() as u64).saturating_sub(elapsed);
+                let remaining_ms =
+                    (self.window_duration.as_millis() as u64).saturating_sub(elapsed);
                 let retry_after = (remaining_ms / 1000).max(1);
                 return RateLimitResult::Denied {
                     retry_after_secs: retry_after,
@@ -102,10 +108,13 @@ impl RateLimiter {
 
         // Check per-IP limit.
         if self.per_ip_limit > 0 {
-            let mut entry = self.buckets.entry(ip.to_string()).or_insert_with(|| IpBucket {
-                remaining: AtomicU32::new(self.per_ip_limit),
-                window_start: now,
-            });
+            let mut entry = self
+                .buckets
+                .entry(ip.to_string())
+                .or_insert_with(|| IpBucket {
+                    remaining: AtomicU32::new(self.per_ip_limit),
+                    window_start: now,
+                });
 
             let bucket = entry.value_mut();
             let elapsed = now.duration_since(bucket.window_start);
@@ -115,17 +124,16 @@ impl RateLimiter {
                 bucket.remaining.store(self.per_ip_limit, Ordering::Release);
             }
 
-            let prev = bucket.remaining.fetch_update(
-                Ordering::AcqRel,
-                Ordering::Acquire,
-                |current| {
-                    if current > 0 {
-                        Some(current - 1)
-                    } else {
-                        None
-                    }
-                },
-            );
+            let prev =
+                bucket
+                    .remaining
+                    .fetch_update(Ordering::AcqRel, Ordering::Acquire, |current| {
+                        if current > 0 {
+                            Some(current - 1)
+                        } else {
+                            None
+                        }
+                    });
             if prev.is_err() {
                 let elapsed_since_start = now.duration_since(bucket.window_start);
                 let remaining_ms = self
@@ -158,9 +166,8 @@ impl RateLimiter {
 
     /// Remove IP buckets whose window has expired.
     fn cleanup_stale(&self, now: Instant) {
-        self.buckets.retain(|_, bucket| {
-            now.duration_since(bucket.window_start) < self.window_duration * 2
-        });
+        self.buckets
+            .retain(|_, bucket| now.duration_since(bucket.window_start) < self.window_duration * 2);
     }
 }
 
