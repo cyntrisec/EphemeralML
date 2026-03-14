@@ -170,7 +170,7 @@ fn format_sse_event(chunk: &ChatCompletionChunk) -> String {
         Ok(json) => format!("data: {json}\n\n"),
         Err(e) => {
             tracing::error!(error = %e, "Failed to serialize SSE chunk");
-            format!("data: {{\"error\":\"serialization_error\"}}\n\n")
+            "data: {\"error\":\"serialization_error\"}\n\n".to_string()
         }
     }
 }
