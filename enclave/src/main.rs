@@ -749,6 +749,18 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
                         )?;
                     }
 
+                    // Also register under the CLI-provided model_id (e.g. "stage-0")
+                    // so pipeline and verify scripts that use the default ID still work.
+                    if effective_model_id != args.model_id {
+                        engine.add_alias(&args.model_id, effective_model_id)?;
+                        info!(
+                            step = "model_alias",
+                            alias = %args.model_id,
+                            target = %effective_model_id,
+                            "Registered model alias"
+                        );
+                    }
+
                     info!(
                         step = "model_load",
                         source = "gcs-kms",
@@ -901,6 +913,18 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
 
                     loaded_model_hash = Some(*expected);
                     info!(step = "hash_verify", source = "gcs", hash = %hex::encode(expected), "Model hash verified");
+
+                    // Also register under the CLI-provided model_id so
+                    // pipeline and verify scripts that use the default ID still work.
+                    if effective_model_id != args.model_id {
+                        engine.add_alias(&args.model_id, effective_model_id)?;
+                        info!(
+                            step = "model_alias",
+                            alias = %args.model_id,
+                            target = %effective_model_id,
+                            "Registered model alias"
+                        );
+                    }
 
                     info!(
                         step = "model_load",

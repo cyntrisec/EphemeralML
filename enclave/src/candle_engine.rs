@@ -145,6 +145,27 @@ impl CandleInferenceEngine {
         Ok(())
     }
 
+    /// Register an alias so that requests for `alias` resolve to the same
+    /// loaded model as `target`.  No-op if `alias == target` or `target` is
+    /// not registered.
+    pub fn add_alias(&self, alias: &str, target: &str) -> Result<()> {
+        if alias == target {
+            return Ok(());
+        }
+        let models = self.models.read().map_err(|_| {
+            EnclaveError::Enclave(EphemeralError::Internal("Lock poisoned".to_string()))
+        })?;
+        if let Some(m) = models.get(target) {
+            let m = Arc::clone(m);
+            drop(models);
+            let mut models = self.models.write().map_err(|_| {
+                EnclaveError::Enclave(EphemeralError::Internal("Lock poisoned".to_string()))
+            })?;
+            models.insert(alias.to_string(), m);
+        }
+        Ok(())
+    }
+
     /// Execute inference by model ID (embeddings / raw logits)
     pub fn execute_by_id(&self, model_id: &str, input: &[u8]) -> Result<Vec<f32>> {
         let models = self.models.read().map_err(|_| {
@@ -424,5 +445,74 @@ impl CandleInferenceEngine {
             token_ids: generated_tokens,
             text: decoded_text,
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Build an engine and insert a sentinel Arc under `id`.
+    /// We never call inference — only test map-level alias routing.
+    fn engine_with_sentinel(id: &str) -> (CandleInferenceEngine, Arc<LoadedModel>) {
+        let engine = CandleInferenceEngine {
+            device: Device::Cpu,
+            models: Arc::new(RwLock::new(HashMap::new())),
+        };
+        // Minimal BPE tokenizer (empty vocab).
+        let tokenizer = Tokenizer::from_bytes(
+            br#"{"version":"1.0","truncation":null,"padding":null,"added_tokens":[],"normalizer":null,"pre_tokenizer":null,"post_processor":null,"decoder":null,"model":{"type":"BPE","dropout":null,"unk_token":null,"continuing_subword_prefix":null,"end_of_word_suffix":null,"fuse_unk":false,"byte_fallback":false,"vocab":{},"merges":[]}}"#
+        ).expect("minimal tokenizer");
+        // Construct a real BertModel from a minimal config + empty safetensors.
+        let config = Config {
+            vocab_size: 2,
+            hidden_size: 4,
+            num_hidden_layers: 1,
+            num_attention_heads: 1,
+            intermediate_size: 4,
+            ..Default::default()
+        };
+        let vb = candle_nn::VarBuilder::zeros(DTYPE, &Device::Cpu);
+        let model = BertModel::load(vb, &config).expect("build minimal BertModel");
+        let sentinel = Arc::new(LoadedModel::Bert(LoadedBertModel {
+            model,
+            tokenizer,
+            device: Device::Cpu,
+        }));
+        engine
+            .models
+            .write()
+            .unwrap()
+            .insert(id.to_string(), Arc::clone(&sentinel));
+        (engine, sentinel)
+    }
+
+    #[test]
+    fn add_alias_makes_model_accessible_by_alias() {
+        let (engine, sentinel) = engine_with_sentinel("minilm-l6-v2");
+
+        // Before alias: "stage-0" not in map
+        assert!(!engine.models.read().unwrap().contains_key("stage-0"));
+
+        engine.add_alias("stage-0", "minilm-l6-v2").unwrap();
+
+        let models = engine.models.read().unwrap();
+        assert!(models.contains_key("stage-0"));
+        assert!(models.contains_key("minilm-l6-v2"));
+        assert!(Arc::ptr_eq(models.get("stage-0").unwrap(), &sentinel));
+    }
+
+    #[test]
+    fn add_alias_noop_when_same() {
+        let (engine, _) = engine_with_sentinel("model-a");
+        engine.add_alias("model-a", "model-a").unwrap();
+        assert_eq!(engine.models.read().unwrap().len(), 1);
+    }
+
+    #[test]
+    fn add_alias_noop_when_target_missing() {
+        let (engine, _) = engine_with_sentinel("model-a");
+        engine.add_alias("alias", "nonexistent").unwrap();
+        assert!(!engine.models.read().unwrap().contains_key("alias"));
     }
 }
