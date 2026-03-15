@@ -1243,9 +1243,9 @@ dependencies = [
 
 [[package]]
 name = "confidential-ml-pipeline"
-version = "0.3.1"
+version = "0.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a54ef8144692cfe801645d7be057d67c8409567dc7690869b48d10652b0c5a5e"
+checksum = "89d4f6047e5b7438d01859e2a583aa4c7cac973cc7f6f61999d57887178b0d0d"
 dependencies = [
  "async-trait",
  "bytes",
@@ -1257,13 +1257,14 @@ dependencies = [
  "tokio",
  "tokio-vsock",
  "tracing",
+ "zeroize",
 ]
 
 [[package]]
 name = "confidential-ml-transport"
-version = "0.4.0"
+version = "0.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3333fa575e1659eabcc68ea2528fff6d73d7471b73124872b761f042c7b52211"
+checksum = "be583c36cd9a7991dfeddc8dbd0dfa4305a598807096ee7d69b1f725bfa631f7"
 dependencies = [
  "async-trait",
  "aws-nitro-enclaves-nsm-api",
@@ -1274,8 +1275,11 @@ dependencies = [
  "hex",
  "hkdf",
  "openssl",
+ "openssl-sys",
  "rand 0.8.5",
+ "serde",
  "serde_bytes",
+ "serde_json",
  "sha2",
  "subtle",
  "thiserror 2.0.18",
