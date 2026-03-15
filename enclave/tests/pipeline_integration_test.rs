@@ -198,7 +198,7 @@ async fn single_stage_pipeline_with_receipts() {
 
         tcp::run_stage_with_listeners(
             executor,
-            StageConfig::default(),
+            StageConfig::development(),
             s0_ctrl_lis,
             s0_din_lis,
             orch_dout_addr,
@@ -217,7 +217,7 @@ async fn single_stage_pipeline_with_receipts() {
     let provider = MockProvider::new();
 
     let mut orch = tcp::init_orchestrator_tcp(
-        OrchestratorConfig::default(),
+        OrchestratorConfig::development(),
         manifest,
         orch_dout_lis,
         &verifier,
