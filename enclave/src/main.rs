@@ -1108,7 +1108,7 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
 
             run_stage_tcp(
                 executor,
-                StageConfig::default(),
+                StageConfig::development(),
                 &gcp_control,
                 &gcp_data_in,
                 gcp_data_out.parse()?,
@@ -1266,7 +1266,7 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
 
             run_stage_tcp(
                 executor,
-                StageConfig::default(),
+                StageConfig::development(),
                 &args.control_addr,
                 &args.data_in_addr,
                 args.data_out_target.parse()?,
@@ -1442,7 +1442,7 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
 
         confidential_ml_pipeline::vsock::run_stage_with_listeners_vsock(
             executor,
-            StageConfig::default(),
+            StageConfig::development(),
             ctrl_listener,
             din_listener,
             HOST_CID,

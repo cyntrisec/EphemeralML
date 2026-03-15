@@ -276,8 +276,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         let verifier = MockVerifier::new();
         let provider = MockProvider::new();
 
+        // Mock mode: use Development profile since no TEE attestation is available.
         let mut orch = init_orchestrator_tcp(
-            OrchestratorConfig::default(),
+            OrchestratorConfig::development(),
             manifest,
             orch_dout_lis,
             &verifier,
@@ -470,8 +471,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
         // 4. Initialize orchestrator — connects to enclave stage via VSock.
         info!("Connecting to enclave stage worker...");
+        // Use Development session profile: measurement verification is handled
+        // by NitroVerifier (PCR pinning), not by the transport layer's
+        // expected_measurements check. The NitroVerifier validates the enclave's
+        // attestation document and PCR values during the handshake.
         let mut orch = init_orchestrator_vsock(
-            OrchestratorConfig::default(),
+            OrchestratorConfig::development(),
             manifest,
             data_out_listener,
             &verifier,

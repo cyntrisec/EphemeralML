@@ -205,11 +205,15 @@ impl SecureClient for SecureEnclaveClient {
         // the server's verifier is configured to accept this.
         let provider = confidential_ml_transport::MockProvider::new();
 
+        let require_mrtd = std::env::var("EPHEMERALML_REQUIRE_MRTD")
+            .map(|v| v == "true" || v == "1")
+            .unwrap_or(!cfg!(feature = "mock"));
+
         let config = SessionConfig::builder()
-            .security_profile(if cfg!(feature = "mock") {
-                confidential_ml_transport::session::SecurityProfile::Development
-            } else {
+            .security_profile(if require_mrtd {
                 confidential_ml_transport::session::SecurityProfile::Production
+            } else {
+                confidential_ml_transport::session::SecurityProfile::Development
             })
             .build()
             .map_err(|e| ClientError::Client(EphemeralError::TransportError(e.to_string())))?;

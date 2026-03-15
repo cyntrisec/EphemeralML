@@ -106,12 +106,14 @@ pub async fn run_direct_tcp<A: crate::AttestationProvider + Send + Sync>(
             let (stream, peer) = listener.accept().await?;
             stream.set_nodelay(true).ok();
 
+            // Server uses Development profile: the enclave does not verify
+            // client measurements (clients are anonymous consumers). The CLIENT
+            // is the one that verifies the enclave's attestation using Production
+            // profile with MRTD pinning.
             let config = SessionConfig::builder()
-                .security_profile(if cfg!(feature = "mock") {
-                    confidential_ml_transport::session::SecurityProfile::Development
-                } else {
-                    confidential_ml_transport::session::SecurityProfile::Production
-                })
+                .security_profile(
+                    confidential_ml_transport::session::SecurityProfile::Development,
+                )
                 .build()
                 .expect("session config");
             match SecureChannel::accept_with_attestation(
