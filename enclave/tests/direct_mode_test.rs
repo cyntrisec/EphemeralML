@@ -7,6 +7,7 @@
 
 use bytes::Bytes;
 use confidential_ml_transport::session::channel::Message;
+use confidential_ml_transport::session::SecurityProfile;
 use confidential_ml_transport::{MockProvider, MockVerifier, SecureChannel, SessionConfig};
 use ephemeral_ml_common::{AttestationReceipt, ReceiptSigningKey};
 use ephemeral_ml_enclave::candle_engine::CandleInferenceEngine;
@@ -110,7 +111,10 @@ async fn direct_mode_happy_path() {
     let stream = tokio::net::TcpStream::connect(addr).await.unwrap();
     let client_provider = MockProvider::new();
     let client_verifier = MockVerifier::new();
-    let config = SessionConfig::default();
+    let config = SessionConfig::builder()
+        .security_profile(SecurityProfile::Development)
+        .build()
+        .unwrap();
 
     let mut channel =
         SecureChannel::connect_with_attestation(stream, &client_provider, &client_verifier, config)
@@ -241,7 +245,10 @@ async fn direct_mode_malformed_json_no_crash() {
     let stream = tokio::net::TcpStream::connect(addr).await.unwrap();
     let client_provider = MockProvider::new();
     let client_verifier = MockVerifier::new();
-    let config = SessionConfig::default();
+    let config = SessionConfig::builder()
+        .security_profile(SecurityProfile::Development)
+        .build()
+        .unwrap();
 
     let mut channel =
         SecureChannel::connect_with_attestation(stream, &client_provider, &client_verifier, config)
@@ -351,7 +358,10 @@ async fn setup_direct_server_with_manifest(
     let stream = tokio::net::TcpStream::connect(addr).await.unwrap();
     let client_provider = MockProvider::new();
     let client_verifier = MockVerifier::new();
-    let config = SessionConfig::default();
+    let config = SessionConfig::builder()
+        .security_profile(SecurityProfile::Development)
+        .build()
+        .unwrap();
     let channel =
         SecureChannel::connect_with_attestation(stream, &client_provider, &client_verifier, config)
             .await

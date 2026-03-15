@@ -206,6 +206,11 @@ impl SecureClient for SecureEnclaveClient {
         let provider = confidential_ml_transport::MockProvider::new();
 
         let config = SessionConfig::builder()
+            .security_profile(if cfg!(feature = "mock") {
+                confidential_ml_transport::session::SecurityProfile::Development
+            } else {
+                confidential_ml_transport::session::SecurityProfile::Production
+            })
             .build()
             .map_err(|e| ClientError::Client(EphemeralError::TransportError(e.to_string())))?;
 
@@ -819,6 +824,7 @@ mod tests {
     use crate::attestation_bridge::MockVerifierBridge;
     use bytes::Bytes;
     use confidential_ml_transport::session::channel::Message;
+    use confidential_ml_transport::session::SecurityProfile;
     use confidential_ml_transport::{SecureChannel, SessionConfig};
     use ephemeral_ml_common::{EnclaveMeasurements, ReceiptSigningKey, SecurityMode};
 
@@ -839,7 +845,10 @@ mod tests {
             // Use mock attestation provider/verifier from cml-transport
             let mock_provider = confidential_ml_transport::MockProvider;
             let mock_verifier = confidential_ml_transport::MockVerifier;
-            let config = SessionConfig::builder().build().unwrap();
+            let config = SessionConfig::builder()
+                .security_profile(SecurityProfile::Development)
+                .build()
+                .unwrap();
 
             let mut channel = SecureChannel::accept_with_attestation(
                 stream,
@@ -905,7 +914,10 @@ mod tests {
         let verifier = MockVerifierBridge::new();
         let client_provider = confidential_ml_transport::MockProvider;
         let stream = TcpStream::connect(&addr).await.unwrap();
-        let config = SessionConfig::builder().build().unwrap();
+        let config = SessionConfig::builder()
+            .security_profile(SecurityProfile::Development)
+            .build()
+            .unwrap();
         let mut channel =
             SecureChannel::connect_with_attestation(stream, &client_provider, &verifier, config)
                 .await

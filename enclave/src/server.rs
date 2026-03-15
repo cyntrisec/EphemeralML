@@ -106,7 +106,14 @@ pub async fn run_direct_tcp<A: crate::AttestationProvider + Send + Sync>(
             let (stream, peer) = listener.accept().await?;
             stream.set_nodelay(true).ok();
 
-            let config = SessionConfig::default();
+            let config = SessionConfig::builder()
+                .security_profile(if cfg!(feature = "mock") {
+                    confidential_ml_transport::session::SecurityProfile::Development
+                } else {
+                    confidential_ml_transport::session::SecurityProfile::Production
+                })
+                .build()
+                .expect("session config");
             match SecureChannel::accept_with_attestation(
                 stream,
                 transport_provider,
