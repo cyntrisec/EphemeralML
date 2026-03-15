@@ -1271,7 +1271,7 @@ dependencies = [
  "bytes",
  "chacha20poly1305",
  "ciborium",
- "coset",
+ "coset 0.3.8",
  "hex",
  "hkdf",
  "openssl",
@@ -1351,6 +1351,16 @@ name = "coset"
 version = "0.3.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f4c8cc80f631f8307b887faca24dcc3abc427cd0367f6eb6188f6e8f5b7ad8fb"
+dependencies = [
+ "ciborium",
+ "ciborium-io",
+]
+
+[[package]]
+name = "coset"
+version = "0.4.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1eb98d5e9155e2cf7cd942c8b3033097d4563b6fb0a00b9caecb74669555c058"
 dependencies = [
  "ciborium",
  "ciborium-io",
@@ -1847,7 +1857,7 @@ dependencies = [
  "ciborium",
  "clap",
  "confidential-ml-transport",
- "coset",
+ "coset 0.4.2",
  "ed25519-dalek",
  "ephemeral-ml-common",
  "hex",
@@ -1879,7 +1889,7 @@ dependencies = [
  "candle-transformers",
  "ciborium",
  "confidential-ml-transport",
- "coset",
+ "coset 0.4.2",
  "ed25519-dalek",
  "hex",
  "lazy_static",
