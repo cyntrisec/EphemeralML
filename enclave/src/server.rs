@@ -106,10 +106,11 @@ pub async fn run_direct_tcp<A: crate::AttestationProvider + Send + Sync>(
             let (stream, peer) = listener.accept().await?;
             stream.set_nodelay(true).ok();
 
-            // Server uses Development profile: the enclave does not verify
-            // client measurements (clients are anonymous consumers). The CLIENT
-            // is the one that verifies the enclave's attestation using Production
-            // profile with MRTD pinning.
+            // Compatibility fix: Development profile because the enclave does
+            // not verify anonymous external clients. This is intentional for
+            // ingress, but a distinct AnonymousIngress config should replace
+            // the generic Development profile once measurement pinning is
+            // wired on internal channels.
             let config = SessionConfig::builder()
                 .security_profile(
                     confidential_ml_transport::session::SecurityProfile::Development,

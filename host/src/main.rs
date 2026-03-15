@@ -471,10 +471,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
         // 4. Initialize orchestrator — connects to enclave stage via VSock.
         info!("Connecting to enclave stage worker...");
-        // Use Development session profile: measurement verification is handled
-        // by NitroVerifier (PCR pinning), not by the transport layer's
-        // expected_measurements check. The NitroVerifier validates the enclave's
-        // attestation document and PCR values during the handshake.
+        // Compatibility fix: Development profile because explicit
+        // expected_measurements are not yet wired from the deployment config.
+        // NitroVerifier checks PCRs at the attestation layer, but the
+        // transport session itself is permissive. This should be restored to
+        // Production + explicit measurements once pinning is plumbed through.
         let mut orch = init_orchestrator_vsock(
             OrchestratorConfig::development(),
             manifest,
