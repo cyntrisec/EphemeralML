@@ -156,9 +156,11 @@ docs/GCP_HARDWARE_TEST_REPORT.md
 
 # Ad-hoc evidence runs (transient; canonical evidence lives in evidence/publication-*)
 evidence/*
-# Keep committed publication evidence only:
+# Keep committed publication and hardening evidence:
 !evidence/publication-*/
 !evidence/publication-*/**
+!evidence/hardening-*/
+!evidence/hardening-*/**
 
 # Evidence archives (local backup, not committed)
 evidence/archives/

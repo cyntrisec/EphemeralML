@@ -1,0 +1,5 @@
+    Finished `release` profile [optimized] target(s) in 0.07s
+     Running `target/release/azure-sev-snp-smoke`
+Production config created: fail-closed = true
+Development config created: fail-closed = false
+All smoke checks passed on Azure SEV-SNP CVM

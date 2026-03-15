@@ -1,0 +1,8 @@
+{
+  "schema_version": 1,
+  "e2e_client_ms": 130,
+  "enclave_execution_time_ms": 77,
+  "client_exit_code": 0,
+  "input_text": "Hardening release v0.5.0 validation",
+  "timestamp": "2026-03-15T12:34:31Z"
+}

@@ -1,0 +1,84 @@
+EphemeralML Host v2.0
+[2m2026-03-15T12:34:30.971135Z[0m [32m INFO[0m [2mephemeral_ml_host[0m[2m:[0m EphemeralML Host (Production Mode — AWS Nitro)
+[2m2026-03-15T12:34:30.971248Z[0m [32m INFO[0m [2mephemeral_ml_host[0m[2m:[0m Connecting to Nitro enclave via VSock [3menclave_cid[0m[2m=[0m16 [3mcontrol_port[0m[2m=[0m5000 [3mdata_in_port[0m[2m=[0m5001 [3mdata_out_port[0m[2m=[0m5002
+[2m2026-03-15T12:34:30.971266Z[0m [32m INFO[0m [2mephemeral_ml_host[0m[2m:[0m Pinned enclave PCR [3mpcr[0m[2m=[0m0 [3mprefix[0m[2m=[0m"de0d5ab39fb182c2"
+[2m2026-03-15T12:34:30.971271Z[0m [32m INFO[0m [2mephemeral_ml_host[0m[2m:[0m Pinned enclave PCR [3mpcr[0m[2m=[0m1 [3mprefix[0m[2m=[0m"4b4d5b3661b3efc1"
+[2m2026-03-15T12:34:30.971273Z[0m [32m INFO[0m [2mephemeral_ml_host[0m[2m:[0m Pinned enclave PCR [3mpcr[0m[2m=[0m2 [3mprefix[0m[2m=[0m"714bbca8cb02ea20"
+[2m2026-03-15T12:34:30.972645Z[0m [32m INFO[0m [2mephemeral_ml_host[0m[2m:[0m Orchestrator data_out VSock listener bound [3mport[0m[2m=[0m5002
+[2m2026-03-15T12:34:30.972658Z[0m [32m INFO[0m [2mephemeral_ml_host[0m[2m:[0m Connecting to enclave stage worker...
+[2m2026-03-15T12:34:30.973935Z[0m [32m INFO[0m [2mconfidential_ml_pipeline::vsock[0m[2m:[0m orchestrator: control VSock connected [3mstage[0m[2m=[0m0 [3mcid[0m[2m=[0m16 [3mport[0m[2m=[0m5000
+[2m2026-03-15T12:34:30.973947Z[0m [32m INFO[0m [2mconfidential_ml_pipeline::orchestrator[0m[2m:[0m orchestrator: connecting control channels [3mnum_stages[0m[2m=[0m1
+[2m2026-03-15T12:34:30.973953Z[0m [33m WARN[0m [2mconfidential_ml_transport::session[0m[2m:[0m expected_measurements is None in Development security profile — attestation will not verify enclave identity. Do NOT use Development profile in production.
+[2m2026-03-15T12:34:30.986219Z[0m [32m INFO[0m [2mconfidential_ml_transport::session::handshake[0m[2m:[0m responder attestation verification succeeded [3mdocument_hash[0m[2m=[0m"25c867d2b78c61662fc3a3f7a275fb9cb4bd984c0225d910277b8bdf9e6b9c9d" [3mmeasurement_count[0m[2m=[0m16
+[2m2026-03-15T12:34:30.986348Z[0m [32m INFO[0m [2mconfidential_ml_pipeline::orchestrator[0m[2m:[0m orchestrator: control channel established [3mstage[0m[2m=[0m0
+[2m2026-03-15T12:34:30.989402Z[0m [32m INFO[0m [2mconfidential_ml_pipeline::orchestrator[0m[2m:[0m orchestrator: stage ready [3mstage[0m[2m=[0m0
+[2m2026-03-15T12:34:30.989412Z[0m [33m WARN[0m [2mconfidential_ml_pipeline::orchestrator[0m[2m:[0m no expected_measurements configured for any stage — attestation will not verify enclave identity
+[2m2026-03-15T12:34:30.989415Z[0m [32m INFO[0m [2mconfidential_ml_pipeline::orchestrator[0m[2m:[0m orchestrator: all stages initialized
+[2m2026-03-15T12:34:30.989442Z[0m [32m INFO[0m [2mconfidential_ml_pipeline::orchestrator[0m[2m:[0m orchestrator: sent EstablishDataChannels to all stages
+[2m2026-03-15T12:34:30.989832Z[0m [32m INFO[0m [2mconfidential_ml_pipeline::vsock[0m[2m:[0m orchestrator: all VSock data transports connected
+[2m2026-03-15T12:34:30.989843Z[0m [33m WARN[0m [2mconfidential_ml_transport::session[0m[2m:[0m expected_measurements is None in Development security profile — attestation will not verify enclave identity. Do NOT use Development profile in production.
+[2m2026-03-15T12:34:31.000394Z[0m [32m INFO[0m [2mconfidential_ml_transport::session::handshake[0m[2m:[0m responder attestation verification succeeded [3mdocument_hash[0m[2m=[0m"220d894ed7390d9a28ad5d751912fcb134d4bb1ff84879c6042d3dacf692bbed" [3mmeasurement_count[0m[2m=[0m16
+[2m2026-03-15T12:34:31.000499Z[0m [33m WARN[0m [2mconfidential_ml_transport::session[0m[2m:[0m expected_measurements is None in Development security profile — attestation will not verify enclave identity. Do NOT use Development profile in production.
+[2m2026-03-15T12:34:31.008905Z[0m [32m INFO[0m [2mconfidential_ml_transport::session::handshake[0m[2m:[0m initiator attestation verification succeeded [3mdocument_hash[0m[2m=[0m"9f1e81d4e86f16bc7e210654e201a415cd6218f6970684c27d67302b7f6e8dba" [3mmeasurement_count[0m[2m=[0m16
+[2m2026-03-15T12:34:31.012098Z[0m [32m INFO[0m [2mconfidential_ml_pipeline::orchestrator[0m[2m:[0m orchestrator: data channels ready [3mstage[0m[2m=[0m0
+[2m2026-03-15T12:34:31.012107Z[0m [32m INFO[0m [2mconfidential_ml_pipeline::orchestrator[0m[2m:[0m orchestrator: all data channels established
+[2m2026-03-15T12:34:31.012128Z[0m [32m INFO[0m [2mephemeral_ml_host[0m[2m:[0m Pipeline initialized successfully
+[2m2026-03-15T12:34:31.013337Z[0m [32m INFO[0m [2mephemeral_ml_host[0m[2m:[0m Health check passed
+[2m2026-03-15T12:34:31.013348Z[0m [32m INFO[0m [2mephemeral_ml_host[0m[2m:[0m Running inference... [3minput_len[0m[2m=[0m35
+[2m2026-03-15T12:34:31.093894Z[0m [32m INFO[0m [2mconfidential_ml_pipeline::orchestrator[0m[2m:[0m orchestrator: inference complete [3mrequest_id[0m[2m=[0m1773578071012131487
+[2m2026-03-15T12:34:31.093916Z[0m [32m INFO[0m [2mephemeral_ml_host[0m[2m:[0m Inference complete [3melapsed_ms[0m[2m=[0m80.56322 [3mbatches[0m[2m=[0m1
+
+  --- Embedding Output ---
+  Dimensions:      384
+  First 5 values:  [0.0306, 0.6730, 0.3894, 0.1410, 0.1030]
+  L2 norm:         5.8119
+  Total bytes:     1536
+
+  Output tensor [batch 0]: name=output, shape=[384], 1536 bytes
+  Raw receipt (848 bytes) saved to /tmp/nitro-e2e-evidence/receipt.raw
+
+========================================================
+       ATTESTED EXECUTION RECEIPT
+========================================================
+
+  Receipt ID:      5115cb09-8d24-45ac-8699-286fee969d65
+  Model:           stage-0 v1.0
+  Sequence:        #0
+  Security Mode:   GatewayOnly
+  Protocol:        v1
+  Policy:          v1-default
+
+  --- Cryptographic Bindings ---
+  Request hash:    30a1646ee8c21ac3a53b13141ad797fca26cd75f38c2c785d43708f78eda5665
+  Response hash:   d3c5c2e1d33678b0a5a3fe08280235adfd79490baf01ddd67da95b457512d436
+  Attestation hash:36bdf1df213354750bc10f7a46338639dba3edff60a062a227cfcbc295e48ac7
+
+  --- Enclave Measurements ---
+  PCR0 (image):    de0d5ab39fb182c2d5e462d14c313c28...
+  PCR1 (kernel):   4b4d5b3661b3efc12920900c80e126e4...
+  PCR2 (app):      714bbca8cb02ea20d829f2d1940752c3...
+
+  --- Signature ---
+  Algorithm:       Ed25519
+  Signature:       0a6b74aef56115bb...a0f90302dbddba0d
+  Status:          SIGNED
+
+  --- Execution Metadata ---
+  Timestamp:       1773578071
+  Execution time:  77 ms
+  Peak memory:     0 MB
+
+  This receipt cryptographically proves:
+    - Input/output hashes bind request to response
+    - Execution occurred inside an attested enclave
+    - Ed25519 signature prevents tampering
+    - Enclave measurements verify code integrity
+========================================================
+
+  Receipt saved to /tmp/nitro-e2e-evidence/receipt.json
+  Raw receipt (585 bytes) saved to /tmp/nitro-e2e-evidence/receipt.cbor
+[2m2026-03-15T12:34:31.094055Z[0m [32m INFO[0m [2mephemeral_ml_host[0m[2m:[0m AIR v1 receipt saved [3msize[0m[2m=[0m585
+[2m2026-03-15T12:34:31.094057Z[0m [32m INFO[0m [2mconfidential_ml_pipeline::orchestrator[0m[2m:[0m orchestrator: shutting down pipeline
+[2m2026-03-15T12:34:31.095602Z[0m [32m INFO[0m [2mconfidential_ml_pipeline::orchestrator[0m[2m:[0m stage shut down [3mstage[0m[2m=[0m0
+[2m2026-03-15T12:34:31.095614Z[0m [32m INFO[0m [2mconfidential_ml_pipeline::orchestrator[0m[2m:[0m orchestrator: shutdown complete
+[2m2026-03-15T12:34:31.095616Z[0m [32m INFO[0m [2mephemeral_ml_host[0m[2m:[0m Pipeline shut down gracefully

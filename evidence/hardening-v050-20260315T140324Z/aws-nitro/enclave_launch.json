@@ -1,0 +1,14 @@
+Start allocating memory...
+Started enclave with enclave-cid: 16, memory: 4096 MiB, cpu-ids: [1, 5]
+{
+  "EnclaveName": "ephemeral-ml-enclave",
+  "EnclaveID": "i-0a3f4c55bdbcc7ca8-enc19cf17d63181c21",
+  "ProcessID": 69547,
+  "EnclaveCID": 16,
+  "NumberOfCPUs": 2,
+  "CPUIDs": [
+    1,
+    5
+  ],
+  "MemoryMiB": 4096
+}

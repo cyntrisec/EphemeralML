@@ -1,0 +1,24 @@
+{
+  "schema_version": 1,
+  "timestamp": "2026-03-15T16:57:08Z",
+  "tests": [
+    {
+      "test_id": "NEG-001",
+      "name": "Wrong model hash",
+      "expected": "Container rejects mismatched hash",
+      "result": "PASS",
+      "error_message": "Fatal: Model hash mismatch (gcs-kms): expected 0000...0000, got 53aa5117...28d9db",
+      "exit_code": 11
+    },
+    {
+      "test_id": "NEG-002",
+      "name": "Wrong KMS key",
+      "expected": "Container cannot decrypt model DEK",
+      "result": "PASS",
+      "error_message": "KMS decrypt returned 403 Forbidden: Permission 'cloudkms.cryptoKeyVersions.useToDecrypt' denied",
+      "exit_code": 12
+    }
+  ],
+  "passed": 2,
+  "total": 2
+}

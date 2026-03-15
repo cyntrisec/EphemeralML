@@ -1,0 +1,13 @@
+{
+  "schema_version": 1,
+  "generated": "2026-03-15T16:50:32Z",
+  "artifacts": [
+    {"file": "ephemeralml-receipt.json", "sha256": "03c6996821e7cd5834a73ef3f7eab362151f252ae41cdc834ca9ae0f8a457f11", "bytes": 4126},
+    {"file": "ephemeralml-receipt.cbor", "sha256": "fdda70805eaa4b34be420a2e873e58650d46dfb047ff5d131ddcc475e6f0ee79", "bytes": 597},
+    {"file": "ephemeralml-receipt.json.pubkey", "sha256": "25e18f361b3e1780ac822d816fe826f8331d1cbf5f5142acf1a93ecedf83aae3", "bytes": 64},
+    {"file": "ephemeralml-client_output.log", "sha256": "2aa6ec1c1947c94d2382d19afe3df4f84d97ff02f9e63226a7edd547b25cffdd", "bytes": 794},
+    {"file": "ephemeralml-attestation.bin", "sha256": "918a38c56cce3308fea696c893b571aafbfda144ab3bbb69d1e7c6e23fcf2ba4", "bytes": 764},
+    {"file": "ephemeralml-manifest.json", "sha256": "045b461cf3680da97517b050dad70693f3f7080587a04b3d7fc577f80f6e7710", "bytes": 1552},
+    {"file": "ephemeralml-timing.json", "sha256": "0ce03a4a3d5bff7634dcfb0d6c3175d779880cb4dbc30e487bd32667a1dba284", "bytes": 311}
+  ]
+}

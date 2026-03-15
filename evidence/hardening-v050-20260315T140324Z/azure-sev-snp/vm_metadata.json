@@ -1,0 +1,9 @@
+{
+  "hostname": "ephemeralml-sev-snp",
+  "kernel": "6.8.0-1044-azure-fde",
+  "cpu": "19/01",
+  "tpm": "/dev/tpm0
+present",
+  "os": ""Ubuntu 22.04.5 LTS"",
+  "timestamp": "2026-03-15T12:03:32Z"
+}

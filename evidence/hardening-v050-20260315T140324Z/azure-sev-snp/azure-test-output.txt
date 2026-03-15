@@ -1,0 +1,229 @@
+   Compiling regex-automata v0.4.14
+   Compiling tss-esapi-sys v0.5.0
+   Compiling num-integer v0.1.46
+   Compiling option-ext v0.2.0
+   Compiling thiserror v1.0.69
+   Compiling openssl v0.10.75
+   Compiling base64 v0.22.1
+   Compiling num-bigint v0.4.6
+   Compiling dirs-sys v0.5.0
+   Compiling foreign-types v0.3.2
+   Compiling picky-asn1-der v0.4.1
+   Compiling memoffset v0.9.1
+   Compiling bitfield-macros v0.19.4
+   Compiling openssl-macros v0.1.1
+   Compiling enumflags2_derive v0.7.12
+   Compiling thiserror-impl v1.0.69
+   Compiling sev v7.1.0
+   Compiling tss-esapi v7.6.0
+   Compiling base64 v0.21.7
+   Compiling regex v1.12.3
+   Compiling stable_deref_trait v1.2.1
+   Compiling mbox v0.7.1
+   Compiling picky-asn1-x509 v0.12.0
+   Compiling enumflags2 v0.7.12
+   Compiling yasna v0.4.0
+   Compiling bitfield v0.19.4
+   Compiling dirs v6.0.0
+   Compiling rdrand v0.8.3
+   Compiling uuid v1.20.0
+   Compiling num-derive v0.4.2
+   Compiling static_assertions v1.1.0
+   Compiling lazy_static v1.5.0
+   Compiling iocuddle v0.1.1
+   Compiling byteorder v1.5.0
+   Compiling base64 v0.13.1
+   Compiling bitflags v1.3.2
+   Compiling bitfield v0.14.0
+   Compiling hostname-validator v1.1.1
+   Compiling jsonwebkey v0.3.5
+   Compiling serde-big-array v0.5.1
+   Compiling plotters v0.3.7
+   Compiling az-cvm-vtpm v0.8.1
+   Compiling pem v3.0.6
+   Compiling proptest v1.10.0
+   Compiling criterion v0.5.1
+   Compiling rcgen v0.14.7
+   Compiling confidential-ml-transport v0.5.0 (/home/benchuser/confidential-ml-transport)
+    Finished `release` profile [optimized] target(s) in 41.01s
+warning: the following packages contain code that will be rejected by a future version of Rust: picky-asn1-x509 v0.12.0
+note: to see what the problems were, use the option `--future-incompat-report`, or run `cargo report future-incompatibilities --id 1`
+     Running unittests src/lib.rs (target/release/deps/confidential_ml_transport-4618b6f5d3e51835)
+
+running 36 tests
+test attestation::azure_sev::tests::document_roundtrip_empty_certs ... ok
+test attestation::azure_sev::tests::extract_user_data_valid ... ok
+test attestation::azure_sev::tests::extract_user_data_missing_field ... ok
+test attestation::azure_sev::tests::extract_user_data_too_short ... ok
+test attestation::azure_sev::tests::document_roundtrip ... ok
+test attestation::azure_sev::tests::provider_fails_outside_azure ... ok
+test attestation::azure_sev::tests::reject_invalid_marker ... ok
+test attestation::azure_sev::tests::reject_truncated_document ... ok
+test attestation::mock::tests::mock_rejects_invalid ... ok
+test attestation::mock::tests::mock_roundtrip ... ok
+test attestation::mock::tests::mock_empty_fields ... ok
+test crypto::hpke::tests::key_derivation_symmetry ... ok
+test crypto::seal::tests::replay_rejected ... ok
+test crypto::seal::tests::seal_then_open ... ok
+test crypto::seal::tests::sequence_increments ... ok
+test crypto::seal::tests::tampered_ciphertext_fails ... ok
+test crypto::seal::tests::wrong_msg_type_fails ... ok
+test crypto::seal::tests::wrong_sequence_fails ... ok
+test crypto::seal::tests::wrong_flags_fails ... ok
+test crypto::transcript::tests::transcript_deterministic ... ok
+test crypto::transcript::tests::transcript_different_attestation_hashes_differ ... ok
+test crypto::transcript::tests::transcript_different_inputs_differ ... ok
+test crypto::transcript::tests::transcript_commutative_on_keys ... ok
+test frame::codec::tests::invalid_magic ... ok
+test frame::codec::tests::partial_header ... ok
+test frame::codec::tests::partial_payload ... ok
+test frame::codec::tests::payload_too_large ... ok
+test frame::codec::tests::roundtrip_data_frame ... ok
+test frame::codec::tests::roundtrip_empty_payload ... ok
+test frame::tensor::tests::data_size_mismatch ... ok
+test frame::tensor::tests::dtype_element_sizes ... ok
+test frame::tensor::tests::empty_name ... ok
+test frame::tensor::tests::roundtrip_f32_tensor ... ok
+test frame::tensor::tests::roundtrip_scalar ... ok
+test session::channel::tests::secure_channel_drop_does_not_panic ... ok
+test session::channel::tests::secure_channel_drop_after_data_exchange ... ok
+
+test result: ok. 36 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/codec_integration.rs (target/release/deps/codec_integration-324de99f3b052efa)
+
+running 3 tests
+test byte_at_a_time_decode ... ok
+test multiple_frames_over_duplex ... ok
+test tensor_frame_over_duplex ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/frame_roundtrip.rs (target/release/deps/frame_roundtrip-48ede3168b307174)
+
+running 3 tests
+test frame_roundtrip_chunked ... ok
+test frame_roundtrip ... ok
+test tensor_roundtrip ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/hardening_regression.rs (target/release/deps/hardening_regression-65f99dfa70cf1025)
+
+running 11 tests
+test codec_reserve_cap_does_not_break_normal_frames ... ok
+test codec_reserve_capped_under_large_payload_header ... ok
+test frame_data_at_max_payload_size_succeeds ... ok
+test frame_data_with_empty_payload_succeeds ... ok
+test frame_hello_panics_on_oversized_payload - should panic ... ok
+test frame_tensor_panics_on_oversized_payload - should panic ... ok
+test codec_reserve_incremental_across_multiple_calls ... ok
+test frame_data_panics_on_oversized_payload - should panic ... ok
+test handshake_rejects_initiator_hello_with_trailing_bytes ... ok
+test handshake_rejects_responder_hello_with_trailing_bytes ... ok
+test handshake_rejects_confirmation_with_trailing_bytes ... ok
+
+test result: ok. 11 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/nitro_verifier.rs (target/release/deps/nitro_verifier-3a423fd5fdd4b4e4)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/proxy_integration.rs (target/release/deps/proxy_integration-0d40866601e7b8c1)
+
+running 4 tests
+test proxy_backend_unreachable_does_not_crash ... ok
+test proxy_end_to_end_echo ... ok
+test proxy_concurrent_connections ... ok
+test proxy_client_disconnect_is_clean ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.30s
+
+     Running tests/security_audit.rs (target/release/deps/security_audit-9ffadb2016452e99)
+
+running 19 tests
+test accept_tensor_with_32_dims ... ok
+test confirmation_hash_uses_constant_time_comparison ... ok
+test flags_empty ... ok
+test flags_encapsulation ... ok
+test handshake_rejects_wrong_sequence ... ok
+test confirmation_binds_both_keys_bidirectional ... ok
+test handshake_with_correct_sequences_succeeds ... ok
+test handshake_within_timeout_succeeds ... ok
+test heartbeat_is_encrypted ... ok
+test reject_attestation_without_public_key ... ok
+test reject_tensor_with_33_dims ... ok
+test reject_non_contributory_dh ... ok
+test reject_tensor_with_excessive_ndims ... ok
+test session_id_domain_separation_consistent ... ok
+test normal_session_within_buffer_bounds ... ok
+test shutdown_is_encrypted ... ok
+test sequence_counters_unified ... ok
+test symmetric_key_is_zeroize ... ok
+test handshake_timeout_triggers ... ok
+
+test result: ok. 19 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.10s
+
+     Running tests/session_mock.rs (target/release/deps/session_mock-1c8eec14b29a6670)
+
+running 9 tests
+test legacy_require_measurements_in_dev_mode_rejects ... ok
+test full_session_data_exchange ... ok
+test development_profile_allows_empty_measurements ... ok
+test mutual_attestation_both_sides_receive_attestation ... ok
+test production_profile_rejects_empty_measurements ... ok
+test production_profile_with_measurements_succeeds ... ok
+test session_heartbeat ... ok
+test session_tensor_exchange ... ok
+test session_multiple_messages ... ok
+
+test result: ok. 9 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/session_retry.rs (target/release/deps/session_retry-ead5a653c417773f)
+
+running 13 tests
+test delay_capped_at_max ... ok
+test delay_for_attempt_increases ... ok
+test measurement_verification_fails_on_mismatch ... ok
+test measurement_verification_fails_on_missing_index ... ok
+test measurement_mismatch_rejects_handshake ... ok
+test measurement_verification_passes_on_match ... ok
+test no_verification_when_empty ... ok
+test retry_policy_default_values ... ok
+test retry_policy_none_has_zero_retries ... ok
+test measurement_verification_in_handshake ... ok
+test retry_succeeds_after_failures ... ok
+test retry_exhausted_returns_last_error ... ok
+test connect_with_retry_succeeds ... ok
+
+test result: ok. 13 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.04s
+
+     Running tests/sev_snp_attestation.rs (target/release/deps/sev_snp_attestation-45d08eaef62bffa9)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/tdx_attestation.rs (target/release/deps/tdx_attestation-40639901cc895a22)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/transport_tcp.rs (target/release/deps/transport_tcp-b2de9dfccd2a1614)
+
+running 2 tests
+test connect_to_unbound_port_fails ... ok
+test listen_and_accept ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests confidential_ml_transport
+
+running 1 test
+test src/session/mod.rs - session::SecurityProfile (line 30) ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.14s
+
