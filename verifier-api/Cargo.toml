@@ -14,7 +14,7 @@ ephemeral-ml-common = { path = "../common" }
 
 # Web framework
 axum = { version = "0.8", features = ["json", "multipart"] }
-tokio = { version = "1.0", features = ["full"] }
+tokio = { version = "1.50", features = ["full"] }
 tower-http = { version = "0.6", features = ["cors", "trace", "limit"] }
 
 # Serialization
@@ -38,4 +38,4 @@ clap = { version = "4.6", features = ["derive", "env"] }
 [dev-dependencies]
 reqwest = { version = "0.13", features = ["json", "multipart"] }
 rand = "0.8"
-tokio = { version = "1.0", features = ["full", "test-util"] }
+tokio = { version = "1.50", features = ["full", "test-util"] }
