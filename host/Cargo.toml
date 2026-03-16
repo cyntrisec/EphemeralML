@@ -33,7 +33,7 @@ zeroize = { workspace = true }
 confidential-ml-transport = { workspace = true }
 confidential-ml-pipeline = { workspace = true }
 bytes = { workspace = true }
-clap = { version = "4.5", features = ["derive", "env"] }
+clap = { version = "4.6", features = ["derive", "env"] }
 
 # Observability (v1)
 tracing = "0.1"
