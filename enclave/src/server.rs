@@ -112,9 +112,7 @@ pub async fn run_direct_tcp<A: crate::AttestationProvider + Send + Sync>(
             // the generic Development profile once measurement pinning is
             // wired on internal channels.
             let config = SessionConfig::builder()
-                .security_profile(
-                    confidential_ml_transport::session::SecurityProfile::Development,
-                )
+                .security_profile(confidential_ml_transport::session::SecurityProfile::Development)
                 .build()
                 .expect("session config");
             match SecureChannel::accept_with_attestation(
