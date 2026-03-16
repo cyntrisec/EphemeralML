@@ -35,15 +35,14 @@ The following are in scope for security reports:
 - **TDX envelope handling** (CBOR envelope parsing, receipt key propagation, measurement pinning)
 - **Policy enforcement** (measurement allowlists, key release conditions, WIP/WIF token handling)
 - **Input validation** (model format validation, safetensors parsing, CBOR/JSON deserialization)
+- **AIR v1 receipts** (COSE_Sign1 generation, CWT claim encoding, signature verification)
 
 ## Supported Versions
 
 | Version | Supported |
 |---------|-----------|
-| 3.0.x   | Yes       |
-| 2.0.x   | Yes       |
-| 1.0.x   | Yes       |
-| < 1.0   | No        |
+| 0.2.x   | Yes       |
+| < 0.2   | No        |
 
 ## Security Design
 
@@ -51,4 +50,3 @@ For details on the threat model and security architecture, see:
 
 - [`docs/design.md`](docs/design.md) -- Architecture and threat model
 - Internal security audit results are kept private; contact `security@cyntrisec.com` for reviewer access
-- [`SECURITY_DEMO.md`](SECURITY_DEMO.md) -- Security verification walkthrough
