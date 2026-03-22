@@ -439,6 +439,25 @@ async fn test_auth_skips_landing() {
     assert_eq!(resp.status(), 200);
 }
 
+#[tokio::test]
+async fn test_auth_skips_samples() {
+    let base = start_server_with_auth("secret").await;
+    // Sample endpoints should work without auth (they serve demo data)
+    let resp = reqwest::get(format!("{}/api/v1/samples/valid", base))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 200);
+    let body: serde_json::Value = resp.json().await.unwrap();
+    assert!(body["receipt_base64"].is_string());
+
+    let resp = reqwest::get(format!("{}/api/v1/samples/legacy", base))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 200);
+    let body: serde_json::Value = resp.json().await.unwrap();
+    assert!(body["receipt"].is_object());
+}
+
 // ==========================================================================
 // Rate limiting tests
 // ==========================================================================
