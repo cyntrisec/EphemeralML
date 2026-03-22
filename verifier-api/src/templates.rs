@@ -143,8 +143,9 @@ pub const LANDING_HTML: &str = r##"<!DOCTYPE html>
 
   <div class="samples">
     <span class="samples-label">Try a sample:</span>
-    <button class="sample-btn" onclick="loadSample('valid')">Valid receipt</button>
-    <button class="sample-btn" onclick="loadSample('tampered')">Tampered receipt</button>
+    <button class="sample-btn" onclick="loadSample('valid')">Valid AIR v1</button>
+    <button class="sample-btn" onclick="loadSample('tampered')">Tampered AIR v1</button>
+    <button class="sample-btn" onclick="loadSample('legacy')">Legacy receipt</button>
   </div>
 
   <div class="tabs">
@@ -221,17 +222,30 @@ let lastResponse = null;
 /* ── Samples ───────────────────────────────────────── */
 async function loadSample(name) {
   try {
-    const resp = await fetch('/api/v1/samples/valid');
-    const data = await resp.json();
-    switchTab('paste');
-    if (name === 'tampered') {
-      const r = data.receipt;
-      r.model_id = 'TAMPERED-model';
-      document.getElementById('receiptJson').value = JSON.stringify(r, null, 2);
-    } else {
+    if (name === 'legacy') {
+      // Legacy JSON receipt
+      const resp = await fetch('/api/v1/samples/legacy');
+      const data = await resp.json();
+      switchTab('paste');
       document.getElementById('receiptJson').value = JSON.stringify(data.receipt, null, 2);
+      document.getElementById('publicKeyHex').value = data.public_key;
+    } else {
+      // AIR v1 (valid or tampered)
+      const resp = await fetch('/api/v1/samples/valid');
+      const data = await resp.json();
+      switchTab('paste');
+      if (name === 'tampered') {
+        // Corrupt a few bytes in the middle of the base64 to break the signature.
+        // This produces a real tamper-detection demo rather than just renaming a field.
+        let b64 = data.receipt_base64;
+        const mid = Math.floor(b64.length / 2);
+        b64 = b64.substring(0, mid) + 'TAMPERED' + b64.substring(mid + 8);
+        document.getElementById('receiptJson').value = b64;
+      } else {
+        document.getElementById('receiptJson').value = data.receipt_base64;
+      }
+      document.getElementById('publicKeyHex').value = data.public_key;
     }
-    document.getElementById('publicKeyHex').value = data.public_key;
   } catch (err) { alert('Failed to load sample: ' + err.message); }
 }
 

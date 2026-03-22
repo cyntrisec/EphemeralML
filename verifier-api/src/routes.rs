@@ -151,29 +151,50 @@ pub async fn verify_upload(
     Ok(Json(response))
 }
 
-/// `GET /api/v1/samples/valid` — generate a fresh signed sample receipt for demo.
+/// `GET /api/v1/samples/valid` — generate a fresh signed AIR v1 sample receipt.
 ///
-/// Returns a JSON object with `receipt` (signed, verifiable) and `public_key` (hex).
+/// Returns a JSON object with:
+/// - `receipt_base64`: base64-encoded AIR v1 COSE_Sign1 (primary format)
+/// - `public_key`: Ed25519 public key hex
+/// - `format`: "air_v1"
+///
 /// Uses a deterministic key seed so the key is stable across calls.
 pub async fn sample_valid() -> Json<serde_json::Value> {
+    use ephemeral_ml_common::air_receipt::build_air_v1;
+
+    let (key, claims) = sample_key_and_claims();
+    let receipt_bytes = build_air_v1(&claims, &key).unwrap();
+    let receipt_b64 =
+        base64::Engine::encode(&base64::engine::general_purpose::STANDARD, &receipt_bytes);
+
+    Json(serde_json::json!({
+        "receipt_base64": receipt_b64,
+        "public_key": hex::encode(key.public_key_bytes()),
+        "format": "air_v1",
+    }))
+}
+
+/// `GET /api/v1/samples/legacy` — generate a fresh signed legacy sample receipt.
+///
+/// Returns a JSON object with `receipt` (JSON object) and `public_key` (hex).
+pub async fn sample_legacy() -> Json<serde_json::Value> {
     use ephemeral_ml_common::receipt_signing::{
         AttestationReceipt, EnclaveMeasurements, ReceiptSigningKey, SecurityMode,
     };
 
-    // Deterministic key from fixed seed for demo stability.
     let signing_key = ed25519_dalek::SigningKey::from_bytes(&[0x42u8; 32]);
     let verifying_key = signing_key.verifying_key();
     let key = ReceiptSigningKey::from_parts(signing_key, verifying_key);
 
     let measurements = EnclaveMeasurements::new(vec![1u8; 48], vec![2u8; 48], vec![3u8; 48]);
     let mut receipt = AttestationReceipt::new(
-        "sample-demo-receipt".to_string(),
+        "sample-legacy-receipt".to_string(),
         1,
         SecurityMode::GatewayOnly,
         measurements,
-        [0xAA; 32], // attestation_doc_hash
-        [0xBB; 32], // request_hash
-        [0xCC; 32], // response_hash
+        [0xAA; 32],
+        [0xBB; 32],
+        [0xCC; 32],
         "policy-v1".to_string(),
         1,
         "minilm-l6-v2".to_string(),
@@ -186,7 +207,52 @@ pub async fn sample_valid() -> Json<serde_json::Value> {
     Json(serde_json::json!({
         "receipt": serde_json::to_value(&receipt).unwrap(),
         "public_key": hex::encode(key.public_key_bytes()),
+        "format": "legacy",
     }))
+}
+
+/// Shared deterministic key and AIR v1 claims for sample endpoints.
+fn sample_key_and_claims() -> (
+    ephemeral_ml_common::receipt_signing::ReceiptSigningKey,
+    ephemeral_ml_common::air_receipt::AirReceiptClaims,
+) {
+    use ephemeral_ml_common::air_receipt::AirReceiptClaims;
+    use ephemeral_ml_common::receipt_signing::{EnclaveMeasurements, ReceiptSigningKey};
+
+    let signing_key = ed25519_dalek::SigningKey::from_bytes(&[0x42u8; 32]);
+    let verifying_key = signing_key.verifying_key();
+    let key = ReceiptSigningKey::from_parts(signing_key, verifying_key);
+
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_secs();
+
+    let claims = AirReceiptClaims {
+        iss: "cyntrisec.com".to_string(),
+        iat: now,
+        cti: [0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F, 0x10],
+        eat_nonce: None,
+        model_id: "minilm-l6-v2".to_string(),
+        model_version: "1.0.0".to_string(),
+        model_hash: [0xAA; 32],
+        request_hash: [0xBB; 32],
+        response_hash: [0xCC; 32],
+        attestation_doc_hash: [0xDD; 32],
+        enclave_measurements: EnclaveMeasurements::new(
+            vec![1u8; 48],
+            vec![2u8; 48],
+            vec![3u8; 48],
+        ),
+        policy_version: "policy-v1".to_string(),
+        sequence_number: 1,
+        execution_time_ms: 95,
+        memory_peak_mb: 64,
+        security_mode: "GatewayOnly".to_string(),
+        model_hash_scheme: None,
+    };
+
+    (key, claims)
 }
 
 /// Parse a hex-encoded Ed25519 public key.

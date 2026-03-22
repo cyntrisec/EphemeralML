@@ -805,11 +805,11 @@ async fn test_response_has_trust_center_shape() {
 // ==========================================================================
 
 #[tokio::test]
-async fn test_sample_valid_produces_verifiable_receipt() {
+async fn test_sample_air_v1_produces_verifiable_receipt() {
     let base = start_server().await;
     let client = reqwest::Client::new();
 
-    // Fetch the sample
+    // Fetch the AIR v1 sample
     let sample_resp = client
         .get(format!("{}/api/v1/samples/valid", base))
         .send()
@@ -817,8 +817,59 @@ async fn test_sample_valid_produces_verifiable_receipt() {
         .unwrap();
     assert_eq!(sample_resp.status(), 200);
     let sample: serde_json::Value = sample_resp.json().await.unwrap();
-    assert!(sample["receipt"].is_object());
+    assert!(sample["receipt_base64"].is_string(), "AIR v1 sample must have receipt_base64");
+    assert_eq!(sample["format"], "air_v1");
     assert!(sample["public_key"].is_string());
+
+    // Verify it — should pass (send base64 as string value)
+    let verify_resp = client
+        .post(format!("{}/api/v1/verify", base))
+        .json(&serde_json::json!({
+            "receipt": sample["receipt_base64"],
+            "public_key": sample["public_key"],
+        }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(verify_resp.status(), 200);
+    let body: serde_json::Value = verify_resp.json().await.unwrap();
+    assert_eq!(body["verified"], true, "AIR v1 sample must verify: {:?}", body["errors"]);
+    assert_eq!(body["verdict"], "verified");
+    assert_eq!(body["format"], "air_v1");
+
+    // Tamper the base64 and verify — should fail
+    let b64 = sample["receipt_base64"].as_str().unwrap();
+    let mid = b64.len() / 2;
+    let tampered_b64 = format!("{}TAMPERED{}", &b64[..mid], &b64[mid + 8..]);
+    let tamper_resp = client
+        .post(format!("{}/api/v1/verify", base))
+        .json(&serde_json::json!({
+            "receipt": tampered_b64,
+            "public_key": sample["public_key"],
+        }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(tamper_resp.status(), 200);
+    let tamper_body: serde_json::Value = tamper_resp.json().await.unwrap();
+    assert_eq!(tamper_body["verified"], false, "Tampered AIR v1 must fail");
+}
+
+#[tokio::test]
+async fn test_sample_legacy_produces_verifiable_receipt() {
+    let base = start_server().await;
+    let client = reqwest::Client::new();
+
+    // Fetch the legacy sample
+    let sample_resp = client
+        .get(format!("{}/api/v1/samples/legacy", base))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(sample_resp.status(), 200);
+    let sample: serde_json::Value = sample_resp.json().await.unwrap();
+    assert!(sample["receipt"].is_object(), "Legacy sample must have receipt object");
+    assert_eq!(sample["format"], "legacy");
 
     // Verify it — should pass
     let verify_resp = client
@@ -832,23 +883,6 @@ async fn test_sample_valid_produces_verifiable_receipt() {
         .unwrap();
     assert_eq!(verify_resp.status(), 200);
     let body: serde_json::Value = verify_resp.json().await.unwrap();
-    assert_eq!(body["verified"], true, "Sample receipt must verify: {:?}", body["errors"]);
-    assert_eq!(body["verdict"], "verified");
-
-    // Tamper and verify — should fail
-    let mut tampered = sample["receipt"].clone();
-    tampered["model_id"] = serde_json::Value::String("TAMPERED".to_string());
-    let tamper_resp = client
-        .post(format!("{}/api/v1/verify", base))
-        .json(&serde_json::json!({
-            "receipt": tampered,
-            "public_key": sample["public_key"],
-        }))
-        .send()
-        .await
-        .unwrap();
-    assert_eq!(tamper_resp.status(), 200);
-    let tamper_body: serde_json::Value = tamper_resp.json().await.unwrap();
-    assert_eq!(tamper_body["verified"], false, "Tampered receipt must fail verification");
-    assert_eq!(tamper_body["verdict"], "invalid");
+    assert_eq!(body["verified"], true, "Legacy sample must verify: {:?}", body["errors"]);
+    assert_eq!(body["format"], "legacy");
 }
