@@ -151,6 +151,44 @@ pub async fn verify_upload(
     Ok(Json(response))
 }
 
+/// `GET /api/v1/samples/valid` — generate a fresh signed sample receipt for demo.
+///
+/// Returns a JSON object with `receipt` (signed, verifiable) and `public_key` (hex).
+/// Uses a deterministic key seed so the key is stable across calls.
+pub async fn sample_valid() -> Json<serde_json::Value> {
+    use ephemeral_ml_common::receipt_signing::{
+        AttestationReceipt, EnclaveMeasurements, ReceiptSigningKey, SecurityMode,
+    };
+
+    // Deterministic key from fixed seed for demo stability.
+    let signing_key = ed25519_dalek::SigningKey::from_bytes(&[0x42u8; 32]);
+    let verifying_key = signing_key.verifying_key();
+    let key = ReceiptSigningKey::from_parts(signing_key, verifying_key);
+
+    let measurements = EnclaveMeasurements::new(vec![1u8; 48], vec![2u8; 48], vec![3u8; 48]);
+    let mut receipt = AttestationReceipt::new(
+        "sample-demo-receipt".to_string(),
+        1,
+        SecurityMode::GatewayOnly,
+        measurements,
+        [0xAA; 32], // attestation_doc_hash
+        [0xBB; 32], // request_hash
+        [0xCC; 32], // response_hash
+        "policy-v1".to_string(),
+        1,
+        "minilm-l6-v2".to_string(),
+        "v1.0".to_string(),
+        95,
+        64,
+    );
+    receipt.sign(&key).unwrap();
+
+    Json(serde_json::json!({
+        "receipt": serde_json::to_value(&receipt).unwrap(),
+        "public_key": hex::encode(key.public_key_bytes()),
+    }))
+}
+
 /// Parse a hex-encoded Ed25519 public key.
 fn parse_hex_public_key(hex_str: &str) -> Result<VerifyingKey, (StatusCode, Json<ErrorResponse>)> {
     let bytes =

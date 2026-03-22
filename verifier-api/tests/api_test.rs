@@ -799,3 +799,56 @@ async fn test_response_has_trust_center_shape() {
     assert!(first_check["label"].is_string());
     assert!(first_check["status"].is_string());
 }
+
+// ==========================================================================
+// Sample endpoint tests
+// ==========================================================================
+
+#[tokio::test]
+async fn test_sample_valid_produces_verifiable_receipt() {
+    let base = start_server().await;
+    let client = reqwest::Client::new();
+
+    // Fetch the sample
+    let sample_resp = client
+        .get(format!("{}/api/v1/samples/valid", base))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(sample_resp.status(), 200);
+    let sample: serde_json::Value = sample_resp.json().await.unwrap();
+    assert!(sample["receipt"].is_object());
+    assert!(sample["public_key"].is_string());
+
+    // Verify it — should pass
+    let verify_resp = client
+        .post(format!("{}/api/v1/verify", base))
+        .json(&serde_json::json!({
+            "receipt": sample["receipt"],
+            "public_key": sample["public_key"],
+        }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(verify_resp.status(), 200);
+    let body: serde_json::Value = verify_resp.json().await.unwrap();
+    assert_eq!(body["verified"], true, "Sample receipt must verify: {:?}", body["errors"]);
+    assert_eq!(body["verdict"], "verified");
+
+    // Tamper and verify — should fail
+    let mut tampered = sample["receipt"].clone();
+    tampered["model_id"] = serde_json::Value::String("TAMPERED".to_string());
+    let tamper_resp = client
+        .post(format!("{}/api/v1/verify", base))
+        .json(&serde_json::json!({
+            "receipt": tampered,
+            "public_key": sample["public_key"],
+        }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(tamper_resp.status(), 200);
+    let tamper_body: serde_json::Value = tamper_resp.json().await.unwrap();
+    assert_eq!(tamper_body["verified"], false, "Tampered receipt must fail verification");
+    assert_eq!(tamper_body["verdict"], "invalid");
+}

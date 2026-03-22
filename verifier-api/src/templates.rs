@@ -203,7 +203,7 @@ pub const LANDING_HTML: &str = r##"<!DOCTYPE html>
         <li>It does not independently verify the attestation document or hardware measurements referenced in the receipt.</li>
         <li>It does not prove data was deleted after processing.</li>
         <li>It does not constitute a compliance determination under any regulatory framework.</li>
-        <li>Control mapping shown above is illustrative, not a legal conclusion.</li>
+        <li>Receipt fields may support evidence workflows relevant to compliance, but verification alone is not a legal conclusion.</li>
       </ul>
     </div>
 
@@ -219,24 +219,20 @@ pub const LANDING_HTML: &str = r##"<!DOCTYPE html>
 let lastResponse = null;
 
 /* ── Samples ───────────────────────────────────────── */
-const SAMPLES = {
-  valid: {
-    receipt: {"receipt_id":"c883ec96-59ff-479b-95bb-ed45200a7bd9","protocol_version":1,"security_mode":"GatewayOnly","enclave_measurements":{"pcr0":[0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47],"pcr1":[1,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47],"pcr2":[2,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47],"pcr8":null,"measurement_type":"nitro-pcr"},"attestation_doc_hash":[10,10,10,10,10,10,10,10,10,10,10,10,10,10,10,10,10,10,10,10,10,10,10,10,10,10,10,10,10,10,10,10],"request_hash":[20,20,20,20,20,20,20,20,20,20,20,20,20,20,20,20,20,20,20,20,20,20,20,20,20,20,20,20,20,20,20,20],"response_hash":[30,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30],"model_id":"stage-0","model_version":"v1.0","execution_time_ms":95,"memory_peak_mb":64,"sequence_number":1,"policy_version":"policy-v1","signature":null},
-    note: "This is a demo sample. The signature field is null, so signature verification will fail. In a real deployment, receipts are signed by the enclave."
-  }
-};
-
-function loadSample(name) {
-  const s = SAMPLES[name];
-  if (!s) return;
-  switchTab('paste');
-  document.getElementById('receiptJson').value = JSON.stringify(s.receipt, null, 2);
-  document.getElementById('publicKeyHex').value = '0'.repeat(64);
-  if (name === 'tampered') {
-    const r = JSON.parse(JSON.stringify(s.receipt));
-    r.model_id = 'TAMPERED-model';
-    document.getElementById('receiptJson').value = JSON.stringify(r, null, 2);
-  }
+async function loadSample(name) {
+  try {
+    const resp = await fetch('/api/v1/samples/valid');
+    const data = await resp.json();
+    switchTab('paste');
+    if (name === 'tampered') {
+      const r = data.receipt;
+      r.model_id = 'TAMPERED-model';
+      document.getElementById('receiptJson').value = JSON.stringify(r, null, 2);
+    } else {
+      document.getElementById('receiptJson').value = JSON.stringify(data.receipt, null, 2);
+    }
+    document.getElementById('publicKeyHex').value = data.public_key;
+  } catch (err) { alert('Failed to load sample: ' + err.message); }
 }
 
 /* ── Tabs ──────────────────────────────────────────── */
@@ -258,14 +254,17 @@ async function verifyPaste(e) {
   const receipt = document.getElementById('receiptJson').value.trim();
   const key = document.getElementById('publicKeyHex').value.trim();
   if (!receipt || !key) return alert('Please provide both receipt and public key.');
-  let parsed;
-  try { parsed = JSON.parse(receipt); } catch { return alert('Invalid JSON in receipt field.'); }
+  let receiptValue;
+  try { receiptValue = JSON.parse(receipt); } catch {
+    // Not valid JSON — treat as raw base64 string.
+    receiptValue = receipt;
+  }
   showSpinner(true);
   try {
     const resp = await fetch('/api/v1/verify', {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({receipt: parsed, public_key: key})
+      body: JSON.stringify({receipt: receiptValue, public_key: key})
     });
     const data = await resp.json();
     if (!resp.ok && data.error) { alert('Error: ' + data.error); return; }

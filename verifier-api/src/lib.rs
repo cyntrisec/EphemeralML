@@ -128,6 +128,7 @@ fn build_router_inner(cors: CorsLayer, state: AppState) -> Router {
         .route("/health", get(routes::health))
         .route("/api/v1/verify", post(routes::verify_json))
         .route("/api/v1/verify/upload", post(routes::verify_upload))
+        .route("/api/v1/samples/valid", get(routes::sample_valid))
         .route_layer(middleware::from_fn_with_state(
             state.clone(),
             auth::auth_middleware,
