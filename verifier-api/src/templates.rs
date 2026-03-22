@@ -196,24 +196,22 @@ function showResult(data) {
   banner.textContent = data.verified ? 'VERIFIED' : 'INVALID';
   banner.className = 'banner ' + (data.verified ? 'verified' : 'invalid');
 
+  const r = data.receipt || {};
   const meta = document.getElementById('meta');
   meta.innerHTML = `
-    <dt>Receipt ID</dt><dd class="mono">${esc(data.receipt_id||'')}</dd>
-    <dt>Model</dt><dd>${esc(data.model_id||'')} v${esc(data.model_version||'')}</dd>
-    <dt>Platform</dt><dd>${esc(data.measurement_type||'')}</dd>
-    <dt>Sequence</dt><dd>#${data.sequence_number||0}</dd>
-    <dt>Timestamp</dt><dd>${data.execution_timestamp ? new Date(data.execution_timestamp*1000).toISOString() : 'N/A'}</dd>
+    <dt>Receipt ID</dt><dd class="mono">${esc(r.receipt_id||'')}</dd>
+    <dt>Model</dt><dd>${esc(r.model_id||'')} v${esc(r.model_version||'')}</dd>
+    <dt>Platform</dt><dd>${esc(r.platform||'')}</dd>
+    <dt>Format</dt><dd>${esc(data.format||'')}</dd>
+    <dt>Issued at</dt><dd>${r.issued_at ? new Date(r.issued_at*1000).toISOString() : 'N/A'}</dd>
     <dt>Verified at</dt><dd>${data.verified_at ? new Date(data.verified_at*1000).toISOString() : 'N/A'}</dd>
   `;
 
   const checks = document.getElementById('checks');
-  const c = data.checks || {};
-  checks.innerHTML = '<h4 style="margin-bottom:0.5rem;color:var(--text-secondary)">Checks</h4>' +
-    checkRow('Signature (Ed25519)', c.signature) +
-    checkRow('Model ID match', c.model_match) +
-    checkRow('Measurement type', c.measurement_type) +
-    checkRow('Timestamp freshness', c.timestamp_fresh) +
-    checkRow('Measurements present', c.measurements_present);
+  const arr = Array.isArray(data.checks) ? data.checks : [];
+  let checksHtml = '<h4 style="margin-bottom:0.5rem;color:var(--text-secondary)">Checks</h4>';
+  arr.forEach(c => { checksHtml += checkRow(c.label || c.id, c.status); });
+  checks.innerHTML = checksHtml;
 
   const issues = document.getElementById('issues');
   let html = '';

@@ -2,11 +2,11 @@ use axum::extract::Multipart;
 use axum::http::StatusCode;
 use axum::response::{Html, Json};
 use ed25519_dalek::VerifyingKey;
-use ephemeral_ml_common::receipt_verify::{verify_receipt, VerifyOptions};
-use ephemeral_ml_common::AttestationReceipt;
 
-use crate::api_types::{ApiVerifyResponse, ErrorResponse, VerifyRequest};
+use crate::api_types::{ErrorResponse, VerifyRequest};
 use crate::templates::LANDING_HTML;
+use crate::verify_dispatch::{self, DispatchPolicy};
+use crate::view_model::TrustCenterResponse;
 
 /// `GET /` — landing page with paste/upload form.
 pub async fn landing_page() -> Html<&'static str> {
@@ -19,32 +19,34 @@ pub async fn health() -> Json<serde_json::Value> {
 }
 
 /// `POST /api/v1/verify` — verify a receipt from JSON body.
+///
+/// Accepts both AIR v1 (base64 COSE_Sign1) and legacy receipts (JSON object or base64 CBOR).
 pub async fn verify_json(
     Json(body): Json<VerifyRequest>,
-) -> Result<Json<ApiVerifyResponse>, (StatusCode, Json<ErrorResponse>)> {
+) -> Result<Json<TrustCenterResponse>, (StatusCode, Json<ErrorResponse>)> {
     let public_key = parse_hex_public_key(&body.public_key)?;
-    let receipt = parse_receipt_value(&body.receipt)?;
 
-    let options = VerifyOptions {
+    let policy = DispatchPolicy {
         expected_model: body.expected_model,
         expected_measurement_type: Some(body.measurement_type),
         max_age_secs: body.max_age_secs,
         expected_attestation_source: body.expected_attestation_source,
         expected_image_digest: body.expected_image_digest,
-        require_destroy_evidence: false,
     };
 
-    let result = verify_receipt(&receipt, &public_key, &options);
-    Ok(Json(ApiVerifyResponse::from_result(result)))
+    let response = verify_dispatch::verify_json_value(&body.receipt, &public_key, &policy)
+        .map_err(|e| bad_request(e))?;
+
+    Ok(Json(response))
 }
 
 /// `POST /api/v1/verify/upload` — verify a receipt from multipart upload.
 ///
-/// Accepts the same policy fields as the JSON endpoint via text parts:
-/// `expected_model`, `measurement_type`, `max_age_secs`.
+/// Accepts the same policy fields as the JSON endpoint via text parts.
+/// Automatically detects AIR v1 vs legacy format from the uploaded bytes.
 pub async fn verify_upload(
     mut multipart: Multipart,
-) -> Result<Json<ApiVerifyResponse>, (StatusCode, Json<ErrorResponse>)> {
+) -> Result<Json<TrustCenterResponse>, (StatusCode, Json<ErrorResponse>)> {
     let mut receipt_bytes: Option<Vec<u8>> = None;
     let mut public_key_hex: Option<String> = None;
     let mut expected_model: Option<String> = None;
@@ -135,21 +137,18 @@ pub async fn verify_upload(
 
     let public_key = parse_hex_public_key(&key_hex)?;
 
-    // Try CBOR first, then JSON
-    let receipt: AttestationReceipt = ephemeral_ml_common::cbor::from_slice(&receipt_data)
-        .or_else(|_| serde_json::from_slice(&receipt_data))
-        .map_err(|_| bad_request("Failed to parse receipt (tried CBOR and JSON)"))?;
-
-    let options = VerifyOptions {
+    let policy = DispatchPolicy {
         expected_model,
         expected_measurement_type: Some(measurement_type),
         max_age_secs,
         expected_attestation_source,
         expected_image_digest,
-        require_destroy_evidence: false,
     };
-    let result = verify_receipt(&receipt, &public_key, &options);
-    Ok(Json(ApiVerifyResponse::from_result(result)))
+
+    let response = verify_dispatch::verify_bytes(&receipt_data, &public_key, &policy)
+        .map_err(|e| bad_request(e))?;
+
+    Ok(Json(response))
 }
 
 /// Parse a hex-encoded Ed25519 public key.
@@ -165,28 +164,6 @@ fn parse_hex_public_key(hex_str: &str) -> Result<VerifyingKey, (StatusCode, Json
     let mut arr = [0u8; 32];
     arr.copy_from_slice(&bytes);
     VerifyingKey::from_bytes(&arr).map_err(|_| bad_request("Invalid Ed25519 public key"))
-}
-
-/// Parse receipt from a `serde_json::Value`.
-///
-/// Accepts either a JSON object (deserialized directly) or a base64 string
-/// (decoded as CBOR).
-fn parse_receipt_value(
-    value: &serde_json::Value,
-) -> Result<AttestationReceipt, (StatusCode, Json<ErrorResponse>)> {
-    match value {
-        serde_json::Value::Object(_) => serde_json::from_value(value.clone())
-            .map_err(|e| bad_request(format!("Invalid receipt JSON: {}", e))),
-        serde_json::Value::String(s) => {
-            let bytes = base64::Engine::decode(&base64::engine::general_purpose::STANDARD, s)
-                .map_err(|e| bad_request(format!("Invalid base64 receipt: {}", e)))?;
-            ephemeral_ml_common::cbor::from_slice(&bytes)
-                .map_err(|e| bad_request(format!("Invalid CBOR receipt: {}", e)))
-        }
-        _ => Err(bad_request(
-            "receipt must be a JSON object or base64 string",
-        )),
-    }
 }
 
 fn bad_request(msg: impl Into<String>) -> (StatusCode, Json<ErrorResponse>) {

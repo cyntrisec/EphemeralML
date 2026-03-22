@@ -3,6 +3,8 @@ pub mod auth;
 pub mod rate_limit;
 pub mod routes;
 pub mod templates;
+pub mod verify_dispatch;
+pub mod view_model;
 
 use axum::middleware;
 use axum::routing::{get, post};
@@ -20,9 +22,20 @@ pub struct AppState {
     pub rate_limiter: Option<RateLimiter>,
 }
 
+/// Deployment mode for the verifier service.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ServiceMode {
+    /// Public trust center: no API key, rate-limited, explicit CORS.
+    PublicTrustCenter,
+    /// Secured API: API key required, explicit CORS.
+    SecuredApi,
+}
+
 /// Server configuration for production deployments.
 pub struct ServerConfig {
-    /// API key for authentication. `None` disables auth.
+    /// Deployment mode.
+    pub mode: ServiceMode,
+    /// API key for authentication (required in SecuredApi mode).
     pub api_key: Option<String>,
     /// Maximum requests per minute per IP. 0 disables rate limiting.
     pub requests_per_minute: u32,
@@ -52,7 +65,36 @@ pub fn build_router_with_origins(origins: &[String]) -> Router {
 }
 
 /// Build the router with full production configuration.
+///
+/// Enforces mode invariants:
+/// - `PublicTrustCenter`: api_key must be None, rate limiting must be active.
+/// - `SecuredApi`: api_key must be Some.
+///
+/// # Panics
+///
+/// Panics if the config violates mode invariants. Callers (main.rs, tests)
+/// are expected to construct valid configs.
 pub fn build_router_with_config(config: &ServerConfig) -> Router {
+    // Enforce mode invariants so programmatic callers cannot bypass guardrails.
+    match config.mode {
+        ServiceMode::PublicTrustCenter => {
+            assert!(
+                config.api_key.is_none(),
+                "PublicTrustCenter mode must not have an API key"
+            );
+            assert!(
+                config.requests_per_minute > 0,
+                "PublicTrustCenter mode requires a positive rate limit (got 0)"
+            );
+        }
+        ServiceMode::SecuredApi => {
+            assert!(
+                config.api_key.is_some(),
+                "SecuredApi mode requires an API key"
+            );
+        }
+    }
+
     let cors = make_cors_layer(&config.cors_origins);
     let rate_limiter = if config.requests_per_minute > 0 {
         let limiter = RateLimiter::new(config.requests_per_minute);

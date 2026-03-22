@@ -27,13 +27,14 @@ The verify endpoints require an API key only in `secured-api` mode. In `public-t
 
 | Flag / Env Var | Default | Description |
 |----------------|---------|-------------|
-| `--api-key` / `EPHEMERALML_VERIFIER_API_KEY` | (none) | API key for verify endpoints |
-| `--insecure-no-auth` / `EPHEMERALML_VERIFIER_NO_AUTH=true` | `false` | Disable auth (dev only) |
+| `--mode` / `EPHEMERALML_VERIFIER_MODE` | (none) | `public-trust-center` or `secured-api` |
+| `--api-key` / `EPHEMERALML_VERIFIER_API_KEY` | (none) | API key (required for `secured-api` mode) |
+| `--insecure-no-auth` / `EPHEMERALML_VERIFIER_NO_AUTH=true` | `false` | Deprecated; maps to `public-trust-center` |
 
-**Startup behavior:**
-- If `--api-key` is set: auth enabled, verify endpoints require the key
-- If `--insecure-no-auth`: auth disabled, loud warning logged
-- If neither: **startup fails** with instructions (fail-closed)
+**Service modes:**
+- `--mode public-trust-center`: No API key. Rate limiting enforced. Designed for public internet-facing receipt verification.
+- `--mode secured-api --api-key <KEY>`: API key required. For internal or enterprise use.
+- If neither mode nor `--insecure-no-auth`: **startup fails** with instructions (fail-closed).
 
 Health (`/health`), landing page (`/`), and sample endpoints (`/api/v1/samples/*`) never require auth.
 
@@ -84,32 +85,42 @@ Set to `0` to disable in `secured-api` mode. `public-trust-center` mode requires
 | `expected_model` | string | No | skip | Expected model ID |
 | `max_age_secs` | u64 | No | `0` (skip) | Max receipt age |
 | `measurement_type` | string | No | `"any"` | Expected measurement type |
-| `expected_attestation_source` | string | No | skip | e.g. `"cs-tdx"`, `"aws-nitro"` |
+| `expected_attestation_source` | string | No | skip | e.g. `"cs-tdx"`, `"nitro"` |
 | `expected_image_digest` | string | No | skip | e.g. `"sha256:abc123"` |
 
-**Response (200):**
+**Response (200) — Trust Center response:**
 
 ```json
 {
+  "verdict": "verified",
   "verified": true,
-  "receipt_id": "98aee3e7-...",
-  "model_id": "minilm-l6-v2",
-  "model_version": "v1.0",
-  "checks": {
-    "signature": "pass",
-    "model_match": "pass",
-    "measurement_type": "skip",
-    "timestamp_fresh": "skip",
-    "measurements_present": "pass",
-    "attestation_source": "skip",
-    "image_digest": "skip"
-  },
-  "errors": [],
-  "warnings": [],
+  "format": "legacy",
   "api_version": "v1",
-  "verified_at": 1708000100
+  "verified_at": 1708000100,
+  "receipt": {
+    "receipt_id": "98aee3e7-...",
+    "model_id": "minilm-l6-v2",
+    "model_version": "v1.0",
+    "platform": "nitro-pcr",
+    "sequence_number": 1,
+    "issued_at": 1708000000
+  },
+  "checks": [
+    { "id": "signature", "label": "Signature (Ed25519)", "status": "pass", "layer": "crypto" },
+    { "id": "model_match", "label": "Model ID match", "status": "pass", "layer": "policy" },
+    { "id": "measurement_type", "label": "Measurement type", "status": "skip", "layer": "policy" },
+    { "id": "timestamp_fresh", "label": "Timestamp freshness", "status": "skip", "layer": "policy" },
+    { "id": "measurements_present", "label": "Measurements present", "status": "pass", "layer": "claim" },
+    { "id": "attestation_source", "label": "Attestation source", "status": "skip", "layer": "policy" },
+    { "id": "image_digest", "label": "Image digest", "status": "skip", "layer": "policy" },
+    { "id": "destroy_evidence", "label": "Destroy evidence", "status": "skip", "layer": "policy" }
+  ]
 }
 ```
+
+**Format values:** `"legacy"` (EphemeralML JSON/CBOR receipt) or `"air_v1"` (AIR v1 COSE_Sign1).
+
+AIR v1 receipts submitted as base64 strings or uploaded as `.cbor` files are automatically detected and verified through the AIR v1 4-layer verification pipeline. The response shape is the same for both formats.
 
 ## Multipart Endpoint
 
