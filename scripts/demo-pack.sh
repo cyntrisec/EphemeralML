@@ -48,21 +48,18 @@ else
     echo "        (skipping build, using existing server)"
 fi
 
+FRESH_LEGACY=false
+
 # Check if server is running
 if [ -f "$PROJECT_DIR/.demo-server.pid" ] && kill -0 "$(cat "$PROJECT_DIR/.demo-server.pid")" 2>/dev/null; then
     bash "$SCRIPT_DIR/demo.sh" infer
     cp "$PROJECT_DIR/demo-receipt.json" "$PACK_DIR/receipt.json"
     cp "$PROJECT_DIR/demo-receipt.json.pubkey" "$PACK_DIR/receipt.json.pubkey"
-    echo "        Legacy receipt saved."
+    FRESH_LEGACY=true
+    echo "        Legacy receipt saved (fresh, verifiable)."
 else
-    echo "        Server not running; using saved demo artifact as fallback."
-    if [ -f "$PROJECT_DIR/demo-artifacts/receipt-local.json" ]; then
-        cp "$PROJECT_DIR/demo-artifacts/receipt-local.json" "$PACK_DIR/receipt.json"
-        cp "$PROJECT_DIR/demo-artifacts/receipt-local.json.pubkey" "$PACK_DIR/receipt.json.pubkey"
-    else
-        echo "  ERROR: No demo artifacts available. Run 'bash scripts/demo.sh all' first."
-        exit 1
-    fi
+    echo "        WARNING: Server not running. Skipping legacy receipt generation."
+    echo "        Run without --skip-build to generate a fresh, verifiable legacy receipt."
 fi
 
 # ── Step 2: Generate AIR v1 receipt ──────────────────────
@@ -128,9 +125,7 @@ wait "$VERIFIER_PID" 2>/dev/null || true
 
 echo "  [3/5] Capturing verification outputs..."
 
-PUBKEY_HEX=$(cat "$PACK_DIR/receipt.json.pubkey" | xxd -p -c 64 2>/dev/null || od -A n -t x1 "$PACK_DIR/receipt.json.pubkey" | tr -d ' \n')
-
-if [ -f "$VERIFY_BIN" ]; then
+if [ "$FRESH_LEGACY" = true ] && [ -f "$VERIFY_BIN" ] && [ -f "$PACK_DIR/receipt.json" ]; then
     "$VERIFY_BIN" "$PACK_DIR/receipt.json" \
         --public-key-file "$PACK_DIR/receipt.json.pubkey" \
         --max-age 0 --plain \
@@ -149,11 +144,15 @@ json.dump(r, open('$PACK_DIR/.tampered.json', 'w'), indent=2)
         --max-age 0 --plain \
         > "$PACK_DIR/tamper-output.txt" 2>&1 || true
     rm -f "$PACK_DIR/.tampered.json"
-    echo "        Verification outputs captured."
+    echo "        Verification outputs captured (from fresh receipt)."
+elif [ "$FRESH_LEGACY" = false ]; then
+    echo "        Skipping legacy verification outputs (no fresh receipt)."
+    echo "(not generated — run without --skip-build to produce a fresh verifiable receipt)" > "$PACK_DIR/verify-output.txt"
+    echo "(not generated — run without --skip-build to produce a fresh verifiable receipt)" > "$PACK_DIR/tamper-output.txt"
 else
     echo "        ephemeralml-verify not found; skipping output capture."
-    echo "(verify output not captured — build ephemeralml-verify first)" > "$PACK_DIR/verify-output.txt"
-    echo "(tamper output not captured — build ephemeralml-verify first)" > "$PACK_DIR/tamper-output.txt"
+    echo "(not generated — build ephemeralml-verify first)" > "$PACK_DIR/verify-output.txt"
+    echo "(not generated — build ephemeralml-verify first)" > "$PACK_DIR/tamper-output.txt"
 fi
 
 # ── Step 4: Generate vertical briefs ─────────────────────
@@ -302,6 +301,17 @@ echo "  [5/5] Generating pack README..."
 
 TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
 
+LEGACY_NOTE=""
+if [ "$FRESH_LEGACY" = true ]; then
+    LEGACY_NOTE="| \`receipt.json\` | Signed legacy receipt from mock inference (fresh, verifiable) |
+| \`receipt.json.pubkey\` | Ed25519 public key (32 bytes) |
+| \`verify-output.txt\` | CLI verification output (VERIFIED) |
+| \`tamper-output.txt\` | CLI tamper detection output (INVALID) |"
+else
+    LEGACY_NOTE="| \`verify-output.txt\` | Not generated (run without --skip-build for verifiable outputs) |
+| \`tamper-output.txt\` | Not generated (run without --skip-build for verifiable outputs) |"
+fi
+
 cat > "$PACK_DIR/README.md" << EOF
 # Cyntrisec Demo Asset Pack
 
@@ -311,12 +321,9 @@ Generated: $TIMESTAMP
 
 | File | Description |
 |------|-------------|
-| \`receipt.json\` | Signed legacy receipt from mock inference |
-| \`receipt.json.pubkey\` | Ed25519 public key (32 bytes) |
-| \`air-v1-receipt.cbor\` | AIR v1 COSE_Sign1 receipt (standard format) |
+| \`air-v1-receipt.cbor\` | AIR v1 COSE_Sign1 receipt (primary format, always verifiable) |
 | \`air-v1-receipt.pubkey\` | Ed25519 public key (hex) |
-| \`verify-output.txt\` | CLI verification output (VERIFIED) |
-| \`tamper-output.txt\` | CLI tamper detection output (INVALID) |
+$LEGACY_NOTE
 | \`healthcare-brief.md\` | Healthcare vertical narrative |
 | \`finance-brief.md\` | Finance vertical narrative |
 | \`legal-brief.md\` | Legal vertical narrative |
@@ -324,10 +331,7 @@ Generated: $TIMESTAMP
 ## Quick Verification
 
 \`\`\`bash
-# Legacy receipt
-ephemeralml-verify receipt.json --public-key-file receipt.json.pubkey --max-age 0
-
-# AIR v1 receipt
+# AIR v1 receipt (always included and verifiable)
 ephemeralml-verify air-v1-receipt.cbor --public-key \$(cat air-v1-receipt.pubkey)
 \`\`\`
 
@@ -338,10 +342,19 @@ Upload any receipt to the Cyntrisec Trust Center for browser-based verification:
 
 ## Usage
 
-- **Live demo:** Use \`receipt.json\` + \`receipt.json.pubkey\` in the CLI demo flow
+- **Live demo:** Use \`air-v1-receipt.cbor\` + \`air-v1-receipt.pubkey\` in the CLI demo flow
 - **Async outbound:** Attach a vertical brief + receipt to discovery messages
-- **Investor deck:** Reference verify-output.txt and tamper-output.txt screenshots
+- **Investor deck:** Reference the AIR v1 receipt and verification output
 - **Trust center:** Upload the receipt to the hosted verifier
+
+## Regeneration
+
+To produce a complete pack with fresh legacy receipts and verification outputs:
+\`\`\`bash
+bash scripts/demo-pack.sh
+\`\`\`
+
+Use \`--skip-build\` only for the AIR v1 receipt and vertical briefs (no legacy receipt or CLI outputs).
 EOF
 
 echo "        README saved."
