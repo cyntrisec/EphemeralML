@@ -4,6 +4,7 @@
 //! response shape that the UI and API consumers can rely on, regardless
 //! of the underlying receipt format.
 
+use ephemeral_ml_common::ui::{air_check_meta, legacy_check_meta};
 use serde::Serialize;
 
 /// Overall verification verdict.
@@ -114,62 +115,14 @@ impl TrustCenterResponse {
 
         let c = &result.checks;
         let checks = vec![
-            TrustCenterCheck {
-                id: "signature",
-                label: "Signature (Ed25519)",
-                status: map_status(&c.signature),
-                layer: Some("crypto"),
-                detail: None,
-            },
-            TrustCenterCheck {
-                id: "model_match",
-                label: "Model ID match",
-                status: map_status(&c.model_match),
-                layer: Some("policy"),
-                detail: None,
-            },
-            TrustCenterCheck {
-                id: "measurement_type",
-                label: "Measurement type",
-                status: map_status(&c.measurement_type),
-                layer: Some("policy"),
-                detail: None,
-            },
-            TrustCenterCheck {
-                id: "timestamp_fresh",
-                label: "Timestamp freshness",
-                status: map_status(&c.timestamp_fresh),
-                layer: Some("policy"),
-                detail: None,
-            },
-            TrustCenterCheck {
-                id: "measurements_present",
-                label: "Measurements present",
-                status: map_status(&c.measurements_present),
-                layer: Some("claim"),
-                detail: None,
-            },
-            TrustCenterCheck {
-                id: "attestation_source",
-                label: "Attestation source",
-                status: map_status(&c.attestation_source),
-                layer: Some("policy"),
-                detail: None,
-            },
-            TrustCenterCheck {
-                id: "image_digest",
-                label: "Image digest",
-                status: map_status(&c.image_digest),
-                layer: Some("policy"),
-                detail: None,
-            },
-            TrustCenterCheck {
-                id: "destroy_evidence",
-                label: "Destroy evidence",
-                status: map_status(&c.destroy_evidence),
-                layer: Some("policy"),
-                detail: None,
-            },
+            legacy_check("signature", map_status(&c.signature)),
+            legacy_check("model_match", map_status(&c.model_match)),
+            legacy_check("measurement_type", map_status(&c.measurement_type)),
+            legacy_check("timestamp_fresh", map_status(&c.timestamp_fresh)),
+            legacy_check("measurements_present", map_status(&c.measurements_present)),
+            legacy_check("attestation_source", map_status(&c.attestation_source)),
+            legacy_check("image_digest", map_status(&c.image_digest)),
+            legacy_check("destroy_evidence", map_status(&c.destroy_evidence)),
         ];
 
         TrustCenterResponse {
@@ -213,23 +166,18 @@ impl TrustCenterResponse {
                     AirCheckStatus::Fail => CheckStatus::Fail,
                     AirCheckStatus::Skip => CheckStatus::Skip,
                 };
-                // Map AIR check names to layer categories.
-                // Names must match actual AirCheck names emitted by air_verify.rs.
-                let layer = match c.name {
-                    "SIZE" | "COSE_DECODE" | "ALG" | "CONTENT_TYPE" | "PAYLOAD"
-                    | "CLAIMS_DECODE" | "EAT_PROFILE" => Some("parse"),
-                    "SIG" => Some("crypto"),
-                    "CTI" | "MHASH_PRESENT" | "MEAS" | "MTYPE" | "MHASH_SCHEME" => Some("claim"),
-                    n if n.starts_with("CLAIM_") || n.starts_with("HASH_") => Some("claim"),
-                    // Layer 4 policy: FRESH, MHASH, MODEL, PLATFORM, NONCE, REPLAY
-                    _ => Some("policy"),
-                };
+                let meta = air_check_meta(c.name);
+                let failed = matches!(c.status, AirCheckStatus::Fail);
+                let detail = c.detail.clone().or_else(|| {
+                    ephemeral_ml_common::ui::explain_failed(c.name, failed)
+                        .map(|e| e.why.to_string())
+                });
                 TrustCenterCheck {
                     id: c.name,
-                    label: air_check_label(c.name),
+                    label: meta.label,
                     status,
-                    layer,
-                    detail: c.detail.clone(),
+                    layer: meta.layer,
+                    detail,
                 }
             })
             .collect();
@@ -297,45 +245,18 @@ impl TrustCenterResponse {
     }
 }
 
-/// Map AIR check name to a human-readable label.
-///
-/// Names must match the actual `AirCheck.name` values emitted by
-/// `common/src/air_verify.rs`. Keep this in sync when adding checks.
-fn air_check_label(name: &str) -> &'static str {
-    match name {
-        // Layer 1: parse
-        "SIZE" => "Receipt size limit",
-        "COSE_DECODE" => "COSE envelope",
-        "ALG" => "Algorithm header",
-        "CONTENT_TYPE" => "Content type",
-        "PAYLOAD" => "Payload present",
-        "CLAIMS_DECODE" => "Claims structure",
-        "EAT_PROFILE" => "AIR v1 profile",
-        // Layer 2: crypto
-        "SIG" => "Signature (Ed25519)",
-        // Layer 3: claim validation
-        "CTI" => "Receipt ID valid",
-        "MHASH_PRESENT" => "Model hash non-zero",
-        "MEAS" => "Measurements present",
-        "MTYPE" => "Measurement type valid",
-        "MHASH_SCHEME" => "Model hash scheme",
-        // Layer 4: policy
-        "FRESH" => "Timestamp freshness",
-        "MHASH" => "Model hash match",
-        "MODEL" => "Model ID match",
-        "PLATFORM" => "Platform match",
-        "NONCE" => "Nonce match",
-        "REPLAY" => "Replay detection",
-        // Dynamic prefixes
-        _ => {
-            if name.starts_with("CLAIM_") {
-                "Required claim present"
-            } else if name.starts_with("HASH_") {
-                "Hash field valid"
-            } else {
-                "Verification check"
-            }
-        }
+fn legacy_check(id: &'static str, status: CheckStatus) -> TrustCenterCheck {
+    use ephemeral_ml_common::ui::explain_failed;
+
+    let meta = legacy_check_meta(id).expect("legacy check metadata must exist");
+    let failed = matches!(status, CheckStatus::Fail);
+    let detail = explain_failed(id, failed).map(|e| e.why.to_string());
+    TrustCenterCheck {
+        id,
+        label: meta.label,
+        status,
+        layer: meta.layer,
+        detail,
     }
 }
 

@@ -75,7 +75,9 @@ When a verification check fails (`[FAIL]`), an inline explanation appears:
     Fix: Verify you are using the correct public key (--public-key or --public-key-file).
 ```
 
-All 7 checks have explanations: `signature`, `model_match`, `measurement_type`, `timestamp_fresh`, `measurements_present`, `attestation_source`, `image_digest`.
+All 8 legacy checks have explanations: `signature`, `model_match`, `measurement_type`, `timestamp_fresh`, `measurements_present`, `attestation_source`, `image_digest`, `destroy_evidence`.
+
+AIR v1 text output uses the same canonical human-facing labels as the hosted trust center. When AIR checks are dynamic (for example `CLAIM_*` or `HASH_*`), the output keeps the raw check ID alongside the shared label.
 
 `[PASS]` and `[SKIP]` checks show no explanation.
 
