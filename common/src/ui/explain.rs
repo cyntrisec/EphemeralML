@@ -124,19 +124,19 @@ fn explain_by_name(name: &str) -> Option<CheckExplanation> {
         // ── AIR v1 check names (Layer 4: Policy) ───────────────────
         "FRESH" => CheckExplanation {
             why: "The receipt timestamp is stale or in the future.",
-            fix: "Increase the max_age_secs policy parameter, or check system clock sync.",
+            fix: "CLI: increase --max-age or set to 0 to skip. API: increase max_age_secs. Check system clock sync.",
         },
         "MHASH" => CheckExplanation {
             why: "The model_hash in the receipt does not match the expected value.",
-            fix: "Verify the expected_model_hash policy parameter matches the deployed model.",
+            fix: "This check is enforced via policy when an expected model hash is configured.",
         },
         "MODEL" => CheckExplanation {
             why: "The model_id in the receipt does not match the expected value.",
-            fix: "Check the expected_model_id policy parameter.",
+            fix: "CLI: check --expected-model. API: check expected_model in the request.",
         },
         "PLATFORM" => CheckExplanation {
             why: "The measurement_type does not match the expected platform.",
-            fix: "Check the expected_platform policy parameter (e.g. nitro-pcr, tdx-mrtd-rtmr).",
+            fix: "CLI: check --measurement-type (e.g. nitro-pcr, tdx-mrtd-rtmr, or any). API: check measurement_type in the request.",
         },
         "NONCE" => CheckExplanation {
             why: "The eat_nonce in the receipt does not match the expected challenge nonce.",

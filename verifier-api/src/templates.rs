@@ -361,6 +361,9 @@ function showResult(data) {
       <span class="check-label">${layerBadge}<span>${esc(c.label || c.id)}</span></span>
       <span class="badge ${s}">${s}</span>
     </div>`;
+    if (c.detail && s === 'fail') {
+      checksHtml += `<div style="padding:0.15rem 0 0.3rem 2rem;font-size:0.78rem;color:var(--text-muted)">${esc(c.detail)}</div>`;
+    }
   });
   checksEl.innerHTML = checksHtml;
 
