@@ -1451,11 +1451,50 @@
           <p class="section-desc" style="margin: var(--space-sm) auto 0; max-width: 760px;">AIR v1 covers attestation-linked execution evidence. Legacy EphemeralML compliance flows can additionally record self-reported cleanup events, but AIR v1 itself does not claim cryptographic proof of deletion.</p>
         </div>
 
-        <!-- Panel 1: Receipt Verify -->
+        <!-- Panel 1: AIR v1 Receipt Verify -->
+        <div class="term-panel" style="margin-bottom: var(--space-md);">
+          <div class="term-bar" role="button" tabindex="0" aria-expanded="false" aria-controls="term-air-verify">
+            <div class="term-dots"><span></span><span></span><span></span></div>
+            <div class="term-title">ephemeralml-verify receipt.cbor --public-key-file key.bin</div>
+            <div class="term-toggle" aria-hidden="true">&#9654;</div>
+          </div>
+          <div class="term-body" id="term-air-verify">
+<pre>
+<span class="t-bold">EphemeralML AIR v1 Receipt Verification</span>
+
+  Receipt:     01020304-0506-0708-090a-0b0c0d0e0f10
+  Model:       minilm-l6-v2 v1.0.0
+  Platform:    nitro-pcr
+  Sequence:    #1
+  Issuer:      cyntrisec.com
+
+  <span class="t-dim">--------------------------------------------------------------</span>
+  4-Layer Verification:
+  <span class="t-dim">--------------------------------------------------------------</span>
+  <span class="t-dim">[parse]</span>   COSE envelope              <span class="t-pass">[PASS]</span>
+  <span class="t-dim">[parse]</span>   Algorithm header            <span class="t-pass">[PASS]</span>
+  <span class="t-dim">[parse]</span>   Content type                <span class="t-pass">[PASS]</span>
+  <span class="t-dim">[parse]</span>   Payload present             <span class="t-pass">[PASS]</span>
+  <span class="t-dim">[parse]</span>   AIR v1 profile              <span class="t-pass">[PASS]</span>
+  <span class="t-dim">[crypto]</span>  Signature (Ed25519)         <span class="t-pass">[PASS]</span>
+  <span class="t-dim">[claim]</span>   Receipt ID valid            <span class="t-pass">[PASS]</span>
+  <span class="t-dim">[claim]</span>   Model hash non-zero         <span class="t-pass">[PASS]</span>
+  <span class="t-dim">[claim]</span>   Measurements present        <span class="t-pass">[PASS]</span>
+  <span class="t-dim">[claim]</span>   Measurement type valid      <span class="t-pass">[PASS]</span>
+  <span class="t-dim">[policy]</span>  Model ID match              <span class="t-skip">[SKIP]</span>
+  <span class="t-dim">[policy]</span>  Timestamp freshness         <span class="t-skip">[SKIP]</span>
+  <span class="t-dim">--------------------------------------------------------------</span>
+
+  <span class="t-pass">VERIFIED (AIR v1)</span>
+</pre>
+          </div>
+        </div>
+
+        <!-- Panel 2: Legacy Receipt Verify -->
         <div class="term-panel" style="margin-bottom: var(--space-md);">
           <div class="term-bar" role="button" tabindex="0" aria-expanded="false" aria-controls="term-verify">
             <div class="term-dots"><span></span><span></span><span></span></div>
-            <div class="term-title">ephemeralml-verify receipt.json --require-destroy-event</div>
+            <div class="term-title">ephemeralml-verify receipt.json</div>
             <div class="term-toggle" aria-hidden="true">&#9654;</div>
           </div>
           <div class="term-body" id="term-verify">
@@ -1477,7 +1516,7 @@
   Measurements present        <span class="t-pass">[PASS]</span>
   Attestation source          <span class="t-skip">[SKIP]</span>
   Image digest                <span class="t-skip">[SKIP]</span>
-  Cleanup-event evidence      <span class="t-pass">[PASS]</span>
+  Destroy evidence            <span class="t-skip">[SKIP]</span>
   <span class="t-dim">--------------------------------------------------------------</span>
 
   <span class="t-pass">VERIFIED</span>
