@@ -1,47 +1,67 @@
-# .gcloudignore — Cloud Build context overrides .gitignore.
-# We MUST include test_assets/**/*.safetensors for model bundling.
+# .gcloudignore — controls what gcloud uploads for Cloud Build.
+# Must be kept tight to avoid multi-GB uploads.
+# The verifier build only needs: Cargo.toml, Cargo.lock, common/, verifier-api/
 
-# Rust build artifacts (huge, never needed in context)
-/target/
+# Rust build artifacts
+target/
+.target_codex/
+.target_*/
 
-# IDE / OS noise
+# Git / IDE / OS
+.git/
+.github/
 .vscode/
 .idea/
-*.swp
-*.swo
-*~
 .DS_Store
+*.swp
+*~
 
-# Environment secrets
+# Terraform
+.terraform/
+*.tfstate
+*.tfstate.*
+
+# Environment / secrets
 .env
 .env.*
-
-# Private keys
 keys/*_private*
 
-# AWS Nitro artifacts (not needed for GCP build)
+# Large directories not needed for verifier build
+test_assets/
+examples/
+scripts/
+gateway-api/
+site/
+docs/
+spec/
+evidence/
+attestation-evidence/
+demo-artifacts/
+demo-pack/
+infra/
+benchmark_results/
+pilot-evidence/
+nvidia-disclosures/
+compliance/
+AGENTS/
+investor/
+
+# Crates not needed for verifier (stubs created in Dockerfile)
+client/
+host/
+enclave/
+
+# AWS Nitro artifacts
 *.eif
 enclave.dockerfile
 
-# Terraform state
-**/.terraform/
-**/*.tfstate
-**/*.tfstate.*
-
-# Python virtualenvs
+# Python
 env/
 venv/
 __pycache__/
 
-# Large non-essential dirs
-benchmark_results/
-docs/papers/
-docs/papers_llm/
-docs/aws-reference/
-docs/investors/
-infra/
-AGENTS/
-investor/
+# Markdown (not needed for build)
+*.md
 
-# Git metadata
-.git/
+# Claude workspace
+.claude/
