@@ -4,6 +4,12 @@ pub const LANDING_HTML: &str = r##"<!DOCTYPE html>
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>Cyntrisec Trust Center</title>
+  <meta name="description" content="Verify signed receipts from confidential AI inference. Independent, portable, tamper-evident."/>
+  <meta property="og:title" content="Cyntrisec Trust Center"/>
+  <meta property="og:description" content="Verify signed receipts from confidential AI inference."/>
+  <meta property="og:type" content="website"/>
+  <meta name="theme-color" content="#050505"/>
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='16' r='15' fill='%230a0a0a' stroke='%231e1e1e'/%3E%3Cpath d='M16 5C11.58 5 8 8.58 8 13v11l2.4-2.4 2.4 2.4 2.4-2.4L16 24l.8-2.4 2.4 2.4 2.4-2.4L24 24V13C24 8.58 20.42 5 16 5z' stroke='%2300d4ff' stroke-width='1.4' fill='none'/%3E%3Ccircle cx='13' cy='12.5' r='1.4' fill='%2300d4ff' opacity='.8'/%3E%3Ccircle cx='19' cy='12.5' r='1.4' fill='%2300d4ff' opacity='.8'/%3E%3C/svg%3E"/>
   <style>
     @import url("https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600;700&display=swap");
     *{margin:0;padding:0;box-sizing:border-box}
@@ -171,7 +177,7 @@ pub const LANDING_HTML: &str = r##"<!DOCTYPE html>
     <div class="workspace-grid">
       <section class="intro-panel">
         <div class="brand-row">
-          <div class="brand-mark">C</div>
+          <div class="brand-mark"><svg viewBox="0 0 40 40" width="28" height="28" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M20 4C13.37 4 8 9.37 8 16v14l3-3 3 3 3-3 3 3 3-3 3 3 3-3 3 3V16C32 9.37 26.63 4 20 4z" stroke="#00131b" stroke-width="1.8"/><circle cx="16" cy="15" r="1.8" fill="#00131b"/><circle cx="24" cy="15" r="1.8" fill="#00131b"/></svg></div>
           <div class="brand-copy">
             <small>Cyntrisec / Trust Center</small>
             <h1>Independent receipt verification</h1>
