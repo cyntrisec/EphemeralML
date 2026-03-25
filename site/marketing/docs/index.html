@@ -66,15 +66,7 @@
         to   { opacity: 1; transform: translateY(0); }
       }
 
-      @keyframes ghostFloat {
-        0%, 100% { transform: translateY(0); }
-        50%      { transform: translateY(-8px); }
-      }
-
-      @keyframes ghostPulse {
-        0%, 100% { opacity: 0.6; }
-        50%      { opacity: 1; }
-      }
+      /* ghostFloat/ghostPulse removed — static ghost */
 
       @keyframes termBlink {
         0%, 100% { opacity: 1; }
@@ -249,7 +241,7 @@
         width: 64px;
         height: 64px;
         margin: 0 auto var(--space-lg);
-        animation: ghostFloat 4s ease-in-out infinite, ghostPulse 4s ease-in-out infinite;
+        opacity: 0.6;
       }
 
       .ghost-corner {
@@ -259,7 +251,7 @@
         width: 36px;
         height: 36px;
         opacity: 0.15;
-        animation: ghostFloat 6s ease-in-out infinite;
+        /* static, no float */
         pointer-events: none;
         z-index: 50;
         transition: opacity 0.3s;

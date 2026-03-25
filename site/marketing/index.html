@@ -26,7 +26,7 @@
 
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet" />
+    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;0,9..40,800;0,9..40,900&family=IBM+Plex+Mono:wght@400;500;600;700&display=swap" rel="stylesheet" />
 
     <style>
       :root {
@@ -52,8 +52,8 @@
         --red-dim:     rgba(255, 51, 85, 0.08);
         --amber:       #ffaa00;
         --amber-dim:   rgba(255, 170, 0, 0.08);
-        --font-sans:   "Inter", -apple-system, BlinkMacSystemFont, sans-serif;
-        --font-mono:   "JetBrains Mono", "Fira Code", monospace;
+        --font-sans:   "DM Sans", -apple-system, BlinkMacSystemFont, sans-serif;
+        --font-mono:   "IBM Plex Mono", "Menlo", monospace;
         --max-w:       1100px;
         --radius-sm:   4px;
         --radius-md:   8px;
@@ -73,21 +73,13 @@
       ::selection { background: var(--accent-mid); color: var(--text-0); }
       a { color: inherit; text-decoration: none; }
 
-      /* Grain overlay */
-      body::after {
-        content: ""; position: fixed; inset: 0; pointer-events: none; z-index: 9999; opacity: 0.018;
-        background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
-        background-size: 256px;
-      }
+      /* (grain overlay removed — AI-slop pattern) */
 
       /* ---- Animations ---- */
       @keyframes fadeUp { from { opacity:0; transform:translateY(28px); } to { opacity:1; transform:translateY(0); } }
       @keyframes fadeIn { from { opacity:0; } to { opacity:1; } }
       @keyframes blink { 0%,50%{opacity:1}51%,100%{opacity:0} }
-      @keyframes ghostFloat { 0%,100%{transform:translateY(0)}50%{transform:translateY(-6px)} }
-      @keyframes pulseRing { 0%{transform:scale(1);opacity:0.5}100%{transform:scale(2.5);opacity:0} }
       @keyframes countUp { from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)} }
-      @keyframes gridPan { from{transform:translate(0,0)}to{transform:translate(48px,48px)} }
 
       .af { opacity:0; transform:translateY(28px); transition: opacity 0.8s cubic-bezier(0.16,1,0.3,1), transform 0.8s cubic-bezier(0.16,1,0.3,1); }
       .af.v { opacity:1; transform:translateY(0); }
@@ -106,7 +98,7 @@
       header {
         position: fixed; top: 0; width: 100%; z-index: 100;
         background: rgba(5,5,5,0.88);
-        backdrop-filter: blur(20px) saturate(1.2); -webkit-backdrop-filter: blur(20px) saturate(1.2);
+        backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
         border-bottom: 1px solid var(--border);
       }
       header .w { display:flex; justify-content:space-between; align-items:center; height:60px; }
@@ -139,19 +131,7 @@
         display: flex;
         align-items: center;
       }
-      .hero::before {
-        content:""; position:absolute; inset: 0;
-        background-image: radial-gradient(circle, rgba(0,212,255,0.05) 1px, transparent 1px);
-        background-size: 48px 48px;
-        animation: gridPan 24s linear infinite;
-        pointer-events:none;
-      }
-      .hero::after {
-        content:""; position:absolute; top:5%; left:50%; transform:translateX(-50%);
-        width:900px; height:600px;
-        background: radial-gradient(ellipse, rgba(0,212,255,0.05) 0%, rgba(0,204,136,0.02) 35%, transparent 70%);
-        pointer-events:none;
-      }
+      /* (hero dot grid and glow orb removed — AI-slop patterns) */
       .hero .w { position:relative; z-index:1; width:100%; }
 
       .hero-eyebrow {
@@ -168,10 +148,7 @@
         margin-bottom: 1.5rem; max-width: 800px; margin-left: auto; margin-right: auto;
         animation: fadeUp 0.9s ease-out 0.1s both;
       }
-      .hero h1 .gr {
-        background: linear-gradient(135deg, var(--accent), var(--green));
-        -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
-      }
+      .hero h1 .gr { color: var(--accent); }
 
       .hero-sub {
         font-size: 1.12rem; color: var(--text-2); max-width: 540px;
@@ -193,9 +170,8 @@
       }
       .btn-primary {
         background:var(--text-0); color:var(--bg-0); border-color:var(--text-0);
-        box-shadow:0 0 24px rgba(255,255,255,0.05);
       }
-      .btn-primary:hover { background:transparent; color:var(--text-0); box-shadow:0 0 30px rgba(0,212,255,0.08); }
+      .btn-primary:hover { background:transparent; color:var(--text-0); }
       .btn-ghost { background:transparent; color:var(--text-2); border-color:var(--border-hi); }
       .btn-ghost:hover { color:var(--text-0); border-color:var(--accent); }
 
@@ -209,8 +185,7 @@
       .hero-metric {
         padding: 1.8rem 1.5rem; text-align: center;
         border-right: 1px solid var(--border);
-        background: rgba(10,10,10,0.6);
-        backdrop-filter: blur(8px);
+        background: var(--bg-1);
       }
       .hero-metric:last-child { border-right: none; }
       .hero-metric .hm-val {
@@ -240,7 +215,7 @@
       }
       .trust-pill {
         font-family: var(--font-mono); font-size: 0.68rem; font-weight: 500;
-        color: var(--text-3); padding: 0.45rem 1rem; border-radius: 100px;
+        color: var(--text-3); padding: 0.45rem 1rem; border-radius: var(--radius-sm);
         border: 1px solid var(--border); background: var(--bg-1);
         transition: border-color 0.2s;
       }
@@ -263,10 +238,7 @@
         font-size: 4rem; font-weight: 900; letter-spacing: -0.05em;
         line-height: 1; color: var(--text-0); margin-bottom: 0.5rem;
       }
-      .market-left .ml-stat .ml-pct {
-        background: linear-gradient(135deg, var(--accent), var(--green));
-        -webkit-background-clip:text; -webkit-text-fill-color:transparent; background-clip:text;
-      }
+      .market-left .ml-stat .ml-pct { color: var(--accent); }
       .market-left .ml-cite {
         font-size: 0.72rem; color: var(--text-3); margin-bottom: 2.5rem; line-height: 1.5;
       }
@@ -347,7 +319,7 @@
       .term {
         background: var(--bg-1); border: 1px solid var(--border);
         border-radius: var(--radius-lg); overflow: hidden;
-        box-shadow: 0 12px 80px rgba(0,0,0,0.5), 0 0 0 1px rgba(255,255,255,0.02);
+        /* no box-shadow — border-only elevation */
       }
       .term-bar {
         display:flex; align-items:center; gap:0.5rem;
@@ -481,7 +453,7 @@
       .founder-card {
         max-width:880px; margin:2rem auto 0; padding:1.5rem;
         border:1px solid var(--border); border-radius:var(--radius-lg);
-        background:linear-gradient(180deg,rgba(255,255,255,0.03),rgba(255,255,255,0.01));
+        background:var(--bg-card);
       }
       .founder-name {
         font-family:var(--font-mono); font-size:0.95rem; font-weight:700;
@@ -531,8 +503,8 @@
       }
       .plat-pill:hover { border-color:var(--border-focus);color:var(--text-1); }
       .plat-dot { width:6px;height:6px;border-radius:50%;flex-shrink:0; }
-      .plat-dot.ga { background:var(--green);box-shadow:0 0 6px var(--green); }
-      .plat-dot.prev { background:var(--amber);box-shadow:0 0 6px var(--amber); }
+      .plat-dot.ga { background:var(--green); }
+      .plat-dot.prev { background:var(--amber); }
 
       .plat-stats {
         display:flex;justify-content:center;gap:3rem;flex-wrap:wrap;
@@ -577,13 +549,8 @@
       /* ================================================================
          CTA
          ================================================================ */
-      .cta-s { position:relative;overflow:hidden; }
-      .cta-s::before {
-        content:"";position:absolute;top:0;left:50%;transform:translateX(-50%);
-        width:600px;height:300px;
-        background:radial-gradient(ellipse,rgba(0,212,255,0.04) 0%,transparent 70%);
-        pointer-events:none;
-      }
+      .cta-s { position:relative; }
+      /* (CTA glow orb removed) */
       .cta-block { text-align:center;max-width:540px;margin:0 auto;position:relative; }
       .cta-block h2 { font-size:1.8rem;font-weight:700;letter-spacing:-0.03em;color:var(--text-0);margin-bottom:0.6rem; }
       .cta-block .cta-sub { font-size:0.9rem;color:var(--text-2);margin-bottom:2rem;line-height:1.7; }
@@ -639,13 +606,13 @@
       sup.fn a { color: var(--text-3); text-decoration: none; }
       sup.fn a:hover { color: var(--accent); }
 
-      /* Ghost */
+      /* Ghost — static, no float animation */
       .ghost-corner {
         position:fixed;bottom:24px;right:24px;width:28px;height:28px;
-        opacity:0.08;animation:ghostFloat 6s ease-in-out infinite;
+        opacity:0.08;
         pointer-events:none;z-index:50;transition:opacity 0.3s;
       }
-      body:hover .ghost-corner { opacity:0.15; }
+      body:hover .ghost-corner { opacity:0.12; }
 
       /* ================================================================
          RESPONSIVE
@@ -1181,7 +1148,7 @@
     <section class="cta-s" id="contact">
       <div class="w">
         <div class="cta-block">
-          <svg viewBox="0 0 40 48" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" style="width:36px;height:36px;margin:0 auto 1rem;opacity:0.2;animation:ghostFloat 4s ease-in-out infinite;">
+          <svg viewBox="0 0 40 48" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" style="width:36px;height:36px;margin:0 auto 1rem;opacity:0.15;">
             <path d="M20 4C11.16 4 4 11.16 4 20v16l4-4 4 4 4-4 4 4 4-4 4 4 4-4 4 4V20C36 11.16 28.84 4 20 4z" stroke="url(#lC)" stroke-width="1.5" fill="none"/>
             <circle cx="14" cy="19" r="2" fill="#00d4ff" opacity="0.5"/>
             <circle cx="26" cy="19" r="2" fill="#00d4ff" opacity="0.5"/>
