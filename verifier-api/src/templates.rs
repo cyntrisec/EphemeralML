@@ -9,7 +9,7 @@ pub const LANDING_HTML: &str = r##"<!DOCTYPE html>
   <meta property="og:description" content="Verify signed receipts from confidential AI inference."/>
   <meta property="og:type" content="website"/>
   <meta name="theme-color" content="#050505"/>
-  <link rel="icon" href="https://cyntrisec.com/favicon.svg" type="image/svg+xml"/>
+  <link rel="icon" href="https://cyntrisec.com/logo-mark-64.png" type="image/png"/>
   <style>
     @import url("https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700&family=IBM+Plex+Mono:wght@400;500;600&display=swap");
     *{margin:0;padding:0;box-sizing:border-box}
