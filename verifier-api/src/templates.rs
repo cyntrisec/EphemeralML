@@ -226,6 +226,11 @@ pub const LANDING_HTML: &str = r##"<!DOCTYPE html>
     </div>
   </div>
 
+  <div style="margin-top:32px;font-size:11px;color:var(--text-faint);line-height:1.6">
+    <strong style="color:var(--text-dim)">Privacy:</strong>
+    Uploaded receipts are processed in memory and not stored. IP addresses are used for rate limiting only and discarded within minutes. No analytics or tracking. Source: <a href="https://github.com/cyntrisec/EphemeralML" style="color:var(--text-dim)">github.com/cyntrisec/EphemeralML</a>
+  </div>
+
   <footer>
     <span>&copy; 2026 Cyntrisec</span>
     <span class="mono">AIR v1 + legacy</span>

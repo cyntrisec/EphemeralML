@@ -9,8 +9,10 @@ pub mod view_model;
 use axum::middleware;
 use axum::routing::{get, post};
 use axum::Router;
+use axum::http::HeaderValue;
 use tower_http::cors::{AllowOrigin, CorsLayer};
 use tower_http::limit::RequestBodyLimitLayer;
+use tower_http::set_header::SetResponseHeaderLayer;
 use tower_http::trace::TraceLayer;
 
 use rate_limit::RateLimiter;
@@ -141,5 +143,32 @@ fn build_router_inner(cors: CorsLayer, state: AppState) -> Router {
         .with_state(state)
         .layer(cors)
         .layer(RequestBodyLimitLayer::new(2 * 1024 * 1024)) // 2 MB
+        .layer(SetResponseHeaderLayer::overriding(
+            axum::http::header::STRICT_TRANSPORT_SECURITY,
+            HeaderValue::from_static("max-age=31536000; includeSubDomains"),
+        ))
+        .layer(SetResponseHeaderLayer::overriding(
+            axum::http::header::X_CONTENT_TYPE_OPTIONS,
+            HeaderValue::from_static("nosniff"),
+        ))
+        .layer(SetResponseHeaderLayer::overriding(
+            axum::http::header::X_FRAME_OPTIONS,
+            HeaderValue::from_static("DENY"),
+        ))
+        .layer(SetResponseHeaderLayer::overriding(
+            axum::http::header::CONTENT_SECURITY_POLICY,
+            HeaderValue::from_static(
+                "default-src 'self'; script-src 'self' 'unsafe-inline'; \
+                 style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; \
+                 font-src https://fonts.gstatic.com; \
+                 img-src 'self' https://cyntrisec.com; \
+                 connect-src 'self'; \
+                 frame-ancestors 'none'"
+            ),
+        ))
+        .layer(SetResponseHeaderLayer::overriding(
+            axum::http::header::REFERRER_POLICY,
+            HeaderValue::from_static("strict-origin-when-cross-origin"),
+        ))
         .layer(TraceLayer::new_for_http())
 }

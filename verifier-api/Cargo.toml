@@ -15,7 +15,7 @@ ephemeral-ml-common = { path = "../common" }
 # Web framework
 axum = { version = "0.8", features = ["json", "multipart"] }
 tokio = { version = "1.50", features = ["full"] }
-tower-http = { version = "0.6", features = ["cors", "trace", "limit"] }
+tower-http = { version = "0.6", features = ["cors", "trace", "limit", "set-header"] }
 
 # Serialization
 serde = { version = "1.0", features = ["derive"] }
