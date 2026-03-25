@@ -170,5 +170,13 @@ fn build_router_inner(cors: CorsLayer, state: AppState) -> Router {
             axum::http::header::REFERRER_POLICY,
             HeaderValue::from_static("strict-origin-when-cross-origin"),
         ))
+        .layer(SetResponseHeaderLayer::if_not_present(
+            axum::http::header::CACHE_CONTROL,
+            HeaderValue::from_static("no-store"),
+        ))
+        .layer(SetResponseHeaderLayer::if_not_present(
+            axum::http::header::HeaderName::from_static("permissions-policy"),
+            HeaderValue::from_static("camera=(), microphone=(), geolocation=()"),
+        ))
         .layer(TraceLayer::new_for_http())
 }

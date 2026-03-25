@@ -72,8 +72,22 @@ impl RateLimiter {
     }
 }
 
-/// Extract client IP from request extensions (ConnectInfo) or fall back to 0.0.0.0.
+/// Extract client IP from X-Forwarded-For header (Cloud Run / load balancer)
+/// or fall back to ConnectInfo (direct connections).
 fn extract_ip(request: &Request) -> IpAddr {
+    // Cloud Run and most reverse proxies set X-Forwarded-For.
+    // The leftmost IP is the original client; rightmost is the last proxy.
+    // We take the leftmost (first) value.
+    if let Some(xff) = request.headers().get("x-forwarded-for") {
+        if let Ok(val) = xff.to_str() {
+            if let Some(first_ip) = val.split(',').next() {
+                if let Ok(ip) = first_ip.trim().parse::<IpAddr>() {
+                    return ip;
+                }
+            }
+        }
+    }
+    // Fallback: direct connection IP
     request
         .extensions()
         .get::<axum::extract::ConnectInfo<std::net::SocketAddr>>()
