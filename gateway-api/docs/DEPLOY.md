@@ -77,6 +77,7 @@ docker run -d --name gateway -p 8090:8090 \
 | `EPHEMERALML_REQUEST_TIMEOUT_SECS` | No | `120` | Increase for large models |
 | `EPHEMERALML_INCLUDE_METADATA_JSON` | No | `false` | Embed `_ephemeralml` in body |
 | `EPHEMERALML_RECEIPT_HEADER_FULL` | No | `false` | Full receipt in header (proxy risk) |
+| `EPHEMERALML_TRUST_PROXY_HEADERS` | No | `false` | Trust `X-Forwarded-For` / `X-Real-Ip` for rate limiting; enable only behind a trusted proxy that overwrites them |
 | `EPHEMERALML_MODEL_CAPABILITIES` | No | `chat` | `chat`, `embeddings`, or `chat,embeddings` |
 | `EPHEMERALML_EMBEDDING_BACKEND_ADDR` | No | — | Dedicated embedding backend IP:port |
 | `EPHEMERALML_EMBEDDING_MODEL` | No | — | Model ID for embedding backend |
@@ -149,6 +150,17 @@ Authorization: Bearer <key>
 ```
 
 The gateway uses constant-time comparison to prevent timing side-channels.
+
+## Forwarded Headers / Rate Limiting
+
+By default, per-IP rate limiting keys off the direct socket peer address. This
+is the safe default for direct internet exposure and any deployment where the
+gateway is not behind a trusted proxy.
+
+Set `EPHEMERALML_TRUST_PROXY_HEADERS=true` only when a trusted reverse proxy or
+load balancer overwrites `X-Forwarded-For` or `X-Real-Ip` on every request.
+Enabling it on a directly exposed gateway lets clients spoof their rate-limit
+identity.
 
 ## CORS
 

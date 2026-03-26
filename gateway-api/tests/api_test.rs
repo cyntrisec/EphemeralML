@@ -46,6 +46,7 @@ fn test_router_with_capabilities(
         max_concurrent_requests: 50,
         rate_limit_per_ip: 0,
         rate_limit_global: 0,
+        trust_proxy_headers: false,
     };
     let client = SecureEnclaveClient::new("test-gateway".to_string());
     let state = AppState::new(client, config, None);
@@ -73,6 +74,7 @@ fn test_router_with_embedding_backend(model_capabilities: &str, embedding_model:
         max_concurrent_requests: 50,
         rate_limit_per_ip: 0,
         rate_limit_global: 0,
+        trust_proxy_headers: false,
     };
     let client = SecureEnclaveClient::new("test-gateway".to_string());
     let emb_client = SecureEnclaveClient::new("test-gateway-embedding".to_string());
@@ -163,6 +165,7 @@ async fn health_shows_reconnecting_when_enabled() {
         max_concurrent_requests: 50,
         rate_limit_per_ip: 0,
         rate_limit_global: 0,
+        trust_proxy_headers: false,
     };
     let client = SecureEnclaveClient::new("test".to_string());
     let state = AppState::new(client, config, None);
@@ -288,6 +291,7 @@ async fn readyz_returns_200_when_connected() {
         max_concurrent_requests: 50,
         rate_limit_per_ip: 0,
         rate_limit_global: 0,
+        trust_proxy_headers: false,
     };
     let client = SecureEnclaveClient::new("test".to_string());
     let state = AppState::new(client, config, None);
@@ -328,6 +332,7 @@ async fn readyz_embedding_both_connected_returns_200() {
         max_concurrent_requests: 50,
         rate_limit_per_ip: 0,
         rate_limit_global: 0,
+        trust_proxy_headers: false,
     };
     let client = SecureEnclaveClient::new("test".to_string());
     let emb_client = SecureEnclaveClient::new("test-emb".to_string());
@@ -377,6 +382,7 @@ async fn health_embedding_partial_reconnecting() {
         max_concurrent_requests: 50,
         rate_limit_per_ip: 0,
         rate_limit_global: 0,
+        trust_proxy_headers: false,
     };
     let client = SecureEnclaveClient::new("test".to_string());
     let emb_client = SecureEnclaveClient::new("test-emb".to_string());
@@ -421,6 +427,7 @@ async fn health_embedding_partial_degraded() {
         max_concurrent_requests: 50,
         rate_limit_per_ip: 0,
         rate_limit_global: 0,
+        trust_proxy_headers: false,
     };
     let client = SecureEnclaveClient::new("test".to_string());
     let emb_client = SecureEnclaveClient::new("test-emb".to_string());
@@ -650,6 +657,54 @@ async fn embeddings_with_separate_backend_returns_502() {
     let resp = app.oneshot(req).await.unwrap();
     assert_eq!(resp.status(), StatusCode::BAD_GATEWAY);
     assert!(resp.headers().get("x-request-id").is_some());
+}
+
+#[tokio::test]
+async fn chat_rejects_embeddings_only_model_id_when_separate_backend_configured() {
+    let app = test_router_with_embedding_backend("chat,embeddings", "emb-model");
+    let body = serde_json::json!({
+        "model": "emb-model",
+        "messages": [{"role": "user", "content": "hello"}]
+    });
+    let req = json_request("POST", "/v1/chat/completions", body, None);
+    let resp = app.oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+    let json = body_json(resp).await;
+    assert_eq!(json["error"]["code"], "unsupported_model_capability");
+    assert_eq!(json["error"]["type"], "invalid_request_error");
+    assert_eq!(json["error"]["param"], "model");
+}
+
+#[tokio::test]
+async fn responses_rejects_embeddings_only_model_id_when_separate_backend_configured() {
+    let app = test_router_with_embedding_backend("chat,embeddings", "emb-model");
+    let body = serde_json::json!({
+        "model": "emb-model",
+        "input": "hello"
+    });
+    let req = json_request("POST", "/v1/responses", body, None);
+    let resp = app.oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+    let json = body_json(resp).await;
+    assert_eq!(json["error"]["code"], "unsupported_model_capability");
+    assert_eq!(json["error"]["type"], "invalid_request_error");
+    assert_eq!(json["error"]["param"], "model");
+}
+
+#[tokio::test]
+async fn embeddings_rejects_chat_only_model_id_when_separate_backend_configured() {
+    let app = test_router_with_embedding_backend("chat,embeddings", "emb-model");
+    let body = serde_json::json!({
+        "model": "test-model",
+        "input": "hello world"
+    });
+    let req = json_request("POST", "/v1/embeddings", body, None);
+    let resp = app.oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+    let json = body_json(resp).await;
+    assert_eq!(json["error"]["code"], "unsupported_model_capability");
+    assert_eq!(json["error"]["type"], "invalid_request_error");
+    assert_eq!(json["error"]["param"], "model");
 }
 
 // ---------------------------------------------------------------------------
@@ -982,6 +1037,7 @@ fn config_rejects_embedding_backend_without_model() {
         max_concurrent_requests: 50,
         rate_limit_per_ip: 0,
         rate_limit_global: 0,
+        trust_proxy_headers: false,
     };
     let result = config.validate();
     assert!(result.is_err());
@@ -1009,6 +1065,7 @@ fn config_rejects_unknown_capability() {
         max_concurrent_requests: 50,
         rate_limit_per_ip: 0,
         rate_limit_global: 0,
+        trust_proxy_headers: false,
     };
     let result = config.validate();
     assert!(result.is_err());
@@ -1036,6 +1093,7 @@ fn config_rejects_duplicate_model_ids() {
         max_concurrent_requests: 50,
         rate_limit_per_ip: 0,
         rate_limit_global: 0,
+        trust_proxy_headers: false,
     };
     let result = config.validate();
     assert!(result.is_err());
@@ -1063,6 +1121,7 @@ fn config_accepts_valid_dual_backend() {
         max_concurrent_requests: 50,
         rate_limit_per_ip: 0,
         rate_limit_global: 0,
+        trust_proxy_headers: false,
     };
     assert!(config.validate().is_ok());
 }
@@ -1152,6 +1211,7 @@ async fn ensure_connected_times_out_on_hanging_backend() {
         max_concurrent_requests: 50,
         rate_limit_per_ip: 0,
         rate_limit_global: 0,
+        trust_proxy_headers: false,
     };
     let client = SecureEnclaveClient::new("test".to_string());
     let state = AppState::new(client, config, None);
@@ -1201,6 +1261,7 @@ async fn ensure_embedding_connected_times_out_on_hanging_backend() {
         max_concurrent_requests: 50,
         rate_limit_per_ip: 0,
         rate_limit_global: 0,
+        trust_proxy_headers: false,
     };
     let client = SecureEnclaveClient::new("test".to_string());
     let emb_client = SecureEnclaveClient::new("test-emb".to_string());
@@ -1245,6 +1306,7 @@ fn test_router_with_rate_limit(per_ip: u32, global: u32) -> Router {
         max_concurrent_requests: 50,
         rate_limit_per_ip: per_ip,
         rate_limit_global: global,
+        trust_proxy_headers: false,
     };
     let client = SecureEnclaveClient::new("test-gateway".to_string());
     let state = AppState::new(client, config, None);
@@ -1357,6 +1419,7 @@ async fn concurrency_limit_returns_503_when_all_slots_full() {
         max_concurrent_requests: 0,
         rate_limit_per_ip: 0,
         rate_limit_global: 0,
+        trust_proxy_headers: false,
     };
     let client = SecureEnclaveClient::new("test-gateway".to_string());
     let state = AppState::new(client, config, None);
@@ -1398,6 +1461,7 @@ async fn concurrency_limit_skips_health_endpoint() {
         max_concurrent_requests: 0,
         rate_limit_per_ip: 0,
         rate_limit_global: 0,
+        trust_proxy_headers: false,
     };
     let client = SecureEnclaveClient::new("test-gateway".to_string());
     let state = AppState::new(client, config, None);

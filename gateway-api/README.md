@@ -127,6 +127,7 @@ All configuration is via environment variables (or CLI flags):
 | `EPHEMERALML_REQUEST_TIMEOUT_SECS` | No | `120` | Per-request backend timeout |
 | `EPHEMERALML_INCLUDE_METADATA_JSON` | No | `false` | Include `_ephemeralml` in JSON body |
 | `EPHEMERALML_RECEIPT_HEADER_FULL` | No | `false` | Full receipt in header (proxy risk) |
+| `EPHEMERALML_TRUST_PROXY_HEADERS` | No | `false` | Trust `X-Forwarded-For` / `X-Real-Ip` for rate limiting; enable only behind a trusted proxy that overwrites them |
 | `EPHEMERALML_MODEL_CAPABILITIES` | No | `chat` | Comma-separated: `chat`, `embeddings`, or `chat,embeddings` |
 | `EPHEMERALML_EMBEDDING_BACKEND_ADDR` | No | — | Dedicated embedding backend address (`host:port`) |
 | `EPHEMERALML_EMBEDDING_MODEL` | No | — | Model ID for embedding backend (required when `EMBEDDING_BACKEND_ADDR` is set, must differ from `DEFAULT_MODEL`) |
@@ -164,6 +165,12 @@ The `/v1/models` endpoint advertises each model's capabilities:
   }]
 }
 ```
+
+When a dedicated embedding backend is configured, the concrete model IDs exposed
+by `/v1/models` are enforced at request time: the embeddings-only model is
+rejected on `/v1/chat/completions` and `/v1/responses`, and the chat-only model
+is rejected on `/v1/embeddings`. Other caller-supplied aliases still pass
+through and are recorded as `_ephemeralml.requested_model`.
 
 ## Python Example (OpenAI SDK)
 
