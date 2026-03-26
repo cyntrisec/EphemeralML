@@ -6,10 +6,10 @@ pub mod templates;
 pub mod verify_dispatch;
 pub mod view_model;
 
+use axum::http::HeaderValue;
 use axum::middleware;
 use axum::routing::{get, post};
 use axum::Router;
-use axum::http::HeaderValue;
 use tower_http::cors::{AllowOrigin, CorsLayer};
 use tower_http::limit::RequestBodyLimitLayer;
 use tower_http::set_header::SetResponseHeaderLayer;
@@ -163,7 +163,7 @@ fn build_router_inner(cors: CorsLayer, state: AppState) -> Router {
                  font-src https://fonts.gstatic.com; \
                  img-src 'self' https://cyntrisec.com; \
                  connect-src 'self'; \
-                 frame-ancestors 'none'"
+                 frame-ancestors 'none'",
             ),
         ))
         .layer(SetResponseHeaderLayer::overriding(

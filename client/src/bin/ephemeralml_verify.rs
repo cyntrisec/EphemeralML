@@ -395,9 +395,7 @@ fn print_air_v1_text_report(ui: &mut Ui, result: &AirVerifyResult, verbose: bool
             format!("{}{}", meta.label, detail)
         };
         ui.check(&label, &status);
-        if let Some(exp) =
-            ephemeral_ml_common::ui::explain_failed(check.name, failed)
-        {
+        if let Some(exp) = ephemeral_ml_common::ui::explain_failed(check.name, failed) {
             ui.bullet(&format!("{} {}", exp.why, exp.fix));
         }
     }

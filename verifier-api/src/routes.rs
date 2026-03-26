@@ -35,7 +35,7 @@ pub async fn verify_json(
     };
 
     let response = verify_dispatch::verify_json_value(&body.receipt, &public_key, &policy)
-        .map_err(|e| bad_request(e))?;
+        .map_err(bad_request)?;
 
     Ok(Json(response))
 }
@@ -145,8 +145,8 @@ pub async fn verify_upload(
         expected_image_digest,
     };
 
-    let response = verify_dispatch::verify_bytes(&receipt_data, &public_key, &policy)
-        .map_err(|e| bad_request(e))?;
+    let response =
+        verify_dispatch::verify_bytes(&receipt_data, &public_key, &policy).map_err(bad_request)?;
 
     Ok(Json(response))
 }
