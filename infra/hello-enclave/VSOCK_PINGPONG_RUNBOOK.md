@@ -3,7 +3,7 @@
 Goal: run **our own** enclave program that listens on **AF_VSOCK port 5000** and replies `pong` to `ping`, then verify from the parent instance.
 
 Repo code for this milestone lives at:
-- `projects/EphemeralML/enclaves/vsock-pingpong/`
+- `enclaves/vsock-pingpong/`
 
 ## 0) Cost-safety guardrails (pre-flight)
 
@@ -12,7 +12,7 @@ Run these **before** any `terraform apply` to ensure you’re not about to leak 
 From your laptop:
 
 ```bash
-cd projects/EphemeralML/infra/hello-enclave
+cd infra/hello-enclave
 
 # If state exists locally, see what Terraform thinks exists
 terraform state list || true
@@ -35,7 +35,7 @@ If anything shows up above and you didn’t mean to keep it, **destroy first** (
 
 Plan (safe):
 ```bash
-cd projects/EphemeralML/infra/hello-enclave
+cd infra/hello-enclave
 terraform init
 terraform plan -var 'availability_zone=us-east-1a' -var 'instance_type=m6i.xlarge'
 ```
@@ -75,8 +75,8 @@ sudo yum install -y git
 
 # Pull repo content (or copy this directory via scp/rsync if you prefer)
 cd /home/ec2-user
-git clone <YOUR_REPO_URL> clawd
-cd clawd/projects/EphemeralML/enclaves/vsock-pingpong
+git clone <YOUR_REPO_URL> EphemeralML
+cd EphemeralML/enclaves/vsock-pingpong
 
 # Build the docker image used by nitro-cli
 sudo docker build -t ephemeralml/vsock-pingpong:latest .
@@ -113,7 +113,7 @@ Use the minimal python client from the repo:
 
 ```bash
 # On the parent instance
-cd /home/ec2-user/clawd/projects/EphemeralML/enclaves/vsock-pingpong
+cd /home/ec2-user/EphemeralML/enclaves/vsock-pingpong
 python3 ./vsock_client.py 16 5000
 # Expected output: pong
 ```
@@ -133,7 +133,7 @@ sudo nitro-cli terminate-enclave --enclave-id <enclave-id>
 ### From your laptop: destroy infra (requires conscious confirmation)
 
 ```bash
-cd projects/EphemeralML/infra/hello-enclave
+cd infra/hello-enclave
 terraform destroy
 ```
 

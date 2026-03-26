@@ -12,15 +12,15 @@ This guide publishes benchmark evidence so readers can verify paper claims witho
 
 ```bash
 ./scripts/prepare_public_artifact.sh \
-  --input-dir benchmark_results_final/kms_validation_20260205_234917 \
-  --name kms_validation_20260205_234917.tar.gz
+  --input-dir path/to/generated/kms_validation_<timestamp> \
+  --name kms_validation_<timestamp>.tar.gz
 ```
 
 Outputs in `artifacts/public/`:
 
-- `kms_validation_20260205_234917.tar.gz`
-- `kms_validation_20260205_234917.tar.gz.sha256`
-- `kms_validation_20260205_234917.tar.gz.manifest.txt`
+- `kms_validation_<timestamp>.tar.gz`
+- `kms_validation_<timestamp>.tar.gz.sha256`
+- `kms_validation_<timestamp>.tar.gz.manifest.txt`
 
 The script scans for common sensitive markers (ARNs, instance IDs, access keys, IPv4, account-ID contexts) and fails by default if found.
 
@@ -37,7 +37,7 @@ Upload to an existing tag (example `v1.0.0`):
 ```bash
 ./scripts/publish_public_artifact.sh \
   --tag v1.0.0 \
-  --artifact artifacts/public/kms_validation_20260205_234917.tar.gz
+  --artifact artifacts/public/kms_validation_<timestamp>.tar.gz
 ```
 
 ## 3) What to place in the paper
@@ -45,16 +45,16 @@ Upload to an existing tag (example `v1.0.0`):
 - Release page URL (stable):
   `https://github.com/cyntrisec/EphemeralML/releases/tag/v1.0.0`
 - Artifact file name:
-  `kms_validation_20260205_234917.tar.gz`
+  `kms_validation_<timestamp>.tar.gz`
 - SHA-256 checksum:
-  `20309ab610e7321de5e29d019f0d4b15fee6a7cdafe919686ec1cbd4fabe5937`
+  `<sha256-from-generated-artifact>`
 
 ## 4) Reader verification
 
 After download:
 
 ```bash
-sha256sum -c kms_validation_20260205_234917.tar.gz.sha256
+sha256sum -c kms_validation_<timestamp>.tar.gz.sha256
 ```
 
 Expected output:

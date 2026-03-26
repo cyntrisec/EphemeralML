@@ -14,7 +14,7 @@ For Milestone A2 (our own minimal vsock ping/pong), use: `VSOCK_PINGPONG_RUNBOOK
 If you hit an AZ availability error (common), pin a known-good AZ like `us-east-1a` or `us-east-1b`.
 
 ```bash
-cd projects/EphemeralML/infra/hello-enclave
+cd infra/hello-enclave
 terraform init
 terraform apply -var 'availability_zone=us-east-1a' -var 'instance_type=m6i.xlarge'
 ```

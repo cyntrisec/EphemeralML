@@ -304,7 +304,7 @@ This chains:
 For ad-hoc auditing of existing result directories:
 
 ```bash
-./scripts/check_kms_integrity.sh benchmark_results_final/kms_validation_*/run_*
+./scripts/check_kms_integrity.sh path/to/generated/kms_validation_*/run_*
 ```
 
 ### Publish Public Artifact (Reader-Friendly)
@@ -314,16 +314,18 @@ To publish benchmark evidence without requiring reader AWS access:
 ```bash
 # 1) Package + scan for sensitive markers
 ./scripts/prepare_public_artifact.sh \
-  --input-dir benchmark_results_final/kms_validation_20260205_234917 \
-  --name kms_validation_20260205_234917.tar.gz
+  --input-dir path/to/generated/kms_validation_<timestamp> \
+  --name kms_validation_<timestamp>.tar.gz
 
 # 2) Upload to a GitHub Release tag
 ./scripts/publish_public_artifact.sh \
   --tag v1.0.0 \
-  --artifact artifacts/public/kms_validation_20260205_234917.tar.gz
+  --artifact artifacts/public/kms_validation_<timestamp>.tar.gz
 ```
 
 See [`docs/ARTIFACT_PUBLICATION.md`](docs/ARTIFACT_PUBLICATION.md) for full details.
+
+Public/private repo boundary note: [`docs/OPEN_SOURCE_BOUNDARY.md`](docs/OPEN_SOURCE_BOUNDARY.md).
 
 ---
 
@@ -428,6 +430,7 @@ See [`QUICKSTART.md`](QUICKSTART.md) and [`docs/build-matrix.md`](docs/build-mat
 - [`docs/benchmarks.md`](docs/benchmarks.md) — Benchmark methodology, results & competitive analysis
 - [`docs/BENCHMARK_SPEC.md`](docs/BENCHMARK_SPEC.md) — Benchmark specification (11-paper literature review)
 - [`QUICKSTART.md`](QUICKSTART.md) — Deployment guide
+- [`docs/OPEN_SOURCE_BOUNDARY.md`](docs/OPEN_SOURCE_BOUNDARY.md) — What stays public vs private in this repo
 - [`SECURITY_DEMO.md`](SECURITY_DEMO.md) — Security walkthrough
 - [`scripts/run_final_kms_validation.sh`](scripts/run_final_kms_validation.sh) — Multi-run KMS-enforced benchmark validation
 - [`scripts/check_kms_integrity.sh`](scripts/check_kms_integrity.sh) — Post-run KMS/commit/hardware integrity audit

@@ -9,7 +9,7 @@ set -euo pipefail
 # Permissions: ability to create EC2/VPC/IAM via terraform; SSM SendCommand permissions.
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO_ROOT="$(cd "$ROOT_DIR/../.." && pwd)" # projects/EphemeralML
+REPO_ROOT="$(cd "$ROOT_DIR/../.." && pwd)"
 STACK_DIR="$ROOT_DIR" # infra/hello-enclave
 
 REGION="${AWS_REGION:-us-east-1}"
@@ -161,7 +161,7 @@ else
     exit 3
   fi
 
-  REPO_DIR=/home/ec2-user/clawd
+  REPO_DIR=/home/ec2-user/EphemeralML
   if [[ ! -d "$REPO_DIR" ]]; then
     log "Cloning repo to $REPO_DIR"
     git clone "$REPO_URL" "$REPO_DIR"
@@ -170,7 +170,7 @@ else
     (cd "$REPO_DIR" && git pull --ff-only) || true
   fi
 
-  cd "$REPO_DIR/projects/EphemeralML/enclaves/vsock-pingpong"
+  cd "$REPO_DIR/enclaves/vsock-pingpong"
 fi
 
 log "Docker build"

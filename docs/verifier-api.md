@@ -10,12 +10,14 @@ The EphemeralML Verifier API is a hosted HTTP service for verifying attested exe
 |--------|------|------|-------------|
 | `GET` | `/` | No | Landing page (HTML form) |
 | `GET` | `/health` | No | Liveness probe |
-| `POST` | `/api/v1/verify` | Yes | Verify receipt (JSON body) |
-| `POST` | `/api/v1/verify/upload` | Yes | Verify receipt (multipart upload) |
+| `GET` | `/api/v1/samples/valid` | No | Fresh AIR v1 sample receipt |
+| `GET` | `/api/v1/samples/legacy` | No | Fresh legacy sample receipt |
+| `POST` | `/api/v1/verify` | Depends on mode | Verify receipt (JSON body) |
+| `POST` | `/api/v1/verify/upload` | Depends on mode | Verify receipt (multipart upload) |
 
 ## Authentication
 
-The verify endpoints require an API key when auth is enabled (default for production).
+The verify endpoints require an API key only in `secured-api` mode. In `public-trust-center` mode, verification is intentionally public and rate limited.
 
 **Supported headers** (either one):
 - `Authorization: Bearer <API_KEY>`
@@ -33,7 +35,7 @@ The verify endpoints require an API key when auth is enabled (default for produc
 - If `--insecure-no-auth`: auth disabled, loud warning logged
 - If neither: **startup fails** with instructions (fail-closed)
 
-Health (`/health`) and landing page (`/`) never require auth.
+Health (`/health`), landing page (`/`), and sample endpoints (`/api/v1/samples/*`) never require auth.
 
 ## Rate Limiting
 
@@ -43,7 +45,7 @@ Per-IP sliding window rate limiter. Returns `429 Too Many Requests` when exceede
 |----------------|---------|-------------|
 | `--rate-limit` / `EPHEMERALML_VERIFIER_RATE_LIMIT` | `60` | Max requests per minute per IP |
 
-Set to `0` to disable (with warning). Health endpoint is exempt.
+Set to `0` to disable in `secured-api` mode. `public-trust-center` mode requires a positive rate limit and will reject `0`. Health endpoint is exempt.
 
 ## CORS
 
@@ -154,10 +156,10 @@ curl -X POST https://verifier.example.com/api/v1/verify/upload \
   -F "expected_image_digest=sha256:068c3cdf..."
 ```
 
-### Local dev (no auth)
+### Local dev (public trust center)
 
 ```bash
-ephemeralml-verifier --insecure-no-auth --rate-limit 0
+ephemeralml-verifier --mode public-trust-center --port 8080
 
 curl -X POST http://localhost:8080/api/v1/verify \
   -H "Content-Type: application/json" \
@@ -176,11 +178,25 @@ curl -X POST http://localhost:8080/api/v1/verify \
 
 ## Production Deployment
 
+### Public trust center
+
+```bash
+export EPHEMERALML_VERIFIER_RATE_LIMIT=60
+
+ephemeralml-verifier \
+  --mode public-trust-center \
+  --port 8080
+```
+
+### Secured API
+
 ```bash
 export EPHEMERALML_VERIFIER_API_KEY="$(openssl rand -hex 32)"
 export EPHEMERALML_VERIFIER_RATE_LIMIT=60
 
 ephemeralml-verifier \
+  --mode secured-api \
+  --api-key "$EPHEMERALML_VERIFIER_API_KEY" \
   --cors-origin https://your-app.example.com \
   --port 8080
 ```
@@ -189,7 +205,8 @@ ephemeralml-verifier \
 
 | Feature | Default | Override |
 |---------|---------|---------|
-| Auth | Required (fail-closed) | `--insecure-no-auth` |
+| Mode selection | Explicit (startup fails if omitted) | `--mode public-trust-center` or `--mode secured-api` |
+| Auth | Required in `secured-api`, disabled in `public-trust-center` | `--mode public-trust-center` |
 | Rate limit | 60 req/min/IP | `--rate-limit N` (0=off) |
 | CORS | Explicit origins with auth | `--allow-permissive-cors` |
 | Body limit | 2 MB | Not configurable |

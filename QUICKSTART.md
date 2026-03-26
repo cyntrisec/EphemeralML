@@ -21,7 +21,7 @@ git clone https://github.com/cyntrisec/EphemeralML && cd EphemeralML
 bash scripts/demo.sh
 ```
 
-This builds everything in mock mode, loads MiniLM-L6-v2 (22.7M params), runs inference, and returns a signed receipt.
+This builds everything in mock mode, loads MiniLM-L6-v2 (22.7M params), runs inference, and returns a signed receipt. It is a local mock-mode proof path, not real hardware attestation.
 
 ## Full GCP GPU Deployment (one command)
 
@@ -83,33 +83,44 @@ bash scripts/demo.sh
 
 This will:
 1. Ensure MiniLM-L6-v2 model weights are present (symlinks or downloads from HuggingFace)
-2. Build enclave and host binaries in release mode
-3. Start the enclave stage worker (loads 87MB model, binds TCP ports)
-4. Run the host orchestrator (connects, sends text, receives embeddings + receipt)
-5. Print the Attested Execution Receipt with cryptographic bindings
+2. Build the local mock binaries in release mode
+3. Start the local inference server in direct mock mode
+4. Run inference via the CLI and save a signed receipt
+5. Verify the receipt and demonstrate tamper detection
 
 ### Manual Mode
 
-**Terminal 1 — Start Enclave:**
 ```bash
-cargo run --release --features mock --bin ephemeral-ml-enclave -- \
-    --model-dir test_assets/minilm --model-id stage-0
+bash scripts/demo.sh up
+bash scripts/demo.sh infer
+bash scripts/demo.sh verify
+bash scripts/demo.sh tamper
+bash scripts/demo.sh down
 ```
 
-**Terminal 2 — Run Host:**
+### Advanced Manual Mode
+
+**Terminal 1 — Start local mock server:**
 ```bash
-cargo run --release --features mock --bin ephemeral-ml-host
+cargo run --release --features mock --bin ephemeral-ml-enclave -- \
+    --model-dir test_assets/minilm --model-id stage-0 --direct
+```
+
+**Terminal 2 — Run CLI inference:**
+```bash
+cargo run --release --features mock --bin ephemeralml -- \
+    infer --addr 127.0.0.1:9000 --text "Patient presents with acute respiratory distress." \
+    --receipt demo-receipt.json
 ```
 
 ### Expected Output
 
-- Model loads in ~150-200ms
-- Inference completes in ~70-120ms
-- 384-dimensional embedding vector returned
-- Signed Attested Execution Receipt with:
-  - SHA-256 request/response/attestation hashes
-  - PCR0/1/2 enclave measurements
-  - Ed25519 signature
+- Local mock server starts successfully
+- Inference completes and returns model output
+- A signed receipt is saved
+- Receipt verification passes
+- Tampering is detected as invalid
+- Note: local mock mode does not provide real TEE attestation
 
 ## Production Mode (GCP)
 

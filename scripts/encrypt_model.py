@@ -55,7 +55,7 @@ def encrypt_model():
 
 if __name__ == "__main__":
     if not os.path.exists(INPUT_FILE):
-        print(f"❌ Error: {INPUT_FILE} not found. Run this from projects/EphemeralML directory or set EPHEMERALML_MODEL_INPUT.")
+        print(f"❌ Error: {INPUT_FILE} not found. Run this from the repo root or set EPHEMERALML_MODEL_INPUT.")
     elif not KEY_ARN:
         print("❌ Error: EPHEMERALML_KMS_KEY_ARN not set. Example:\n"
               "  export EPHEMERALML_KMS_KEY_ARN=arn:aws:kms:REGION:ACCOUNT:key/KEY_ID")

@@ -30,4 +30,4 @@ A minimal AWS Nitro Enclave deployment loop:
 - Local workstation needs `session-manager-plugin` to use `aws ssm start-session`.
 
 ## Terraform stack
-See: `projects/EphemeralML/infra/hello-enclave`.
+See: `infra/hello-enclave`.
