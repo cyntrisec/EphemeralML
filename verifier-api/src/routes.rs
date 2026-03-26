@@ -2,11 +2,11 @@ use axum::extract::Multipart;
 use axum::http::StatusCode;
 use axum::response::{Html, Json};
 use ed25519_dalek::VerifyingKey;
-use ephemeral_ml_common::receipt_verify::{verify_receipt, VerifyOptions};
-use ephemeral_ml_common::AttestationReceipt;
 
-use crate::api_types::{ApiVerifyResponse, ErrorResponse, VerifyRequest};
+use crate::api_types::{ErrorResponse, VerifyRequest};
 use crate::templates::LANDING_HTML;
+use crate::verify_dispatch::{self, DispatchPolicy};
+use crate::view_model::TrustCenterResponse;
 
 /// `GET /` — landing page with paste/upload form.
 pub async fn landing_page() -> Html<&'static str> {
@@ -19,32 +19,34 @@ pub async fn health() -> Json<serde_json::Value> {
 }
 
 /// `POST /api/v1/verify` — verify a receipt from JSON body.
+///
+/// Accepts both AIR v1 (base64 COSE_Sign1) and legacy receipts (JSON object or base64 CBOR).
 pub async fn verify_json(
     Json(body): Json<VerifyRequest>,
-) -> Result<Json<ApiVerifyResponse>, (StatusCode, Json<ErrorResponse>)> {
+) -> Result<Json<TrustCenterResponse>, (StatusCode, Json<ErrorResponse>)> {
     let public_key = parse_hex_public_key(&body.public_key)?;
-    let receipt = parse_receipt_value(&body.receipt)?;
 
-    let options = VerifyOptions {
+    let policy = DispatchPolicy {
         expected_model: body.expected_model,
         expected_measurement_type: Some(body.measurement_type),
         max_age_secs: body.max_age_secs,
         expected_attestation_source: body.expected_attestation_source,
         expected_image_digest: body.expected_image_digest,
-        require_destroy_evidence: false,
     };
 
-    let result = verify_receipt(&receipt, &public_key, &options);
-    Ok(Json(ApiVerifyResponse::from_result(result)))
+    let response = verify_dispatch::verify_json_value(&body.receipt, &public_key, &policy)
+        .map_err(bad_request)?;
+
+    Ok(Json(response))
 }
 
 /// `POST /api/v1/verify/upload` — verify a receipt from multipart upload.
 ///
-/// Accepts the same policy fields as the JSON endpoint via text parts:
-/// `expected_model`, `measurement_type`, `max_age_secs`.
+/// Accepts the same policy fields as the JSON endpoint via text parts.
+/// Automatically detects AIR v1 vs legacy format from the uploaded bytes.
 pub async fn verify_upload(
     mut multipart: Multipart,
-) -> Result<Json<ApiVerifyResponse>, (StatusCode, Json<ErrorResponse>)> {
+) -> Result<Json<TrustCenterResponse>, (StatusCode, Json<ErrorResponse>)> {
     let mut receipt_bytes: Option<Vec<u8>> = None;
     let mut public_key_hex: Option<String> = None;
     let mut expected_model: Option<String> = None;
@@ -135,21 +137,121 @@ pub async fn verify_upload(
 
     let public_key = parse_hex_public_key(&key_hex)?;
 
-    // Try CBOR first, then JSON
-    let receipt: AttestationReceipt = ephemeral_ml_common::cbor::from_slice(&receipt_data)
-        .or_else(|_| serde_json::from_slice(&receipt_data))
-        .map_err(|_| bad_request("Failed to parse receipt (tried CBOR and JSON)"))?;
-
-    let options = VerifyOptions {
+    let policy = DispatchPolicy {
         expected_model,
         expected_measurement_type: Some(measurement_type),
         max_age_secs,
         expected_attestation_source,
         expected_image_digest,
-        require_destroy_evidence: false,
     };
-    let result = verify_receipt(&receipt, &public_key, &options);
-    Ok(Json(ApiVerifyResponse::from_result(result)))
+
+    let response =
+        verify_dispatch::verify_bytes(&receipt_data, &public_key, &policy).map_err(bad_request)?;
+
+    Ok(Json(response))
+}
+
+/// `GET /api/v1/samples/valid` — generate a fresh signed AIR v1 sample receipt.
+///
+/// Returns a JSON object with:
+/// - `receipt_base64`: base64-encoded AIR v1 COSE_Sign1 (primary format)
+/// - `public_key`: Ed25519 public key hex
+/// - `format`: "air_v1"
+///
+/// Uses a deterministic key seed so the key is stable across calls.
+pub async fn sample_valid() -> Json<serde_json::Value> {
+    use ephemeral_ml_common::air_receipt::build_air_v1;
+
+    let (key, claims) = sample_key_and_claims();
+    let receipt_bytes = build_air_v1(&claims, &key).unwrap();
+    let receipt_b64 =
+        base64::Engine::encode(&base64::engine::general_purpose::STANDARD, &receipt_bytes);
+
+    Json(serde_json::json!({
+        "receipt_base64": receipt_b64,
+        "public_key": hex::encode(key.public_key_bytes()),
+        "format": "air_v1",
+    }))
+}
+
+/// `GET /api/v1/samples/legacy` — generate a fresh signed legacy sample receipt.
+///
+/// Returns a JSON object with `receipt` (JSON object) and `public_key` (hex).
+pub async fn sample_legacy() -> Json<serde_json::Value> {
+    use ephemeral_ml_common::receipt_signing::{
+        AttestationReceipt, EnclaveMeasurements, ReceiptSigningKey, SecurityMode,
+    };
+
+    let signing_key = ed25519_dalek::SigningKey::from_bytes(&[0x42u8; 32]);
+    let verifying_key = signing_key.verifying_key();
+    let key = ReceiptSigningKey::from_parts(signing_key, verifying_key);
+
+    let measurements = EnclaveMeasurements::new(vec![1u8; 48], vec![2u8; 48], vec![3u8; 48]);
+    let mut receipt = AttestationReceipt::new(
+        "sample-legacy-receipt".to_string(),
+        1,
+        SecurityMode::GatewayOnly,
+        measurements,
+        [0xAA; 32],
+        [0xBB; 32],
+        [0xCC; 32],
+        "policy-v1".to_string(),
+        1,
+        "minilm-l6-v2".to_string(),
+        "v1.0".to_string(),
+        95,
+        64,
+    );
+    receipt.sign(&key).unwrap();
+
+    Json(serde_json::json!({
+        "receipt": serde_json::to_value(&receipt).unwrap(),
+        "public_key": hex::encode(key.public_key_bytes()),
+        "format": "legacy",
+    }))
+}
+
+/// Shared deterministic key and AIR v1 claims for sample endpoints.
+fn sample_key_and_claims() -> (
+    ephemeral_ml_common::receipt_signing::ReceiptSigningKey,
+    ephemeral_ml_common::air_receipt::AirReceiptClaims,
+) {
+    use ephemeral_ml_common::air_receipt::AirReceiptClaims;
+    use ephemeral_ml_common::receipt_signing::{EnclaveMeasurements, ReceiptSigningKey};
+
+    let signing_key = ed25519_dalek::SigningKey::from_bytes(&[0x42u8; 32]);
+    let verifying_key = signing_key.verifying_key();
+    let key = ReceiptSigningKey::from_parts(signing_key, verifying_key);
+
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_secs();
+
+    let claims = AirReceiptClaims {
+        iss: "cyntrisec.com".to_string(),
+        iat: now,
+        cti: [
+            0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E,
+            0x0F, 0x10,
+        ],
+        eat_nonce: None,
+        model_id: "minilm-l6-v2".to_string(),
+        model_version: "1.0.0".to_string(),
+        model_hash: [0xAA; 32],
+        request_hash: [0xBB; 32],
+        response_hash: [0xCC; 32],
+        attestation_doc_hash: [0xDD; 32],
+        enclave_measurements: EnclaveMeasurements::new(vec![1u8; 48], vec![2u8; 48], vec![3u8; 48]),
+        policy_version: "policy-v1".to_string(),
+        sequence_number: 1,
+        execution_time_ms: 95,
+        memory_peak_mb: 64,
+        security_mode: "GatewayOnly".to_string(),
+        model_hash_scheme: None,
+    };
+
+    (key, claims)
 }
 
 /// Parse a hex-encoded Ed25519 public key.
@@ -165,28 +267,6 @@ fn parse_hex_public_key(hex_str: &str) -> Result<VerifyingKey, (StatusCode, Json
     let mut arr = [0u8; 32];
     arr.copy_from_slice(&bytes);
     VerifyingKey::from_bytes(&arr).map_err(|_| bad_request("Invalid Ed25519 public key"))
-}
-
-/// Parse receipt from a `serde_json::Value`.
-///
-/// Accepts either a JSON object (deserialized directly) or a base64 string
-/// (decoded as CBOR).
-fn parse_receipt_value(
-    value: &serde_json::Value,
-) -> Result<AttestationReceipt, (StatusCode, Json<ErrorResponse>)> {
-    match value {
-        serde_json::Value::Object(_) => serde_json::from_value(value.clone())
-            .map_err(|e| bad_request(format!("Invalid receipt JSON: {}", e))),
-        serde_json::Value::String(s) => {
-            let bytes = base64::Engine::decode(&base64::engine::general_purpose::STANDARD, s)
-                .map_err(|e| bad_request(format!("Invalid base64 receipt: {}", e)))?;
-            ephemeral_ml_common::cbor::from_slice(&bytes)
-                .map_err(|e| bad_request(format!("Invalid CBOR receipt: {}", e)))
-        }
-        _ => Err(bad_request(
-            "receipt must be a JSON object or base64 string",
-        )),
-    }
 }
 
 fn bad_request(msg: impl Into<String>) -> (StatusCode, Json<ErrorResponse>) {

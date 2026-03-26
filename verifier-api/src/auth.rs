@@ -23,9 +23,10 @@ pub async fn auth_middleware(
         None => return next.run(request).await,
     };
 
-    // Skip auth for health check and landing page
+    // Skip auth for health check, landing page, and sample endpoints.
+    // Samples serve deterministic demo data with no security-sensitive content.
     let path = request.uri().path();
-    if path == "/health" || path == "/" {
+    if path == "/health" || path == "/" || path.starts_with("/api/v1/samples/") {
         return next.run(request).await;
     }
 

@@ -16,7 +16,7 @@ use clap::Parser;
 use ed25519_dalek::VerifyingKey;
 use ephemeral_ml_common::air_verify::{AirCheckStatus, AirVerifyPolicy, AirVerifyResult};
 use ephemeral_ml_common::receipt_verify::{VerifyOptions, VerifyResult};
-use ephemeral_ml_common::ui::{GhostState, Ui, UiConfig};
+use ephemeral_ml_common::ui::{air_check_meta, legacy_check_meta, GhostState, Ui, UiConfig};
 use ephemeral_ml_common::AttestationReceipt;
 use std::fs;
 use std::io::IsTerminal;
@@ -373,19 +373,31 @@ fn print_air_v1_text_report(ui: &mut Ui, result: &AirVerifyResult, verbose: bool
     ui.section("4-Layer Verification");
 
     for check in &result.checks {
+        let failed = matches!(check.status, AirCheckStatus::Fail);
         let status = match check.status {
             AirCheckStatus::Pass => CheckStatus::Pass,
             AirCheckStatus::Fail => CheckStatus::Fail,
             AirCheckStatus::Skip => CheckStatus::Skip,
         };
+        let meta = air_check_meta(check.name);
         let detail = check
             .code
             .as_ref()
             .map(|c| format!(" [{}]", c))
             .or_else(|| check.detail.as_ref().map(|d| format!(" ({})", d)))
             .unwrap_or_default();
-        let label = format!("{}{}", check.name, detail);
+        let label = if matches!(
+            meta.label,
+            "Required claim present" | "Hash field valid" | "Verification check"
+        ) {
+            format!("{} ({}){}", meta.label, check.name, detail)
+        } else {
+            format!("{}{}", meta.label, detail)
+        };
         ui.check(&label, &status);
+        if let Some(exp) = ephemeral_ml_common::ui::explain_failed(check.name, failed) {
+            ui.bullet(&format!("{} {}", exp.why, exp.fix));
+        }
     }
     ui.divider();
 
@@ -452,31 +464,43 @@ fn print_text_report(
     ui.kv("Sequence", &format!("#{}", result.sequence_number));
     ui.blank();
     ui.section("Checks");
-    ui.check_explained("Signature (Ed25519)", "signature", &result.checks.signature);
-    ui.check_explained("Model ID match", "model_match", &result.checks.model_match);
     ui.check_explained(
-        "Measurement type",
+        legacy_check_meta("signature").unwrap().label,
+        "signature",
+        &result.checks.signature,
+    );
+    ui.check_explained(
+        legacy_check_meta("model_match").unwrap().label,
+        "model_match",
+        &result.checks.model_match,
+    );
+    ui.check_explained(
+        legacy_check_meta("measurement_type").unwrap().label,
         "measurement_type",
         &result.checks.measurement_type,
     );
     ui.check_explained(
-        "Timestamp freshness",
+        legacy_check_meta("timestamp_fresh").unwrap().label,
         "timestamp_fresh",
         &result.checks.timestamp_fresh,
     );
     ui.check_explained(
-        "Measurements present",
+        legacy_check_meta("measurements_present").unwrap().label,
         "measurements_present",
         &result.checks.measurements_present,
     );
     ui.check_explained(
-        "Attestation source",
+        legacy_check_meta("attestation_source").unwrap().label,
         "attestation_source",
         &result.checks.attestation_source,
     );
-    ui.check_explained("Image digest", "image_digest", &result.checks.image_digest);
     ui.check_explained(
-        "Destroy evidence",
+        legacy_check_meta("image_digest").unwrap().label,
+        "image_digest",
+        &result.checks.image_digest,
+    );
+    ui.check_explained(
+        legacy_check_meta("destroy_evidence").unwrap().label,
         "destroy_evidence",
         &result.checks.destroy_evidence,
     );

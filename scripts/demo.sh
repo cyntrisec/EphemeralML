@@ -195,10 +195,10 @@ cmd_down() {
 cmd_all() {
     header "EphemeralML Confidential AI — Full Demo"
 
-    echo "  This demo proves:"
-    echo "    1. Data enters a TEE-attested enclave"
-    echo "    2. Model runs inference, produces output"
-    echo "    3. A signed receipt binds input/output hashes to attestation"
+    echo "  This demo shows (local mock mode, not real TEE):"
+    echo "    1. Model runs inference in a local process"
+    echo "    2. A signed receipt is generated with input/output hashes"
+    echo "    3. The receipt is independently verifiable"
     echo "    4. Tampering is cryptographically detected"
     echo
 
@@ -209,8 +209,9 @@ cmd_all() {
     cmd_down
 
     header "Demo Complete"
-    echo "  All steps passed. Your data existed for ~2 seconds."
-    echo "  Here's the cryptographic proof: $RECEIPT_FILE"
+    echo "  All steps passed."
+    echo "  Receipt saved: $RECEIPT_FILE"
+    echo "  (This was a local mock run. For real TEE attestation, deploy to AWS Nitro / GCP TDX / H100 CC.)"
     echo
 }
 

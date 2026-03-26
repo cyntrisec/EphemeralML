@@ -4,7 +4,7 @@ use tracing_subscriber::EnvFilter;
 #[derive(Parser)]
 #[command(
     name = "ephemeralml-verifier",
-    about = "EphemeralML Hosted Receipt Verification API"
+    about = "Cyntrisec Trust Center — Receipt Verification API"
 )]
 struct Args {
     /// Listen address
@@ -20,7 +20,15 @@ struct Args {
     /// Can also be set via EPHEMERALML_VERIFIER_API_KEY env var.
     #[arg(long, env = "EPHEMERALML_VERIFIER_API_KEY")]
     api_key: Option<String>,
-    /// Disable API key authentication. Required when no --api-key is set.
+    /// Deployment mode: "public-trust-center" or "secured-api".
+    ///
+    /// public-trust-center: No API key required. Strong rate limiting.
+    ///                      Designed for public internet-facing verification.
+    ///
+    /// secured-api:         API key required. For internal or enterprise use.
+    #[arg(long, env = "EPHEMERALML_VERIFIER_MODE")]
+    mode: Option<String>,
+    /// Disable API key authentication (legacy flag, prefer --mode).
     /// WARNING: Do not use in production internet-facing deployments.
     #[arg(long, env = "EPHEMERALML_VERIFIER_NO_AUTH")]
     insecure_no_auth: bool,
@@ -43,34 +51,42 @@ async fn main() {
         )
         .init();
 
-    // --- Auth validation ---
-    let api_key = match (&args.api_key, args.insecure_no_auth) {
-        (Some(key), _) => {
+    // --- Mode resolution ---
+    let service_mode = resolve_mode(&args);
+
+    let (api_key, rate_limit) = match &service_mode {
+        ephemeralml_verifier_api::ServiceMode::PublicTrustCenter => {
+            tracing::info!("╔══════════════════════════════════════════════╗");
+            tracing::info!("║  CYNTRISEC TRUST CENTER — PUBLIC MODE       ║");
+            tracing::info!("║  No API key required for verification.      ║");
+            tracing::info!("║  Rate limiting active.                      ║");
+            tracing::info!("╚══════════════════════════════════════════════╝");
+            // Force rate limiting in public mode (minimum 30 rpm if user set 0).
+            let rpm = if args.rate_limit == 0 {
+                tracing::warn!(
+                    "Rate limit 0 not allowed in public-trust-center mode, defaulting to 60"
+                );
+                60
+            } else {
+                args.rate_limit
+            };
+            (None, rpm)
+        }
+        ephemeralml_verifier_api::ServiceMode::SecuredApi => {
+            let key = args.api_key.clone().unwrap_or_else(|| {
+                eprintln!(
+                    "Error: --mode secured-api requires --api-key or EPHEMERALML_VERIFIER_API_KEY."
+                );
+                std::process::exit(1);
+            });
             if key.len() < 16 {
                 tracing::warn!(
                     "API key is shorter than 16 characters — consider using a stronger key"
                 );
             }
+            tracing::info!("Cyntrisec Trust Center — Secured API mode");
             tracing::info!("API key authentication enabled");
-            Some(key.clone())
-        }
-        (None, true) => {
-            tracing::warn!("========================================");
-            tracing::warn!("  AUTH DISABLED (--insecure-no-auth)");
-            tracing::warn!("  Do NOT expose this to the internet!");
-            tracing::warn!("========================================");
-            None
-        }
-        (None, false) => {
-            eprintln!(
-                "Error: No API key configured. Either:\n\
-                 \n\
-                 1. Set an API key:  --api-key <KEY>  or  EPHEMERALML_VERIFIER_API_KEY=<KEY>\n\
-                 2. Explicitly disable auth:  --insecure-no-auth\n\
-                 \n\
-                 This is required to prevent accidental unauthenticated deployments."
-            );
-            std::process::exit(1);
+            (Some(key), args.rate_limit)
         }
     };
 
@@ -88,28 +104,33 @@ async fn main() {
             );
             std::process::exit(1);
         }
-        tracing::warn!("No --cors-origin specified; CORS is fully permissive");
+        if service_mode == ephemeralml_verifier_api::ServiceMode::PublicTrustCenter {
+            tracing::info!("CORS: permissive (public trust center mode)");
+        } else {
+            tracing::warn!("No --cors-origin specified; CORS is fully permissive");
+        }
     } else {
         tracing::info!("CORS allowed origins: {:?}", args.cors_origins);
     }
 
     // --- Rate limit ---
-    if args.rate_limit == 0 {
+    if rate_limit == 0 {
         tracing::warn!("Rate limiting is disabled (--rate-limit 0)");
     } else {
-        tracing::info!("Rate limit: {} requests/minute per IP", args.rate_limit);
+        tracing::info!("Rate limit: {} requests/minute per IP", rate_limit);
     }
 
     let config = ephemeralml_verifier_api::ServerConfig {
+        mode: service_mode,
         api_key,
-        requests_per_minute: args.rate_limit,
+        requests_per_minute: rate_limit,
         cors_origins: args.cors_origins,
     };
 
     let app = ephemeralml_verifier_api::build_router_with_config(&config);
 
     let addr = format!("{}:{}", args.host, args.port);
-    tracing::info!("EphemeralML Verifier API listening on {}", addr);
+    tracing::info!("Listening on {}", addr);
 
     let listener = tokio::net::TcpListener::bind(&addr).await.unwrap();
     axum::serve(
@@ -118,4 +139,39 @@ async fn main() {
     )
     .await
     .unwrap();
+}
+
+/// Resolve the service mode from CLI args.
+///
+/// Priority: --mode > --insecure-no-auth (legacy) > --api-key > error.
+fn resolve_mode(args: &Args) -> ephemeralml_verifier_api::ServiceMode {
+    if let Some(mode_str) = &args.mode {
+        match mode_str.as_str() {
+            "public-trust-center" => ephemeralml_verifier_api::ServiceMode::PublicTrustCenter,
+            "secured-api" => ephemeralml_verifier_api::ServiceMode::SecuredApi,
+            other => {
+                eprintln!(
+                    "Error: Unknown mode '{}'.\n\
+                     Valid modes: public-trust-center, secured-api",
+                    other
+                );
+                std::process::exit(1);
+            }
+        }
+    } else if args.insecure_no_auth {
+        // Legacy flag — map to public-trust-center for backward compat.
+        tracing::warn!("--insecure-no-auth is deprecated. Use --mode public-trust-center instead.");
+        ephemeralml_verifier_api::ServiceMode::PublicTrustCenter
+    } else if args.api_key.is_some() {
+        ephemeralml_verifier_api::ServiceMode::SecuredApi
+    } else {
+        eprintln!(
+            "Error: No mode configured. Either:\n\
+             \n\
+             1. Public trust center:  --mode public-trust-center\n\
+             2. Secured API:          --mode secured-api --api-key <KEY>\n\
+             3. Legacy (deprecated):  --insecure-no-auth"
+        );
+        std::process::exit(1);
+    }
 }

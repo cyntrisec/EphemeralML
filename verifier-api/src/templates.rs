@@ -3,142 +3,277 @@ pub const LANDING_HTML: &str = r##"<!DOCTYPE html>
 <head>
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>EphemeralML Receipt Verifier</title>
+  <title>Cyntrisec Trust Center</title>
+  <meta name="description" content="Verify signed receipts from confidential AI inference."/>
+  <meta property="og:title" content="Cyntrisec Trust Center"/>
+  <meta property="og:description" content="Verify signed receipts from confidential AI inference."/>
+  <meta property="og:type" content="website"/>
+  <meta name="theme-color" content="#050505"/>
+  <link rel="icon" href="https://cyntrisec.com/logo-mark-64.png" type="image/png"/>
   <style>
-    @import url("https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap");
+    @import url("https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700&family=IBM+Plex+Mono:wght@400;500;600&display=swap");
     *{margin:0;padding:0;box-sizing:border-box}
     :root{
-      --blue:#3b82f6;--blue-light:#60a5fa;--blue-dim:rgba(59,130,246,0.15);
-      --emerald:#10b981;--emerald-dim:rgba(16,185,129,0.15);
-      --rose:#f43f5e;--rose-dim:rgba(244,63,94,0.15);
-      --amber:#f59e0b;--amber-dim:rgba(245,158,11,0.15);
-      --bg-primary:#0b0f1a;--bg-secondary:#111827;--bg-card:#1f2937;
-      --border:#374151;--border-light:#4b5563;
-      --text-primary:#f9fafb;--text-secondary:#9ca3af;--text-muted:#6b7280;
+      --bg:#050505;--bg-raised:#0a0a0a;--bg-input:#080808;
+      --border:#161616;--border-focus:#00d4ff;
+      --text:#e8e8e8;--text-dim:#777;--text-faint:#444;
+      --cyan:#00d4ff;--green:#00cc88;--red:#e5484d;--amber:#f5a623;
+      --green-bg:rgba(0,204,136,0.07);--red-bg:rgba(229,72,77,0.07);--amber-bg:rgba(245,166,35,0.07);
+      --sans:"DM Sans",system-ui,sans-serif;--mono:"IBM Plex Mono","Menlo",monospace;
     }
-    body{font-family:"Inter",-apple-system,BlinkMacSystemFont,sans-serif;background:var(--bg-primary);color:var(--text-primary);line-height:1.6;min-height:100vh}
-    .mono{font-family:"JetBrains Mono",monospace}
-    .container{max-width:760px;margin:0 auto;padding:2rem 1.5rem}
-    header{text-align:center;margin-bottom:2.5rem}
-    header h1{font-size:1.75rem;font-weight:700;letter-spacing:-0.02em}
-    header p{color:var(--text-secondary);margin-top:0.5rem;font-size:0.95rem}
-    .tabs{display:flex;gap:0;border-bottom:1px solid var(--border);margin-bottom:1.5rem}
-    .tab{padding:0.75rem 1.5rem;cursor:pointer;color:var(--text-muted);font-weight:500;border-bottom:2px solid transparent;transition:all 0.2s}
-    .tab:hover{color:var(--text-secondary)}
-    .tab.active{color:var(--blue-light);border-bottom-color:var(--blue)}
-    .tab-content{display:none}
-    .tab-content.active{display:block}
-    label{display:block;font-size:0.85rem;font-weight:500;color:var(--text-secondary);margin-bottom:0.4rem;margin-top:1rem}
-    textarea,input[type="text"]{width:100%;background:var(--bg-secondary);border:1px solid var(--border);border-radius:8px;padding:0.75rem;color:var(--text-primary);font-size:0.9rem;resize:vertical}
-    textarea{min-height:180px;font-family:"JetBrains Mono",monospace;font-size:0.8rem}
-    textarea:focus,input:focus{outline:none;border-color:var(--blue)}
-    input[type="file"]{color:var(--text-secondary);font-size:0.85rem;margin-top:0.25rem}
-    input[type="file"]::file-selector-button{background:var(--bg-card);color:var(--text-primary);border:1px solid var(--border);border-radius:6px;padding:0.4rem 0.8rem;cursor:pointer;margin-right:0.5rem;font-size:0.8rem}
-    .btn{display:inline-block;padding:0.75rem 2rem;background:var(--blue);color:#fff;border:none;border-radius:8px;font-size:0.95rem;font-weight:600;cursor:pointer;margin-top:1.5rem;transition:background 0.2s}
-    .btn:hover{background:var(--blue-light)}
-    .btn:disabled{opacity:0.5;cursor:not-allowed}
-    .btn-outline{background:transparent;border:1px solid var(--border);color:var(--text-secondary);font-size:0.85rem;padding:0.5rem 1rem}
-    .btn-outline:hover{border-color:var(--text-secondary)}
-    #result{margin-top:2rem;display:none}
-    .result-card{background:var(--bg-card);border:1px solid var(--border);border-radius:12px;padding:1.5rem;position:relative}
-    .banner{padding:0.75rem 1rem;border-radius:8px;font-weight:700;font-size:1.1rem;text-align:center;margin-bottom:1.25rem;letter-spacing:0.02em}
-    .banner.verified{background:var(--emerald-dim);color:var(--emerald);border:1px solid rgba(16,185,129,0.3)}
-    .banner.invalid{background:var(--rose-dim);color:var(--rose);border:1px solid rgba(244,63,94,0.3)}
-    .meta-grid{display:grid;grid-template-columns:1fr 1fr;gap:0.6rem 1.5rem;margin-bottom:1.25rem;font-size:0.85rem}
-    .meta-grid dt{color:var(--text-muted)}
-    .meta-grid dd{color:var(--text-primary);font-weight:500}
-    .checks{border-top:1px solid var(--border);padding-top:1rem}
-    .check-row{display:flex;justify-content:space-between;align-items:center;padding:0.4rem 0;font-size:0.9rem}
-    .badge{padding:0.15rem 0.5rem;border-radius:4px;font-size:0.75rem;font-weight:600;text-transform:uppercase;font-family:"JetBrains Mono",monospace}
-    .badge.pass{background:var(--emerald-dim);color:var(--emerald)}
-    .badge.fail{background:var(--rose-dim);color:var(--rose)}
-    .badge.skip{background:var(--amber-dim);color:var(--amber)}
-    .issues{margin-top:1rem;font-size:0.85rem}
-    .issues h4{color:var(--text-secondary);margin-bottom:0.4rem}
-    .issues li{color:var(--text-muted);margin-left:1.2rem;margin-bottom:0.2rem}
-    .actions{margin-top:1.25rem;display:flex;gap:0.75rem}
-    .spinner{display:none;margin-top:1.5rem;text-align:center;color:var(--text-muted);font-size:0.9rem}
+    body{background:var(--bg);color:var(--text);font:400 14px/1.6 var(--sans);-webkit-font-smoothing:antialiased;min-height:100vh}
+    .mono{font-family:var(--mono)}
+
+    /* Layout */
+    .page{max-width:680px;margin:0 auto;padding:48px 20px 80px}
+    header{display:flex;align-items:center;justify-content:space-between;margin-bottom:40px;padding-bottom:16px;border-bottom:1px solid var(--border)}
+    .brand{display:flex;align-items:center;gap:12px;text-decoration:none;color:var(--text)}
+    .brand img{width:28px;height:28px}
+    .brand span{font-weight:600;font-size:13px;letter-spacing:0.02em}
+    .brand em{font-style:normal;color:var(--text-faint);font-weight:400;margin-left:2px}
+    header nav{display:flex;gap:16px;font-size:12px;color:var(--text-dim)}
+    header nav a{color:var(--text-dim);text-decoration:none;transition:color .15s}
+    header nav a:hover{color:var(--text)}
+
+    /* Sections */
+    .field-group{margin-bottom:24px}
+    .field-label{display:block;font:500 11px/1 var(--mono);color:var(--text-faint);text-transform:uppercase;letter-spacing:0.08em;margin-bottom:8px}
+    textarea,input[type="text"]{width:100%;background:var(--bg-input);border:1px solid var(--border);color:var(--text);padding:10px 12px;font-size:13px;border-radius:4px;transition:border-color .15s}
+    textarea{min-height:140px;font-family:var(--mono);font-size:12px;line-height:1.5;resize:vertical}
+    textarea:focus,input[type="text"]:focus{outline:none;border-color:var(--border-focus)}
+    input[type="file"]{font-size:12px;color:var(--text-dim)}
+    input[type="file"]::file-selector-button{background:var(--bg-raised);border:1px solid var(--border);color:var(--text);padding:6px 12px;border-radius:3px;cursor:pointer;font-size:11px;margin-right:8px}
+
+    /* Tabs */
+    .tab-bar{display:flex;gap:0;margin-bottom:20px;border-bottom:1px solid var(--border)}
+    .tab-btn{padding:8px 16px;font:500 12px/1 var(--mono);color:var(--text-faint);background:none;border:none;border-bottom:2px solid transparent;cursor:pointer;transition:color .15s,border-color .15s;margin-bottom:-1px}
+    .tab-btn:hover{color:var(--text-dim)}
+    .tab-btn.on{color:var(--cyan);border-bottom-color:var(--cyan)}
+    .tab-pane{display:none}.tab-pane.on{display:block}
+
+    /* Samples */
+    .sample-row{display:flex;align-items:center;gap:8px;margin-bottom:20px;flex-wrap:wrap}
+    .sample-row span{font:500 11px/1 var(--mono);color:var(--text-faint);text-transform:uppercase;letter-spacing:0.06em}
+    .sample-btn{background:none;border:1px solid var(--border);color:var(--text-dim);font:400 12px/1 var(--mono);padding:5px 10px;border-radius:3px;cursor:pointer;transition:color .15s,border-color .15s}
+    .sample-btn:hover{color:var(--text);border-color:var(--text-dim)}
+
+    /* Buttons */
+    .btn-verify{display:block;width:100%;padding:10px;background:var(--text);color:var(--bg);border:none;font:600 13px/1 var(--sans);letter-spacing:0.01em;cursor:pointer;border-radius:4px;transition:opacity .15s;margin-top:8px}
+    .btn-verify:hover{opacity:0.85}
+    .btn-verify:disabled{opacity:0.4;cursor:default}
+    .btn-sm{background:none;border:1px solid var(--border);color:var(--text-dim);font:400 12px/1 var(--mono);padding:6px 12px;border-radius:3px;cursor:pointer;transition:color .15s,border-color .15s}
+    .btn-sm:hover{color:var(--text);border-color:var(--text-dim)}
+
+    /* Spinner */
+    .spinner{display:none;padding:16px 0;font:400 12px/1 var(--mono);color:var(--text-dim)}
+
+    /* Result */
+    #result{display:none;margin-top:32px;padding-top:32px;border-top:1px solid var(--border)}
+
+    /* Verdict */
+    .verdict{padding:16px 20px;border-left:3px solid var(--border);margin-bottom:24px}
+    .verdict.pass{border-left-color:var(--green);background:var(--green-bg)}
+    .verdict.fail{border-left-color:var(--red);background:var(--red-bg)}
+    .verdict h2{font-size:16px;font-weight:600;margin-bottom:2px}
+    .verdict.pass h2{color:var(--green)}
+    .verdict.fail h2{color:var(--red)}
+    .verdict p{font-size:12px;color:var(--text-dim)}
+
+    /* Meta table */
+    .meta-tbl{width:100%;border-collapse:collapse;margin-bottom:24px;font-size:13px}
+    .meta-tbl td{padding:5px 0;vertical-align:top}
+    .meta-tbl td:first-child{width:130px;font:500 11px/1.8 var(--mono);color:var(--text-faint);text-transform:uppercase;letter-spacing:0.06em}
+    .meta-tbl td:last-child{color:var(--text);word-break:break-all}
+    .meta-tbl tr+tr td{border-top:1px solid var(--border)}
+
+    /* Checks */
+    .checks-hd{font:500 11px/1 var(--mono);color:var(--text-faint);text-transform:uppercase;letter-spacing:0.08em;margin-bottom:10px}
+    .ck{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;padding:8px 0;font-size:13px}
+    .ck+.ck{border-top:1px solid var(--border)}
+    .ck-info{display:flex;flex-direction:column;gap:3px;min-width:0}
+    .ck-name{color:var(--text);font-weight:500}
+    .ck-layer{font:500 10px/1 var(--mono);color:var(--text-faint);text-transform:uppercase;letter-spacing:0.06em}
+    .ck-detail{font-size:12px;color:var(--text-dim);line-height:1.5}
+    .tag{font:600 10px/1 var(--mono);text-transform:uppercase;letter-spacing:0.04em;padding:3px 7px;border-radius:2px;flex-shrink:0}
+    .tag-pass{color:var(--green);background:var(--green-bg)}
+    .tag-fail{color:var(--red);background:var(--red-bg)}
+    .tag-skip{color:var(--amber);background:var(--amber-bg)}
+
+    /* Issues */
+    .issues-section{margin-top:24px}
+    .issue-hd{font:500 11px/1 var(--mono);text-transform:uppercase;letter-spacing:0.08em;margin-bottom:6px}
+    .issue-hd.err{color:var(--red)}.issue-hd.wrn{color:var(--amber)}
+    .issue-li{font-size:12px;line-height:1.6;color:var(--text-dim);padding-left:14px;position:relative;margin-bottom:2px}
+    .issue-li::before{content:"\203A";position:absolute;left:0;font-family:var(--mono);color:inherit}
+    .issue-li.err{color:#ff8a8a}
+
+    /* Limitations */
+    .lim{margin-top:24px;padding:14px 16px;border:1px dashed var(--border);font-size:12px;color:var(--text-dim);line-height:1.7}
+    .lim strong{color:var(--amber);font-weight:600;display:block;font:500 11px/1 var(--mono);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:8px}
+    .lim ul{list-style:none;margin:0;padding:0}
+    .lim li{padding-left:12px;position:relative;margin-bottom:4px}
+    .lim li::before{content:"\2013";position:absolute;left:0;color:var(--text-faint)}
+
+    /* Actions */
+    .act-row{display:flex;gap:8px;margin-top:20px}
+
+    /* Footer */
+    footer{margin-top:48px;padding-top:16px;border-top:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;font-size:11px;color:var(--text-faint)}
+    footer a{color:var(--text-faint);text-decoration:none}
+    footer a:hover{color:var(--text-dim)}
+
+    .print-header{display:none}
+    @media(max-width:540px){
+      .page{padding:24px 16px 48px}
+      .meta-tbl td:first-child{width:100px}
+      .verdict{padding:12px 14px}
+    }
     @media print{
-      body{background:#fff;color:#000}
-      .container{max-width:100%}
-      .tabs,.tab-content,#pasteForm,#uploadForm,.actions,.btn{display:none!important}
-      #result{display:block!important}
-      .result-card{border:1px solid #ccc;box-shadow:none}
-      .banner.verified{background:#d1fae5;color:#065f46;border-color:#065f46}
-      .banner.invalid{background:#ffe4e6;color:#9f1239;border-color:#9f1239}
-      .badge.pass{background:#d1fae5;color:#065f46}
-      .badge.fail{background:#ffe4e6;color:#9f1239}
-      .badge.skip{background:#fef3c7;color:#92400e}
-      .meta-grid dt{color:#666}
-      .meta-grid dd{color:#000}
-      .check-row{color:#000}
-      .issues li{color:#333}
-      header p{color:#666}
+      body{background:#fff;color:#111}
+      .page{max-width:100%;padding:0}
+      header nav,.sample-row,.tab-bar,.tab-pane,form,.spinner,.act-row,footer{display:none!important}
+      #result{display:block!important;border-top:none;margin-top:0}
+      .verdict{border:1px solid #ccc}
+      .verdict.pass{background:#ecfdf5;border-left-color:#16a34a}
+      .verdict.fail{background:#fff1f2;border-left-color:#e11d48}
+      .tag-pass{background:#ecfdf5;color:#166534}
+      .tag-fail{background:#fff1f2;color:#9f1239}
+      .tag-skip{background:#fffbeb;color:#854d0e}
+      .meta-tbl tr+tr td,.ck+.ck{border-top-color:#e5e5e5}
+      .lim{border-color:#d4d4d4}
+      .print-header{display:block!important;text-align:right;font-size:11px;color:#888;margin-bottom:12px}
     }
   </style>
 </head>
 <body>
-<div class="container">
+<div class="page">
   <header>
-    <h1>EphemeralML Receipt Verifier</h1>
-    <p>Verify cryptographic receipts from confidential AI inference sessions</p>
+    <a class="brand" href="https://cyntrisec.com">
+      <img src="https://cyntrisec.com/logo-mark-64.png" alt="" width="28" height="28"/>
+      <span>Cyntrisec <em>/ Trust Center</em></span>
+    </a>
+    <nav class="mono">
+      <a href="https://cyntrisec.com/docs">Docs</a>
+      <a href="https://github.com/cyntrisec/EphemeralML">GitHub</a>
+    </nav>
   </header>
 
-  <div class="tabs">
-    <div class="tab active" onclick="switchTab('paste')">Paste JSON</div>
-    <div class="tab" onclick="switchTab('upload')">Upload File</div>
+  <div class="sample-row">
+    <span class="mono">Samples</span>
+    <button class="sample-btn" onclick="loadSample('valid')">Valid AIR v1</button>
+    <button class="sample-btn" onclick="loadSample('tampered')">Tampered AIR v1</button>
+    <button class="sample-btn" onclick="loadSample('legacy')">Legacy</button>
   </div>
 
-  <div id="pasteTab" class="tab-content active">
+  <div class="tab-bar">
+    <button class="tab-btn on" onclick="switchTab('paste')">Paste</button>
+    <button class="tab-btn" onclick="switchTab('upload')">Upload</button>
+  </div>
+
+  <div id="pasteTab" class="tab-pane on">
     <form id="pasteForm" onsubmit="verifyPaste(event)">
-      <label for="receiptJson">Receipt JSON</label>
-      <textarea id="receiptJson" placeholder='{"receipt_id":"...","model_id":"...","signature":"...",...}'></textarea>
-      <label for="publicKeyHex">Public Key (hex, 64 chars)</label>
-      <input type="text" id="publicKeyHex" placeholder="e.g. a1b2c3d4..." class="mono"/>
-      <button type="submit" class="btn">Verify</button>
+      <div class="field-group">
+        <label class="field-label" for="receiptJson">Receipt (JSON or base64)</label>
+        <textarea id="receiptJson" placeholder="Paste receipt JSON or base64-encoded CBOR"></textarea>
+      </div>
+      <div class="field-group">
+        <label class="field-label" for="publicKeyHex">Public key (64 hex chars)</label>
+        <input type="text" id="publicKeyHex" placeholder="Ed25519 public key hex" class="mono"/>
+      </div>
+      <button type="submit" class="btn-verify">Verify</button>
     </form>
   </div>
 
-  <div id="uploadTab" class="tab-content">
+  <div id="uploadTab" class="tab-pane">
     <form id="uploadForm" onsubmit="verifyUpload(event)">
-      <label>Receipt File (.json or .cbor)</label>
-      <input type="file" id="receiptFile" accept=".json,.cbor"/>
-      <label>Public Key (hex)</label>
-      <input type="text" id="uploadKeyHex" placeholder="64 hex chars" class="mono"/>
-      <label>Or upload key file (.bin, 32 bytes)</label>
-      <input type="file" id="publicKeyFile" accept=".bin"/>
-      <button type="submit" class="btn">Verify</button>
+      <div class="field-group">
+        <label class="field-label">Receipt file (.json / .cbor)</label>
+        <input type="file" id="receiptFile" accept=".json,.cbor,.bin"/>
+      </div>
+      <div class="field-group">
+        <label class="field-label">Public key (hex)</label>
+        <input type="text" id="uploadKeyHex" placeholder="64 hex chars" class="mono"/>
+      </div>
+      <div class="field-group">
+        <label class="field-label">Or key file (.bin, 32 bytes)</label>
+        <input type="file" id="publicKeyFile" accept=".bin,.key"/>
+      </div>
+      <button type="submit" class="btn-verify">Verify</button>
     </form>
   </div>
 
   <div class="spinner" id="spinner">Verifying...</div>
 
   <div id="result">
-    <div class="result-card">
-      <div id="banner" class="banner"></div>
-      <dl class="meta-grid" id="meta"></dl>
-      <div class="checks" id="checks"></div>
-      <div class="issues" id="issues"></div>
-      <div class="actions">
-        <button class="btn btn-outline" onclick="window.print()">Print Report</button>
-        <button class="btn btn-outline" onclick="copyJson()">Copy JSON</button>
-      </div>
+    <div class="print-header" id="printHeader"></div>
+    <div id="verdictBanner" class="verdict"></div>
+    <table class="meta-tbl" id="meta"></table>
+    <div class="checks-hd">Verification checks</div>
+    <div id="checks"></div>
+    <div id="issues" class="issues-section"></div>
+    <div class="lim" id="limitations">
+      <strong>Limitations</strong>
+      <ul>
+        <li>Confirms the receipt is correctly signed and structurally valid.</li>
+        <li>Does not independently verify attestation documents or hardware measurements.</li>
+        <li>Does not prove data was deleted after processing.</li>
+        <li>Does not constitute a compliance determination.</li>
+      </ul>
+    </div>
+    <div class="act-row">
+      <button class="btn-sm" onclick="window.print()">Print</button>
+      <button class="btn-sm" onclick="copyJson()">Copy JSON</button>
     </div>
   </div>
+
+  <div style="margin-top:32px;font-size:11px;color:var(--text-faint);line-height:1.6">
+    <strong style="color:var(--text-dim)">Privacy:</strong>
+    Uploaded receipts are processed in memory and not stored. IP addresses are used for rate limiting only and discarded within minutes. No analytics or tracking. Source: <a href="https://github.com/cyntrisec/EphemeralML" style="color:var(--text-dim)">github.com/cyntrisec/EphemeralML</a>
+  </div>
+
+  <footer>
+    <span>&copy; 2026 Cyntrisec</span>
+    <span class="mono">AIR v1 + legacy</span>
+  </footer>
 </div>
 
 <script>
 let lastResponse = null;
 
+async function loadSample(name) {
+  try {
+    if (name === 'legacy') {
+      const resp = await fetch('/api/v1/samples/legacy');
+      const data = await resp.json();
+      switchTab('paste');
+      document.getElementById('receiptJson').value = JSON.stringify(data.receipt, null, 2);
+      document.getElementById('publicKeyHex').value = data.public_key;
+    } else {
+      const resp = await fetch('/api/v1/samples/valid');
+      const data = await resp.json();
+      switchTab('paste');
+      if (name === 'tampered') {
+        let b64 = data.receipt_base64;
+        const mid = Math.floor(b64.length / 2);
+        b64 = b64.substring(0, mid) + 'TAMPERED' + b64.substring(mid + 8);
+        document.getElementById('receiptJson').value = b64;
+      } else {
+        document.getElementById('receiptJson').value = data.receipt_base64;
+      }
+      document.getElementById('publicKeyHex').value = data.public_key;
+    }
+  } catch (err) { alert('Failed to load sample: ' + err.message); }
+}
+
 function switchTab(tab) {
-  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
-  document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.tab-btn').forEach(t => t.classList.remove('on'));
+  document.querySelectorAll('.tab-pane').forEach(t => t.classList.remove('on'));
   if (tab === 'paste') {
-    document.querySelectorAll('.tab')[0].classList.add('active');
-    document.getElementById('pasteTab').classList.add('active');
+    document.querySelectorAll('.tab-btn')[0].classList.add('on');
+    document.getElementById('pasteTab').classList.add('on');
   } else {
-    document.querySelectorAll('.tab')[1].classList.add('active');
-    document.getElementById('uploadTab').classList.add('active');
+    document.querySelectorAll('.tab-btn')[1].classList.add('on');
+    document.getElementById('uploadTab').classList.add('on');
   }
 }
 
@@ -146,15 +281,15 @@ async function verifyPaste(e) {
   e.preventDefault();
   const receipt = document.getElementById('receiptJson').value.trim();
   const key = document.getElementById('publicKeyHex').value.trim();
-  if (!receipt || !key) return alert('Please provide both receipt JSON and public key.');
-  let parsed;
-  try { parsed = JSON.parse(receipt); } catch { return alert('Invalid JSON in receipt field.'); }
+  if (!receipt || !key) return alert('Provide both receipt and public key.');
+  let receiptValue;
+  try { receiptValue = JSON.parse(receipt); } catch { receiptValue = receipt; }
   showSpinner(true);
   try {
     const resp = await fetch('/api/v1/verify', {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({receipt: parsed, public_key: key})
+      body: JSON.stringify({receipt: receiptValue, public_key: key})
     });
     const data = await resp.json();
     if (!resp.ok && data.error) { alert('Error: ' + data.error); return; }
@@ -168,8 +303,8 @@ async function verifyUpload(e) {
   const fileInput = document.getElementById('receiptFile');
   const keyHex = document.getElementById('uploadKeyHex').value.trim();
   const keyFile = document.getElementById('publicKeyFile');
-  if (!fileInput.files.length) return alert('Please select a receipt file.');
-  if (!keyHex && !keyFile.files.length) return alert('Please provide a public key (hex or file).');
+  if (!fileInput.files.length) return alert('Select a receipt file.');
+  if (!keyHex && !keyFile.files.length) return alert('Provide a public key.');
   const form = new FormData();
   form.append('receipt_file', fileInput.files[0]);
   if (keyHex) form.append('public_key', keyHex);
@@ -192,54 +327,60 @@ function showResult(data) {
   lastResponse = data;
   const el = document.getElementById('result');
   el.style.display = 'block';
-  const banner = document.getElementById('banner');
-  banner.textContent = data.verified ? 'VERIFIED' : 'INVALID';
-  banner.className = 'banner ' + (data.verified ? 'verified' : 'invalid');
+  document.getElementById('printHeader').textContent =
+    'Cyntrisec Trust Center — ' + new Date().toISOString();
 
+  const isOk = data.verified === true || data.verdict === 'verified';
+  const fmt = data.format === 'air_v1' ? 'AIR v1' : 'Legacy';
+  const vb = document.getElementById('verdictBanner');
+  vb.className = 'verdict ' + (isOk ? 'pass' : 'fail');
+  vb.innerHTML = `<h2>${isOk ? 'Verified' : 'Failed'}</h2><p>${esc(fmt)} receipt &middot; ${data.verified_at ? new Date(data.verified_at*1000).toISOString() : ''}</p>`;
+
+  const r = data.receipt || {};
   const meta = document.getElementById('meta');
-  meta.innerHTML = `
-    <dt>Receipt ID</dt><dd class="mono">${esc(data.receipt_id||'')}</dd>
-    <dt>Model</dt><dd>${esc(data.model_id||'')} v${esc(data.model_version||'')}</dd>
-    <dt>Platform</dt><dd>${esc(data.measurement_type||'')}</dd>
-    <dt>Sequence</dt><dd>#${data.sequence_number||0}</dd>
-    <dt>Timestamp</dt><dd>${data.execution_timestamp ? new Date(data.execution_timestamp*1000).toISOString() : 'N/A'}</dd>
-    <dt>Verified at</dt><dd>${data.verified_at ? new Date(data.verified_at*1000).toISOString() : 'N/A'}</dd>
-  `;
+  let rows = '';
+  const add = (k, v) => { if (v != null && v !== '') rows += `<tr><td>${esc(k)}</td><td>${esc(String(v))}</td></tr>`; };
+  add('Receipt ID', r.receipt_id);
+  add('Model', r.model_id ? r.model_id + (r.model_version ? ' v' + r.model_version : '') : null);
+  add('Platform', r.platform);
+  add('Issuer', r.issuer);
+  add('Security', r.security_mode);
+  add('Exec time', r.execution_time_ms != null ? r.execution_time_ms + ' ms' : null);
+  add('Sequence', r.sequence_number != null ? '#' + r.sequence_number : null);
+  add('Issued', r.issued_at ? new Date(r.issued_at*1000).toISOString() : null);
+  add('Format', fmt);
+  meta.innerHTML = rows;
 
-  const checks = document.getElementById('checks');
-  const c = data.checks || {};
-  checks.innerHTML = '<h4 style="margin-bottom:0.5rem;color:var(--text-secondary)">Checks</h4>' +
-    checkRow('Signature (Ed25519)', c.signature) +
-    checkRow('Model ID match', c.model_match) +
-    checkRow('Measurement type', c.measurement_type) +
-    checkRow('Timestamp freshness', c.timestamp_fresh) +
-    checkRow('Measurements present', c.measurements_present);
+  const checksEl = document.getElementById('checks');
+  const arr = Array.isArray(data.checks) ? data.checks : [];
+  let ch = '';
+  arr.forEach(c => {
+    const s = (c.status||'skip').toLowerCase();
+    const cls = s === 'pass' ? 'tag-pass' : s === 'fail' ? 'tag-fail' : 'tag-skip';
+    const layer = c.layer ? `<span class="ck-layer">${esc(c.layer)}</span>` : '';
+    const detail = c.detail && s === 'fail' ? `<span class="ck-detail">${esc(c.detail)}</span>` : '';
+    ch += `<div class="ck"><div class="ck-info">${layer}<span class="ck-name">${esc(c.label||c.id)}</span>${detail}</div><span class="tag ${cls}">${s}</span></div>`;
+  });
+  checksEl.innerHTML = ch || '<div style="color:var(--text-faint);font-size:12px">No checks returned.</div>';
 
-  const issues = document.getElementById('issues');
-  let html = '';
+  const issuesEl = document.getElementById('issues');
+  let ih = '';
   if (data.errors && data.errors.length) {
-    html += '<h4 style="color:var(--rose)">Errors</h4><ul>';
-    data.errors.forEach(e => html += '<li>' + esc(e) + '</li>');
-    html += '</ul>';
+    ih += '<div class="issue-hd err">Errors</div>';
+    data.errors.forEach(e => ih += '<div class="issue-li err">' + esc(e) + '</div>');
   }
   if (data.warnings && data.warnings.length) {
-    html += '<h4 style="color:var(--amber);margin-top:0.5rem">Warnings</h4><ul>';
-    data.warnings.forEach(w => html += '<li>' + esc(w) + '</li>');
-    html += '</ul>';
+    ih += '<div class="issue-hd wrn" style="margin-top:10px">Warnings</div>';
+    data.warnings.forEach(w => ih += '<div class="issue-li">' + esc(w) + '</div>');
   }
-  issues.innerHTML = html;
-  el.scrollIntoView({behavior:'smooth'});
+  issuesEl.innerHTML = ih;
+  el.scrollIntoView({behavior:'smooth', block:'start'});
 }
 
-function checkRow(label, status) {
-  const s = (status||'skip').toLowerCase();
-  return `<div class="check-row"><span>${esc(label)}</span><span class="badge ${s}">${s}</span></div>`;
-}
-
-function esc(s) { const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
+function esc(s) { const d = document.createElement('div'); d.textContent = String(s); return d.innerHTML; }
 
 function copyJson() {
-  if (lastResponse) navigator.clipboard.writeText(JSON.stringify(lastResponse, null, 2));
+  if (lastResponse) navigator.clipboard.writeText(JSON.stringify(lastResponse, null, 2)).catch(() => {});
 }
 </script>
 </body>

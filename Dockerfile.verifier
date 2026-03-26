@@ -1,6 +1,33 @@
 FROM rust:1-bookworm AS builder
 WORKDIR /build
-COPY . .
+
+# Copy workspace root files
+COPY Cargo.toml Cargo.lock ./
+
+# Copy only the crates needed for verifier-api
+COPY common/ common/
+COPY verifier-api/ verifier-api/
+
+# Create stub crates for workspace members that are excluded from context
+# so Cargo can resolve the workspace without their source
+RUN mkdir -p client/src host/src enclave/src gateway-api/src compliance/src \
+    && echo 'fn main() {}' > client/src/main.rs \
+    && echo 'fn main() {}' > host/src/main.rs \
+    && echo 'fn main() {}' > enclave/src/main.rs \
+    && echo 'fn main() {}' > gateway-api/src/main.rs \
+    && echo 'fn main() {}' > compliance/src/main.rs
+
+# Copy stub Cargo.tomls for missing workspace members
+# These just need [package] name and version to satisfy the workspace resolver
+RUN for crate in client host enclave gateway-api compliance; do \
+    if [ ! -f "$crate/Cargo.toml" ]; then \
+        echo "[package]" > "$crate/Cargo.toml" \
+        && echo "name = \"ephemeral-ml-$crate\"" >> "$crate/Cargo.toml" \
+        && echo "version = \"0.1.0\"" >> "$crate/Cargo.toml" \
+        && echo "edition = \"2021\"" >> "$crate/Cargo.toml"; \
+    fi; \
+done
+
 RUN cargo build --release -p ephemeralml-verifier-api
 
 FROM debian:bookworm-slim
