@@ -108,7 +108,9 @@ async fn test_landing_page() {
     let resp = reqwest::get(format!("{}/", base)).await.unwrap();
     assert_eq!(resp.status(), 200);
     let text = resp.text().await.unwrap();
-    assert!(text.contains("EphemeralML") || text.contains("Cyntrisec") || text.contains("Trust Center"));
+    assert!(
+        text.contains("EphemeralML") || text.contains("Cyntrisec") || text.contains("Trust Center")
+    );
     assert!(text.contains("Verif"));
 }
 
@@ -640,11 +642,7 @@ fn make_air_v1_receipt(key: &ReceiptSigningKey) -> Vec<u8> {
         request_hash: [0xBB; 32],
         response_hash: [0xCC; 32],
         attestation_doc_hash: [0xDD; 32],
-        enclave_measurements: EnclaveMeasurements::new(
-            vec![1u8; 48],
-            vec![2u8; 48],
-            vec![3u8; 48],
-        ),
+        enclave_measurements: EnclaveMeasurements::new(vec![1u8; 48], vec![2u8; 48], vec![3u8; 48]),
         policy_version: "policy-v1".to_string(),
         sequence_number: 1,
         execution_time_ms: 100,
@@ -728,7 +726,8 @@ async fn test_air_v1_json_base64() {
     let public_key_hex = hex::encode(key.public_key_bytes());
 
     // Encode as base64 for the JSON endpoint
-    let receipt_b64 = base64::Engine::encode(&base64::engine::general_purpose::STANDARD, &receipt_bytes);
+    let receipt_b64 =
+        base64::Engine::encode(&base64::engine::general_purpose::STANDARD, &receipt_bytes);
 
     let client = reqwest::Client::new();
     let resp = client
@@ -836,7 +835,10 @@ async fn test_sample_air_v1_produces_verifiable_receipt() {
         .unwrap();
     assert_eq!(sample_resp.status(), 200);
     let sample: serde_json::Value = sample_resp.json().await.unwrap();
-    assert!(sample["receipt_base64"].is_string(), "AIR v1 sample must have receipt_base64");
+    assert!(
+        sample["receipt_base64"].is_string(),
+        "AIR v1 sample must have receipt_base64"
+    );
     assert_eq!(sample["format"], "air_v1");
     assert!(sample["public_key"].is_string());
 
@@ -852,7 +854,11 @@ async fn test_sample_air_v1_produces_verifiable_receipt() {
         .unwrap();
     assert_eq!(verify_resp.status(), 200);
     let body: serde_json::Value = verify_resp.json().await.unwrap();
-    assert_eq!(body["verified"], true, "AIR v1 sample must verify: {:?}", body["errors"]);
+    assert_eq!(
+        body["verified"], true,
+        "AIR v1 sample must verify: {:?}",
+        body["errors"]
+    );
     assert_eq!(body["verdict"], "verified");
     assert_eq!(body["format"], "air_v1");
 
@@ -887,7 +893,10 @@ async fn test_sample_legacy_produces_verifiable_receipt() {
         .unwrap();
     assert_eq!(sample_resp.status(), 200);
     let sample: serde_json::Value = sample_resp.json().await.unwrap();
-    assert!(sample["receipt"].is_object(), "Legacy sample must have receipt object");
+    assert!(
+        sample["receipt"].is_object(),
+        "Legacy sample must have receipt object"
+    );
     assert_eq!(sample["format"], "legacy");
 
     // Verify it — should pass
@@ -902,6 +911,10 @@ async fn test_sample_legacy_produces_verifiable_receipt() {
         .unwrap();
     assert_eq!(verify_resp.status(), 200);
     let body: serde_json::Value = verify_resp.json().await.unwrap();
-    assert_eq!(body["verified"], true, "Legacy sample must verify: {:?}", body["errors"]);
+    assert_eq!(
+        body["verified"], true,
+        "Legacy sample must verify: {:?}",
+        body["errors"]
+    );
     assert_eq!(body["format"], "legacy");
 }

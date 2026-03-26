@@ -63,7 +63,9 @@ async fn main() {
             tracing::info!("╚══════════════════════════════════════════════╝");
             // Force rate limiting in public mode (minimum 30 rpm if user set 0).
             let rpm = if args.rate_limit == 0 {
-                tracing::warn!("Rate limit 0 not allowed in public-trust-center mode, defaulting to 60");
+                tracing::warn!(
+                    "Rate limit 0 not allowed in public-trust-center mode, defaulting to 60"
+                );
                 60
             } else {
                 args.rate_limit

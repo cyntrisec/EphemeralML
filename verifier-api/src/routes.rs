@@ -231,7 +231,10 @@ fn sample_key_and_claims() -> (
     let claims = AirReceiptClaims {
         iss: "cyntrisec.com".to_string(),
         iat: now,
-        cti: [0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F, 0x10],
+        cti: [
+            0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E,
+            0x0F, 0x10,
+        ],
         eat_nonce: None,
         model_id: "minilm-l6-v2".to_string(),
         model_version: "1.0.0".to_string(),
@@ -239,11 +242,7 @@ fn sample_key_and_claims() -> (
         request_hash: [0xBB; 32],
         response_hash: [0xCC; 32],
         attestation_doc_hash: [0xDD; 32],
-        enclave_measurements: EnclaveMeasurements::new(
-            vec![1u8; 48],
-            vec![2u8; 48],
-            vec![3u8; 48],
-        ),
+        enclave_measurements: EnclaveMeasurements::new(vec![1u8; 48], vec![2u8; 48], vec![3u8; 48]),
         policy_version: "policy-v1".to_string(),
         sequence_number: 1,
         execution_time_ms: 95,
