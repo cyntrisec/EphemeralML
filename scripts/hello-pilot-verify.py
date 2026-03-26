@@ -4,7 +4,7 @@ EphemeralML Hello Pilot — OpenAI SDK Demo & Evidence Saver
 
 Calls the EphemeralML gateway using the official OpenAI Python SDK
 (with_raw_response for header access), extracts attestation receipt
-headers, and saves evidence to pilot-evidence/.
+headers, and saves evidence to pilot/evidence/.
 
 Prerequisites:
     pip install openai
@@ -28,7 +28,7 @@ API_KEY = os.environ.get("EPHEMERALML_API_KEY", "not-needed")
 # Evidence output directory (relative to repo root)
 SCRIPT_DIR = Path(__file__).resolve().parent
 PROJECT_DIR = SCRIPT_DIR.parent
-EVIDENCE_DIR = PROJECT_DIR / "pilot-evidence"
+EVIDENCE_DIR = PROJECT_DIR / "pilot" / "evidence"
 
 
 def main():
