@@ -19,6 +19,7 @@ use axum::middleware;
 use axum::response::{IntoResponse, Json};
 use axum::routing::{get, post};
 use axum::Router;
+use std::net::SocketAddr;
 use tower_http::cors::CorsLayer;
 use tower_http::limit::RequestBodyLimitLayer;
 use tower_http::trace::TraceLayer;
@@ -67,7 +68,7 @@ async fn rate_limit_middleware(
     }
 
     // Extract client IP from forwarded headers or fall back to "unknown".
-    let client_ip = extract_client_ip(&request);
+    let client_ip = extract_client_ip(&request, state.config.trust_proxy_headers);
 
     // Per-IP and global rate limit check.
     match state.rate_limiter.check(&client_ip) {
@@ -127,22 +128,35 @@ async fn rate_limit_middleware(
     }
 }
 
-/// Extract client IP from the request headers.
+/// Extract client IP for rate limiting.
 ///
-/// Checks (in order):
+/// By default, the gateway uses the socket peer address from `ConnectInfo`.
+/// When `trust_proxy_headers` is explicitly enabled, it prefers:
 /// 1. `X-Forwarded-For` header (first IP)
 /// 2. `X-Real-Ip` header
-/// 3. Falls back to "unknown"
-///
-/// For production deployments behind a reverse proxy, ensure the proxy sets
-/// one of these headers. Direct connections without a proxy will use "unknown"
-/// as the IP key (shared bucket), which is acceptable for small deployments.
-fn extract_client_ip(request: &axum::http::Request<axum::body::Body>) -> String {
-    // X-Forwarded-For: client, proxy1, proxy2
-    if let Some(xff) = request.headers().get("x-forwarded-for") {
-        if let Ok(xff_str) = xff.to_str() {
-            if let Some(first_ip) = xff_str.split(',').next() {
-                let trimmed = first_ip.trim();
+/// 3. Socket peer address via `ConnectInfo`
+/// 4. Falls back to "unknown"
+fn extract_client_ip(
+    request: &axum::http::Request<axum::body::Body>,
+    trust_proxy_headers: bool,
+) -> String {
+    if trust_proxy_headers {
+        // X-Forwarded-For: client, proxy1, proxy2
+        if let Some(xff) = request.headers().get("x-forwarded-for") {
+            if let Ok(xff_str) = xff.to_str() {
+                if let Some(first_ip) = xff_str.split(',').next() {
+                    let trimmed = first_ip.trim();
+                    if !trimmed.is_empty() {
+                        return trimmed.to_string();
+                    }
+                }
+            }
+        }
+
+        // X-Real-Ip
+        if let Some(real_ip) = request.headers().get("x-real-ip") {
+            if let Ok(ip_str) = real_ip.to_str() {
+                let trimmed = ip_str.trim();
                 if !trimmed.is_empty() {
                     return trimmed.to_string();
                 }
@@ -150,15 +164,51 @@ fn extract_client_ip(request: &axum::http::Request<axum::body::Body>) -> String 
         }
     }
 
-    // X-Real-Ip
-    if let Some(real_ip) = request.headers().get("x-real-ip") {
-        if let Ok(ip_str) = real_ip.to_str() {
-            let trimmed = ip_str.trim();
-            if !trimmed.is_empty() {
-                return trimmed.to_string();
-            }
-        }
+    request
+        .extensions()
+        .get::<axum::extract::ConnectInfo<SocketAddr>>()
+        .map(|ci| ci.0.ip().to_string())
+        .unwrap_or_else(|| "unknown".to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use axum::body::Body;
+
+    #[test]
+    fn extract_client_ip_prefers_socket_peer_by_default() {
+        let mut req = axum::http::Request::builder()
+            .uri("/v1/chat/completions")
+            .body(Body::empty())
+            .unwrap();
+        req.headers_mut()
+            .insert("x-forwarded-for", HeaderValue::from_static("198.51.100.9"));
+        req.extensions_mut()
+            .insert(axum::extract::ConnectInfo(SocketAddr::from((
+                [203, 0, 113, 7],
+                1234,
+            ))));
+
+        assert_eq!(extract_client_ip(&req, false), "203.0.113.7");
     }
 
-    "unknown".to_string()
+    #[test]
+    fn extract_client_ip_uses_forwarded_headers_when_explicitly_trusted() {
+        let mut req = axum::http::Request::builder()
+            .uri("/v1/chat/completions")
+            .body(Body::empty())
+            .unwrap();
+        req.headers_mut().insert(
+            "x-forwarded-for",
+            HeaderValue::from_static("198.51.100.9, 203.0.113.7"),
+        );
+        req.extensions_mut()
+            .insert(axum::extract::ConnectInfo(SocketAddr::from((
+                [203, 0, 113, 7],
+                1234,
+            ))));
+
+        assert_eq!(extract_client_ip(&req, true), "198.51.100.9");
+    }
 }

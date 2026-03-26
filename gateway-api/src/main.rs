@@ -34,6 +34,7 @@ async fn main() -> anyhow::Result<()> {
         model = %config.default_model,
         capabilities = %config.model_capabilities,
         auth = config.api_key.as_ref().is_some_and(|k| !k.is_empty()),
+        trust_proxy_headers = config.trust_proxy_headers,
         embedding_backend = ?config.embedding_backend_addr,
         embedding_model = ?config.embedding_model,
         "Starting EphemeralML OpenAI-compatible gateway"
@@ -117,6 +118,10 @@ async fn main() -> anyhow::Result<()> {
 
     let listener = tokio::net::TcpListener::bind(addr).await?;
     tracing::info!("Listening on {addr}");
-    axum::serve(listener, app.into_make_service()).await?;
+    axum::serve(
+        listener,
+        app.into_make_service_with_connect_info::<SocketAddr>(),
+    )
+    .await?;
     Ok(())
 }

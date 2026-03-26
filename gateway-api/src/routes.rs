@@ -245,6 +245,10 @@ pub async fn chat_completions(
         );
     }
 
+    if let Some(err) = model_capability_conflict(&state, &req.model, "chat") {
+        return error_response_with_id(StatusCode::BAD_REQUEST, err, &request_id);
+    }
+
     let is_streaming = req.stream == Some(true);
 
     // Reject unsupported fields (parity with /v1/responses)
@@ -458,6 +462,10 @@ pub async fn responses(
             },
             &request_id,
         );
+    }
+
+    if let Some(err) = model_capability_conflict(&state, &req.model, "chat") {
+        return error_response_with_id(StatusCode::BAD_REQUEST, err, &request_id);
     }
 
     // Reject streaming
@@ -704,6 +712,10 @@ pub async fn embeddings(
         );
     }
 
+    if let Some(err) = model_capability_conflict(&state, &req.model, "embeddings") {
+        return error_response_with_id(StatusCode::BAD_REQUEST, err, &request_id);
+    }
+
     let texts = match &req.input {
         EmbeddingInput::Single(s) => vec![s.clone()],
         EmbeddingInput::Multiple(v) => v.clone(),
@@ -945,6 +957,52 @@ fn messages_to_prompt(messages: &[ChatMessage]) -> String {
         prompt.push_str(&msg.content);
     }
     prompt
+}
+
+/// Enforce capability semantics for the concrete backend model IDs exposed by
+/// `/v1/models`, while still allowing arbitrary caller aliases like `gpt-4`.
+fn model_capability_conflict(
+    state: &AppState,
+    requested_model: &str,
+    required_capability: &str,
+) -> Option<ErrorResponse> {
+    state.config.embedding_backend_addr.as_ref()?;
+
+    match required_capability {
+        "chat" => {
+            if state.config.embedding_model.as_deref() == Some(requested_model) {
+                Some(
+                    ErrorResponse::new(
+                        format!(
+                            "Model '{requested_model}' is embeddings-only. Use /v1/embeddings or request a chat-capable model."
+                        ),
+                        "invalid_request_error",
+                        Some("unsupported_model_capability"),
+                    )
+                    .with_param("model"),
+                )
+            } else {
+                None
+            }
+        }
+        "embeddings" => {
+            if requested_model == state.config.default_model {
+                Some(
+                    ErrorResponse::new(
+                        format!(
+                            "Model '{requested_model}' does not support embeddings. Use the embedding-capable model advertised by /v1/models."
+                        ),
+                        "invalid_request_error",
+                        Some("unsupported_model_capability"),
+                    )
+                    .with_param("model"),
+                )
+            } else {
+                None
+            }
+        }
+        _ => None,
+    }
 }
 
 /// Build EphemeralML metadata from an inference result.

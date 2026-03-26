@@ -82,6 +82,12 @@ pub struct GatewayConfig {
     #[arg(long, env = "EPHEMERALML_RATE_LIMIT_GLOBAL", default_value = "0")]
     pub rate_limit_global: u32,
 
+    /// Trust `X-Forwarded-For` / `X-Real-Ip` for client IP extraction.
+    /// Off by default. Enable only behind a trusted proxy that overwrites
+    /// these headers; otherwise clients can spoof rate-limit identity.
+    #[arg(long, env = "EPHEMERALML_TRUST_PROXY_HEADERS", default_value = "false")]
+    pub trust_proxy_headers: bool,
+
     /// Enable background reconnect loop with exponential backoff.
     /// When true, a background task monitors connectivity and reconnects
     /// automatically when a backend disconnects.
@@ -197,6 +203,13 @@ impl GatewayConfig {
                 "No capabilities enabled in EPHEMERALML_MODEL_CAPABILITIES — all inference \
                  endpoints will return 400. Set capabilities to 'chat', 'embeddings', or \
                  'chat,embeddings'."
+            );
+        }
+
+        if self.trust_proxy_headers {
+            tracing::warn!(
+                "EPHEMERALML_TRUST_PROXY_HEADERS is enabled -- only do this behind a trusted \
+                 proxy/load balancer that overwrites forwarding headers"
             );
         }
 
