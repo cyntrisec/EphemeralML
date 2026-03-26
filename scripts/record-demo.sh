@@ -14,7 +14,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 CAST_FILE="$PROJECT_DIR/demo-recording.cast"
-TC="https://trust-center-324130315768.us-central1.run.app"
+TC="https://verify.cyntrisec.com"
 
 # Clean up any previous recording
 rm -f "$CAST_FILE"
@@ -30,7 +30,7 @@ cat > "$DEMO_SCRIPT" << 'DEMOSCRIPT'
 #!/usr/bin/env bash
 set -e
 
-TC="https://trust-center-324130315768.us-central1.run.app"
+TC="https://verify.cyntrisec.com"
 
 type_and_run() {
     local cmd="$1"

@@ -3,14 +3,14 @@
 #
 # Usage:
 #   bash scripts/smoke-test.sh                                          # Test live Cloud Run
-#   bash scripts/smoke-test.sh https://trust-center-324130315768.us-central1.run.app
+#   bash scripts/smoke-test.sh https://verify.cyntrisec.com
 #   bash scripts/smoke-test.sh http://localhost:8080                     # Test local
 #
 # Exit code 0 = all checks passed, 1 = one or more failed.
 
 set -euo pipefail
 
-BASE_URL="${1:-https://trust-center-324130315768.us-central1.run.app}"
+BASE_URL="${1:-https://verify.cyntrisec.com}"
 PASSED=0
 FAILED=0
 
