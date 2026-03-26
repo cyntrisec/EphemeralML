@@ -155,11 +155,39 @@ else
     echo "(not generated — build ephemeralml-verify first)" > "$PACK_DIR/tamper-output.txt"
 fi
 
+HEALTHCARE_INCLUDED=$(cat <<'EOF'
+- `air-v1-receipt.cbor` — AIR v1 COSE_Sign1 receipt (standard format)
+- `air-v1-receipt.pubkey` — Ed25519 public key for AIR verification
+- `verify-output.txt` — what independent verification looks like
+- `tamper-output.txt` — what tamper detection looks like
+EOF
+)
+FINANCE_INCLUDED="$HEALTHCARE_INCLUDED"
+LEGAL_INCLUDED="$HEALTHCARE_INCLUDED"
+
+if [ "$FRESH_LEGACY" = true ]; then
+    LEGACY_BRIEF_LINES=$(cat <<'EOF'
+- `receipt.json` — real signed receipt from a mock inference run
+- `receipt.json.pubkey` — Ed25519 public key for verification
+EOF
+)
+    HEALTHCARE_INCLUDED="${LEGACY_BRIEF_LINES}
+${HEALTHCARE_INCLUDED}"
+    LEGACY_SINGLE_LINE=$(cat <<'EOF'
+- `receipt.json` — real signed receipt from a mock inference run
+EOF
+)
+    FINANCE_INCLUDED="${LEGACY_SINGLE_LINE}
+${FINANCE_INCLUDED}"
+    LEGAL_INCLUDED="${LEGACY_SINGLE_LINE}
+${LEGAL_INCLUDED}"
+fi
+
 # ── Step 4: Generate vertical briefs ─────────────────────
 
 echo "  [4/5] Generating vertical narrative briefs..."
 
-cat > "$PACK_DIR/healthcare-brief.md" << 'BRIEF'
+cat > "$PACK_DIR/healthcare-brief.md" <<EOF
 # Healthcare: Per-Inference Evidence for Clinical AI
 
 ## The Problem
@@ -199,14 +227,10 @@ A typical healthcare pilot runs for 8 weeks on a single clinical AI workflow:
 
 ## Included in This Pack
 
-- `receipt.json` — real signed receipt from a mock inference run
-- `receipt.json.pubkey` — Ed25519 public key for verification
-- `air-v1-receipt.cbor` — AIR v1 COSE_Sign1 receipt (standard format)
-- `verify-output.txt` — what independent verification looks like
-- `tamper-output.txt` — what tamper detection looks like
-BRIEF
+$HEALTHCARE_INCLUDED
+EOF
 
-cat > "$PACK_DIR/finance-brief.md" << 'BRIEF'
+cat > "$PACK_DIR/finance-brief.md" <<EOF
 # Finance: Investigation-Ready Records for AI Decisions
 
 ## The Problem
@@ -244,13 +268,10 @@ A typical finance pilot runs for 8 weeks on a single AI workflow:
 
 ## Included in This Pack
 
-- `receipt.json` — real signed receipt from a mock inference run
-- `air-v1-receipt.cbor` — AIR v1 COSE_Sign1 receipt (standard format)
-- `verify-output.txt` — what independent verification looks like
-- `tamper-output.txt` — what tamper detection looks like
-BRIEF
+$FINANCE_INCLUDED
+EOF
 
-cat > "$PACK_DIR/legal-brief.md" << 'BRIEF'
+cat > "$PACK_DIR/legal-brief.md" <<EOF
 # Legal: Evidence for AI-Assisted Document Processing
 
 ## The Problem
@@ -287,11 +308,8 @@ A typical legal pilot runs for 8 weeks on a single AI workflow:
 
 ## Included in This Pack
 
-- `receipt.json` — real signed receipt from a mock inference run
-- `air-v1-receipt.cbor` — AIR v1 COSE_Sign1 receipt (standard format)
-- `verify-output.txt` — what independent verification looks like
-- `tamper-output.txt` — what tamper detection looks like
-BRIEF
+$LEGAL_INCLUDED
+EOF
 
 echo "        Vertical briefs saved."
 
@@ -338,6 +356,7 @@ ephemeralml-verify air-v1-receipt.cbor --public-key \$(cat air-v1-receipt.pubkey
 ## Trust Center
 
 Upload any receipt to the Cyntrisec Trust Center for browser-based verification:
+- Hosted: \`https://verify.cyntrisec.com\`
 - Local: \`http://localhost:8080\` (run with \`--mode public-trust-center\`)
 
 ## Usage

@@ -388,7 +388,7 @@ step_2_models() {
 step_3_embeddings() {
     step_header 3 "$TOTAL_STEPS" "Embeddings with Attestation Receipt"
     ui_info "Sending text to the embedding endpoint. The response includes"
-    ui_info "attestation receipt headers proving the inference ran inside a TEE."
+    ui_info "receipt-related headers that can be verified later; in mock mode this is local demo evidence, not real TEE proof."
     ui_blank
 
     local hdrfile bodyfile
@@ -524,8 +524,8 @@ step_5_metadata() {
         ui_blank
         RECEIPT_COUNT=$((RECEIPT_COUNT + 1))
 
-        # Show what the receipt proves
-        ui_info "  This metadata proves:"
+        # Show what the metadata supports for later review
+        ui_info "  This metadata supports later review of:"
         ui_info "    - Which model executed the inference (executed_model)"
         ui_info "    - The attestation mode (mock, nitro, tdx, sev-snp)"
         ui_info "    - A SHA-256 hash of the AIR v1 receipt for verification"
@@ -605,7 +605,7 @@ print_summary() {
         ui_info "  What to do next:"
         ui_info "    1. Read the gateway docs:  gateway-api/README.md"
         ui_info "    2. Deploy with your own model and real TEE backend"
-        ui_info "    3. Verify receipts:  ephemeralml verify <receipt.json>"
+        ui_info "    3. Verify receipts:  ephemeralml-verify <receipt.json> --public-key-file <pubkey.bin>"
     fi
 
     ui_blank

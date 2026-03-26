@@ -15,10 +15,7 @@ infra/
 site/
 spec/
 *.md
-test_assets/
 examples/
 scripts/
-gateway-api/
 pilot-evidence/
 nvidia-disclosures/
-compliance/

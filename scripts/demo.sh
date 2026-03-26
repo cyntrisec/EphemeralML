@@ -25,6 +25,7 @@ TAMPERED_FILE="$PROJECT_DIR/demo-receipt-tampered.json"
 
 ENCLAVE_BIN="$PROJECT_DIR/target/release/ephemeral-ml-enclave"
 CLI_BIN="$PROJECT_DIR/target/release/ephemeralml"
+VERIFY_BIN="$PROJECT_DIR/target/release/ephemeralml-verify"
 
 # ── Helpers ──────────────────────────────────────────────
 
@@ -37,12 +38,16 @@ header() {
 }
 
 ensure_built() {
-    if [ ! -f "$ENCLAVE_BIN" ] || [ ! -f "$CLI_BIN" ]; then
+    if [ ! -f "$ENCLAVE_BIN" ] || [ ! -f "$CLI_BIN" ] || [ ! -f "$VERIFY_BIN" ]; then
         echo "  Building (mock mode, release)..."
         cd "$PROJECT_DIR"
         cargo build --release --features mock 2>&1 | tail -3
         echo "  Build complete."
         echo
+    fi
+
+    if [ ! -f "$VERIFY_BIN" ] && [ -f "$PROJECT_DIR/target/debug/ephemeralml-verify" ]; then
+        VERIFY_BIN="$PROJECT_DIR/target/debug/ephemeralml-verify"
     fi
 }
 
@@ -127,15 +132,16 @@ cmd_verify() {
         echo "  ERROR: No public key file. Run: bash scripts/demo.sh infer"
         exit 1
     fi
-
-    "$CLI_BIN" verify "$RECEIPT_FILE" \
+    "$VERIFY_BIN" "$RECEIPT_FILE" \
         --public-key-file "$PUBKEY_FILE" \
         --max-age 0 \
-    || true
+        --plain
 }
 
 cmd_tamper() {
     header "DEMO TAMPER — Tamper Detection"
+
+    ensure_built
 
     if [ ! -f "$RECEIPT_FILE" ]; then
         echo "  ERROR: No receipt found. Run: bash scripts/demo.sh infer"
@@ -161,12 +167,15 @@ json.dump(r, open('$TAMPERED_FILE', 'w'), indent=2)
 
     echo "  Verifying tampered receipt (should FAIL)..."
     echo
-
-    "$CLI_BIN" verify "$TAMPERED_FILE" \
+    if "$VERIFY_BIN" "$TAMPERED_FILE" \
         --public-key-file "$PUBKEY_FILE" \
         --max-age 0 \
-    && echo "  BUG: Tampered receipt should not verify!" \
-    || echo "  Tamper correctly detected."
+        --plain; then
+        echo "  BUG: Tampered receipt should not verify!"
+        exit 1
+    else
+        echo "  Tamper correctly detected."
+    fi
 }
 
 cmd_down() {
