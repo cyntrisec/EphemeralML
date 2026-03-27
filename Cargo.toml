@@ -43,7 +43,7 @@ aws-nitro-enclaves-nsm-api = "0.4"
 anyhow = "1.0"
 thiserror = "1.0"
 uuid = { version = "1.22", features = ["v4"] }
-sha2 = "0.10"
+sha2 = "0.11"
 
 # Cryptographic dependencies
 hpke = "0.11"
