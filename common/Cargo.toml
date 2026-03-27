@@ -41,7 +41,7 @@ candle-transformers = { version = "0.9", optional = true }
 tokenizers = { version = "0.22", optional = true }
 
 [dev-dependencies]
-proptest = "1.10"
+proptest = "1.11"
 
 [features]
 default = []
