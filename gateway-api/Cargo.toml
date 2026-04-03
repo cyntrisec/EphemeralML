@@ -49,6 +49,6 @@ gcp = ["ephemeral-ml-client/gcp"]
 production = ["ephemeral-ml-client/production"]
 
 [dev-dependencies]
-axum-test = "19"
+axum-test = "20"
 tower = { version = "0.5", features = ["util"] }
 http-body-util = "0.1"
