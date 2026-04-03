@@ -1,5 +1,5 @@
 use crate::error::{EphemeralError, Result};
-use ed25519_dalek::{Signature, Verifier, VerifyingKey};
+use ed25519_dalek::{Signature, VerifyingKey};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
@@ -134,7 +134,7 @@ impl ModelManifest {
         let payload_bytes = self.canonical_payload_bytes()?;
 
         verifying_key
-            .verify(&payload_bytes, &signature)
+            .verify_strict(&payload_bytes, &signature)
             .map_err(|e| {
                 EphemeralError::Validation(crate::ValidationError::InvalidSignature(e.to_string()))
             })?;

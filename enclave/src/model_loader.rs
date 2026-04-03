@@ -227,15 +227,15 @@ mod tests {
                         )
                         .unwrap();
 
+                        let info = ephemeral_ml_common::kms_hpke_info(&hpke_pk_bytes_clone);
+
                         let (encapped_key, mut sender_ctx) =
                             hpke::setup_sender::<
                                 hpke::aead::ChaCha20Poly1305,
                                 hpke::kdf::HkdfSha256,
                                 X25519HkdfSha256,
                                 _,
-                            >(
-                                &OpModeS::Base, &kem_pub, b"KMS_DEK", &mut rng
-                            )
+                            >(&OpModeS::Base, &kem_pub, &info, &mut rng)
                             .unwrap();
 
                         let ciphertext = sender_ctx.seal(&dek_clone, b"").unwrap();

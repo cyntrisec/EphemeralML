@@ -348,11 +348,13 @@ impl AttestationProvider for TeeAttestationProvider {
             )))
         })?;
 
+        let info = ephemeral_ml_common::kms_hpke_info(&self.hpke_keypair.public_key);
+
         let mut receiver_ctx = hpke::setup_receiver::<
             ChaCha20Poly1305,
             hpke::kdf::HkdfSha256,
             X25519HkdfSha256,
-        >(&OpModeR::Base, &kem_priv, &encapped_key, b"KMS_DEK")
+        >(&OpModeR::Base, &kem_priv, &encapped_key, &info)
         .map_err(|e| {
             EnclaveError::Enclave(EphemeralError::DecryptionError(format!(
                 "HPKE setup failed: {}",

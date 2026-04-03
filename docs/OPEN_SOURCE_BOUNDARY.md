@@ -20,9 +20,12 @@ This repository is intentionally public for the verification ecosystem, develope
 - Customer-specific artifacts, pilot data, and operator/admin workflows
 - Billing, tenancy, abuse tooling, and managed-service operational code
 - Internal security ownership logs, review cadence, and exception handling notes
+- Proprietary roadmap details for composite/pipeline receipts, managed verification workflows, and compliance packaging before their public interface is stable
 
 ## Rule of Thumb
 
 If a document primarily describes a reproducible product behavior, public verification flow, or standards-facing artifact, it likely belongs in the public repo.
 
 If a document primarily describes current live infrastructure, internal operations, customer data, or account-specific security posture, it should live outside the public repo.
+
+If a roadmap item reveals where product moat is forming before the public standard or verifier surface is ready, track it privately and publish only the stable interface later.

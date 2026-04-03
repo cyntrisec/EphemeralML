@@ -1,5 +1,6 @@
 use crate::{current_timestamp, AttestationProvider, EnclaveError, EphemeralError, Result};
 pub use ephemeral_ml_common::{AttestationDocument, PcrMeasurements};
+use rand::rngs::OsRng;
 use rsa::{pkcs8::EncodePublicKey, Oaep, RsaPrivateKey};
 use sha2::{Digest, Sha256};
 
@@ -38,7 +39,7 @@ pub struct MockAttestationProvider {
 
 impl MockAttestationProvider {
     pub fn new() -> Self {
-        let mut rng = rand::thread_rng();
+        let mut rng = OsRng;
         let kms_keypair = RsaPrivateKey::new(&mut rng, 2048).expect("RSA keygen failed");
 
         Self {
@@ -49,7 +50,7 @@ impl MockAttestationProvider {
     }
 
     pub fn with_invalid_attestation() -> Self {
-        let mut rng = rand::thread_rng();
+        let mut rng = OsRng;
         let kms_keypair = RsaPrivateKey::new(&mut rng, 2048).expect("RSA keygen failed");
 
         Self {
@@ -221,11 +222,13 @@ impl AttestationProvider for MockAttestationProvider {
             )))
         })?;
 
+        let info = ephemeral_ml_common::kms_hpke_info(&self.hpke_keypair.public_key);
+
         let mut receiver_ctx = hpke::setup_receiver::<
             ChaCha20Poly1305,
             hpke::kdf::HkdfSha256,
             X25519HkdfSha256,
-        >(&OpModeR::Base, &kem_priv, &encapped_key, b"KMS_DEK")
+        >(&OpModeR::Base, &kem_priv, &encapped_key, &info)
         .map_err(|e| {
             EnclaveError::Enclave(EphemeralError::DecryptionError(format!(
                 "HPKE setup failed: {}",
@@ -245,9 +248,10 @@ impl AttestationProvider for MockAttestationProvider {
 
     fn decrypt_kms(&self, ciphertext: &[u8]) -> Result<Vec<u8>> {
         let padding = Oaep::new::<Sha256>();
+        let mut rng = OsRng;
         match self
             .kms_keypair
-            .decrypt_blinded(&mut rand::thread_rng(), padding, ciphertext)
+            .decrypt_blinded(&mut rng, padding, ciphertext)
         {
             Ok(pt) => Ok(pt),
             Err(_) => self.decrypt_hpke(ciphertext),

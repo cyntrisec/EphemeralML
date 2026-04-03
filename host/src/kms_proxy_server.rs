@@ -16,10 +16,6 @@ use tokio::time::Duration;
 #[cfg(feature = "production")]
 use aws_sdk_kms::Client;
 #[cfg(feature = "production")]
-use rand::rngs::StdRng;
-#[cfg(feature = "production")]
-use rand::SeedableRng;
-#[cfg(feature = "production")]
 use tokio::time::{sleep, timeout};
 
 /// KMS Proxy Server
@@ -145,10 +141,8 @@ impl KmsProxyServer {
                     if rate_limited {
                         self.metrics.inc_rate_limited();
                     }
-                    // rand::thread_rng() is !Send and will poison any future we spawn onto
-                    // the multithread Tokio runtime. Use a Send RNG.
-                    let mut rng =
-                        StdRng::from_rng(OsRng).unwrap_or_else(|_| StdRng::from_seed([0u8; 32]));
+                    // Use OsRng directly for retry jitter instead of a deterministic fallback.
+                    let mut rng = OsRng;
 
                     for attempt in 1..=self.retry.max_attempts {
                         let elapsed = started.elapsed();
@@ -298,7 +292,7 @@ impl KmsProxyServer {
 
                 // Mock implementation
                 let mut key = [0u8; 32];
-                rand::thread_rng().fill_bytes(&mut key);
+                OsRng.fill_bytes(&mut key);
 
                 if let Some(attestation_bytes) = recipient {
                     match self.process_attestation(&attestation_bytes, &key) {
@@ -348,8 +342,7 @@ impl KmsProxyServer {
                         self.circuit.before_request().await;
                         let _permit = self.limiter.acquire().await;
                         self.rate_limiter.acquire(1.0).await;
-                        let mut rng = StdRng::from_rng(OsRng)
-                            .unwrap_or_else(|_| StdRng::from_seed([0u8; 32]));
+                        let mut rng = OsRng;
 
                         for attempt in 1..=self.retry.max_attempts {
                             let elapsed = started.elapsed();
@@ -559,14 +552,15 @@ impl KmsProxyServer {
             <X25519HkdfSha256 as hpke::Kem>::PublicKey::from_bytes(&user_data.hpke_public_key)
                 .map_err(|e| format!("Invalid HPKE public key: {}", e))?;
 
-        let (encapped_key, mut sender_ctx) =
-            hpke::setup_sender::<ChaCha20Poly1305, hpke::kdf::HkdfSha256, X25519HkdfSha256, _>(
-                &OpModeS::Base,
-                &kem_pub,
-                b"KMS_DEK",
-                &mut rng,
-            )
-            .map_err(|e| format!("HPKE setup failed: {}", e))?;
+        let info = ephemeral_ml_common::kms_hpke_info(&user_data.hpke_public_key);
+
+        let (encapped_key, mut sender_ctx) = hpke::setup_sender::<
+            ChaCha20Poly1305,
+            hpke::kdf::HkdfSha256,
+            X25519HkdfSha256,
+            _,
+        >(&OpModeS::Base, &kem_pub, &info, &mut rng)
+        .map_err(|e| format!("HPKE setup failed: {}", e))?;
 
         let ciphertext = sender_ctx
             .seal(key_material, b"")

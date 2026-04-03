@@ -30,7 +30,8 @@ pub use types::{
 };
 
 pub use kms_proxy::{
-    KmsProxyErrorCode, KmsProxyRequestEnvelope, KmsProxyResponseEnvelope, KmsRequest, KmsResponse,
+    kms_hpke_info, KmsProxyErrorCode, KmsProxyRequestEnvelope, KmsProxyResponseEnvelope,
+    KmsRequest, KmsResponse,
 };
 pub use model_manifest::ModelManifest;
 

@@ -12,6 +12,8 @@ use aws_nitro_enclaves_nsm_api as nsm;
 #[cfg(feature = "production")]
 use hpke::{aead::ChaCha20Poly1305, kem::X25519HkdfSha256, Deserializable, OpModeR};
 #[cfg(feature = "production")]
+use rand::rngs::OsRng;
+#[cfg(feature = "production")]
 use rsa::pkcs8::EncodePublicKey;
 #[cfg(feature = "production")]
 use rsa::{Oaep, RsaPrivateKey};
@@ -145,7 +147,7 @@ pub struct NSMAttestationProvider {
 impl NSMAttestationProvider {
     /// Create a new NSM attestation provider with ephemeral keys
     pub fn new() -> Result<Self> {
-        let mut rng = rand::thread_rng();
+        let mut rng = OsRng;
         let kms_keypair = RsaPrivateKey::new(&mut rng, 2048).map_err(|e| {
             EnclaveError::Enclave(EphemeralError::Internal(format!(
                 "RSA keygen failed: {}",
@@ -377,11 +379,13 @@ impl AttestationProvider for NSMAttestationProvider {
             )))
         })?;
 
+        let info = ephemeral_ml_common::kms_hpke_info(&self.hpke_keypair.public_key);
+
         let mut receiver_ctx = hpke::setup_receiver::<
             ChaCha20Poly1305,
             hpke::kdf::HkdfSha256,
             X25519HkdfSha256,
-        >(&OpModeR::Base, &kem_priv, &encapped_key, b"KMS_DEK")
+        >(&OpModeR::Base, &kem_priv, &encapped_key, &info)
         .map_err(|e| {
             EnclaveError::Enclave(EphemeralError::DecryptionError(format!(
                 "HPKE setup failed: {}",
@@ -401,8 +405,9 @@ impl AttestationProvider for NSMAttestationProvider {
 
     fn decrypt_kms(&self, ciphertext: &[u8]) -> Result<Vec<u8>> {
         let padding = Oaep::new::<Sha256>();
+        let mut rng = OsRng;
         self.kms_keypair
-            .decrypt_blinded(&mut rand::thread_rng(), padding, ciphertext)
+            .decrypt_blinded(&mut rng, padding, ciphertext)
             .map_err(|e| {
                 EnclaveError::Enclave(EphemeralError::DecryptionError(format!(
                     "KMS decryption failed: {}",

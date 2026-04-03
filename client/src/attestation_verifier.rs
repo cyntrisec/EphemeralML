@@ -520,36 +520,92 @@ impl AttestationVerifier {
                 ));
             }
 
-            // Verify BasicConstraints: non-leaf certs must have CA:TRUE
-            // (i > 0 means it's an intermediate, not the leaf at index 0)
+            let (_, parsed) = x509_parser::certificate::X509Certificate::from_der(cert_der)
+                .map_err(|e| {
+                    ClientError::Client(crate::EphemeralError::AttestationError(format!(
+                        "x509 parse error at index {}: {}",
+                        i, e
+                    )))
+                })?;
+
+            // Verify BasicConstraints / KeyUsage on CA certs and ensure the
+            // leaf is not itself marked as a CA.
             if i > 0 {
-                let (_, parsed) = x509_parser::certificate::X509Certificate::from_der(cert_der)
-                    .map_err(|e| {
-                        ClientError::Client(crate::EphemeralError::AttestationError(format!(
-                            "x509 parse error at index {}: {}",
-                            i, e
-                        )))
-                    })?;
-                match parsed.basic_constraints() {
-                    Ok(Some(bc)) => {
-                        if !bc.value.ca {
-                            return Err(ClientError::Client(
-                                crate::EphemeralError::AttestationError(format!(
-                                    "Intermediate cert at index {} does not have CA:TRUE",
-                                    i
-                                )),
-                            ));
-                        }
-                    }
-                    _ => {
+                let basic_constraints = parsed.basic_constraints().map_err(|e| {
+                    ClientError::Client(crate::EphemeralError::AttestationError(format!(
+                        "failed to parse BasicConstraints at index {}: {}",
+                        i, e
+                    )))
+                })?;
+                let bc = basic_constraints.ok_or_else(|| {
+                    ClientError::Client(crate::EphemeralError::AttestationError(format!(
+                        "Intermediate cert at index {} is missing BasicConstraints extension",
+                        i
+                    )))
+                })?;
+                if !bc.value.ca {
+                    return Err(ClientError::Client(
+                        crate::EphemeralError::AttestationError(format!(
+                            "Intermediate cert at index {} does not have CA:TRUE",
+                            i
+                        )),
+                    ));
+                }
+
+                let key_usage = parsed.key_usage().map_err(|e| {
+                    ClientError::Client(crate::EphemeralError::AttestationError(format!(
+                        "failed to parse KeyUsage at index {}: {}",
+                        i, e
+                    )))
+                })?;
+                let ku = key_usage.ok_or_else(|| {
+                    ClientError::Client(crate::EphemeralError::AttestationError(format!(
+                        "Intermediate cert at index {} is missing KeyUsage extension",
+                        i
+                    )))
+                })?;
+                if !ku.value.key_cert_sign() {
+                    return Err(ClientError::Client(
+                        crate::EphemeralError::AttestationError(format!(
+                            "Intermediate cert at index {} does not allow keyCertSign",
+                            i
+                        )),
+                    ));
+                }
+
+                if let Some(limit) = bc.value.path_len_constraint {
+                    let remaining_ca_certs = (0..i)
+                        .filter(|lower_idx| {
+                            x509_parser::certificate::X509Certificate::from_der(
+                                &cert_chain[*lower_idx],
+                            )
+                            .ok()
+                            .map(|(_, lower)| {
+                                lower
+                                    .basic_constraints()
+                                    .ok()
+                                    .flatten()
+                                    .map(|lower_bc| lower_bc.value.ca)
+                                    .unwrap_or(false)
+                            })
+                            .unwrap_or(false)
+                        })
+                        .count();
+                    if remaining_ca_certs > limit as usize {
                         return Err(ClientError::Client(
                             crate::EphemeralError::AttestationError(format!(
-                                "Intermediate cert at index {} is missing BasicConstraints extension",
-                                i
+                                "Intermediate cert at index {} violates pathLenConstraint {} with {} subordinate CA certs",
+                                i, limit, remaining_ca_certs
                             )),
                         ));
                     }
                 }
+            } else if matches!(parsed.basic_constraints(), Ok(Some(bc)) if bc.value.ca) {
+                return Err(ClientError::Client(
+                    crate::EphemeralError::AttestationError(
+                        "Leaf cert must not assert CA:TRUE".to_string(),
+                    ),
+                ));
             }
 
             last_cert = cert;

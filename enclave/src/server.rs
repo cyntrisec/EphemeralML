@@ -1,5 +1,5 @@
 use confidential_ml_pipeline::{PipelineError, StageConfig, StageExecutor, StageRuntime};
-use zeroize::Zeroize;
+use zeroize::{Zeroize, Zeroizing};
 
 /// Maximum retries for accepting control connections.
 /// Health checks, port scanners, and other non-handshake TCP connections
@@ -200,7 +200,9 @@ pub async fn run_direct_tcp<A: crate::AttestationProvider + Send + Sync>(
                     &receipt_issuer,
                 ) {
                     Ok(result) => {
-                        channel.send(Bytes::from(result.response_json)).await?;
+                        channel
+                            .send(Bytes::copy_from_slice(&result.response_json))
+                            .await?;
                         println!(
                             "[direct] Response sent: {} floats, {}ms, seq={}",
                             result.n_floats, result.exec_ms, result.sequence,
@@ -211,8 +213,11 @@ pub async fn run_direct_tcp<A: crate::AttestationProvider + Send + Sync>(
                         // Send redacted error back to client to avoid leaking
                         // internal details (file paths, stack traces).
                         let err_json = serde_json::json!({"error": "Inference request failed"});
-                        let err_bytes = serde_json::to_vec(&err_json).unwrap_or_default();
-                        if let Err(send_err) = channel.send(Bytes::from(err_bytes)).await {
+                        let err_bytes =
+                            Zeroizing::new(serde_json::to_vec(&err_json).unwrap_or_default());
+                        if let Err(send_err) =
+                            channel.send(Bytes::copy_from_slice(&err_bytes)).await
+                        {
                             eprintln!("[direct] Failed to send error response: {}", send_err);
                             break;
                         }
@@ -235,7 +240,7 @@ pub async fn run_direct_tcp<A: crate::AttestationProvider + Send + Sync>(
 
 /// Successful result from a direct-mode inference request.
 struct DirectResult {
-    response_json: Vec<u8>,
+    response_json: Zeroizing<Vec<u8>>,
     n_floats: usize,
     exec_ms: u64,
     sequence: u64,
@@ -428,7 +433,7 @@ fn handle_direct_request<A: crate::AttestationProvider>(
         model_manifest_json: model_manifest_json.cloned(),
         air_v1_receipt_b64,
     };
-    let response_json = serde_json::to_vec(&response)?;
+    let response_json = Zeroizing::new(serde_json::to_vec(&response)?);
 
     // Zeroize sensitive inference buffers before they are dropped.
     // output_bytes was already consumed above; zeroize the response struct's

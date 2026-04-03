@@ -306,7 +306,7 @@ impl PolicyManager {
                     reason: "Invalid base64 in root key".to_string(),
                 })?;
 
-        use ed25519_dalek::{Signature, Verifier, VerifyingKey};
+        use ed25519_dalek::{Signature, VerifyingKey};
 
         if public_key_bytes.len() != 32 {
             return Err(PolicyError::InvalidFormat {
@@ -335,7 +335,7 @@ impl PolicyManager {
         );
 
         verifying_key
-            .verify(&canonical_data, &signature)
+            .verify_strict(&canonical_data, &signature)
             .map_err(|_| PolicyError::InvalidSignature)
     }
 
