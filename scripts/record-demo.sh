@@ -4,17 +4,19 @@
 # Usage:
 #   bash scripts/record-demo.sh
 #
-# Output: demo-recording.cast (asciinema v2 format)
+# Output: demo-artifacts/demo-recording.cast (asciinema v2 format)
 #
-# The recording can be played with: asciinema play demo-recording.cast
+# The recording can be played with: asciinema play demo-artifacts/demo-recording.cast
 # Or embedded on a website via asciinema player JS.
 
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
-CAST_FILE="$PROJECT_DIR/demo-recording.cast"
+CAST_FILE="$PROJECT_DIR/demo-artifacts/demo-recording.cast"
 TC="https://verify.cyntrisec.com"
+
+mkdir -p "$(dirname "$CAST_FILE")"
 
 # Clean up any previous recording
 rm -f "$CAST_FILE"

@@ -1,0 +1,5 @@
+User-agent: *
+Disallow: /
+
+# This domain redirects to cyntrisec.com/docs
+# See https://cyntrisec.com/docs for the canonical site

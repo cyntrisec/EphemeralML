@@ -38,6 +38,24 @@ If you are reviewing this repo for investment or partnership diligence, start wi
 3. [`docs/benchmarks.md`](docs/benchmarks.md) — measured performance and methodology
 4. [`docs/design.md`](docs/design.md) — threat model and architecture
 
+## Repository Layout
+
+The repository is intentionally split between product crates, standards artifacts, deployment tooling, and publication-grade evidence:
+
+| Path | Purpose |
+|------|---------|
+| `common/`, `client/`, `host/`, `enclave/`, `gateway-api/`, `verifier-api/`, `compliance/` | Main Rust workspace crates for runtime, gateway, verifier, and compliance flows |
+| `spec/v1/` | Frozen AIR v1 normative specification and vectors |
+| `docs/` | Architecture, benchmark methodology, production notes, and publication-facing documentation |
+| `scripts/`, `infra/`, `manifests/` | Operational helpers and deployment scaffolding |
+| `site/pages-root/` and `site/marketing/` | GitHub Pages source: redirecting repo domain surface plus marketing/docs site source |
+| `evidence/`, `benchmark_results_*`, `demo-artifacts/` | Reproducibility artifacts and public benchmark/evaluation bundles |
+
+Open-source boundary note:
+- verifier logic, AIR v1, public demos, and reproducible evidence stay public
+- managed-service operations, live infrastructure inventory, and pre-interface moat work stay private
+- see [`docs/OPEN_SOURCE_BOUNDARY.md`](docs/OPEN_SOURCE_BOUNDARY.md)
+
 ---
 
 ## Why EphemeralML?
@@ -425,13 +443,15 @@ See [`QUICKSTART.md`](QUICKSTART.md) and [`docs/build-matrix.md`](docs/build-mat
 
 ## Documentation
 
+- [`docs/README.md`](docs/README.md) — Documentation index and audience-oriented entry points
 - [`docs/design.md`](docs/design.md) — Architecture & threat model
 - [`docs/build-matrix.md`](docs/build-matrix.md) — Deployment modes, feature flags & build commands (AWS, GCP, mock)
 - [`docs/benchmarks.md`](docs/benchmarks.md) — Benchmark methodology, results & competitive analysis
 - [`docs/BENCHMARK_SPEC.md`](docs/BENCHMARK_SPEC.md) — Benchmark specification (11-paper literature review)
 - [`QUICKSTART.md`](QUICKSTART.md) — Deployment guide
 - [`docs/OPEN_SOURCE_BOUNDARY.md`](docs/OPEN_SOURCE_BOUNDARY.md) — What stays public vs private in this repo
-- [`SECURITY_DEMO.md`](SECURITY_DEMO.md) — Security walkthrough
+- [`docs/security-demo.md`](docs/security-demo.md) — Security walkthrough
+- [`docs/infra.md`](docs/infra.md) — Infrastructure notes and Nitro deployment loop
 - [`scripts/run_final_kms_validation.sh`](scripts/run_final_kms_validation.sh) — Multi-run KMS-enforced benchmark validation
 - [`scripts/check_kms_integrity.sh`](scripts/check_kms_integrity.sh) — Post-run KMS/commit/hardware integrity audit
 - [`scripts/final_release_gate.sh`](scripts/final_release_gate.sh) — Single-command release gate for benchmark artifacts

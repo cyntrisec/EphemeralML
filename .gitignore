@@ -167,6 +167,7 @@ docs/GCP_HARDWARE_TEST_REPORT.md
 
 # Ad-hoc evidence runs (transient; canonical evidence lives in evidence/publication-*)
 evidence/*
+!evidence/README.md
 # Keep committed publication and hardening evidence:
 !evidence/publication-*/
 !evidence/publication-*/**
