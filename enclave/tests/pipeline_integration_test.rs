@@ -165,6 +165,7 @@ async fn single_stage_pipeline_with_receipts() {
             stage_idx: 0,
             layer_start: 0,
             layer_end: 4,
+            require_weight_hashes: false,
             weight_hashes: vec![],
             expected_measurements: BTreeMap::new(),
             endpoint: StageEndpoint {

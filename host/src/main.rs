@@ -246,6 +246,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 stage_idx: 0,
                 layer_start: 0,
                 layer_end: 6,
+                require_weight_hashes: false,
                 weight_hashes: vec![],
                 expected_measurements: BTreeMap::new(),
                 endpoint: StageEndpoint {
@@ -427,6 +428,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 stage_idx: 0,
                 layer_start: 0,
                 layer_end: args.total_layers,
+                require_weight_hashes: false,
                 weight_hashes: vec![],
                 expected_measurements: BTreeMap::new(),
                 endpoint: StageEndpoint {

@@ -389,6 +389,7 @@ mod tests {
             stage_idx: 0,
             layer_start: 0,
             layer_end: 1,
+            require_weight_hashes: false,
             weight_hashes: vec![],
             expected_measurements: std::collections::BTreeMap::new(),
             endpoint: confidential_ml_pipeline::StageEndpoint {

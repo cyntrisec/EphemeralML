@@ -1242,14 +1242,15 @@ dependencies = [
 
 [[package]]
 name = "confidential-ml-pipeline"
-version = "0.4.0"
+version = "0.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "89d4f6047e5b7438d01859e2a583aa4c7cac973cc7f6f61999d57887178b0d0d"
+checksum = "70a64116e53945db47a6d23a3e80b900fc596fb0a1d37ff6faecbb74f8f5a6a0"
 dependencies = [
  "async-trait",
  "bytes",
  "confidential-ml-transport",
  "hex",
+ "rand 0.8.5",
  "serde",
  "serde_json",
  "thiserror 2.0.18",
@@ -1261,16 +1262,16 @@ dependencies = [
 
 [[package]]
 name = "confidential-ml-transport"
-version = "0.5.0"
+version = "0.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "be583c36cd9a7991dfeddc8dbd0dfa4305a598807096ee7d69b1f725bfa631f7"
+checksum = "31da87a74bbc4ed3603dda96399243517fb908075d768bf382ffd7e962a6f060"
 dependencies = [
  "async-trait",
  "aws-nitro-enclaves-nsm-api",
  "bytes",
  "chacha20poly1305",
  "ciborium",
- "coset 0.3.8",
+ "coset",
  "hex",
  "hkdf",
  "openssl",
@@ -1344,16 +1345,6 @@ name = "core-foundation-sys"
 version = "0.8.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "773648b94d0e5d620f64f280777445740e61fe701025087ec8b57f45c791888b"
-
-[[package]]
-name = "coset"
-version = "0.3.8"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f4c8cc80f631f8307b887faca24dcc3abc427cd0367f6eb6188f6e8f5b7ad8fb"
-dependencies = [
- "ciborium",
- "ciborium-io",
-]
 
 [[package]]
 name = "coset"
@@ -1856,7 +1847,7 @@ dependencies = [
  "ciborium",
  "clap",
  "confidential-ml-transport",
- "coset 0.4.2",
+ "coset",
  "ed25519-dalek",
  "ephemeral-ml-common",
  "hex",
@@ -1888,7 +1879,7 @@ dependencies = [
  "candle-transformers",
  "ciborium",
  "confidential-ml-transport",
- "coset 0.4.2",
+ "coset",
  "ed25519-dalek",
  "hex",
  "lazy_static",
