@@ -283,7 +283,7 @@
       ]
     },
     "benchmark-nitro": {
-      "source": "benchmark_results_aws_nitro_modern_20260225_clean",
+      "source": "artifacts/benchmarks/aws-nitro-modern-20260225-clean",
       "artifact_count": 22,
       "artifacts": [
         {

@@ -49,7 +49,7 @@ The repository is intentionally split between product crates, standards artifact
 | `docs/` | Architecture, benchmark methodology, production notes, and publication-facing documentation |
 | `scripts/`, `infra/`, `manifests/` | Operational helpers and deployment scaffolding |
 | `site/pages-root/` and `site/marketing/` | GitHub Pages source: redirecting repo domain surface plus marketing/docs site source |
-| `evidence/`, `benchmark_results_*`, `demo-artifacts/` | Reproducibility artifacts and public benchmark/evaluation bundles |
+| `evidence/`, `artifacts/benchmarks/`, `demo-artifacts/` | Reproducibility artifacts and public benchmark/evaluation bundles |
 
 Open-source boundary note:
 - verifier logic, AIR v1, public demos, and reproducible evidence stay public

@@ -51,7 +51,7 @@
 
 **Benchmark (Nitro):**
 - Evidence: `evidence/publication-airv1-20260228/benchmark-nitro/`
-- Source: `benchmark_results_aws_nitro_modern_20260225_clean/` (dereferenced copy)
+- Source: `artifacts/benchmarks/aws-nitro-modern-20260225-clean/` (dereferenced copy)
 
 ## Benchmark Summary (AWS Nitro Canonical)
 
@@ -85,7 +85,7 @@ evidence/publication-airv1-20260228/
   aws-nitro/                    # Real files (Nitro rerun, Feb 28)
   gcp-cpu-tdx/                  # Real files (from mvp-20260227_092628)
   gcp-gpu-h100cc/               # Real files (from mvp-20260227_095900)
-  benchmark-nitro/              # Real files (from benchmark_results_aws_nitro_modern_20260225_clean)
+  benchmark-nitro/              # Real files (from artifacts/benchmarks/aws-nitro-modern-20260225-clean)
 ```
 
 All subdirectories contain dereferenced regular files (no symlinks).

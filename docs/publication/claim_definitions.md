@@ -146,7 +146,7 @@ Every claim in this registry MUST be accompanied by:
 | `warmup` | Number of warmup iterations discarded | `3` |
 | `script` | Script or binary that produced the measurement | `scripts/run_benchmark_modern.sh` |
 | `timestamp` | UTC ISO 8601 timestamp of measurement | `2026-02-25T11:02:00Z` |
-| `evidence_path` | Relative path to evidence artifacts | `benchmark_results_aws_nitro_modern_20260225_clean/` |
+| `evidence_path` | Relative path to evidence artifacts | `artifacts/benchmarks/aws-nitro-modern-20260225-clean/` |
 
 ---
 

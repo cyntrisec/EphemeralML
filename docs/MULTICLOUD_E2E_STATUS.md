@@ -21,7 +21,7 @@ EphemeralML has been validated single-stage E2E on AWS Nitro Enclaves and GCP Co
 
 **Date:** 2026-02-27 (latest), 2026-02-25 (benchmark)
 **Commit:** `f1ba30d` (build), `a33dc8b` (HEAD at evidence collection)
-**Evidence:** `evidence/nitro-e2e-20260227T095832Z/` (latest), `benchmark_results_aws_nitro_modern_20260225_clean/` (benchmark)
+**Evidence:** `evidence/nitro-e2e-20260227T095832Z/` (latest), `artifacts/benchmarks/aws-nitro-modern-20260225-clean/` (benchmark)
 **Docs:** [`docs/AWS_NITRO_E2E_REPORT.md`](AWS_NITRO_E2E_REPORT.md), [`docs/AWS_NITRO_E2E_RUNBOOK.md`](AWS_NITRO_E2E_RUNBOOK.md)
 
 ### Configuration

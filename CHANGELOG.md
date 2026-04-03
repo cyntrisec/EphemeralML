@@ -202,7 +202,7 @@
   - `benchmark_e2e`: End-to-end latency from client request to decrypted response
   - `benchmark_concurrent`: Multi-client throughput scaling (1–64 concurrent sessions)
   - `benchmark_cose`: COSE_Sign1 attestation verification with P-384 cert chain
-- **Benchmark Results**: All results from m6i.xlarge (Nitro-enabled) in `benchmark_results/`
+- **Benchmark Results**: Published benchmark bundles from m6i.xlarge (Nitro-enabled) under `artifacts/benchmarks/`
 - **Benchmark Documentation**: Specification, methodology, and analysis in `docs/`
 
 ### Changed

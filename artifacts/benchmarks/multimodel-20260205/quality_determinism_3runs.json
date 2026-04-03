@@ -3,9 +3,9 @@
   "baseline": {
     "num_runs": 3,
     "files": [
-      "benchmark_results_multimodel_20260205/minilm-l6_run1/baseline_results.json",
-      "benchmark_results_multimodel_20260205/minilm-l6_run2/baseline_results.json",
-      "benchmark_results_multimodel_20260205/minilm-l6_run3/baseline_results.json"
+      "artifacts/benchmarks/multimodel-20260205/minilm-l6_run1/baseline_results.json",
+      "artifacts/benchmarks/multimodel-20260205/minilm-l6_run2/baseline_results.json",
+      "artifacts/benchmarks/multimodel-20260205/minilm-l6_run3/baseline_results.json"
     ],
     "deterministic": true,
     "unique_sha256_count": 1,
@@ -27,9 +27,9 @@
   "enclave": {
     "num_runs": 3,
     "files": [
-      "benchmark_results_multimodel_20260205/minilm-l6_run1/enclave_results.json",
-      "benchmark_results_multimodel_20260205/minilm-l6_run2/enclave_results.json",
-      "benchmark_results_multimodel_20260205/minilm-l6_run3/enclave_results.json"
+      "artifacts/benchmarks/multimodel-20260205/minilm-l6_run1/enclave_results.json",
+      "artifacts/benchmarks/multimodel-20260205/minilm-l6_run2/enclave_results.json",
+      "artifacts/benchmarks/multimodel-20260205/minilm-l6_run3/enclave_results.json"
     ],
     "deterministic": true,
     "unique_sha256_count": 1,

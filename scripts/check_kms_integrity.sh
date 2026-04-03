@@ -22,7 +22,7 @@ Audits benchmark result directories for KMS integrity and consistency.
 
 Examples:
   $0 benchmark_results_final/kms_validation_*/run_*
-  $0 benchmark_results_multimodel_20260205/minilm-l6_run*
+  $0 artifacts/benchmarks/multimodel-20260205/minilm-l6_run*
 EOF
     exit 1
 fi
