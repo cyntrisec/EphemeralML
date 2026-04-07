@@ -5,6 +5,7 @@ use confidential_ml_transport::{SecureChannel, SessionConfig};
 use ephemeral_ml_common::transport_types::EphemeralUserData;
 use ephemeral_ml_common::{AttestationReceipt, ReceiptVerifier};
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeMap;
 use tokio::net::TcpStream;
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -46,6 +47,12 @@ pub struct InferenceHandlerOutput {
     /// Base64-encoded AIR v1 receipt (COSE_Sign1 CBOR bytes).
     #[serde(default)]
     pub air_v1_receipt_b64: Option<String>,
+    /// Declares how the AIR v1 model_hash was computed when known.
+    #[serde(default)]
+    pub air_v1_model_hash_scheme: Option<String>,
+    /// Human-readable model identity coverage when a signed manifest is authoritative.
+    #[serde(default)]
+    pub model_identity_coverage: Option<BTreeMap<String, bool>>,
 }
 
 #[derive(Deserialize)]
@@ -79,6 +86,10 @@ pub struct InferenceResult {
     /// Base64-encoded AIR v1 receipt (COSE_Sign1 CBOR bytes).
     /// Present when the server provides an AIR v1 receipt.
     pub air_v1_receipt_b64: Option<String>,
+    /// Declares how the AIR v1 model_hash was computed when known.
+    pub air_v1_model_hash_scheme: Option<String>,
+    /// Human-readable model identity coverage when a signed manifest is authoritative.
+    pub model_identity_coverage: Option<BTreeMap<String, bool>>,
 }
 
 /// Trait for secure client communication
@@ -443,6 +454,8 @@ impl SecureClient for SecureEnclaveClient {
             boot_attestation_b64: output.boot_attestation_b64,
             model_manifest_json: output.model_manifest_json,
             air_v1_receipt_b64: output.air_v1_receipt_b64,
+            air_v1_model_hash_scheme: output.air_v1_model_hash_scheme,
+            model_identity_coverage: output.model_identity_coverage,
         })
     }
 
@@ -632,6 +645,8 @@ impl SecureClient for SecureEnclaveClient {
             boot_attestation_b64: output.boot_attestation_b64,
             model_manifest_json: output.model_manifest_json,
             air_v1_receipt_b64: output.air_v1_receipt_b64,
+            air_v1_model_hash_scheme: output.air_v1_model_hash_scheme,
+            model_identity_coverage: output.model_identity_coverage,
         })
     }
 
@@ -818,6 +833,8 @@ impl SecureClient for SecureEnclaveClient {
             boot_attestation_b64: output.boot_attestation_b64,
             model_manifest_json: output.model_manifest_json,
             air_v1_receipt_b64: output.air_v1_receipt_b64,
+            air_v1_model_hash_scheme: output.air_v1_model_hash_scheme,
+            model_identity_coverage: output.model_identity_coverage,
         })
     }
 }
@@ -908,6 +925,8 @@ mod tests {
                     boot_attestation_b64: None,
                     model_manifest_json: None,
                     air_v1_receipt_b64: None,
+                    air_v1_model_hash_scheme: None,
+                    model_identity_coverage: None,
                 };
                 let response_bytes = serde_json::to_vec(&output).unwrap();
                 channel.send(Bytes::from(response_bytes)).await.unwrap();

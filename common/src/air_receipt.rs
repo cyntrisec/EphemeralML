@@ -171,6 +171,17 @@ impl AirReceiptClaims {
         iss: String,
         model_hash: [u8; 32],
     ) -> Result<Self> {
+        Self::from_legacy_with_scheme(receipt, iss, model_hash, None)
+    }
+
+    /// Convert a legacy v0.1 `AttestationReceipt` to AIR v1 claims and
+    /// optionally declare the `model_hash_scheme`.
+    pub fn from_legacy_with_scheme(
+        receipt: &AttestationReceipt,
+        iss: String,
+        model_hash: [u8; 32],
+        model_hash_scheme: Option<String>,
+    ) -> Result<Self> {
         // Parse UUID string to raw bytes
         let uuid = uuid::Uuid::parse_str(&receipt.receipt_id).map_err(|e| {
             EphemeralError::ValidationError(format!("invalid receipt_id UUID: {}", e))
@@ -199,7 +210,7 @@ impl AirReceiptClaims {
             execution_time_ms: receipt.execution_time_ms,
             memory_peak_mb: receipt.memory_peak_mb,
             security_mode,
-            model_hash_scheme: None,
+            model_hash_scheme,
         })
     }
 }
@@ -1412,6 +1423,47 @@ mod tests {
         let bytes = build_air_v1(&air_claims, &key).unwrap();
         let parsed = parse_air_v1(&bytes).unwrap();
         assert!(verify_air_v1(&parsed, &key.public_key).unwrap());
+    }
+
+    #[test]
+    fn test_from_legacy_with_scheme_roundtrip() {
+        let measurements = EnclaveMeasurements::new(vec![1u8; 48], vec![2u8; 48], vec![3u8; 48]);
+        let receipt_id = uuid::Uuid::new_v4().to_string();
+
+        let legacy = AttestationReceipt::new(
+            receipt_id,
+            1,
+            crate::receipt_signing::SecurityMode::GatewayOnly,
+            measurements,
+            [4u8; 32],
+            [5u8; 32],
+            [6u8; 32],
+            "policy-v1".to_string(),
+            7,
+            "test-model".to_string(),
+            "v1.0".to_string(),
+            100,
+            64,
+        );
+
+        let model_hash = [0xEE; 32];
+        let claims = AirReceiptClaims::from_legacy_with_scheme(
+            &legacy,
+            "cyntrisec.com".to_string(),
+            model_hash,
+            Some("sha256-manifest".to_string()),
+        )
+        .unwrap();
+
+        assert_eq!(claims.model_hash_scheme.as_deref(), Some("sha256-manifest"));
+
+        let key = ReceiptSigningKey::generate().unwrap();
+        let bytes = build_air_v1(&claims, &key).unwrap();
+        let parsed = parse_air_v1(&bytes).unwrap();
+        assert_eq!(
+            parsed.claims.model_hash_scheme.as_deref(),
+            Some("sha256-manifest")
+        );
     }
 
     // ── Closed-map / type-safety regression tests ────────────────

@@ -336,6 +336,15 @@ async fn run_infer(ui: &mut Ui, args: InferArgs) -> Result<()> {
                     .with_context(|| format!("Failed to write {}", manifest_path))?;
                 ui.kv("Manifest", manifest_path);
             }
+            if let Some(ref scheme) = result.air_v1_model_hash_scheme {
+                ui.kv("AIR hash scheme", scheme);
+            }
+            if let Some(ref coverage) = result.model_identity_coverage {
+                ui.section("Model Identity Coverage");
+                for (artifact, covered) in coverage {
+                    ui.kv(artifact, if *covered { "bound" } else { "not bound" });
+                }
+            }
         } else {
             // Multi-request: compact per-request line
             ui.info(&format!(

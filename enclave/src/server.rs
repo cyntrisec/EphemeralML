@@ -1,4 +1,5 @@
 use confidential_ml_pipeline::{PipelineError, StageConfig, StageExecutor, StageRuntime};
+use std::collections::BTreeMap;
 use zeroize::{Zeroize, Zeroizing};
 
 /// Maximum retries for accepting control connections.
@@ -68,6 +69,12 @@ struct DirectInferenceResponse {
     /// Present when the server has a model_hash and can build an AIR v1 receipt.
     #[serde(skip_serializing_if = "Option::is_none")]
     air_v1_receipt_b64: Option<String>,
+    /// Declares how the AIR v1 model_hash was computed when known.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    air_v1_model_hash_scheme: Option<String>,
+    /// Human-readable identity coverage from the authoritative signed manifest.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    model_identity_coverage: Option<BTreeMap<String, bool>>,
 }
 
 /// Accept a single client SecureChannel on `listen_addr` and serve inference
@@ -87,6 +94,8 @@ pub async fn run_direct_tcp<A: crate::AttestationProvider + Send + Sync>(
     boot_attestation_bytes: Option<std::sync::Arc<Vec<u8>>>,
     model_manifest_json: Option<std::sync::Arc<String>>,
     model_hash: Option<[u8; 32]>,
+    model_hash_scheme: Option<String>,
+    model_identity_coverage: Option<std::sync::Arc<BTreeMap<String, bool>>>,
     receipt_issuer: String,
 ) -> std::result::Result<(), Box<dyn std::error::Error + Send + Sync>> {
     use bytes::Bytes;
@@ -197,6 +206,8 @@ pub async fn run_direct_tcp<A: crate::AttestationProvider + Send + Sync>(
                     boot_attestation_bytes.as_deref(),
                     model_manifest_json.as_deref(),
                     model_hash,
+                    model_hash_scheme.as_deref(),
+                    model_identity_coverage.as_deref(),
                     &receipt_issuer,
                 ) {
                     Ok(result) => {
@@ -256,6 +267,8 @@ fn handle_direct_request<A: crate::AttestationProvider>(
     boot_attestation_bytes: Option<&Vec<u8>>,
     model_manifest_json: Option<&String>,
     model_hash: Option<[u8; 32]>,
+    model_hash_scheme: Option<&str>,
+    model_identity_coverage: Option<&BTreeMap<String, bool>>,
     receipt_issuer: &str,
 ) -> std::result::Result<DirectResult, Box<dyn std::error::Error + Send + Sync>> {
     let request: DirectInferenceRequest =
@@ -392,10 +405,11 @@ fn handle_direct_request<A: crate::AttestationProvider>(
 
     // Build AIR v1 receipt (non-fatal: skip if model_hash unavailable or build fails)
     let air_v1_receipt_b64: Option<String> = if let Some(mh) = model_hash {
-        match ephemeral_ml_common::air_receipt::AirReceiptClaims::from_legacy(
+        match ephemeral_ml_common::air_receipt::AirReceiptClaims::from_legacy_with_scheme(
             &receipt,
             receipt_issuer.to_string(),
             mh,
+            model_hash_scheme.map(|s| s.to_string()),
         ) {
             Ok(claims) => {
                 match ephemeral_ml_common::air_receipt::build_air_v1(
@@ -432,6 +446,8 @@ fn handle_direct_request<A: crate::AttestationProvider>(
             .map(|b| base64::engine::general_purpose::STANDARD.encode(b)),
         model_manifest_json: model_manifest_json.cloned(),
         air_v1_receipt_b64,
+        air_v1_model_hash_scheme: model_hash_scheme.map(|s| s.to_string()),
+        model_identity_coverage: model_identity_coverage.cloned(),
     };
     let response_json = Zeroizing::new(serde_json::to_vec(&response)?);
 

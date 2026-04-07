@@ -154,6 +154,8 @@ impl SecureClient for MockSecureClient {
             boot_attestation_b64: None,
             model_manifest_json: None,
             air_v1_receipt_b64: None,
+            air_v1_model_hash_scheme: None,
+            model_identity_coverage: None,
         })
     }
 
@@ -190,6 +192,8 @@ impl SecureClient for MockSecureClient {
             boot_attestation_b64: None,
             model_manifest_json: None,
             air_v1_receipt_b64: None,
+            air_v1_model_hash_scheme: None,
+            model_identity_coverage: None,
         })
     }
 
@@ -231,6 +235,8 @@ impl SecureClient for MockSecureClient {
             boot_attestation_b64: None,
             model_manifest_json: None,
             air_v1_receipt_b64: None,
+            air_v1_model_hash_scheme: None,
+            model_identity_coverage: None,
         })
     }
 }

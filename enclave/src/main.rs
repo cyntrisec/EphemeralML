@@ -421,6 +421,12 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
             // Every match arm below assigns this before it is read.
             #[allow(unused_assignments)]
             let mut loaded_model_hash: Option<[u8; 32]> = None;
+            #[allow(unused_assignments)]
+            let mut loaded_model_hash_scheme: Option<String> = None;
+            #[allow(unused_assignments)]
+            let mut loaded_model_identity_coverage: Option<
+                std::collections::BTreeMap<String, bool>,
+            > = None;
 
             // Track model manifest JSON for client sidecar evidence.
             #[allow(unused_assignments)]
@@ -459,6 +465,15 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
                                     .into());
                                 }
                                 info!(step = "hash_verify", hash = %hex::encode(expected), "Model hash verified");
+                            } else {
+                                warn!(
+                                    step = "hash_verify",
+                                    hash = %hex::encode(actual),
+                                    "WARNING: No --expected-model-hash set for local source. \
+                                     Model integrity is NOT pinned. Receipts will include the \
+                                     computed hash but no external verification was performed. \
+                                     Set --expected-model-hash for production deployments."
+                                );
                             }
                             loaded_model_hash = Some(actual);
                         }
@@ -499,6 +514,14 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
                                     .into());
                                 }
                                 info!(step = "hash_verify", hash = %hex::encode(expected), "Model hash verified");
+                            } else {
+                                warn!(
+                                    step = "hash_verify",
+                                    hash = %hex::encode(actual),
+                                    "WARNING: No --expected-model-hash set for local source. \
+                                     Model integrity is NOT pinned. Set --expected-model-hash \
+                                     for production deployments."
+                                );
                             }
                             loaded_model_hash = Some(actual);
                         }
@@ -622,6 +645,7 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
 
                     // Verify manifest signature (fail-closed).
                     // Empty env var is treated as unset (Dockerfile defaults set it to "").
+                    let mut manifest_authoritative = false;
                     if let Some(ref m) = manifest {
                         if let Some(pk_hex) = std::env::var("EPHEMERALML_MODEL_SIGNING_PUBKEY")
                             .ok()
@@ -639,6 +663,7 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
                             m.verify(&pk_bytes).map_err(|e| {
                                 format!("Manifest signature verification failed: {}", e)
                             })?;
+                            manifest_authoritative = true;
                             info!(step = "manifest", "Manifest signature verified");
                         }
                     }
@@ -713,14 +738,56 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
                                 .into());
                         }
 
-                        // Validate manifest hash if present
+                        // Validate manifest hashes if present
                         if let Some(ref m) = manifest {
-                            m.validate_hash(&actual)
-                                .map_err(|e| format!("Manifest hash validation failed: {}", e))?;
+                            m.validate_hash(&actual).map_err(|e| {
+                                format!("Manifest weight hash validation failed: {}", e)
+                            })?;
+                            info!(step = "manifest", "Manifest weight hash validated");
+
+                            // Validate tokenizer hash if manifest includes it
+                            {
+                                use sha2::{Digest as _, Sha256};
+                                let tok_actual: [u8; 32] = Sha256::digest(&tokenizer_bytes).into();
+                                m.validate_tokenizer_hash(&tok_actual).map_err(|e| {
+                                    format!("Manifest tokenizer hash validation failed: {}", e)
+                                })?;
+                                if m.tokenizer_hash.is_some() {
+                                    info!(step = "manifest", "Manifest tokenizer hash validated");
+                                }
+                            }
+
+                            // Validate config hash if manifest includes it (safetensors only)
+                            if let Some(ref cb) = config_bytes {
+                                use sha2::{Digest as _, Sha256};
+                                let cfg_actual: [u8; 32] = Sha256::digest(cb).into();
+                                m.validate_config_hash(&cfg_actual).map_err(|e| {
+                                    format!("Manifest config hash validation failed: {}", e)
+                                })?;
+                                if m.config_hash.is_some() {
+                                    info!(step = "manifest", "Manifest config hash validated");
+                                }
+                            }
+
+                            // Log identity coverage
+                            let coverage = m.identity_coverage();
                             info!(
                                 step = "manifest",
-                                "Manifest hash validated against decrypted weights"
+                                weights = coverage["weights"],
+                                tokenizer = coverage["tokenizer"],
+                                config = coverage["config"],
+                                adapters = coverage["adapters"],
+                                "Model identity coverage"
                             );
+                            if manifest_authoritative {
+                                loaded_model_hash_scheme = Some("sha256-manifest".to_string());
+                                loaded_model_identity_coverage = Some(
+                                    coverage
+                                        .into_iter()
+                                        .map(|(k, v)| (k.to_string(), v))
+                                        .collect(),
+                                );
+                            }
                         }
 
                         loaded_model_hash = Some(actual);
@@ -872,20 +939,66 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
                             m.verify(&pk_bytes).map_err(|e| {
                                 format!("Manifest signature verification failed: {}", e)
                             })?;
+                            manifest_authoritative = true;
                             info!(step = "manifest", "Manifest signature verified");
                         }
                     }
 
                     let weights_bytes = gcs.fetch_verified(&weights_path, expected).await?;
 
-                    // Validate manifest hash if present
+                    // Validate manifest hashes if present
                     if let Some(ref m) = manifest {
-                        m.validate_hash(expected)
-                            .map_err(|e| format!("Manifest hash validation failed: {}", e))?;
+                        m.validate_hash(expected).map_err(|e| {
+                            format!("Manifest weight hash validation failed: {}", e)
+                        })?;
                         info!(
                             step = "manifest",
-                            "Manifest hash validated against fetched weights"
+                            "Manifest weight hash validated against fetched weights"
                         );
+
+                        // Validate tokenizer hash if manifest includes it
+                        {
+                            use sha2::{Digest as _, Sha256};
+                            let tok_actual: [u8; 32] = Sha256::digest(&tokenizer_bytes).into();
+                            m.validate_tokenizer_hash(&tok_actual).map_err(|e| {
+                                format!("Manifest tokenizer hash validation failed: {}", e)
+                            })?;
+                            if m.tokenizer_hash.is_some() {
+                                info!(step = "manifest", "Manifest tokenizer hash validated");
+                            }
+                        }
+
+                        // Validate config hash if manifest includes it (safetensors only)
+                        if let Some(ref cb) = config_bytes {
+                            use sha2::{Digest as _, Sha256};
+                            let cfg_actual: [u8; 32] = Sha256::digest(cb).into();
+                            m.validate_config_hash(&cfg_actual).map_err(|e| {
+                                format!("Manifest config hash validation failed: {}", e)
+                            })?;
+                            if m.config_hash.is_some() {
+                                info!(step = "manifest", "Manifest config hash validated");
+                            }
+                        }
+
+                        // Log identity coverage
+                        let coverage = m.identity_coverage();
+                        info!(
+                            step = "manifest",
+                            weights = coverage["weights"],
+                            tokenizer = coverage["tokenizer"],
+                            config = coverage["config"],
+                            adapters = coverage["adapters"],
+                            "Model identity coverage"
+                        );
+                        if manifest_authoritative {
+                            loaded_model_hash_scheme = Some("sha256-manifest".to_string());
+                            loaded_model_identity_coverage = Some(
+                                coverage
+                                    .into_iter()
+                                    .map(|(k, v)| (k.to_string(), v))
+                                    .collect(),
+                            );
+                        }
                     }
 
                     let effective_model_id = manifest
@@ -1088,6 +1201,8 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
                     Some(boot_attestation_bytes),
                     manifest_arc,
                     loaded_model_hash,
+                    loaded_model_hash_scheme.clone(),
+                    loaded_model_identity_coverage.map(std::sync::Arc::new),
                     args.receipt_issuer.clone(),
                 )
                 .await
@@ -1102,6 +1217,7 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
                 receipt_key,
                 None,
                 loaded_model_hash,
+                loaded_model_hash_scheme.clone(),
                 args.receipt_issuer.clone(),
             );
 
@@ -1266,6 +1382,8 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
                 None,
                 None,
                 None,
+                None,
+                None,
                 args.receipt_issuer.clone(),
             )
             .await
@@ -1275,6 +1393,7 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
                 engine,
                 mock_provider,
                 receipt_key,
+                None,
                 None,
                 None,
                 args.receipt_issuer.clone(),
@@ -1412,6 +1531,7 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
             receipt_key,
             None,
             model_hash,
+            None,
             args.receipt_issuer.clone(),
         );
         let bridge = AttestationBridge::new(attestation_provider, receipt_pk);

@@ -26,6 +26,16 @@ pub struct ModelManifest {
     /// Metadata about the encryption key (e.g., Key ID in KMS)
     pub key_id: String,
 
+    /// SHA-256 hash of the tokenizer artifact (tokenizer.json).
+    /// When present, the enclave verifies the loaded tokenizer against this hash.
+    #[serde(default, with = "optional_serde_bytes")]
+    pub tokenizer_hash: Option<Vec<u8>>,
+
+    /// SHA-256 hash of the config artifact (config.json).
+    /// When present, the enclave verifies the loaded config against this hash.
+    #[serde(default, with = "optional_serde_bytes")]
+    pub config_hash: Option<Vec<u8>>,
+
     /// GCS URIs for model artifacts (config, tokenizer, weights_enc, wrapped_dek).
     /// Keys: "config", "tokenizer", "weights_enc", "wrapped_dek"
     #[serde(default)]
@@ -43,16 +53,51 @@ pub struct ModelManifest {
 /// Payload used for signing (excludes the signature itself)
 #[derive(Debug, Serialize, Deserialize)]
 struct ManifestSigningPayload {
-    model_id: String,
-    version: String,
-    #[serde(with = "serde_bytes")]
-    model_hash: Vec<u8>,
-    hash_algorithm: String,
-    key_id: String,
-    #[serde(default)]
-    gcs_uris: BTreeMap<String, String>,
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "optional_serde_bytes"
+    )]
+    config_hash: Option<Vec<u8>>,
     #[serde(default)]
     created_at: String,
+    #[serde(default)]
+    gcs_uris: BTreeMap<String, String>,
+    hash_algorithm: String,
+    key_id: String,
+    #[serde(with = "serde_bytes")]
+    model_hash: Vec<u8>,
+    model_id: String,
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "optional_serde_bytes"
+    )]
+    tokenizer_hash: Option<Vec<u8>>,
+    version: String,
+}
+
+/// Serde helper for Option<Vec<u8>> with serde_bytes encoding.
+mod optional_serde_bytes {
+    use serde::{self, Deserialize, Deserializer, Serializer};
+
+    pub fn serialize<S>(value: &Option<Vec<u8>>, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        match value {
+            Some(bytes) => serde_bytes::serialize(bytes, serializer),
+            None => serializer.serialize_none(),
+        }
+    }
+
+    pub fn deserialize<'de, D>(deserializer: D) -> Result<Option<Vec<u8>>, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        Option::<serde_bytes::ByteBuf>::deserialize(deserializer)
+            .map(|opt| opt.map(|bb| bb.into_vec()))
+    }
 }
 
 impl ModelManifest {
@@ -85,6 +130,70 @@ impl ModelManifest {
         Ok(())
     }
 
+    /// Validate the tokenizer hash against an actual computed hash.
+    pub fn validate_tokenizer_hash(&self, actual_hash: &[u8; 32]) -> Result<()> {
+        match &self.tokenizer_hash {
+            Some(expected) => {
+                if expected.len() != 32 {
+                    return Err(EphemeralError::Validation(
+                        crate::ValidationError::IntegrityCheckFailed(format!(
+                            "Manifest tokenizer_hash has invalid length: {} (expected 32)",
+                            expected.len()
+                        )),
+                    ));
+                }
+                if expected.as_slice() != actual_hash.as_slice() {
+                    return Err(EphemeralError::Validation(
+                        crate::ValidationError::IntegrityCheckFailed(format!(
+                            "Manifest tokenizer hash mismatch: manifest={}, actual={}",
+                            hex::encode(expected),
+                            hex::encode(actual_hash),
+                        )),
+                    ));
+                }
+                Ok(())
+            }
+            None => Ok(()), // Not present in manifest — skip validation (backwards-compatible)
+        }
+    }
+
+    /// Validate the config hash against an actual computed hash.
+    pub fn validate_config_hash(&self, actual_hash: &[u8; 32]) -> Result<()> {
+        match &self.config_hash {
+            Some(expected) => {
+                if expected.len() != 32 {
+                    return Err(EphemeralError::Validation(
+                        crate::ValidationError::IntegrityCheckFailed(format!(
+                            "Manifest config_hash has invalid length: {} (expected 32)",
+                            expected.len()
+                        )),
+                    ));
+                }
+                if expected.as_slice() != actual_hash.as_slice() {
+                    return Err(EphemeralError::Validation(
+                        crate::ValidationError::IntegrityCheckFailed(format!(
+                            "Manifest config hash mismatch: manifest={}, actual={}",
+                            hex::encode(expected),
+                            hex::encode(actual_hash),
+                        )),
+                    ));
+                }
+                Ok(())
+            }
+            None => Ok(()), // Not present in manifest — skip validation (backwards-compatible)
+        }
+    }
+
+    /// Report which model artifacts are covered by this manifest.
+    pub fn identity_coverage(&self) -> BTreeMap<&'static str, bool> {
+        let mut coverage = BTreeMap::new();
+        coverage.insert("weights", !self.model_hash.is_empty());
+        coverage.insert("tokenizer", self.tokenizer_hash.is_some());
+        coverage.insert("config", self.config_hash.is_some());
+        coverage.insert("adapters", false); // Not supported yet
+        coverage
+    }
+
     /// Produce the canonical JSON bytes for signing/verification.
     ///
     /// Serializes the signing payload through `serde_json::Value` to guarantee
@@ -93,13 +202,15 @@ impl ModelManifest {
     /// cross-language signature compatibility.
     fn canonical_payload_bytes(&self) -> Result<Vec<u8>> {
         let payload = ManifestSigningPayload {
-            model_id: self.model_id.clone(),
-            version: self.version.clone(),
-            model_hash: self.model_hash.clone(),
+            config_hash: self.config_hash.clone(),
+            created_at: self.created_at.clone(),
+            gcs_uris: self.gcs_uris.clone(),
             hash_algorithm: self.hash_algorithm.clone(),
             key_id: self.key_id.clone(),
-            gcs_uris: self.gcs_uris.clone(),
-            created_at: self.created_at.clone(),
+            model_hash: self.model_hash.clone(),
+            model_id: self.model_id.clone(),
+            tokenizer_hash: self.tokenizer_hash.clone(),
+            version: self.version.clone(),
         };
 
         // Two-step serialization: struct → Value (normalizes key order via BTreeMap)
@@ -174,6 +285,8 @@ mod tests {
             model_hash: vec![1, 2, 3, 4],
             hash_algorithm: "sha256".to_string(),
             key_id: "alias/test-key".to_string(),
+            tokenizer_hash: None,
+            config_hash: None,
             gcs_uris,
             created_at: "2026-02-16T00:00:00Z".to_string(),
             signature: vec![],
@@ -262,6 +375,73 @@ mod tests {
     }
 
     #[test]
+    fn test_manifest_validate_tokenizer_hash_match_and_mismatch() {
+        let signing_key = SigningKey::generate(&mut OsRng);
+        let mut manifest = create_signed_manifest(&signing_key);
+        let expected = [0x11u8; 32];
+        manifest.tokenizer_hash = Some(expected.to_vec());
+
+        assert!(manifest.validate_tokenizer_hash(&expected).is_ok());
+
+        let different = [0x22u8; 32];
+        let err = manifest.validate_tokenizer_hash(&different).unwrap_err();
+        let msg = format!("{}", err);
+        assert!(msg.contains("tokenizer hash mismatch"), "Error: {}", msg);
+    }
+
+    #[test]
+    fn test_manifest_validate_tokenizer_hash_bad_len() {
+        let signing_key = SigningKey::generate(&mut OsRng);
+        let mut manifest = create_signed_manifest(&signing_key);
+        manifest.tokenizer_hash = Some(vec![0x11; 31]);
+
+        let err = manifest.validate_tokenizer_hash(&[0x11; 32]).unwrap_err();
+        let msg = format!("{}", err);
+        assert!(msg.contains("invalid length"), "Error: {}", msg);
+    }
+
+    #[test]
+    fn test_manifest_validate_config_hash_match_and_mismatch() {
+        let signing_key = SigningKey::generate(&mut OsRng);
+        let mut manifest = create_signed_manifest(&signing_key);
+        let expected = [0x33u8; 32];
+        manifest.config_hash = Some(expected.to_vec());
+
+        assert!(manifest.validate_config_hash(&expected).is_ok());
+
+        let different = [0x44u8; 32];
+        let err = manifest.validate_config_hash(&different).unwrap_err();
+        let msg = format!("{}", err);
+        assert!(msg.contains("config hash mismatch"), "Error: {}", msg);
+    }
+
+    #[test]
+    fn test_manifest_validate_config_hash_bad_len() {
+        let signing_key = SigningKey::generate(&mut OsRng);
+        let mut manifest = create_signed_manifest(&signing_key);
+        manifest.config_hash = Some(vec![0x33; 30]);
+
+        let err = manifest.validate_config_hash(&[0x33; 32]).unwrap_err();
+        let msg = format!("{}", err);
+        assert!(msg.contains("invalid length"), "Error: {}", msg);
+    }
+
+    #[test]
+    fn test_manifest_identity_coverage() {
+        let signing_key = SigningKey::generate(&mut OsRng);
+        let mut manifest = create_signed_manifest(&signing_key);
+        manifest.model_hash = vec![0xAA; 32];
+        manifest.tokenizer_hash = Some(vec![0xBB; 32]);
+        manifest.config_hash = None;
+
+        let coverage = manifest.identity_coverage();
+        assert_eq!(coverage.get("weights"), Some(&true));
+        assert_eq!(coverage.get("tokenizer"), Some(&true));
+        assert_eq!(coverage.get("config"), Some(&false));
+        assert_eq!(coverage.get("adapters"), Some(&false));
+    }
+
+    #[test]
     fn test_canonical_payload_alphabetical_order() {
         let manifest = ModelManifest {
             model_id: "m".to_string(),
@@ -269,6 +449,8 @@ mod tests {
             model_hash: vec![1],
             hash_algorithm: "sha256".to_string(),
             key_id: "k".to_string(),
+            tokenizer_hash: None,
+            config_hash: None,
             gcs_uris: BTreeMap::new(),
             created_at: "t".to_string(),
             signature: vec![],

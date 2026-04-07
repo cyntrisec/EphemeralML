@@ -128,6 +128,19 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                 println!("Manifest saved to {}", manifest_path);
                             }
                         }
+                        if let Some(ref scheme) = result.air_v1_model_hash_scheme {
+                            println!("AIR v1 model_hash_scheme: {}", scheme);
+                        }
+                        if let Some(ref coverage) = result.model_identity_coverage {
+                            println!("Model identity coverage:");
+                            for (artifact, covered) in coverage {
+                                println!(
+                                    "  {}: {}",
+                                    artifact,
+                                    if *covered { "bound" } else { "not bound" }
+                                );
+                            }
+                        }
                     }
                     Err(e) => {
                         eprintln!("Inference failed: {}", e);

@@ -22,6 +22,8 @@ pub struct EphemeralStageExecutor<A: AttestationProvider> {
     state: Mutex<ConnectionState>,
     /// SHA-256 of model weights for AIR v1 receipt generation.
     model_hash: Option<[u8; 32]>,
+    /// Declares how model_hash was computed when authoritative.
+    model_hash_scheme: Option<String>,
     /// Issuer identifier for AIR v1 receipts.
     receipt_issuer: String,
 }
@@ -44,6 +46,7 @@ impl<A: AttestationProvider> EphemeralStageExecutor<A> {
             receipt_key,
             attestation_doc_hash,
             None,
+            None,
             "cyntrisec.com".to_string(),
         )
     }
@@ -55,6 +58,7 @@ impl<A: AttestationProvider> EphemeralStageExecutor<A> {
         receipt_key: ReceiptSigningKey,
         attestation_doc_hash: Option<[u8; 32]>,
         model_hash: Option<[u8; 32]>,
+        model_hash_scheme: Option<String>,
         receipt_issuer: String,
     ) -> Self {
         let receipt_pk = receipt_key.public_key_bytes();
@@ -77,6 +81,7 @@ impl<A: AttestationProvider> EphemeralStageExecutor<A> {
             model_id: String::new(),
             state: Mutex::new(state),
             model_hash,
+            model_hash_scheme,
             receipt_issuer,
         }
     }
@@ -304,10 +309,11 @@ impl<A: AttestationProvider + Send + Sync> StageExecutor for EphemeralStageExecu
 
         // Build AIR v1 receipt tensor (non-fatal: skip if model_hash unavailable or build fails)
         let air_v1_tensor: Option<OwnedTensor> = if let Some(mh) = self.model_hash {
-            match ephemeral_ml_common::air_receipt::AirReceiptClaims::from_legacy(
+            match ephemeral_ml_common::air_receipt::AirReceiptClaims::from_legacy_with_scheme(
                 &receipt,
                 self.receipt_issuer.clone(),
                 mh,
+                self.model_hash_scheme.clone(),
             ) {
                 Ok(claims) => {
                     let state = self.state.lock().map_err(|_| StageError::ForwardFailed {

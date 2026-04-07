@@ -268,6 +268,17 @@ impl TdxEnvelopeVerifierBridge {
             );
         }
 
+        // Warn loudly if both security bypasses are active simultaneously.
+        let mrtd_bypassed = mrtd.is_none();
+        let aud_bypassed = cs_policy.expected_audience.is_none();
+        if mrtd_bypassed && aud_bypassed {
+            eprintln!(
+                "[client] ERROR: Both MRTD pinning and audience pinning are bypassed. \
+                 This configuration is unsafe for any non-development use. \
+                 Set EPHEMERALML_EXPECTED_MRTD and EPHEMERALML_EXPECTED_AUDIENCE for production."
+            );
+        }
+
         Ok(Self {
             inner: confidential_ml_transport::attestation::tdx::TdxVerifier::new(mrtd),
             cs_expected_issuer: Self::CS_ISSUER.to_string(),
@@ -504,7 +515,37 @@ impl TdxEnvelopeVerifierBridge {
             )));
         }
 
-        // 4. Validate policy pins (fail-closed on mismatch)
+        // 4a. Validate swname — must be "CONFIDENTIAL_SPACE" for legitimate CS tokens.
+        if !claims.swname.is_empty() && claims.swname != "CONFIDENTIAL_SPACE" {
+            return Err(AttestError::VerificationFailed(format!(
+                "CS JWT swname mismatch: expected 'CONFIDENTIAL_SPACE', got '{}'",
+                claims.swname
+            )));
+        }
+
+        // 4b. Validate iat freshness — reject tokens issued more than 2 hours ago.
+        if claims.iat > 0 {
+            let now = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_secs();
+            let max_age_secs = 7200; // 2 hours
+            if now > claims.iat + max_age_secs {
+                return Err(AttestError::VerificationFailed(format!(
+                    "CS JWT too old: iat={}, now={}, max_age={}s",
+                    claims.iat, now, max_age_secs
+                )));
+            }
+            // Reject tokens from the future (clock skew > 5 min)
+            if claims.iat > now + 300 {
+                return Err(AttestError::VerificationFailed(format!(
+                    "CS JWT iat is in the future: iat={}, now={}",
+                    claims.iat, now
+                )));
+            }
+        }
+
+        // 4c. Validate policy pins (fail-closed on mismatch)
         if let Some(ref expected) = self.cs_policy.expected_image_digest {
             if claims.submods.container.image_digest != *expected {
                 return Err(AttestError::VerificationFailed(format!(
@@ -676,8 +717,16 @@ struct CsJwtClaims {
     iss: String,
     #[serde(default)]
     exp: u64,
+    #[serde(default)]
+    iat: u64,
     #[serde(default, deserialize_with = "deserialize_string_or_vec")]
     eat_nonce: Vec<String>,
+    /// Software name — should be "CONFIDENTIAL_SPACE" for legitimate CS tokens.
+    #[serde(default)]
+    swname: String,
+    /// Software version of the Confidential Space image.
+    #[serde(default)]
+    swversion: String,
     /// Submodule claims (container image, GCE instance, etc.).
     #[serde(default)]
     submods: CsJwtSubmods,
@@ -1617,5 +1666,119 @@ mod tests {
             Ok(_) => {} // pass
             Err(e) => panic!("Expected OK with explicit opt-out, got: {}", e),
         }
+    }
+
+    // ---- Track 2 hardening tests (added 2026-04-07) ----
+
+    #[tokio::test]
+    async fn test_cs_envelope_reject_wrong_swname() {
+        let (enc_key, dec_key) = test_rsa_keys();
+        let nonce = b"nonce";
+        let nonce_hex = hex::encode(nonce);
+
+        let mut header = Header::new(Algorithm::RS256);
+        header.kid = Some(TEST_KID.to_string());
+        let claims = serde_json::json!({
+            "iss": "https://confidentialcomputing.googleapis.com",
+            "exp": 9999999999u64,
+            "iat": std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_secs(),
+            "eat_nonce": nonce_hex,
+            "swname": "NOT_CONFIDENTIAL_SPACE",
+            "submods": { "container": { "image_digest": "" }, "gce": { "project_id": "", "zone": "" } }
+        });
+        let jwt = jsonwebtoken::encode(&header, &claims, &enc_key).unwrap();
+
+        let envelope = make_cs_envelope(&jwt, nonce);
+        let cbor = envelope.to_cbor_deterministic().unwrap();
+        let verifier = make_verifier(dec_key);
+
+        let doc = CmlAttestationDocument::new(cbor);
+        let result = verifier.verify(&doc).await;
+        assert!(result.is_err());
+        let err = format!("{:?}", result.unwrap_err());
+        assert!(
+            err.contains("swname mismatch"),
+            "Expected swname mismatch error, got: {}",
+            err
+        );
+    }
+
+    #[tokio::test]
+    async fn test_cs_envelope_reject_stale_iat() {
+        let (enc_key, dec_key) = test_rsa_keys();
+        let nonce = b"nonce";
+        let nonce_hex = hex::encode(nonce);
+
+        let mut header = Header::new(Algorithm::RS256);
+        header.kid = Some(TEST_KID.to_string());
+        // iat 3 hours ago — exceeds the 2-hour max_age
+        let stale_iat = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs()
+            - 10800;
+        let claims = serde_json::json!({
+            "iss": "https://confidentialcomputing.googleapis.com",
+            "exp": 9999999999u64,
+            "iat": stale_iat,
+            "eat_nonce": nonce_hex,
+            "submods": { "container": { "image_digest": "" }, "gce": { "project_id": "", "zone": "" } }
+        });
+        let jwt = jsonwebtoken::encode(&header, &claims, &enc_key).unwrap();
+
+        let envelope = make_cs_envelope(&jwt, nonce);
+        let cbor = envelope.to_cbor_deterministic().unwrap();
+        let verifier = make_verifier(dec_key);
+
+        let doc = CmlAttestationDocument::new(cbor);
+        let result = verifier.verify(&doc).await;
+        assert!(result.is_err());
+        let err = format!("{:?}", result.unwrap_err());
+        assert!(
+            err.contains("too old"),
+            "Expected 'too old' error, got: {}",
+            err
+        );
+    }
+
+    #[tokio::test]
+    async fn test_cs_envelope_reject_future_iat() {
+        let (enc_key, dec_key) = test_rsa_keys();
+        let nonce = b"nonce";
+        let nonce_hex = hex::encode(nonce);
+
+        let mut header = Header::new(Algorithm::RS256);
+        header.kid = Some(TEST_KID.to_string());
+        // iat 10 minutes in the future — exceeds 5-min clock skew tolerance
+        let future_iat = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs()
+            + 600;
+        let claims = serde_json::json!({
+            "iss": "https://confidentialcomputing.googleapis.com",
+            "exp": 9999999999u64,
+            "iat": future_iat,
+            "eat_nonce": nonce_hex,
+            "submods": { "container": { "image_digest": "" }, "gce": { "project_id": "", "zone": "" } }
+        });
+        let jwt = jsonwebtoken::encode(&header, &claims, &enc_key).unwrap();
+
+        let envelope = make_cs_envelope(&jwt, nonce);
+        let cbor = envelope.to_cbor_deterministic().unwrap();
+        let verifier = make_verifier(dec_key);
+
+        let doc = CmlAttestationDocument::new(cbor);
+        let result = verifier.verify(&doc).await;
+        assert!(result.is_err());
+        let err = format!("{:?}", result.unwrap_err());
+        assert!(
+            err.contains("future"),
+            "Expected 'future' error, got: {}",
+            err
+        );
     }
 }
