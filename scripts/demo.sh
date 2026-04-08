@@ -43,7 +43,9 @@ ensure_built() {
     if [ ! -f "$ENCLAVE_BIN" ] || [ ! -f "$CLI_BIN" ] || [ ! -f "$VERIFY_BIN" ]; then
         echo "  Building (mock mode, release)..."
         cd "$PROJECT_DIR"
-        bash "$CARGO_LOCAL" build --release --features mock 2>&1 | tail -3
+        bash "$CARGO_LOCAL" build --release --features mock \
+            -p ephemeral-ml-enclave \
+            -p ephemeral-ml-client 2>&1 | tail -3
         echo "  Build complete."
         echo
     fi
