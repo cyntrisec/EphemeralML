@@ -82,7 +82,9 @@ timing = {}
 for tf in glob.glob(os.path.join(bundle_dir, "timing", "*.json")):
     with open(tf) as f:
         t = json.load(f)
-        timing[f"{t['scenario']}_{t['claim_id']}"] = t
+        scenario = t.get("scenario", "gcp")
+        claim_id = t.get("claim_id", os.path.basename(tf).replace(".json", ""))
+        timing[f"{scenario}_{claim_id}"] = t
 
 # Load verification data
 verification = {}

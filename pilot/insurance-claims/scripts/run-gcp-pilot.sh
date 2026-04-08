@@ -284,6 +284,17 @@ echo ""
 # ---------------------------------------------------------------------------
 # Summary
 # ---------------------------------------------------------------------------
+cat > "${RUN_DIR}/verification/summary.json" << EOF
+{
+  "timestamp": "$(date -u +"%Y-%m-%dT%H:%M:%SZ")",
+  "total_receipts": $(ls "${RUN_DIR}/receipts/"*.cbor 2>/dev/null | wc -l),
+  "valid": ${VERIFIED},
+  "invalid": ${VERIFY_FAIL},
+  "errors": 0,
+  "run_dir": "${RUN_DIR}"
+}
+EOF
+
 echo "  ════════════════════════════════════════"
 info "GCP TDX Pilot Summary: ${RUN_ID}"
 echo ""

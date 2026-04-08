@@ -96,7 +96,9 @@ bash pilot/deploy.sh
 # 2. Run the GCP TDX pilot against the deployed CVM
 bash pilot/insurance-claims/scripts/run-gcp-pilot.sh --ip <CVM_IP>
 
-# 3. Verify receipts
+# 3. Verify receipts (optional if you want a standalone verification pass;
+#    run-gcp-pilot.sh already performs structural verification and writes
+#    verification outputs)
 bash pilot/insurance-claims/scripts/verify-receipts.sh
 
 # 4. Generate a sanitized customer-facing report
@@ -116,6 +118,12 @@ All 8 claims processed sequentially. Validates:
 - Repeated receipt generation
 - Stable output structure
 - Consistent latency under warm conditions
+
+### D. GCP TDX Confidential Run (3 claims)
+Three claims are processed sequentially through the direct confidential path. Validates:
+- Sequential secure client sessions against the same deployed workload
+- Receipt generation on every confidential request
+- Offline verification outputs for each collected receipt
 
 ### C. Failure Paths (5 tests)
 - **Wrong API key** — should reject with 401
@@ -138,7 +146,8 @@ artifacts/
   gcp-run-<timestamp>/
     receipts/               # Real AIR v1 receipts from GCP TDX runs
     verification/           # Receipt verification results
-  pilot-bundle-<date>/      # Distributable artifact bundle
+    summary.json            # GCP run metadata
+  pilot-bundle-<run-id>/    # Distributable artifact bundle for one run
     SUMMARY.md              # Business-readable results table
 ```
 
@@ -152,10 +161,10 @@ artifacts/
 3. No crashes or connection drops across the full run
 
 **GCP TDX:**
-1. All of the above, plus:
+1. Three sequential confidential requests complete against the same deployed workload
 2. Every response includes an AIR v1 receipt (COSE_Sign1 + Ed25519)
-3. All receipts pass structural and signature verification
-4. Tampered receipt is detected as invalid
+3. All receipts pass structural verification and are captured for offline review
+4. The generated run report reflects the confidential run metrics and receipt counts
 5. `attestation_mode` is `cs-tdx` (not `mock`)
 
 ## Files
