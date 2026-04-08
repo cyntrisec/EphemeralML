@@ -1369,7 +1369,47 @@
       <div class="wrap">
         <div class="section-header center">
           <div class="section-label">Architecture</div>
-          <h2 class="section-title">Three-zone trust model</h2>
+          <h2 class="section-title">Three-layer trust model</h2>
+          <p class="section-desc" style="margin: 0 auto;">EphemeralML does not rely on one vague “trusted environment” claim. It separately verifies environment state, workload identity, and model identity, then binds them into one receipt.</p>
+        </div>
+        <div class="grid-3">
+          <div class="zone trusted">
+            <h4>Layer 1: Environment</h4>
+            <p>GPU/CPU attestation proves hardware and firmware state plus confidential-computing mode.</p>
+          </div>
+          <div class="zone untrusted">
+            <h4>Layer 2: Workload</h4>
+            <p>Policy pins verify the expected image, project, zone, issuer, and nonce freshness before key release.</p>
+          </div>
+          <div class="zone enclave">
+            <h4>Layer 3: Model</h4>
+            <p>Weights are hashed inside the TEE from decrypted bytes; signed manifests can additionally bind tokenizer and config.</p>
+          </div>
+        </div>
+        <div class="term-panel" style="margin-top: var(--space-lg);">
+          <div class="term-bar" role="button" tabindex="0" aria-expanded="false" aria-controls="term-model-coverage">
+            <div class="term-dots"><span></span><span></span><span></span></div>
+            <div class="term-title">ephemeralml direct --verify --show-coverage</div>
+            <div class="term-toggle" aria-hidden="true">&#9654;</div>
+          </div>
+          <div class="term-body" id="term-model-coverage">
+<pre>
+<span class="t-bold">Model Identity Coverage</span>
+
+  AIR hash scheme:  sha256-manifest
+  Manifest:         authoritative
+  weights:          bound
+  tokenizer:        bound
+  config:           bound
+  adapters:         not bound
+
+  <span class="t-pass">Receipt emitted with manifest-backed model identity</span>
+</pre>
+          </div>
+        </div>
+        <div class="section-header center" style="margin-top: var(--space-xl);">
+          <div class="section-label">Deployment</div>
+          <h2 class="section-title">Three-zone execution boundary</h2>
         </div>
         <div class="grid-3">
           <div class="zone trusted">

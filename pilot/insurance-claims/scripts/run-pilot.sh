@@ -55,7 +55,8 @@ info "Output:     ${RUN_DIR}/"
 echo ""
 
 # Check gateway health
-if ! curl -sf "${GATEWAY_URL}/health" >/dev/null 2>&1; then
+HEALTH_BODY="$(curl -sS --max-time 5 "${GATEWAY_URL}/health" 2>/dev/null || true)"
+if ! printf '%s' "${HEALTH_BODY}" | grep -q '"status":"ok"'; then
     fail "Gateway not reachable at ${GATEWAY_URL}/health"
     echo "  Run setup first: bash scripts/setup.sh"
     exit 1

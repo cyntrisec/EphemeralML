@@ -72,7 +72,8 @@ info "Waiting for gateway to be ready..."
 MAX_WAIT=120
 ELAPSED=0
 while [[ $ELAPSED -lt $MAX_WAIT ]]; do
-    if curl -sf http://localhost:8090/health >/dev/null 2>&1; then
+    HEALTH_BODY="$(curl -sS --max-time 5 http://localhost:8090/health 2>/dev/null || true)"
+    if printf '%s' "${HEALTH_BODY}" | grep -q '"status":"ok"'; then
         ok "Gateway is healthy"
         break
     fi

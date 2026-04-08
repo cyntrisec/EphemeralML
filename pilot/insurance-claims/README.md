@@ -76,7 +76,10 @@ bash scripts/run-pilot.sh
 # 3. Bundle artifacts for review
 bash scripts/collect-artifacts.sh
 
-# 4. Tear down
+# 4. Generate a sanitized customer-facing report from the latest run
+bash scripts/generate-report.sh
+
+# 5. Tear down
 docker compose down
 ```
 
@@ -96,7 +99,10 @@ bash pilot/insurance-claims/scripts/run-gcp-pilot.sh --ip <CVM_IP>
 # 3. Verify receipts
 bash pilot/insurance-claims/scripts/verify-receipts.sh
 
-# 4. Tear down
+# 4. Generate a sanitized customer-facing report
+bash pilot/insurance-claims/scripts/generate-report.sh
+
+# 5. Tear down
 bash scripts/gcp/teardown.sh
 ```
 
@@ -165,5 +171,6 @@ artifacts/
 | `scripts/run-gcp-pilot.sh` | Run the real GCP TDX scenario |
 | `scripts/verify-receipts.sh` | Verify collected receipts |
 | `scripts/collect-artifacts.sh` | Bundle artifacts for distribution |
+| `scripts/generate-report.sh` | Generate a sanitized `REPORT.md` from the latest run |
 | `REPORT.template.md` | Sanitized template for a customer-facing run report |
 | `compose.yaml` | Docker Compose for local mock mode |

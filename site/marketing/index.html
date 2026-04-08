@@ -1111,7 +1111,7 @@
          ============================================================ -->
     <section id="security">
       <div class="w">
-        <div class="sh"><div class="sl">Security Model</div><h2 class="st">Security properties and limits</h2></div>
+        <div class="sh"><div class="sl">Security Model</div><h2 class="st">Three proof layers, one receipt</h2></div>
         <div class="sec-grid">
           <div class="af">
             <h3 style="font-family:var(--font-mono);font-size:0.65rem;font-weight:600;color:var(--green);text-transform:uppercase;letter-spacing:0.1em;margin-bottom:1rem;">Designed properties (under stated assumptions)</h3>
@@ -1119,7 +1119,7 @@
               <li><strong>Host ciphertext-only handling</strong> &mdash; host relays encrypted traffic and cannot directly decrypt prompts, outputs, or model keys under normal operation</li>
               <li><strong>Attestation-gated key release</strong> &mdash; model keys released only to approved enclave measurements</li>
               <li><strong>Session binding</strong> &mdash; encryption keys bound to attestation + nonce</li>
-              <li><strong>Model integrity</strong> &mdash; Ed25519-signed manifests prevent model substitution</li>
+              <li><strong>Model integrity</strong> &mdash; weights are measured inside the TEE and signed manifests can additionally bind tokenizer/config artifacts</li>
               <li><strong>Per-inference auditability</strong> &mdash; each receipt carries verifiable model/input/output hash and attestation linkage metadata</li>
             </ul>
           </div>
@@ -1132,10 +1132,36 @@
             </ul>
           </div>
         </div>
+        <div class="zones af" style="margin-top:1.5rem;">
+          <div class="zone trusted">
+            <h4>Layer 1: Environment</h4>
+            <p>Hardware attestation proves the CPU/GPU platform and confidential computing mode, not which model was loaded.</p>
+          </div>
+          <div class="zone untrusted">
+            <h4>Layer 2: Workload</h4>
+            <p>Policy-bound attestation proves the expected container image, project, zone, issuer, and nonce freshness.</p>
+          </div>
+          <div class="zone enclave">
+            <h4>Layer 3: Model</h4>
+            <p>Weights are hashed inside the TEE from decrypted bytes. When a signed manifest is authoritative, tokenizer/config are bound too.</p>
+          </div>
+        </div>
+        <div class="af" style="margin-top:1rem;padding:1rem 1.1rem;border:1px solid var(--line);border-radius:18px;background:rgba(5,10,22,0.55);">
+          <div style="font-family:var(--font-mono);font-size:0.68rem;font-weight:600;color:var(--cyan);text-transform:uppercase;letter-spacing:0.1em;margin-bottom:0.75rem;">Verifier Surface</div>
+          <pre style="margin:0;font-family:var(--font-mono);font-size:0.78rem;line-height:1.6;color:var(--text);white-space:pre-wrap;">AIR hash scheme: sha256-manifest
+Model Identity Coverage:
+  weights:   bound
+  tokenizer: bound
+  config:    bound
+  adapters:  not bound</pre>
+        </div>
+        <div class="af" style="margin-top:1rem;">
+          <div style="font-family:var(--font-mono);font-size:0.65rem;font-weight:600;color:var(--amber);text-transform:uppercase;letter-spacing:0.1em;margin-bottom:0.7rem;">Deployment Boundary</div>
         <div class="zones af">
           <div class="zone trusted"><h4>Client (Trusted)</h4><p>Verifies attestation, holds policy allowlists, establishes encrypted sessions</p></div>
           <div class="zone untrusted"><h4>Host (Untrusted)</h4><p>Networking, storage, API proxy. Forwards ciphertext only.</p></div>
           <div class="zone enclave"><h4>Enclave (TEE)</h4><p>Decrypts data, loads models, runs inference, signs receipts</p></div>
+        </div>
         </div>
       </div>
     </section>
