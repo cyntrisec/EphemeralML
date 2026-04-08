@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>How AIR Receipts Bind Request, Response, and Model Identity — Cyntrisec</title>
+  <meta name="description" content="A practical explanation of AIR receipts: how request hashes, response hashes, model hashes, and attestation linkage work together."/>
+  <link rel="canonical" href="https://cyntrisec.com/research/how-air-receipts-bind-request-response-and-model-identity"/>
+  <link rel="icon" type="image/png" href="/favicon.png"/>
+  <meta name="theme-color" content="#000000"/>
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'"/>
+  <meta property="og:title" content="How AIR Receipts Bind Request, Response, and Model Identity"/>
+  <meta property="og:description" content="A practical explanation of AIR receipts: how request hashes, response hashes, model hashes, and attestation linkage work together."/>
+  <meta property="og:type" content="article"/>
+  <meta property="og:url" content="https://cyntrisec.com/research/how-air-receipts-bind-request-response-and-model-identity"/>
+  <meta property="og:image" content="https://cyntrisec.com/og-image.svg"/>
+  <meta name="twitter:card" content="summary_large_image"/>
+  <meta name="twitter:title" content="How AIR Receipts Bind Request, Response, and Model Identity"/>
+  <link rel="preconnect" href="https://fonts.googleapis.com"/>
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+  <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=JetBrains+Mono:wght@400;500;600&family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet"/>
+  <style>
+    :root {
+      --bg:#000000;--bg-raised:#030303;--bg-surface:#080808;
+      --border:rgba(255,255,255,0.06);--border-hi:rgba(255,255,255,0.1);
+      --text:#f0f0f0;--text-sub:#888;--text-muted:#555;--text-faint:#333;
+      --cyan:#06b6d4;--emerald:#10b981;
+      --font-display:"Instrument Serif",Georgia,serif;
+      --font-body:"Outfit",-apple-system,sans-serif;
+      --font-mono:"JetBrains Mono","Menlo",monospace;
+    }
+    *{margin:0;padding:0;box-sizing:border-box}
+    body{background:var(--bg);color:var(--text-sub);font:400 16px/1.75 var(--font-body);-webkit-font-smoothing:antialiased}
+    body::after{content:"";position:fixed;inset:0;background-image:url("data:image/svg+xml,%3Csvg viewBox='0 0 512 512' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.7' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");opacity:0.025;pointer-events:none;z-index:9999;mix-blend-mode:overlay}
+    a{color:inherit}
+    ::selection{background:rgba(6,182,212,0.2);color:var(--text)}
+
+    /* Header — minimal */
+    header{padding:1rem 0;border-bottom:1px solid var(--border)}
+    .hdr{max-width:1120px;margin:0 auto;padding:0 2.5rem;display:flex;justify-content:space-between;align-items:center}
+    .logo{font:600 0.82rem var(--font-mono);color:var(--text);display:flex;align-items:center;gap:0.6rem;text-decoration:none}
+    .logo img{width:22px;height:22px}
+    .hdr nav{display:flex;gap:1rem}
+    .hdr nav a{font:500 0.7rem var(--font-mono);color:var(--text-muted);text-decoration:none;transition:color .2s}
+    .hdr nav a:hover{color:var(--text-sub)}
+
+    /* Hero — full viewport, split: text left, image right */
+    .article-hero{min-height:100vh;display:flex;align-items:center;padding:calc(48px + 2rem) 0 2rem}
+    .article-hero .contain{max-width:1120px;margin:0 auto;padding:0 2.5rem;width:100%}
+    .article-hero .back{display:inline-flex;align-items:center;gap:0.4rem;font:500 0.65rem var(--font-mono);color:var(--text-muted);text-decoration:none;margin-bottom:2rem;transition:color .2s}
+    .article-hero .back:hover{color:var(--text-sub)}
+    .hero-split{display:grid;grid-template-columns:1fr 1.2fr;gap:3.5rem;align-items:center}
+    .hero-text h1{font:400 2.6rem/1.1 var(--font-display);color:var(--text);letter-spacing:-0.02em;margin-bottom:1.2rem}
+    .hero-text .lead{font-size:1rem;color:var(--text-sub);line-height:1.75;margin-bottom:1.5rem}
+    .hero-text .meta{font:400 0.7rem var(--font-mono);color:var(--text-faint)}
+    .hero-media{border-radius:6px;overflow:hidden;aspect-ratio:16/9;background:var(--bg-raised);display:flex;align-items:center;justify-content:center}
+    .hero-media img,.hero-media video{width:100%;height:100%;object-fit:cover}
+    .read-scroll{display:inline-flex;align-items:center;gap:0.3rem;font:500 0.65rem var(--font-mono);color:var(--text-faint);text-decoration:none;margin-top:1.5rem;transition:color .2s;letter-spacing:0.06em}
+    .read-scroll:hover{color:var(--cyan)}
+    
+
+    /* Article body */
+    .article{max-width:680px;margin:0 auto;padding:3.5rem 2.5rem 5rem}
+    .article p{margin-bottom:1.5rem;color:var(--text-sub);font-size:1rem;line-height:1.85}
+    .article h2{font:400 1.6rem var(--font-display);color:var(--text);margin:3rem 0 1rem;letter-spacing:-0.01em}
+    .article h3{font:600 0.9rem var(--font-body);color:var(--text);margin:2.5rem 0 0.75rem;text-transform:uppercase;letter-spacing:0.04em}
+    .article ul,.article ol{margin:0 0 1.5rem 1.2rem;color:var(--text-sub)}
+    .article li{margin-bottom:0.4rem;line-height:1.7}
+    .article strong{color:var(--text);font-weight:600}
+    .article code{font-family:var(--font-mono);font-size:0.88em;color:var(--cyan);background:var(--bg-raised);padding:0.15em 0.4em;border-radius:3px}
+
+    /* Inline media slot */
+    .inline-media{margin:2.5rem -2rem;border-radius:8px;overflow:hidden;aspect-ratio:16/9;background:var(--bg-raised);display:flex;align-items:center;justify-content:center}
+    .inline-media img,.inline-media video{width:100%;height:100%;object-fit:cover}
+    .inline-media .placeholder{font:500 0.6rem var(--font-mono);color:var(--text-faint);text-transform:uppercase;letter-spacing:0.1em;text-align:center;padding:1rem}
+    .media-caption{font:400 0.72rem var(--font-mono);color:var(--text-faint);text-align:center;margin:0.6rem 0 2rem;padding:0 1rem}
+
+    /* Pull quote */
+    .pullquote{margin:2.5rem 0;padding:1.5rem 0 1.5rem 1.5rem;border-left:2px solid var(--cyan);font:italic 1.15rem/1.55 var(--font-display);color:var(--text)}
+
+    /* Divider */
+    .sep{border:none;height:1px;background:linear-gradient(90deg,transparent,var(--border) 20%,var(--border) 80%,transparent);margin:3rem 0}
+
+    /* Related articles */
+    .related{max-width:680px;margin:0 auto;padding:0 2.5rem 4rem}
+    .related-label{font:600 0.6rem var(--font-mono);color:var(--text-faint);letter-spacing:0.12em;text-transform:uppercase;margin-bottom:1rem}
+    .related-links{display:flex;flex-direction:column;gap:0.75rem}
+    .related-links a{display:block;font:400 0.88rem var(--font-body);color:var(--text-sub);text-decoration:none;padding:0.75rem 1rem;border:1px solid var(--border);border-radius:8px;transition:border-color .2s,color .2s}
+    .related-links a:hover{border-color:var(--border-hi);color:var(--text)}
+    .related-links a span{font:500 0.6rem var(--font-mono);color:var(--cyan);display:block;margin-top:0.2rem}
+
+    /* Footer */
+    footer{border-top:1px solid var(--border);padding:1.5rem 0}
+    .ftr{max-width:1120px;margin:0 auto;padding:0 2.5rem;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:0.5rem}
+    .ftr a{font:400 0.62rem var(--font-mono);color:var(--text-faint);text-decoration:none;transition:color .2s}
+    .ftr a:hover{color:var(--text-sub)}
+    .ftr .copy{font:400 0.62rem var(--font-mono);color:var(--text-faint)}
+
+    @media(max-width:900px){
+      .hero-split{grid-template-columns:1fr;gap:2rem}
+    }
+    @media(max-width:768px){
+      .article-hero{min-height:auto;padding-top:calc(48px + 2.5rem)}
+      .hero-split{grid-template-columns:1fr;gap:1.5rem}
+      .hero-text h1{font-size:1.8rem}
+      .hero-text .lead{font-size:0.9rem}
+      .article-hero .contain{padding:0 1.25rem}
+      .article{padding:2rem 1.25rem 3rem}
+      .article p{font-size:0.92rem}
+      .article h2{font-size:1.3rem}
+      .inline-media{margin:1.5rem -0.25rem;border-radius:4px}
+      .pullquote{font-size:1rem;padding-left:1rem}
+      .hdr nav{display:none}
+      .hdr{padding:0 1.25rem}
+      .related{padding:0 1.25rem 3rem}
+      .ftr{flex-direction:column;text-align:center;padding:0 1.25rem}
+    }
+    @media(max-width:480px){
+      .hero-text h1{font-size:1.5rem}
+      .hero-text .lead{font-size:0.85rem}
+      .article{padding:1.5rem 1rem 2.5rem}
+    }
+  </style>
+  <script type="application/ld+json">
+  {
+    "@context":"https://schema.org",
+    "@type":"Article",
+    "headline":"How AIR Receipts Bind Request, Response, and Model Identity",
+    "description":"A practical explanation of AIR receipts: how request hashes, response hashes, model hashes, and attestation linkage work together.",
+    "url":"https://cyntrisec.com/research/how-air-receipts-bind-request-response-and-model-identity",
+    "datePublished":"2026-04-08",
+    "author":{"@type":"Person","name":"Borys Tsyrulnikov","url":"https://www.linkedin.com/in/borystsyrulnikov/"},
+    "publisher":{"@type":"Organization","name":"Cyntrisec","url":"https://cyntrisec.com","logo":"https://cyntrisec.com/logo-mark-64.png"}
+  }
+  </script>
+</head>
+<body>
+  <header>
+    <div class="hdr">
+      <a href="/" class="logo"><img src="/logo-ikeda.svg" alt="Cyntrisec"/>Cyntrisec</a>
+      <nav>
+        <a href="/">Home</a>
+        <a href="/research">Research</a>
+        <a href="/docs">Docs</a>
+      </nav>
+    </div>
+  </header>
+
+  <div class="article-hero">
+    <div class="contain">
+      <a href="/research" class="back">&larr; Research & Evidence</a>
+      <div class="hero-split">
+        <div class="hero-text">
+          <h1>How AIR receipts bind request, response, and model&nbsp;identity</h1>
+          <p class="lead">An AI receipt is only useful if it ties the important facts together. Here is how request hashes, response hashes, model hashes, and attestation linkage work.</p>
+          <div class="meta">Borys Tsyrulnikov &middot; April 2026</div>
+          <a href="#article" class="read-scroll">Read ↓</a>
+        </div>
+        <div class="hero-media">
+          <img src="/research/images/art3-hero.jpg" alt="Cyan vertical lines bound by white horizontal beam"/>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <article class="article" id="article">
+    <p>A verifier should be able to answer at least four questions about a specific inference: what model identity was claimed, what request was processed, what response was returned, and what trusted environment produced the result.</p>
+
+    <p>AIR receipts are designed around that idea.</p>
+
+    <h2>The center of the receipt</h2>
+
+    <p>At the center of the receipt are cryptographic hashes. The request is hashed. The response is hashed. The model identity is represented by a model hash. The attestation evidence is linked through an attestation document hash and measurement claims. Then the whole receipt is signed so the bundle can be verified later.</p>
+
+    <h2>Why binding matters</h2>
+
+    <p>Because isolated facts are weak. A log line that says "model X ran" is not very meaningful if it is not cryptographically bound to the specific request and specific response. Likewise, a model hash by itself is not enough if it is not connected to the particular execution event.</p>
+
+    <p>The value comes from binding.</p>
+
+    <p>When the request hash and response hash are in the signed receipt, the verifier can check that the receipt refers to the exact input and output pair being reviewed. When the model hash is included, the verifier can check which model identity was claimed for that run. When the attestation linkage is included, the verifier can see that the receipt is connected to an attested execution context rather than being a detached application log.</p>
+
+    <div class="pullquote">This is the difference between "we logged the inference" and "we can prove what we are claiming about this inference."</div>
+
+    <h2>Model identity nuance</h2>
+
+    <p>There is still an important nuance around model identity. A single <code>model_hash</code> can mean different things depending on how it was produced. If it represents only the raw weights file, that is useful but incomplete. If it is derived from a signed manifest that also binds tokenizer and config, that gives a stronger identity story. That is why a receipt should expose the model hash scheme, not just the hash value.</p>
+
+    <!-- INLINE IMAGE: Diagram showing receipt structure — request_hash, response_hash, model_hash, attestation_doc_hash all connected under a COSE_Sign1 signature envelope.
+         Replace with your asset. -->
+    <div class="inline-media">
+      <img src="/research/images/art3-inline.jpg" alt="Rectangle with five connected dots — receipt as geometry"/>
+    </div>
+    <div class="media-caption">AIR receipt structure: four hash bindings under a single cryptographic signature.</div>
+
+    <h2>Layered verification</h2>
+
+    <p>From a verifier's perspective, the structure is useful because it supports layered checks.</p>
+
+    <p>At a basic level, the verifier can validate structure and signature.</p>
+
+    <p>At a stronger level, it can validate whether the request hash matches the request under review, whether the response hash matches the response under review, and whether the model hash matches an expected model or allowlist.</p>
+
+    <p>At the strongest level, it can also validate attestation-linked claims, expected measurements, freshness windows, and policy constraints.</p>
+
+    <h2>Portability</h2>
+
+    <p>This makes the receipt portable. A buyer, auditor, partner, or regulator does not need to trust the service operator's internal dashboards. They can inspect the receipt directly, apply local policy, and determine whether the evidence is acceptable.</p>
+
+    <p>That portability is important. AI governance becomes much easier when the proof artifact can travel with the output.</p>
+
+    <p>The short version is:</p>
+
+    <ul>
+      <li>request hash binds the input</li>
+      <li>response hash binds the output</li>
+      <li>model hash binds the model identity claim</li>
+      <li>attestation linkage binds the run to a trusted execution context</li>
+      <li>the signature binds the whole receipt together</li>
+    </ul>
+
+    <p>That is what turns an inference event into something that can be verified later instead of merely described later.</p>
+  </article>
+
+  <hr class="sep" style="max-width:680px;margin-left:auto;margin-right:auto"/>
+
+  <div class="related">
+    <div class="related-label">Continue reading</div>
+    <div class="related-links">
+      <a href="/research/why-gpu-attestation-does-not-prove-model-identity.html">Why GPU attestation does not prove model identity<span>Read &rarr;</span></a>
+      <a href="/research/logs-vs-receipts-for-regulated-ai-workflows.html">Logs vs receipts for regulated AI workflows<span>Read &rarr;</span></a>
+    </div>
+  </div>
+
+  <footer>
+    <div class="ftr">
+      <div><a href="/">Home</a> &middot; <a href="/research">Research</a> &middot; <a href="/docs">Docs</a> &middot; <a href="https://github.com/cyntrisec">GitHub</a></div>
+      <div class="copy">&copy; 2026 Cyntrisec</div>
+    </div>
+  </footer>
+</body>
+</html>

@@ -1,4 +1,39 @@
+# Cyntrisec — cyntrisec.com
+# Allow all search and AI crawlers to index public content.
+
 User-agent: *
+Allow: /
+Disallow: /index-backup-20260303.html
+Disallow: /index-preview.html
+Disallow: /index-investor.html
+Disallow: /.claude/
+
+# AI crawlers — explicitly welcome for search/retrieval
+User-agent: GPTBot
+Allow: /
+
+User-agent: ChatGPT-User
+Allow: /
+
+User-agent: ClaudeBot
+Allow: /
+
+User-agent: Claude-Web
+Allow: /
+
+User-agent: PerplexityBot
+Allow: /
+
+User-agent: Perplexity-User
+Allow: /
+
+User-agent: Google-Extended
+Allow: /
+
+User-agent: Googlebot
+Allow: /
+
+User-agent: Bingbot
 Allow: /
 
 Sitemap: https://cyntrisec.com/sitemap.xml

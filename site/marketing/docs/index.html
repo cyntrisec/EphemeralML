@@ -30,8 +30,48 @@
     <meta name="twitter:description" content="Hardware-proven confidential AI. Every inference produces a cryptographic receipt." />
     <meta name="twitter:image" content="https://cyntrisec.com/og-image.svg" />
 
+    <!-- Match landing page fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=JetBrains+Mono:wght@400;500;600;700&family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
+
     <style>
-      @import url("/shared/brand.css");
+      :root {
+        --bg-0:        #000000;
+        --bg-1:        #030303;
+        --bg-2:        #080808;
+        --bg-3:        #0a0a0a;
+        --bg-card:     #000000;
+        --border:      rgba(255,255,255,0.06);
+        --border-hi:   rgba(255,255,255,0.1);
+        --border-focus:rgba(255,255,255,0.15);
+        --text-0:      #f0f0f0;
+        --text-1:      #888888;
+        --text-2:      #888888;
+        --text-3:      #555555;
+        --accent:      #06b6d4;
+        --accent-dim:  rgba(6,182,212,0.06);
+        --accent-mid:  rgba(6,182,212,0.12);
+        --green:       #10b981;
+        --green-dim:   rgba(16,185,129,0.06);
+        --red:         #ef4444;
+        --red-dim:     rgba(239,68,68,0.06);
+        --amber:       #f59e0b;
+        --font-sans:   "Outfit", -apple-system, sans-serif;
+        --font-mono:   "JetBrains Mono", "Menlo", monospace;
+        --font-display:"Instrument Serif", Georgia, serif;
+        --max-w:       1080px;
+        --space-xs:    0.25rem;
+        --space-sm:    0.5rem;
+        --space-md:    1rem;
+        --space-lg:    2rem;
+        --space-xl:    4rem;
+        --space-2xl:   6rem;
+        --space-3xl:   8rem;
+        --radius-sm:   3px;
+        --radius-md:   4px;
+        --radius-lg:   6px;
+      }
 
       /* ================================================================
          RESET & BASE
@@ -47,6 +87,14 @@
         line-height: 1.65;
         overflow-x: hidden;
         -webkit-font-smoothing: antialiased;
+      }
+
+      /* Grain overlay — matches landing page */
+      body::after {
+        content: "";
+        position: fixed; inset: 0;
+        background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 512 512' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.7' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+        opacity: 0.025; pointer-events: none; z-index: 9999; mix-blend-mode: overlay;
       }
 
       ::selection {
@@ -111,7 +159,9 @@
       }
 
       section.alt {
-        background: var(--bg-1);
+        background: var(--bg-0);
+        border-top: 1px solid var(--border);
+        border-bottom: 1px solid var(--border);
       }
 
       /* ================================================================
@@ -122,7 +172,7 @@
         top: 28px;
         width: 100%;
         z-index: 100;
-        background: rgba(5, 5, 5, 0.9);
+        background: rgba(0, 0, 0, 0.85);
         backdrop-filter: blur(16px);
         -webkit-backdrop-filter: blur(16px);
         border-bottom: 1px solid var(--border);
@@ -137,8 +187,8 @@
 
       .logo {
         font-family: var(--font-mono);
-        font-size: 1rem;
-        font-weight: 700;
+        font-size: 0.85rem;
+        font-weight: 600;
         color: var(--text-0);
         letter-spacing: -0.02em;
         display: inline-flex;
@@ -202,9 +252,10 @@
       .section-label::after  { content: " ]"; color: var(--accent); }
 
       .section-title {
+        font-family: var(--font-display);
         font-size: 1.75rem;
-        font-weight: 700;
-        letter-spacing: -0.03em;
+        font-weight: 400;
+        letter-spacing: -0.02em;
         color: var(--text-0);
         margin-bottom: var(--space-md);
         line-height: 1.25;
@@ -280,14 +331,15 @@
         transform: translateX(-50%);
         width: 600px;
         height: 400px;
-        background: radial-gradient(ellipse, rgba(0, 212, 255, 0.04) 0%, transparent 70%);
+        background: radial-gradient(ellipse, rgba(6, 182, 212, 0.02) 0%, transparent 70%);
         pointer-events: none;
       }
 
       .hero h1 {
+        font-family: var(--font-display);
         font-size: 3rem;
-        font-weight: 700;
-        letter-spacing: -0.04em;
+        font-weight: 400;
+        letter-spacing: -0.03em;
         line-height: 1.15;
         margin-bottom: var(--space-md);
         color: var(--text-0);
@@ -295,6 +347,7 @@
 
       .hero h1 .hl {
         color: var(--accent);
+        font-style: italic;
       }
 
       .hero .subtitle {
@@ -815,8 +868,9 @@
       }
 
       .cta-block h2 {
+        font-family: var(--font-display);
         font-size: 1.5rem;
-        font-weight: 700;
+        font-weight: 400;
         letter-spacing: -0.02em;
         margin-bottom: var(--space-sm);
         color: var(--text-0);
@@ -898,9 +952,9 @@
       }
 
       .spec-val {
-        font-family: var(--font-mono);
+        font-family: var(--font-display);
         font-size: 1.5rem;
-        font-weight: 700;
+        font-weight: 400;
         color: var(--accent);
         margin-bottom: var(--space-xs);
       }
@@ -1030,14 +1084,8 @@
       &larr; <a href="/" style="color: var(--accent); transition: color 0.15s;">Home</a>
     </div>
 
-    <!-- ============================================================
-         GHOST MASCOT (corner float)
-         ============================================================ -->
-    <svg class="ghost-svg ghost-corner" viewBox="0 0 40 48" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-      <path d="M20 4C11.16 4 4 11.16 4 20v16l4-4 4 4 4-4 4 4 4-4 4 4 4-4 4 4V20C36 11.16 28.84 4 20 4z" stroke="currentColor" stroke-width="1.5" fill="none" opacity="0.7"/>
-      <circle cx="14" cy="19" r="2" fill="currentColor" opacity="0.5"/>
-      <circle cx="26" cy="19" r="2" fill="currentColor" opacity="0.5"/>
-    </svg>
+    <!-- Corner logo mark -->
+    <img src="/logo-ikeda.svg" alt="" class="ghost-corner" width="36" height="36" aria-hidden="true" style="filter:brightness(2);" />
 
     <!-- ============================================================
          HEADER
@@ -1046,7 +1094,7 @@
       <div class="wrap">
         <div class="logo-mark">
           <a href="/" class="logo" style="text-decoration: none;">
-            <img src="/logo-mark-64.png" alt="Cyntrisec" class="logo-img" width="24" height="24" />
+            <img src="/logo-ikeda.svg" alt="Cyntrisec" class="logo-img" width="24" height="24" />
             Cyntrisec
           </a>
           <span class="version-tag">AIR v1</span>
@@ -1067,18 +1115,8 @@
          ============================================================ -->
     <section class="hero">
       <div class="wrap">
-        <!-- Ghost mascot -->
-        <svg class="ghost-svg ghost-hero anim-fade" viewBox="0 0 40 48" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-          <path d="M20 4C11.16 4 4 11.16 4 20v16l4-4 4 4 4-4 4 4 4-4 4 4 4-4 4 4V20C36 11.16 28.84 4 20 4z" stroke="url(#ghostGrad)" stroke-width="1.5" fill="none"/>
-          <circle cx="14" cy="19" r="2" fill="#00d4ff" opacity="0.6"/>
-          <circle cx="26" cy="19" r="2" fill="#00d4ff" opacity="0.6"/>
-          <defs>
-            <linearGradient id="ghostGrad" x1="4" y1="4" x2="36" y2="44">
-              <stop offset="0%" stop-color="#00d4ff" stop-opacity="0.8"/>
-              <stop offset="100%" stop-color="#00cc88" stop-opacity="0.4"/>
-            </linearGradient>
-          </defs>
-        </svg>
+        <!-- Logo mark -->
+        <img src="/logo-ikeda.svg" alt="" class="ghost-hero anim-fade" width="64" height="64" aria-hidden="true" style="filter:brightness(2);opacity:0.6;" />
 
         <h1 class="anim-fade anim-delay-1">
           Confidential inference.<br>
@@ -1224,7 +1262,8 @@
         </div>
         <div style="margin-top: var(--space-xl);">
           <div class="section-header">
-            <h3 class="section-title" style="font-size: 1.2rem;">Four-layer trust verification</h3>
+            <h3 class="section-title" style="font-size: 1.2rem;">Receipt verification pipeline (4 stages)</h3>
+            <p class="section-desc" style="margin-bottom: var(--space-md);">This is the verifier's internal pipeline for validating an AIR v1 receipt &mdash; separate from the three-layer trust model above, which describes what is attested.</p>
           </div>
           <div class="grid-2">
             <div>
@@ -1312,13 +1351,13 @@
         </div>
         <div class="grid-2">
           <div>
-            <h3 style="font-family: var(--font-mono); font-size: 0.7rem; font-weight: 600; color: var(--green); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: var(--space-md);">Guaranteed</h3>
+            <h3 style="font-family: var(--font-mono); font-size: 0.7rem; font-weight: 600; color: var(--green); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: var(--space-md);">Designed properties (under stated assumptions)</h3>
             <ul class="guar-list yes">
-              <li><strong>Host blindness</strong> &mdash; the host relays ciphertext only; cannot decrypt prompts, outputs, or model keys</li>
-              <li><strong>Attestation-gated key release</strong> &mdash; model DEKs released only to approved enclave measurements</li>
-              <li><strong>Session binding</strong> &mdash; encryption keys bound to attestation + nonce to prevent key swapping</li>
-              <li><strong>Model integrity</strong> &mdash; Ed25519-signed manifests prevent serving a different model blob</li>
-              <li><strong>Auditability</strong> &mdash; each inference produces a verifiable AIR v1 receipt with attestation-linked execution evidence</li>
+              <li><strong>Host ciphertext-only handling</strong> &mdash; host relays encrypted traffic and cannot directly decrypt prompts, outputs, or model keys under normal operation</li>
+              <li><strong>Attestation-gated key release</strong> &mdash; model keys released only to approved enclave measurements</li>
+              <li><strong>Session binding</strong> &mdash; encryption keys bound to attestation + nonce</li>
+              <li><strong>Model integrity</strong> &mdash; weights are measured inside the TEE and signed manifests can additionally bind tokenizer/config artifacts</li>
+              <li><strong>Per-inference auditability</strong> &mdash; each receipt carries verifiable model/input/output hash and attestation linkage metadata</li>
             </ul>
           </div>
           <div>
@@ -1369,8 +1408,8 @@
       <div class="wrap">
         <div class="section-header center">
           <div class="section-label">Architecture</div>
-          <h2 class="section-title">Three-layer trust model</h2>
-          <p class="section-desc" style="margin: 0 auto;">EphemeralML does not rely on one vague “trusted environment” claim. It separately verifies environment state, workload identity, and model identity, then binds them into one receipt.</p>
+          <h2 class="section-title">Three-layer trust model (what is attested)</h2>
+          <p class="section-desc" style="margin: 0 auto;">We cryptographically verify the confidential execution environment and policy-bound identity of the workload. Model weights are measured inside the TEE from decrypted bytes. Additional model artifacts are bound via a signed manifest. This model describes the trust claims &mdash; the <a href="#air-v1" style="color:var(--accent);text-decoration:underline;text-decoration-color:rgba(6,182,212,0.3)">receipt verification pipeline</a> above describes how those claims are checked.</p>
         </div>
         <div class="grid-3">
           <div class="zone trusted">
@@ -1468,6 +1507,10 @@
               </tr>
             </tbody>
           </table>
+          <div class="card" style="margin-top: var(--space-lg); border-left: 2px solid var(--green);">
+            <div style="font-family: var(--font-mono); font-size: 0.65rem; font-weight: 600; color: var(--green); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: var(--space-sm);">Pilot Completed</div>
+            <p>Insurance workflow pilot on GCP TDX: 3/3 confidential requests completed, 3/3 AIR receipts verified offline.</p>
+          </div>
         </div>
       </div>
     </section>
@@ -1594,9 +1637,40 @@
     </section>
 
     <!-- ============================================================
+         COMPLIANCE MAPPING
+         ============================================================ -->
+    <section class="alt" id="compliance">
+      <div class="wrap">
+        <div class="section-header center">
+          <div class="section-label">Compliance</div>
+          <h2 class="section-title">HIPAA evidence mapping</h2>
+          <p class="section-desc" style="margin: 0 auto;">Receipt fields can be mapped to HIPAA 164.312 control categories. This is evidence support, not certification.</p>
+        </div>
+        <div class="grid-2" style="max-width: 720px; margin: 0 auto;">
+          <div class="card">
+            <div style="font-family: var(--font-mono); font-size: 0.65rem; color: var(--accent); font-weight: 600; margin-bottom: var(--space-sm);">164.312(a) Access Control</div>
+            <p>Enclave isolation evidence &mdash; attested hardware boundary prevents unauthorized access to data during processing.</p>
+          </div>
+          <div class="card">
+            <div style="font-family: var(--font-mono); font-size: 0.65rem; color: var(--accent); font-weight: 600; margin-bottom: var(--space-sm);">164.312(b) Audit Controls</div>
+            <p>Signed receipt evidence &mdash; each inference produces a verifiable audit record with model identity and data hashes.</p>
+          </div>
+          <div class="card">
+            <div style="font-family: var(--font-mono); font-size: 0.65rem; color: var(--accent); font-weight: 600; margin-bottom: var(--space-sm);">164.312(c) Integrity</div>
+            <p>Model hash + attestation linkage &mdash; signed manifests bind model weights, tokenizer, and config artifacts.</p>
+          </div>
+          <div class="card">
+            <div style="font-family: var(--font-mono); font-size: 0.65rem; color: var(--accent); font-weight: 600; margin-bottom: var(--space-sm);">164.312(e) Transmission Security</div>
+            <p>AEAD encryption evidence &mdash; end-to-end encrypted transport (X25519 + ChaCha20-Poly1305).</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============================================================
          TECH STACK
          ============================================================ -->
-    <section class="alt">
+    <section>
       <div class="wrap">
         <div class="section-header center">
           <div class="section-label">Stack</div>
@@ -1625,12 +1699,8 @@
     <section id="contact">
       <div class="wrap">
         <div class="cta-block">
-          <!-- Small ghost -->
-          <svg class="ghost-svg" viewBox="0 0 40 48" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" style="width: 32px; height: 32px; margin: 0 auto var(--space-md); opacity: 0.3;">
-            <path d="M20 4C11.16 4 4 11.16 4 20v16l4-4 4 4 4-4 4 4 4-4 4 4 4-4 4 4V20C36 11.16 28.84 4 20 4z" stroke="currentColor" stroke-width="1.5" fill="none"/>
-            <circle cx="14" cy="19" r="2" fill="currentColor" opacity="0.5"/>
-            <circle cx="26" cy="19" r="2" fill="currentColor" opacity="0.5"/>
-          </svg>
+          <!-- Logo mark -->
+          <img src="/logo-ikeda.svg" alt="" width="32" height="32" aria-hidden="true" style="display:block;margin:0 auto var(--space-md);filter:brightness(2);opacity:0.3;" />
           <h2>Start building with EphemeralML</h2>
           <p class="sub">Integrate confidential AI inference into your stack. Check the quickstart guide, explore the source, or request a pilot.</p>
           <div class="cta-btns">
@@ -1649,7 +1719,7 @@
       <div class="wrap">
         <div class="footer-left">
           <a href="/" class="logo" style="font-size: 0.85rem; text-decoration: none;">
-            <img src="/logo-mark-64.png" alt="Cyntrisec" class="logo-img" width="18" height="18" />
+            <img src="/logo-ikeda.svg" alt="Cyntrisec" class="logo-img" width="18" height="18" />
             Cyntrisec
           </a>
           <div class="footer-links">

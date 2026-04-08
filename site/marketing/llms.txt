@@ -1,50 +1,55 @@
-# Cyntrisec — Confidential AI Infrastructure
+# Cyntrisec — Confidential AI Inference with Cryptographic Receipts
 
 ## EphemeralML
 
-> AI Clean Room for Inference.
-> Per-request cryptographic evidence that inference ran inside a hardware-isolated environment.
+> Confidential AI inference platform. Every inference produces a cryptographic receipt — a signed proof bundle covering model identity, data hashes, and hardware attestation.
 
-### Overview
-EphemeralML produces signed receipts (evidence bundles) for every AI inference request. Each receipt contains the model hash, input/output hashes, attestation linkage metadata, and an Ed25519 signature. Human-readable. Machine-verifiable.
+### What It Does
+EphemeralML runs AI inference inside hardware-isolated enclaves (Intel TDX, AMD SEV-SNP, AWS Nitro, NVIDIA H100 CC) and produces a signed AIR v1 receipt for every request. The receipt is portable, machine-verifiable, and can be checked offline by auditors.
 
-Models run inside hardware Trusted Execution Environments (Intel TDX, AMD SEV-SNP, AWS Nitro). Under normal operation, the host relays encrypted traffic and cannot directly decrypt prompts or outputs.
+### Three-Layer Trust Model
+Cyntrisec cryptographically verifies three layers of trust, then binds them into one signed receipt:
 
-### Key Features
-- **Evidence Bundle**: Every inference produces a signed receipt with model hash, I/O hashes, attestation linkage metadata, and Ed25519 signature.
-- **Hardware Isolation**: Intel TDX, AMD SEV-SNP, AWS Nitro Enclaves. Verified by hardware attestation.
-- **Encrypted Transport**: Attestation-bound X25519 + ChaCha20-Poly1305. 170ns frame encoding, sub-8us per 4KB.
-- **GPU Inference**: Llama 3 8B on NVIDIA H100 Confidential Computing. Quantized GGUF models.
-- **Multi-Environment**: GCP Confidential Space (TDX), AWS Nitro Enclaves, NVIDIA H100 CC (GCP), Azure path in progress.
-- **Open Source**: Rust. Published on crates.io. Apache 2.0 licensed.
+1. **Layer 1: Environment** — GPU/CPU attestation proves the hardware platform and confidential computing mode. This does not prove which model was loaded.
+2. **Layer 2: Workload** — Policy-bound attestation verifies the expected container image, project, zone, issuer, and nonce freshness before key release.
+3. **Layer 3: Model** — Weights are hashed inside the TEE from decrypted bytes. Signed manifests can additionally bind tokenizer and config artifacts.
+
+Model identity coverage (sha256-manifest): weights bound, tokenizer bound, config bound, adapters not bound.
+
+### Receipt Format (AIR v1)
+Attested Inference Receipt v1. COSE_Sign1 envelope (RFC 9052) carrying CWT claims (RFC 8392) with EAT profile (RFC 9711), signed with Ed25519. Submitted as IETF Internet-Draft. NIST public comment submitted.
+
+17 claims: 5 standard (iss, iat, cti, eat_nonce, eat_profile) + 12 private (model_id, model_version, model_hash, request_hash, response_hash, attestation_doc_hash, enclave_measurements, policy_version, sequence_number, execution_time_ms, memory_peak_mb, security_mode) + 1 optional (model_hash_scheme).
+
+### Pilot Evidence
+Insurance workflow pilot on GCP TDX: 3/3 confidential requests completed, 3/3 AIR receipts verified offline.
+
+### Platforms Verified (E2E)
+- AWS Nitro Enclaves — PASS
+- GCP Confidential Space (Intel TDX) — PASS
+- NVIDIA H100 CC (GCP) — PASS
+- Azure SEV-SNP — in progress
 
 ### HIPAA Compliance Mapping
 - 164.312(a) Access Control → Enclave isolation evidence
 - 164.312(b) Audit Controls → Signed receipt evidence
 - 164.312(c) Integrity → Model hash + attestation linkage
-- 164.312(e) Transmission Security → AEAD encrypted transport
+- 164.312(e) Transmission Security → AEAD encrypted transport (X25519 + ChaCha20-Poly1305)
+
+### Target Industries
+Healthcare (HIPAA), financial services (SEC AI risk), legal (attorney-client privilege).
+
+### Open Source
+- Rust. Apache 2.0 licensed.
+- confidential-ml-transport (crates.io) — attestation-bound encrypted tensor transport
+- confidential-ml-pipeline (crates.io) — multi-enclave pipeline orchestration
 
 ### Links
-- **Docs**: https://cyntrisec.com/docs
-- **GitHub**: https://github.com/cyntrisec/EphemeralML
-- **Transport Library (crates.io)**: https://crates.io/crates/confidential-ml-transport
-
----
-
-## Cyntrisec CLI
-
-> AWS Security Graph — Attack path discovery optimized for LLMs.
-
-### Installation
-```bash
-pip install cyntrisec
-```
-
-### Features
-- **Graph Analysis**: Builds a full capability graph of IAM, network, and dependencies.
-- **Agentic Interface**: Native MCP server. Connect Claude Desktop or other agents.
-- **Read-Only**: Scans via AssumeRole without modifying infrastructure. No SaaS backend.
-
-### Links
-- **GitHub**: https://github.com/cyntrisec/cyntrisec-cli
-- **PyPI**: https://pypi.org/project/cyntrisec/
+- Website: https://cyntrisec.com
+- Docs: https://cyntrisec.com/docs
+- AIR v1 Spec: https://cyntrisec.com/spec/air/v1/
+- Trust Center (verify receipts): https://verify.cyntrisec.com
+- GitHub: https://github.com/cyntrisec/EphemeralML
+- Transport Library: https://crates.io/crates/confidential-ml-transport
+- Pipeline Library: https://crates.io/crates/confidential-ml-pipeline
+- Contact: contact@cyntrisec.com

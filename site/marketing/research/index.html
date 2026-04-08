@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Research & Evidence — Cyntrisec</title>
+  <meta name="description" content="Technical notes on confidential AI inference, cryptographic receipts, hardware attestation, and model identity for regulated workflows."/>
+  <link rel="canonical" href="https://cyntrisec.com/research"/>
+  <link rel="icon" type="image/png" href="/favicon.png"/>
+  <meta name="theme-color" content="#000000"/>
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'"/>
+  <meta property="og:title" content="Research & Evidence — Cyntrisec"/>
+  <meta property="og:description" content="Technical notes on confidential AI inference, cryptographic receipts, hardware attestation, and model identity."/>
+  <meta property="og:type" content="website"/>
+  <meta property="og:url" content="https://cyntrisec.com/research"/>
+  <meta property="og:image" content="https://cyntrisec.com/og-image.svg"/>
+  <link rel="preconnect" href="https://fonts.googleapis.com"/>
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+  <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=JetBrains+Mono:wght@400;500;600&family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet"/>
+  <style>
+    :root {
+      --bg:#000000;--bg-raised:#030303;--border:rgba(255,255,255,0.06);--border-hi:rgba(255,255,255,0.1);
+      --text:#f0f0f0;--text-sub:#888;--text-muted:#555;--text-faint:#333;
+      --cyan:#06b6d4;--emerald:#10b981;
+      --font-display:"Instrument Serif",Georgia,serif;
+      --font-body:"Outfit",-apple-system,sans-serif;
+      --font-mono:"JetBrains Mono","Menlo",monospace;
+    }
+    *{margin:0;padding:0;box-sizing:border-box}
+    body{background:var(--bg);color:var(--text-sub);font:400 15px/1.6 var(--font-body);-webkit-font-smoothing:antialiased}
+    body::after{content:"";position:fixed;inset:0;background-image:url("data:image/svg+xml,%3Csvg viewBox='0 0 512 512' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.7' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");opacity:0.025;pointer-events:none;z-index:9999;mix-blend-mode:overlay}
+    a{color:inherit;text-decoration:none}
+    .contain{max-width:1120px;margin:0 auto;padding:0 2.5rem}
+
+    header{border-bottom:1px solid var(--border);padding:1rem 0}
+    header .contain{display:flex;justify-content:space-between;align-items:center}
+    .logo{font:600 0.82rem var(--font-mono);color:var(--text);display:flex;align-items:center;gap:0.6rem}
+    .logo img{width:22px;height:22px}
+    header nav{display:flex;gap:1rem}
+    header nav a{font:500 0.7rem var(--font-mono);color:var(--text-muted);transition:color .2s}
+    header nav a:hover{color:var(--text-sub)}
+
+    .hero{padding:6rem 0 4rem;text-align:center}
+    .hero-label{font:600 0.6rem var(--font-mono);color:var(--cyan);letter-spacing:0.16em;text-transform:uppercase;margin-bottom:1.5rem}
+    .hero h1{font:400 3rem var(--font-display);color:var(--text);letter-spacing:-0.02em;margin-bottom:1rem}
+    .hero h1 em{font-style:italic;color:var(--cyan)}
+    .hero p{font-size:1rem;color:var(--text-sub);max-width:560px;margin:0 auto;line-height:1.75}
+    .hero-img{max-width:800px;margin:2.5rem auto 0;border-radius:6px;overflow:hidden}
+    .hero-img img{width:100%;display:block}
+
+    .articles{padding:0 0 6rem}
+    .article-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:1px;background:var(--border);border:1px solid var(--border);border-radius:16px;overflow:hidden}
+    .article-card{background:var(--bg-raised);padding:0;display:flex;flex-direction:column;transition:background .2s}
+    .article-card:hover{background:#161618}
+    .article-card a{display:flex;flex-direction:column;height:100%;text-decoration:none;color:inherit}
+    .card-img{width:100%;aspect-ratio:16/9;background:var(--bg);display:flex;align-items:center;justify-content:center;overflow:hidden;position:relative}
+    .card-img img,.card-img video{width:100%;height:100%;object-fit:cover}
+    .card-img .placeholder{font:500 0.6rem var(--font-mono);color:var(--text-faint);text-transform:uppercase;letter-spacing:0.1em}
+    .card-body{padding:1.5rem 1.5rem 2rem;flex:1;display:flex;flex-direction:column}
+    .card-body h2{font:400 1.1rem var(--font-display);color:var(--text);margin-bottom:0.5rem;line-height:1.3}
+    .card-body p{font-size:0.8rem;color:var(--text-sub);line-height:1.6;flex:1}
+    .card-body .read-link{font:500 0.68rem var(--font-mono);color:var(--cyan);margin-top:1rem;transition:opacity .2s}
+    .card-body .read-link:hover{opacity:0.7}
+
+    .row-2{display:grid;grid-template-columns:repeat(2,1fr);gap:1px;background:var(--border);border:1px solid var(--border);border-radius:16px;overflow:hidden;margin-top:1.5rem}
+
+    footer{border-top:1px solid var(--border);padding:1.5rem 0}
+    footer .contain{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:0.5rem}
+    .ft-links{display:flex;gap:1rem}
+    .ft-links a{font:400 0.62rem var(--font-mono);color:var(--text-faint);transition:color .2s}
+    .ft-links a:hover{color:var(--text-sub)}
+    .ft-copy{font:400 0.62rem var(--font-mono);color:var(--text-faint)}
+
+    @media(max-width:900px){.article-grid{grid-template-columns:1fr}.row-2{grid-template-columns:1fr}}
+    @media(max-width:768px){.hero h1{font-size:2rem}.hero{padding:4rem 0 2rem}.contain{padding:0 1.25rem}}
+  </style>
+  <script type="application/ld+json">
+  {
+    "@context":"https://schema.org",
+    "@type":"CollectionPage",
+    "name":"Research & Evidence",
+    "description":"Technical notes on confidential AI inference, cryptographic receipts, and model identity.",
+    "url":"https://cyntrisec.com/research",
+    "publisher":{"@type":"Organization","name":"Cyntrisec","url":"https://cyntrisec.com"}
+  }
+  </script>
+</head>
+<body>
+  <header>
+    <div class="contain">
+      <a href="/" class="logo"><img src="/logo-ikeda.svg" alt="Cyntrisec"/>Cyntrisec</a>
+      <nav>
+        <a href="/">Home</a>
+        <a href="/docs">Docs</a>
+        <a href="mailto:contact@cyntrisec.com">Contact</a>
+      </nav>
+    </div>
+  </header>
+
+  <div class="hero">
+    <div class="contain">
+      <div class="hero-label">Research & Evidence</div>
+      <h1>Proof, not just <em>posture</em></h1>
+      <p>Technical notes for security, compliance, and platform teams evaluating confidential AI inference.</p>
+    </div>
+    <div class="hero-img">
+      <img src="/research/images/index-hero.jpg" alt="Abstract data grid visualization"/>
+    </div>
+  </div>
+
+  <div class="articles">
+    <div class="contain">
+      <div class="article-grid">
+        <div class="article-card">
+          <a href="/research/what-cryptographic-proof-of-ai-inference-actually-means.html">
+            <div class="card-img">
+              <img src="/research/images/art1-hero.jpg" alt="Abstract geometric lines on dark background" loading="lazy"/>
+            </div>
+            <div class="card-body">
+              <h2>What "cryptographic proof of AI inference" actually means</h2>
+              <p>A plain-language explanation of what can and cannot be proven about an AI inference run.</p>
+              <span class="read-link">Read &rarr;</span>
+            </div>
+          </a>
+        </div>
+        <div class="article-card">
+          <a href="/research/why-gpu-attestation-does-not-prove-model-identity.html">
+            <div class="card-img">
+              <img src="/research/images/art2-hero.jpg" alt="Data grid with horizon boundary" loading="lazy"/>
+            </div>
+            <div class="card-body">
+              <h2>Why GPU attestation does not prove model identity</h2>
+              <p>Hardware attestation proves environment state. Model identity has to be bound separately.</p>
+              <span class="read-link">Read &rarr;</span>
+            </div>
+          </a>
+        </div>
+        <div class="article-card">
+          <a href="/research/insurance-claims-pilot-on-gcp-tdx-what-we-verified.html">
+            <div class="card-img">
+              <img src="/research/images/art5-hero.jpg" alt="Three verified results" loading="lazy"/>
+            </div>
+            <div class="card-body">
+              <h2>Insurance pilot on GCP TDX: what we verified and what we did not</h2>
+              <p>3/3 confidential requests completed, 3/3 AIR receipts verified offline.</p>
+              <span class="read-link">Read &rarr;</span>
+            </div>
+          </a>
+        </div>
+      </div>
+
+      <div class="row-2">
+        <div class="article-card">
+          <a href="/research/how-air-receipts-bind-request-response-and-model-identity.html">
+            <div class="card-img">
+              <img src="/research/images/art3-hero.jpg" alt="Vertical lines bound by horizontal beam" loading="lazy"/>
+            </div>
+            <div class="card-body">
+              <h2>How AIR receipts bind request, response, and model identity</h2>
+              <p>A practical explanation of how request hashes, response hashes, model hashes, and attestation linkage work together.</p>
+              <span class="read-link">Read &rarr;</span>
+            </div>
+          </a>
+        </div>
+        <div class="article-card">
+          <a href="/research/logs-vs-receipts-for-regulated-ai-workflows.html">
+            <div class="card-img">
+              <img src="/research/images/art4-hero.jpg" alt="Dissolving lines versus solid rectangle" loading="lazy"/>
+            </div>
+            <div class="card-body">
+              <h2>Logs vs receipts for regulated AI workflows</h2>
+              <p>Traditional logs are useful, but they are not the same as verifiable AI receipts.</p>
+              <span class="read-link">Read &rarr;</span>
+            </div>
+          </a>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <footer>
+    <div class="contain">
+      <div class="ft-links">
+        <a href="/">Home</a>
+        <a href="/docs">Docs</a>
+        <a href="https://github.com/cyntrisec">GitHub</a>
+        <a href="mailto:contact@cyntrisec.com">contact@cyntrisec.com</a>
+      </div>
+      <div class="ft-copy">&copy; 2026 Cyntrisec</div>
+    </div>
+  </footer>
+</body>
+</html>

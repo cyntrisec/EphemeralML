@@ -1,42 +1,34 @@
-```
- ▄████▄    ███████╗██████╗ ██╗  ██╗███████╗███╗   ███╗███████╗██████╗  █████╗ ██╗     ███╗   ███╗██╗
-██▀██▀██   ██╔════╝██╔══██╗██║  ██║██╔════╝████╗ ████║██╔════╝██╔══██╗██╔══██╗██║     ████╗ ████║██║
-██ ██ ██   █████╗  ██████╔╝███████║█████╗  ██╔████╔██║█████╗  ██████╔╝███████║██║     ██╔████╔██║██║
-████████   ██╔══╝  ██╔═══╝ ██╔══██║██╔══╝  ██║╚██╔╝██║██╔══╝  ██╔══██╗██╔══██║██║     ██║╚██╔╝██║██║
-██▄██▄██   ███████╗██║     ██║  ██║███████╗██║ ╚═╝ ██║███████╗██║  ██║██║  ██║███████╗██║ ╚═╝ ██║███████╗
- ▀ ▀▀ ▀    ╚══════╝╚═╝     ╚═╝  ╚═╝╚══════╝╚═╝     ╚═╝╚══════╝╚═╝  ╚═╝╚═╝  ╚═╝╚══════╝╚═╝     ╚═╝╚══════╝
-```
-
 [![CI](https://github.com/cyntrisec/EphemeralML/actions/workflows/ci.yml/badge.svg)](https://github.com/cyntrisec/EphemeralML/actions/workflows/ci.yml)
-[![Status](https://img.shields.io/badge/Status-v3.1%20GPU%20Confidential-brightgreen?style=for-the-badge)](https://github.com/cyntrisec/EphemeralML/releases/tag/v3.1.0)
-[![Tests](https://img.shields.io/badge/Tests-CI%20green-success?style=for-the-badge)](https://github.com/cyntrisec/EphemeralML/actions/workflows/ci.yml)
-[![Platform](https://img.shields.io/badge/Platform-AWS%20Nitro%20|%20GCP%20TDX%20|%20GPU%20H100-orange?style=for-the-badge&logo=amazon-aws)](https://aws.amazon.com/ec2/nitro/nitro-enclaves/)
-[![Language](https://img.shields.io/badge/Language-Rust-b7410e?style=for-the-badge&logo=rust&logoColor=white)](https://www.rust-lang.org/)
-[![License](https://img.shields.io/badge/Apache%202.0-blue?style=for-the-badge)](LICENSE)
 
 # EphemeralML
 
-**Confidential AI inference with hardware-backed attestation — multi-cloud**
+Confidential AI inference with per-inference cryptographic receipts.
 
-> Run AI models where prompts and weights stay encrypted — even if the host is compromised. Deploys on AWS Nitro Enclaves, GCP Confidential Space (Intel TDX), and GPU TEEs (NVIDIA H100 CC-mode).
+Every inference runs inside a hardware-isolated enclave. Every inference produces a signed receipt — model identity, data hashes, hardware attestation — verifiable offline.
+
+`AWS Nitro` · `GCP Confidential Space (TDX)` · `NVIDIA H100 CC` · `Rust` · `Apache 2.0`
 
 ---
 
-## Fast Diligence Summary
+**[cyntrisec.com](https://cyntrisec.com)** · **[Docs](https://cyntrisec.com/docs)** · **[Trust Center](https://verify.cyntrisec.com)** · **[AIR v1 Spec](spec/v1/README.md)**
 
-| Question | Short answer |
-|----------|--------------|
-| What exists now? | A working confidential-inference product surface: multi-cloud runtime paths, an OpenAI-compatible gateway, and per-inference AIR receipts. |
-| What has been validated? | Real E2E runs on AWS Nitro, GCP Confidential Space (TDX), and GCP H100 CC-mode, with `500+` tests across the workspace and CI. |
-| Where is the moat? | The AIR receipt format, verifier behavior, and compliance-trust layer around per-inference cryptographic evidence, not raw TEE infrastructure. |
-| What is still missing? | External AIR implementors, design-partner revenue, and vNEXT work such as pipeline-proof chaining. |
+---
 
-If you are reviewing this repo for investment or partnership diligence, start with:
+## What exists
 
-1. [`spec/v1/README.md`](spec/v1/README.md) — AIR v1 scope and frozen normative docs
-2. [`QUICKSTART.md`](QUICKSTART.md) — fastest product proof path
-3. [`docs/benchmarks.md`](docs/benchmarks.md) — measured performance and methodology
-4. [`docs/design.md`](docs/design.md) — threat model and architecture
+| | |
+|---|---|
+| Runtime | Multi-cloud E2E paths, OpenAI-compatible gateway, per-inference AIR receipts |
+| Validated | AWS Nitro, GCP TDX, GCP H100 CC — 500+ tests, CI green |
+| Moat | Receipt format + verifier + compliance layer — not raw TEE infra |
+| Missing | External AIR implementors, design-partner revenue, pipeline-proof chaining |
+
+Start here:
+
+1. [`spec/v1/README.md`](spec/v1/README.md) — AIR v1 frozen spec
+2. [`QUICKSTART.md`](QUICKSTART.md) — fastest proof path
+3. [`docs/benchmarks.md`](docs/benchmarks.md) — performance
+4. [`docs/design.md`](docs/design.md) — threat model
 
 ## Repository Layout
 
@@ -78,11 +70,11 @@ For what to actively maintain versus freeze, see [`docs/REPO_MAINTENANCE_SCOPE.m
 
 | Problem | Solution |
 |---------|----------|
-| Cloud hosts can see your data | **TEE isolation** — data decrypted only inside the enclave |
-| "Trust me" isn't enough | **Cryptographic attestation** — verify code before sending secrets |
-| No audit trail | **Execution receipts** — proof of what code processed your data |
+| Cloud hosts can see your data | TEE isolation — data decrypted only inside the enclave |
+| "Trust me" isn't enough | Cryptographic attestation — verify code before sending secrets |
+| No audit trail | Per-inference receipts — signed proof of what ran and what it touched |
 
-**Built for**: Defense, GovCloud, Finance, Healthcare — anywhere "good enough" security isn't.
+Built for: healthcare, finance, legal — anywhere audit evidence matters more than promises.
 
 ---
 
@@ -174,22 +166,24 @@ AIR v1 is **single-inference only** (pipeline proof chaining is planned for vNEX
 
 ## Security Model
 
-### What's Protected
-- ✅ **Model weights** (IP protection)
-- ✅ **Prompts & outputs** (PII / classified data)
-- ✅ **Execution integrity** (verified code)
+Three-layer trust model: environment attestation, workload identity, model integrity.
 
-### How
-1. **Attestation-gated key release** — KMS releases DEK only if enclave measurements match policy (PCRs on Nitro, MRTD/RTMRs on TDX)
-2. **Attestation-bound encrypted sessions** — X25519 + HKDF + ChaCha20-Poly1305, host sees only ciphertext
-3. **Ed25519 signed receipts** — cryptographic proof of execution
-4. **Cross-platform transport** — `confidential-ml-transport` handles attestation-bound channels on both VSock (Nitro) and TCP (TDX)
+**Protected:** model weights, prompts/outputs, execution integrity.
 
-### Threat Model
-- ✓ Compromised host OS → **Protected** (enclave isolation)
-- ✓ Malicious cloud admin → **Protected** (can't decrypt)
-- ✓ Supply chain attack → **Detected** (PCR verification)
-- ✓ Model swap attack → **Prevented** (signed manifests)
+**How:**
+- Attestation-gated key release — KMS releases DEK only if enclave measurements match policy
+- Attestation-bound encrypted sessions — X25519 + ChaCha20-Poly1305, host sees ciphertext only
+- Ed25519 signed receipts — per-inference cryptographic proof
+- Cross-platform transport — `confidential-ml-transport` on VSock (Nitro) and TCP (TDX)
+
+**Threat model:**
+
+| Threat | Outcome |
+|--------|---------|
+| Compromised host OS | Protected (enclave isolation) |
+| Malicious cloud admin | Protected (can't decrypt) |
+| Supply chain attack | Detected (measurement verification) |
+| Model swap | Prevented (signed manifests) |
 
 ---
 
@@ -438,20 +432,20 @@ See [`QUICKSTART.md`](QUICKSTART.md) and [`docs/build-matrix.md`](docs/build-mat
 
 | Component | Status | Tests |
 |-----------|--------|-------|
-| Pipeline Orchestrator | ✅ Production | 10 |
-| Stage Executor | ✅ Production | 1 |
-| NSM Attestation (AWS) | ✅ Production | 11 |
-| TDX Attestation (GCP) | ✅ Production | — |
-| KMS Integration (AWS) | ✅ Production | — |
-| GCP KMS / WIP | ⚠ Code exists, not wired into runtime | — |
-| Inference Engine (Candle) | ✅ Production | 4 |
-| Receipt Signing (Ed25519) | ✅ Production | 6 |
-| Common / Types | ✅ Production | 42 |
-| Host / Client | ✅ Production | 4 |
-| Degradation Policies | ✅ Production | 3 |
-| GCS Model Loader | ✅ Implemented | — |
-| GPU Inference (H100 CC, CUDA 12.2) | ✅ Verified on hardware | — |
-| TDX Verifier Bridge (Client) | ✅ Implemented | — |
+| Pipeline Orchestrator | Production | 10 |
+| Stage Executor | Production | 1 |
+| NSM Attestation (AWS) | Production | 11 |
+| TDX Attestation (GCP) | Production | — |
+| KMS Integration (AWS) | Production | — |
+| GCP KMS / WIP | Code exists, not wired into runtime | — |
+| Inference Engine (Candle) | Production | 4 |
+| Receipt Signing (Ed25519) | Production | 6 |
+| Common / Types | Production | 42 |
+| Host / Client | Production | 4 |
+| Degradation Policies | Production | 3 |
+| GCS Model Loader | Implemented | — |
+| GPU Inference (H100 CC, CUDA 12.2) | Verified on hardware | — |
+| TDX Verifier Bridge (Client) | Implemented | — |
 
 **v3.1 GPU Confidential** — GPU inference on GCP Confidential Space (a3-highgpu-1g, NVIDIA H100 CC-mode) with Llama 3 8B Q4_K_M GGUF, CUDA 12.2, TDX attestation, and Ed25519-signed receipts. GCS loader supports up to 16GB models with Content-Length pre-check. CI green.
 
@@ -482,8 +476,6 @@ Apache 2.0 — see [LICENSE](LICENSE)
 
 <div align="center">
 
-**Run inference like the host is already hacked.**
-
-[Documentation](docs/) • [Benchmarks](docs/benchmarks.md) • [Issues](https://github.com/cyntrisec/EphemeralML/issues)
+[cyntrisec.com](https://cyntrisec.com) · [Documentation](docs/) · [Benchmarks](docs/benchmarks.md) · [Issues](https://github.com/cyntrisec/EphemeralML/issues)
 
 </div>

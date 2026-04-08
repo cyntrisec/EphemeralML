@@ -4,22 +4,22 @@ pub const LANDING_HTML: &str = r##"<!DOCTYPE html>
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>Cyntrisec Trust Center</title>
-  <meta name="description" content="Verify signed receipts from confidential AI inference."/>
+  <meta name="description" content="Verify AIR v1 and legacy receipts from confidential AI inference. Checks signed claims, hash bindings, and attestation-linked execution evidence."/>
   <meta property="og:title" content="Cyntrisec Trust Center"/>
-  <meta property="og:description" content="Verify signed receipts from confidential AI inference."/>
+  <meta property="og:description" content="Verify AIR v1 and legacy receipts from confidential AI inference. Checks signed claims, hash bindings, and attestation-linked execution evidence."/>
   <meta property="og:type" content="website"/>
-  <meta name="theme-color" content="#050505"/>
+  <meta name="theme-color" content="#000000"/>
   <link rel="icon" href="https://cyntrisec.com/logo-mark-64.png" type="image/png"/>
   <style>
-    @import url("https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700&family=IBM+Plex+Mono:wght@400;500;600&display=swap");
+    @import url("https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap");
     *{margin:0;padding:0;box-sizing:border-box}
     :root{
-      --bg:#050505;--bg-raised:#0a0a0a;--bg-input:#080808;
-      --border:#161616;--border-focus:#00d4ff;
-      --text:#e8e8e8;--text-dim:#777;--text-faint:#444;
-      --cyan:#00d4ff;--green:#00cc88;--red:#e5484d;--amber:#f5a623;
-      --green-bg:rgba(0,204,136,0.07);--red-bg:rgba(229,72,77,0.07);--amber-bg:rgba(245,166,35,0.07);
-      --sans:"DM Sans",system-ui,sans-serif;--mono:"IBM Plex Mono","Menlo",monospace;
+      --bg:#000000;--bg-raised:#030303;--bg-input:#030303;
+      --border:rgba(255,255,255,0.06);--border-focus:#06b6d4;
+      --text:#f0f0f0;--text-dim:#888;--text-faint:#555;
+      --cyan:#06b6d4;--green:#10b981;--red:#ef4444;--amber:#f59e0b;
+      --green-bg:rgba(16,185,129,0.05);--red-bg:rgba(239,68,68,0.05);--amber-bg:rgba(245,158,11,0.05);
+      --sans:"Outfit",system-ui,sans-serif;--mono:"JetBrains Mono","Menlo",monospace;
     }
     body{background:var(--bg);color:var(--text);font:400 14px/1.6 var(--sans);-webkit-font-smoothing:antialiased;min-height:100vh}
     .mono{font-family:var(--mono)}
@@ -149,7 +149,7 @@ pub const LANDING_HTML: &str = r##"<!DOCTYPE html>
 <div class="page">
   <header>
     <a class="brand" href="https://cyntrisec.com">
-      <img src="https://cyntrisec.com/logo-mark-64.png" alt="" width="28" height="28"/>
+      <img src="https://cyntrisec.com/logo-ikeda.svg" alt="" width="28" height="28"/>
       <span>Cyntrisec <em>/ Trust Center</em></span>
     </a>
     <nav class="mono">
@@ -218,6 +218,7 @@ pub const LANDING_HTML: &str = r##"<!DOCTYPE html>
         <li>Does not independently verify attestation documents or hardware measurements.</li>
         <li>Does not prove data was deleted after processing.</li>
         <li>Does not constitute a compliance determination.</li>
+        <li>Deployment-specific trust policy depends on expected measurements, model allowlist, and freshness inputs.</li>
       </ul>
     </div>
     <div class="act-row">
@@ -331,10 +332,14 @@ function showResult(data) {
     'Cyntrisec Trust Center — ' + new Date().toISOString();
 
   const isOk = data.verified === true || data.verdict === 'verified';
-  const fmt = data.format === 'air_v1' ? 'AIR v1' : 'Legacy';
+  const isAir = data.format === 'air_v1';
+  const fmt = isAir ? 'AIR v1' : 'Legacy';
+  const fmtNote = isAir
+    ? 'Standards-based receipt (COSE/CWT/EAT) with signed claims and attestation linkage'
+    : 'Product-specific receipt format for compatibility';
   const vb = document.getElementById('verdictBanner');
   vb.className = 'verdict ' + (isOk ? 'pass' : 'fail');
-  vb.innerHTML = `<h2>${isOk ? 'Verified' : 'Failed'}</h2><p>${esc(fmt)} receipt &middot; ${data.verified_at ? new Date(data.verified_at*1000).toISOString() : ''}</p>`;
+  vb.innerHTML = `<h2>${isOk ? 'Verified' : 'Failed'}</h2><p>${esc(fmt)} receipt &middot; ${data.verified_at ? new Date(data.verified_at*1000).toISOString() : ''}</p><p style="margin-top:4px;font-size:11px;color:var(--text-faint)">${esc(fmtNote)}</p>`;
 
   const r = data.receipt || {};
   const meta = document.getElementById('meta');
@@ -349,6 +354,17 @@ function showResult(data) {
   add('Sequence', r.sequence_number != null ? '#' + r.sequence_number : null);
   add('Issued', r.issued_at ? new Date(r.issued_at*1000).toISOString() : null);
   add('Format', fmt);
+  if (r.model_hash_scheme) {
+    add('Hash scheme', r.model_hash_scheme);
+    // TODO: Replace with first-class model_identity_coverage from the API
+    // instead of inferring from hash scheme in the frontend. Track in
+    // view_model.rs when the coverage map is added to ReceiptSummary.
+    const isManifest = r.model_hash_scheme === 'sha256-manifest';
+    const coverage = isManifest
+      ? 'weights: bound, tokenizer: bound, config: bound, adapters: not bound'
+      : 'weights: bound';
+    add('Model coverage', coverage);
+  }
   meta.innerHTML = rows;
 
   const checksEl = document.getElementById('checks');

@@ -72,6 +72,9 @@ pub struct ReceiptSummary {
     pub security_mode: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub attestation_source: Option<String>,
+    /// AIR v1: model_hash_scheme (e.g. "sha256-single", "sha256-manifest").
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub model_hash_scheme: Option<String>,
 }
 
 /// The normalized trust-center API response.
@@ -146,6 +149,7 @@ impl TrustCenterResponse {
                 issuer: None,
                 security_mode: None,
                 attestation_source: result.attestation_source,
+                model_hash_scheme: None,
             },
             checks,
             errors: result.errors,
@@ -194,6 +198,7 @@ impl TrustCenterResponse {
                 issuer: Some(claims.iss.clone()),
                 security_mode: Some(claims.security_mode.clone()),
                 attestation_source: None,
+                model_hash_scheme: claims.model_hash_scheme.clone(),
             },
             None => ReceiptSummary {
                 receipt_id: None,
@@ -206,6 +211,7 @@ impl TrustCenterResponse {
                 issuer: None,
                 security_mode: None,
                 attestation_source: None,
+                model_hash_scheme: None,
             },
         };
 

@@ -1,0 +1,245 @@
+# Cyntrisec — Confidential AI Inference with Cryptographic Receipts
+
+## Company
+
+Cyntrisec builds EphemeralML, a confidential AI inference platform that produces a cryptographic receipt for every request. Founded by Borys Tsyrulnikov. Delaware C-Corp incorporated March 2026. AWS 10,000 AIdeas top-50 finalist.
+
+Website: https://cyntrisec.com
+Docs: https://cyntrisec.com/docs
+GitHub: https://github.com/cyntrisec/EphemeralML
+Trust Center (verify receipts): https://verify.cyntrisec.com
+Contact: contact@cyntrisec.com
+
+## What EphemeralML Does
+
+EphemeralML runs AI inference inside hardware-isolated enclaves and produces a signed receipt (AIR v1) for every inference request. The receipt is a portable, machine-verifiable evidence bundle that auditors can check offline.
+
+The product is the receipt — not the encryption, not the enclave. Those are infrastructure. The receipt proves: which model ran, what the inputs/outputs hashed to, and that the computation happened inside an attested confidential computing workload.
+
+### How It Works
+
+1. Client sends a request via OpenAI-compatible API (change `base_url`).
+2. Request enters a hardware-isolated enclave (Intel TDX, AMD SEV-SNP, AWS Nitro, or NVIDIA H100 CC).
+3. Model runs inside the enclave. Host forwards ciphertext only — cannot decrypt prompts or outputs under normal operation.
+4. Client receives the inference result plus a signed AIR v1 receipt.
+5. Client (or auditor) verifies the receipt offline: `ephemeralml verify receipt.cbor`.
+
+### API Compatibility
+
+EphemeralML exposes an OpenAI-compatible HTTP API. Existing code using the OpenAI SDK works by changing the base URL:
+
+```python
+from openai import OpenAI
+client = OpenAI(base_url="https://your-ephemeralml-endpoint/v1", api_key="your-key")
+response = client.chat.completions.create(model="minilm-l6-v2", messages=[...])
+# response includes AIR v1 receipt in headers
+```
+
+## Three-Layer Trust Model
+
+Cyntrisec cryptographically verifies three layers of trust, then binds them into one signed receipt.
+
+### Layer 1: Environment (Hardware Attestation)
+
+GPU/CPU attestation proves the hardware platform and confidential computing mode. This layer confirms the computation ran inside a genuine TEE (Trusted Execution Environment) — but does not prove which model was loaded.
+
+Platforms verified:
+- Intel TDX (GCP Confidential Space c3-standard-4)
+- AMD SEV-SNP (Azure DCesv5)
+- AWS Nitro Enclaves (m6i)
+- NVIDIA H100 Confidential Computing (GCP a3-highgpu-1g)
+
+### Layer 2: Workload (Identity Verification)
+
+Policy-bound attestation verifies the expected container image, project, zone, issuer, and nonce freshness before cryptographic key release. This confirms the correct software stack is running — but does not prove which model weights are loaded inside.
+
+Verification checks: container image digest, project ID, zone, issuer identity, nonce freshness, key-release policy match.
+
+### Layer 3: Model (Integrity Binding)
+
+Weights are hashed inside the TEE from decrypted bytes. When a signed manifest is authoritative, additional model artifacts (tokenizer, config) are also bound.
+
+Model identity coverage with sha256-manifest scheme:
+- weights: bound (hashed from decrypted bytes inside the TEE)
+- tokenizer: bound (via signed manifest)
+- config: bound (via signed manifest)
+- adapters: not bound
+
+Model decryption keys are released only when Cloud KMS confirms enclave measurement matches policy (attestation-gated key release).
+
+## AIR v1 — Attested Inference Receipt
+
+### Overview
+
+AIR v1 (Attested Inference Receipt) is the receipt wire format. It uses a COSE_Sign1 envelope (RFC 9052) carrying CWT claims (RFC 8392) with an EAT profile (RFC 9711), signed with Ed25519 (verify_strict).
+
+Status: v1.0 spec frozen (February 25, 2026). Submitted as IETF Internet-Draft. NIST public comment submitted on AI agent safeguarding (NIST-2025-0035).
+
+### Claims (18 total)
+
+Standard CWT/EAT claims (5):
+- iss (1) — issuer identifier
+- iat (6) — issued-at timestamp (Unix seconds)
+- cti (7) — receipt ID (16-byte UUID)
+- eat_nonce (10) — session nonce for freshness
+- eat_profile (265) — AIR v1 profile identifier
+
+Private AIR claims (12):
+- model_id (-65537) — model identifier string
+- model_version (-65538) — model version string
+- model_hash (-65539) — SHA-256 hash of model weights
+- request_hash (-65540) — SHA-256 hash of request data
+- response_hash (-65541) — SHA-256 hash of response data
+- attestation_doc_hash (-65542) — hash of the attestation document
+- enclave_measurements (-65543) — platform-specific measurements (PCRs, MRTD, RTMR)
+- policy_version (-65544) — policy version string
+- sequence_number (-65545) — monotonic sequence counter
+- execution_time_ms (-65546) — inference execution time in milliseconds
+- memory_peak_mb (-65547) — peak memory usage in megabytes
+- security_mode (-65548) — security mode (strict/standard)
+
+Optional claim (1):
+- model_hash_scheme (-65549) — hash scheme identifier (sha256-single, sha256-concat, sha256-manifest)
+
+### Receipt Verification Example
+
+```
+$ ephemeralml verify receipt.cbor
+
+Execution Receipt (AIR v1)
+────────────────────────────────────────
+receipt_id    68796942-19cf-4b60-a17c-91e5a0de8555
+model         minilm-l6-v2 v1.0.0
+platform      GCP Confidential Space (TDX)
+format        COSE_Sign1 + CWT (RFC 9052/8392)
+
+Hashes
+────────────────────────────────────────
+input_hash    sha256:a1b2c3d4e5f6...
+output_hash   sha256:f6e5d4c3b2a1...
+model_hash    sha256:9f8e7d6c5b4a...
+
+Verification
+────────────────────────────────────────
+signature     Ed25519 VERIFIED
+attestation   Hardware measurements PASS
+air_verify    11/11 mandatory checks PASS
+```
+
+### Four-Stage Verification Pipeline
+
+The verifier checks receipts through four sequential stages:
+
+1. **T1 Parse** — COSE/CWT structural validation, required claims present, CDDL conformance.
+2. **T2 Crypto** — Ed25519 signature verification (verify_strict), hash bindings, key attestation binding.
+3. **T3 Chain** — Platform-specific trust chain: TDX DCAP collateral validation (QE identity, TCB info, FMSPC), Nitro CA chain, Confidential Space JWT verification.
+4. **T4 Policy** — Model allowlist check, measurement pinning, freshness windows, sequence continuity.
+
+38 AttestCheckCode variants across the four layers.
+
+### Golden Test Vectors
+
+10 golden test vectors: 2 valid (Nitro + TDX), 8 invalid (structural + policy violations). Available in the interop kit for external implementors.
+
+### CDDL Schema
+
+Formal CDDL schema at: https://cyntrisec.com/spec/air/v1/
+
+## Security Model
+
+### Designed Properties (Under Stated Assumptions)
+
+- **Host ciphertext-only handling** — host relays encrypted traffic and cannot directly decrypt prompts, outputs, or model keys under normal operation.
+- **Attestation-gated key release** — model keys released only to approved enclave measurements.
+- **Session binding** — encryption keys bound to attestation + nonce.
+- **Model integrity** — weights are measured inside the TEE and signed manifests can additionally bind tokenizer/config artifacts.
+- **Per-inference auditability** — each receipt carries verifiable model/input/output hash and attestation linkage metadata.
+
+### Explicitly Not Claimed
+
+- Protection against all microarchitectural side-channels.
+- Availability guarantees (the host can deny service).
+- Confidentiality under full enclave compromise.
+- Cryptographic proof that data was deleted after processing.
+
+### Encryption
+
+- Transport: X25519 key exchange + ChaCha20-Poly1305 AEAD
+- Three-message attested handshake (HPKE-based)
+- Session keys bound to attestation and nonce
+- Performance: frame encode ~170ns/4KB, ChaCha20 seal ~7.2us/4KB
+
+## HIPAA Compliance Mapping
+
+Receipt fields map to HIPAA 164.312 technical safeguard controls. This is evidence support, not certification.
+
+- **164.312(a) Access Control** — Enclave isolation evidence. Attested hardware boundary prevents unauthorized access to data during processing.
+- **164.312(b) Audit Controls** — Signed receipt evidence. Each inference produces a verifiable audit record with model identity and data hashes.
+- **164.312(c) Integrity** — Model hash + attestation linkage. Signed manifests bind model weights, tokenizer, and config artifacts.
+- **164.312(e) Transmission Security** — AEAD encryption evidence. End-to-end encrypted transport (X25519 + ChaCha20-Poly1305).
+
+## Regulatory Context
+
+- **SEC 2025 Examination Priorities** — AI risk explicitly included in SEC examination focus areas.
+- **HIPAA Security Rule NPRM** — Proposed updates (January 2025) emphasize stronger encryption and audit controls for PHI workloads.
+- **EU AI Act Article 12** — Automatic logging and traceability requirements for high-risk AI, phasing in from August 2026.
+- **US State AI Laws** — State-level AI accountability and risk management requirements expanding.
+
+## Platform Evidence
+
+### End-to-End Verification Status
+
+| Platform | TEE | Status | Date |
+|----------|-----|--------|------|
+| AWS Nitro (m6i.xlarge) | Nitro Enclaves | PASS | March 2026 |
+| GCP CPU (c3-standard-4) | Intel TDX | PASS | March 2026 |
+| GCP GPU (a3-highgpu-1g) | NVIDIA H100 CC | PASS | March 2026 |
+| Azure (DC4ads_v5) | AMD SEV-SNP | Transport PASS | March 2026 |
+
+### Pilot Evidence
+
+Insurance workflow pilot on GCP TDX: 3/3 confidential requests completed, 3/3 AIR receipts verified offline.
+
+## Open Source
+
+All core libraries are open source (Apache 2.0) and published on crates.io.
+
+### confidential-ml-transport
+- Version: v0.5.0
+- Attestation-bound encrypted tensor transport
+- X25519 + ChaCha20-Poly1305, 3-message attested handshake
+- ~167 tests passing
+- https://crates.io/crates/confidential-ml-transport
+
+### confidential-ml-pipeline
+- Version: v0.4.0
+- Multi-enclave pipeline orchestration
+- Stage manifests, encrypted activation relay, failure semantics
+- ~88 tests passing
+- https://crates.io/crates/confidential-ml-pipeline
+
+### EphemeralML Application
+- 626+ workspace tests, CI green
+- Multi-cloud E2E verified
+- Native CLI: `ephemeralml gcp <subcommand>` (doctor, init, setup, deploy, verify, teardown, e2e)
+
+## Target Customers
+
+Organizations in regulated industries that cannot adopt cloud AI without auditable proof of what happened to their data:
+
+- **Healthcare** — HIPAA compliance evidence for PHI workloads
+- **Financial Services** — SEC AI governance and model risk management audit evidence
+- **Legal** — Attorney-client privilege, provable data isolation
+
+## Founder
+
+Borys Tsyrulnikov. Security engineer. Built EphemeralML end-to-end. Author of the AIR v1 IETF Internet-Draft. Contributor of security fixes to Microsoft's Azure CVM attestation library (MSRC Case 107128). Merged contributor to tokio (Rust async runtime). Filed security findings with AWS, NVIDIA, Intel, Google, and Arm.
+
+LinkedIn: https://www.linkedin.com/in/borystsyrulnikov/
+GitHub: https://github.com/tsyrulb
+
+## Competitive Context
+
+Existing confidential computing platforms (GCP Confidential Space, Azure Confidential VMs, AWS Nitro) provide hardware isolation and attestation infrastructure. EphemeralML deploys on that infrastructure and adds the per-inference evidence layer — a portable, signed receipt that auditors can verify independently.
+
+No widely adopted open standard for per-inference AI receipts exists today. The closest alternatives are deployment-level attestation tokens (not per-inference), proprietary audit logs (not portable/verifiable), and research-stage MPC approaches (100-10,000x too slow for production inference).
