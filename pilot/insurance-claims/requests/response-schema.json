@@ -1,0 +1,91 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "ClaimsTriageResponse",
+  "description": "Structured output from insurance claims triage model",
+  "type": "object",
+  "required": [
+    "claim_id",
+    "claim_classification",
+    "risk_flags",
+    "severity",
+    "recommendation",
+    "recommended_reserve",
+    "explanation",
+    "next_steps"
+  ],
+  "properties": {
+    "claim_id": {
+      "type": "string",
+      "pattern": "^CLM-[0-9]{4}-[0-9]{4}$"
+    },
+    "claim_classification": {
+      "type": "string",
+      "enum": [
+        "auto_collision",
+        "auto_comprehensive",
+        "auto_theft",
+        "property_water",
+        "property_wind",
+        "property_fire",
+        "liability_slip_fall",
+        "liability_product",
+        "health_preauth",
+        "health_emergency",
+        "workers_comp_injury",
+        "workers_comp_illness",
+        "other"
+      ]
+    },
+    "risk_flags": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "enum": [
+          "late_filing",
+          "fraud_indicators",
+          "coverage_dispute",
+          "high_severity",
+          "uninsured_motorist",
+          "litigation_risk",
+          "siu_referral",
+          "policy_lapse_risk",
+          "subrogation_potential",
+          "employer_dispute",
+          "pre_existing_condition",
+          "modified_duty_available",
+          "prior_claims_history",
+          "evidence_destruction"
+        ]
+      }
+    },
+    "severity": {
+      "type": "string",
+      "enum": ["low", "medium", "high", "critical"]
+    },
+    "recommendation": {
+      "type": "string",
+      "enum": [
+        "approve",
+        "approve_with_conditions",
+        "investigate",
+        "deny",
+        "escalate_to_siu"
+      ]
+    },
+    "recommended_reserve": {
+      "type": "number",
+      "minimum": 0
+    },
+    "explanation": {
+      "type": "string",
+      "minLength": 20,
+      "maxLength": 500
+    },
+    "next_steps": {
+      "type": "array",
+      "items": { "type": "string" },
+      "minItems": 1,
+      "maxItems": 5
+    }
+  }
+}

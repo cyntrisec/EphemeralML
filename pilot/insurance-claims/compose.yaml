@@ -1,0 +1,44 @@
+# Insurance Claims Pilot — Local Mock Stack
+#
+# Runs EphemeralML gateway + TinyLlama backend in mock mode (no real TEE).
+# Uses TinyLlama 1.1B (GGUF) for text generation to produce claims triage output.
+#
+# Usage:
+#   cd pilot/insurance-claims
+#   docker compose up --build
+#
+# Then run:
+#   bash scripts/run-pilot.sh
+
+services:
+  backend:
+    image: gateway-api-backend:latest
+    build:
+      context: ../..
+      dockerfile: gateway-api/Dockerfile.mock-backend
+    ports:
+      - "9000:9000"
+    command: >
+      --model-dir /app/test_assets/tinyllama
+      --model-id stage-0
+      --model-format gguf
+      --direct
+      --control-addr 0.0.0.0:9000
+
+  gateway:
+    image: gateway-api-gateway:latest
+    build:
+      context: ../..
+      dockerfile: gateway-api/Dockerfile
+    ports:
+      - "8090:8090"
+    environment:
+      EPHEMERALML_BACKEND_ADDR: "backend:9000"
+      EPHEMERALML_DEFAULT_MODEL: "stage-0"
+      EPHEMERALML_GATEWAY_PORT: "8090"
+      EPHEMERALML_API_KEY: "pilot-test-key-2026"
+      EPHEMERALML_INCLUDE_METADATA_JSON: "true"
+      EPHEMERALML_MODEL_CAPABILITIES: "chat"
+      EPHEMERALML_RECEIPT_HEADER_FULL: "true"
+    depends_on:
+      - backend

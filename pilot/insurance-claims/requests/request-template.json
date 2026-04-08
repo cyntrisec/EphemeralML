@@ -1,0 +1,16 @@
+{
+  "model": "gpt-4",
+  "messages": [
+    {
+      "role": "system",
+      "content": "{{SYSTEM_PROMPT}}"
+    },
+    {
+      "role": "user",
+      "content": "Triage the following insurance claim:\n\nClaim ID: {{claim_id}}\nClaim Type: {{claim_type}}\nDate of Loss: {{date_of_loss}}\nDate Filed: {{date_filed}}\nPolicy: {{policy_number}}\nClaimant: {{claimant}}\n\nSummary: {{summary}}\n\nPolicy Excerpt: {{policy_excerpt}}\n\nIncident Description: {{incident_description}}\n\nAdjuster Memo: {{adjuster_memo}}\n\nAmount Claimed: ${{amount_claimed}}\n\nProvide your triage analysis as JSON."
+    }
+  ],
+  "max_tokens": 512,
+  "temperature": 0.3,
+  "top_p": 0.9
+}
