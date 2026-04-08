@@ -922,6 +922,7 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
 
                     // Verify manifest signature (fail-closed).
                     // Empty env var is treated as unset (Dockerfile defaults set it to "").
+                    let mut manifest_authoritative = false;
                     if let Some(ref m) = manifest {
                         if let Some(pk_hex) = std::env::var("EPHEMERALML_MODEL_SIGNING_PUBKEY")
                             .ok()
