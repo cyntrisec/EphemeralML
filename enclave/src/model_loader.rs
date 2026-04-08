@@ -293,6 +293,8 @@ mod tests {
             model_hash,
             hash_algorithm: "sha256".to_string(),
             key_id: "key".to_string(),
+            tokenizer_hash: None,
+            config_hash: None,
             gcs_uris: Default::default(),
             created_at: String::new(),
             signature: vec![],
@@ -301,25 +303,31 @@ mod tests {
         // serialize to Value (BTreeMap-backed) then to bytes for sorted keys.
         #[derive(Serialize)]
         struct Payload {
-            model_id: String,
-            version: String,
-            #[serde(with = "serde_bytes")]
-            model_hash: Vec<u8>,
-            hash_algorithm: String,
-            key_id: String,
-            #[serde(default)]
-            gcs_uris: std::collections::BTreeMap<String, String>,
+            #[serde(default, skip_serializing_if = "Option::is_none")]
+            config_hash: Option<Vec<u8>>,
             #[serde(default)]
             created_at: String,
+            #[serde(default)]
+            gcs_uris: std::collections::BTreeMap<String, String>,
+            hash_algorithm: String,
+            key_id: String,
+            #[serde(with = "serde_bytes")]
+            model_hash: Vec<u8>,
+            model_id: String,
+            version: String,
+            #[serde(default, skip_serializing_if = "Option::is_none")]
+            tokenizer_hash: Option<Vec<u8>>,
         }
         let payload = Payload {
-            model_id: manifest.model_id.clone(),
-            version: manifest.version.clone(),
-            model_hash: manifest.model_hash.clone(),
+            config_hash: manifest.config_hash.clone(),
+            created_at: String::new(),
+            gcs_uris: Default::default(),
             hash_algorithm: manifest.hash_algorithm.clone(),
             key_id: manifest.key_id.clone(),
-            gcs_uris: Default::default(),
-            created_at: String::new(),
+            model_hash: manifest.model_hash.clone(),
+            model_id: manifest.model_id.clone(),
+            version: manifest.version.clone(),
+            tokenizer_hash: manifest.tokenizer_hash.clone(),
         };
         let value = serde_json::to_value(&payload).unwrap();
         let payload_bytes = serde_json::to_vec(&value).unwrap();
