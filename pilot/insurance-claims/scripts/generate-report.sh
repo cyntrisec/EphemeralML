@@ -43,15 +43,11 @@ import sys
 from datetime import datetime, timezone
 
 run_dir, output_path, project_dir, pilot_dir = sys.argv[1:5]
-summary_path = os.path.join(run_dir, "summary.json")
 results_path = os.path.join(run_dir, "results.csv")
 verify_summary_path = os.path.join(run_dir, "verification", "summary.json")
 
-if not os.path.exists(summary_path) or not os.path.exists(results_path):
-    raise SystemExit("Run directory is missing summary.json or results.csv")
-
-with open(summary_path, "r", encoding="utf-8") as fh:
-    summary = json.load(fh)
+if not os.path.exists(results_path):
+    raise SystemExit("Run directory is missing results.csv")
 
 rows = []
 with open(results_path, "r", encoding="utf-8") as fh:
@@ -62,6 +58,33 @@ verification = None
 if os.path.exists(verify_summary_path):
     with open(verify_summary_path, "r", encoding="utf-8") as fh:
         verification = json.load(fh)
+
+summary_path = os.path.join(run_dir, "summary.json")
+if os.path.exists(summary_path):
+    with open(summary_path, "r", encoding="utf-8") as fh:
+        summary = json.load(fh)
+else:
+    passed_rows = [r for r in rows if r.get("status") == "PASS"]
+    failed_rows = [r for r in rows if r.get("status") == "FAIL"]
+    summary = {
+        "run_id": os.path.basename(run_dir.rstrip("/")),
+        "platform": "gcp-tdx" if os.path.basename(run_dir.rstrip("/")).startswith("gcp-run-") else "local-mock",
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "total_tests": len(rows),
+        "passed": len(passed_rows),
+        "skipped": 0,
+        "failed": len(failed_rows),
+        "receipts_collected": len(glob.glob(os.path.join(run_dir, "receipts", "*.cbor"))),
+    }
+    if verification is not None:
+        summary["receipts_verified"] = verification.get("valid", 0)
+
+total_tests = summary.get("total_tests", summary.get("total_inferences", len(rows)))
+passed_tests = summary.get("passed", 0)
+failed_tests = summary.get("failed", 0)
+skipped_tests = summary.get("skipped", 0)
+receipts_collected = summary.get("receipts_collected", 0)
+receipts_verified = summary.get("receipts_verified")
 
 run_name = os.path.basename(run_dir.rstrip("/"))
 is_gcp = run_name.startswith("gcp-run-")
@@ -112,7 +135,7 @@ for vf in verification_files:
 
 if is_gcp:
     model_line = f"{model_id_value or 'manifest-backed model'} (manifest-backed)"
-    model_packaging = "fetched remotely, manifest-backed"
+    model_packaging = "sanitized confidential model reference"
     local_notes = "Local mock run retained for API rehearsal; confidential evidence came from the GCP TDX run."
     confidential_notes = "AIR v1 receipts verified offline from the collected GCP run."
 else:
@@ -121,20 +144,16 @@ else:
     local_notes = "Mock mode validates API flow and output shape only. It returns receipt metadata but not cryptographic AIR v1 receipts."
     confidential_notes = "Not exercised in this run."
 
-what_passed = [
-    "OpenAI-compatible request/response flow completed across cold-start and warm-batch scenarios.",
-    "All negative-path API checks behaved as expected (auth, empty input, unsupported tools, embeddings rejection).",
-    "Gateway and backend stayed stable for the full run.",
-]
-if is_gcp:
-    what_passed += [
-        "AIR v1 receipts were emitted and verified offline.",
-        "Manifest-backed model identity was carried into receipt verification.",
-    ]
-else:
-    what_passed += [
-        "The reusable pilot kit produced a sanitized artifact bundle and report from the current run.",
-    ]
+what_passed = []
+if positive_rows:
+    what_passed.append("At least one full confidential request completed end to end against the deployed workload.")
+if negative_rows:
+    what_passed.append("Negative-path API checks were executed and preserved in the artifact bundle.")
+if is_gcp and verification and verification.get("valid", 0) > 0:
+    what_passed.append("AIR v1 receipts were emitted and verified offline from the collected GCP run.")
+    what_passed.append("Model identity evidence was carried into the receipt bundle for offline review.")
+if not what_passed:
+    what_passed.append("The reusable pilot kit produced a sanitized artifact bundle from the current run.")
 
 recommendations = [
     "Use the local mock bundle for workflow discovery and response-shape review with non-technical stakeholders.",
@@ -167,11 +186,14 @@ lines.append("")
 lines.append("### Outcome Summary")
 lines.append("")
 lines.append(
-    f"- **{summary['passed']}/{summary['total_tests']}** test cases passed"
-    f" ({summary.get('skipped', 0)} skipped, {summary.get('failed', 0)} failed)"
+    f"- **{passed_tests}/{total_tests}** test cases passed"
+    f" ({skipped_tests} skipped, {failed_tests} failed)"
 )
 lines.append(f"- **{len(negative_rows)}/{len(negative_rows)}** negative-path checks executed")
-lines.append(f"- **{summary['receipts_collected']}** AIR v1 receipts collected")
+if receipts_verified is not None:
+    lines.append(f"- **{receipts_collected}** AIR v1 receipts collected ({receipts_verified} verified)")
+else:
+    lines.append(f"- **{receipts_collected}** AIR v1 receipts collected")
 lines.append(f"- **Average claim latency:** {avg_latency} ms")
 lines.append("")
 lines.append("## Pilot Modes")
@@ -203,8 +225,7 @@ lines.append("|-------|---------|-------------|-----------------|--------|")
 if receipt_rows:
     receipt_map = {r["claim"]: r for r in receipt_rows}
     for row in positive_rows[: min(5, len(positive_rows))]:
-        key = f"{row['scenario']}_{row['claim_id']}"
-        receipt = receipt_map.get(key)
+        receipt = receipt_map.get(row["claim_id"]) or receipt_map.get(f"{row['scenario']}_{row['claim_id']}")
         lines.append(
             f"| {row['claim_id']} | {row['latency_ms']} ms | "
             f"{receipt['size'] if receipt else 'N/A'} | "
@@ -245,7 +266,10 @@ lines.append("2. **Model quality limitation**")
 lines.append("TinyLlama is used here for workflow rehearsal and response-shape validation, not for production-quality claims analysis.")
 lines.append("")
 lines.append("3. **Connection / lifecycle limitation**")
-lines.append("This report captures a single-run artifact bundle. It does not prove long-running multi-tenant production behavior.")
+if is_gcp and failed_tests > 0 and receipts_collected > 0:
+    lines.append("The current GCP direct-mode deployment served one full secure session and then exited cleanly. This run therefore captures one verified confidential request rather than a sustained multi-request session.")
+else:
+    lines.append("This report captures a single-run artifact bundle. It does not prove long-running multi-tenant production behavior.")
 lines.append("")
 lines.append("4. **Out-of-scope items**")
 lines.append("Pipeline orchestration, GPU confidential-computing runs, production auth hardening, and customer-specific policy packaging were out of scope for this rehearsal.")
@@ -254,10 +278,13 @@ lines.append("## Latency Summary")
 lines.append("")
 lines.append("| Metric | Local Mock | Confidential Run |")
 lines.append("|--------|------------|------------------|")
-lines.append(f"| Cold-start | `{next((r['latency_ms'] + ' ms' for r in rows if r['scenario'] == 'cold' and r['status'] == 'PASS'), 'N/A')}` | `N/A` |")
-warm_latencies = [int(r["latency_ms"]) for r in rows if r["scenario"] == "warm" and r["status"] == "PASS" and r["latency_ms"].isdigit()]
-warm_avg = f"{round(statistics.mean(warm_latencies), 1)} ms" if warm_latencies else "N/A"
-lines.append(f"| Warm inference | `{warm_avg}` | `N/A` |")
+local_cold = next((r['latency_ms'] + ' ms' for r in rows if r['scenario'] == 'cold' and r['status'] == 'PASS'), 'N/A')
+local_warm_latencies = [int(r["latency_ms"]) for r in rows if r["scenario"] == "warm" and r["status"] == "PASS" and r["latency_ms"].isdigit()]
+local_warm = f"{round(statistics.mean(local_warm_latencies), 1)} ms" if local_warm_latencies else "N/A"
+gcp_latencies = [int(r["latency_ms"]) for r in claim_rows if r["status"] == "PASS" and r["latency_ms"].isdigit()]
+gcp_avg = f"{round(statistics.mean(gcp_latencies), 1)} ms" if is_gcp and gcp_latencies else "N/A"
+lines.append(f"| Cold-start | `{local_cold}` | `N/A` |")
+lines.append(f"| Warm inference | `{local_warm}` | `{gcp_avg}` |")
 lines.append("| Negative test | `HTTP validation only` | `N/A` |")
 lines.append(f"| Handshake + attestation | `N/A` | `{'see confidential run artifacts' if is_gcp else 'not exercised in this run'}` |")
 lines.append("")

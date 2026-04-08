@@ -62,6 +62,13 @@ fn create_engine_with_model(model_id: &str) -> Option<CandleInferenceEngine> {
     Some(engine)
 }
 
+async fn stop_direct_server(
+    server_handle: tokio::task::JoinHandle<Result<(), Box<dyn std::error::Error + Send + Sync>>>,
+) {
+    server_handle.abort();
+    let _ = server_handle.await;
+}
+
 #[tokio::test]
 async fn direct_mode_happy_path() {
     let model_id = "stage-0";
@@ -197,10 +204,9 @@ async fn direct_mode_happy_path() {
         );
     }
 
-    // Shutdown
+    // Shutdown the client session, then stop the long-lived server task.
     channel.shutdown().await.ok();
-    // Server should exit cleanly after channel closes
-    let _ = tokio::time::timeout(std::time::Duration::from_secs(2), server_handle).await;
+    stop_direct_server(server_handle).await;
 }
 
 #[tokio::test]
@@ -306,7 +312,7 @@ async fn direct_mode_malformed_json_no_crash() {
     assert_eq!(response.receipt.sequence_number, 0);
 
     channel.shutdown().await.ok();
-    let _ = tokio::time::timeout(std::time::Duration::from_secs(2), server_handle).await;
+    stop_direct_server(server_handle).await;
 }
 
 /// Helper: spawn a direct-mode server and connect a client channel.
@@ -415,7 +421,7 @@ async fn direct_mode_generate_on_bert_returns_error() {
     );
 
     channel.shutdown().await.ok();
-    let _ = tokio::time::timeout(std::time::Duration::from_secs(2), server_handle).await;
+    stop_direct_server(server_handle).await;
 }
 
 #[tokio::test]
@@ -456,7 +462,7 @@ async fn direct_mode_invalid_top_p_returns_error() {
     );
 
     channel.shutdown().await.ok();
-    let _ = tokio::time::timeout(std::time::Duration::from_secs(2), server_handle).await;
+    stop_direct_server(server_handle).await;
 }
 
 #[tokio::test]
@@ -497,7 +503,7 @@ async fn direct_mode_absent_generate_params_use_defaults() {
     assert!(response.receipt.signature.is_some());
 
     channel.shutdown().await.ok();
-    let _ = tokio::time::timeout(std::time::Duration::from_secs(2), server_handle).await;
+    stop_direct_server(server_handle).await;
 }
 
 #[tokio::test]
@@ -562,7 +568,7 @@ async fn direct_mode_manifest_model_id_in_receipt() {
     );
 
     channel.shutdown().await.ok();
-    let _ = tokio::time::timeout(std::time::Duration::from_secs(2), server_handle).await;
+    stop_direct_server(server_handle).await;
 }
 
 #[tokio::test]
@@ -607,7 +613,95 @@ async fn direct_mode_no_manifest_uses_request_model_id() {
     );
 
     channel.shutdown().await.ok();
-    let _ = tokio::time::timeout(std::time::Duration::from_secs(2), server_handle).await;
+    stop_direct_server(server_handle).await;
+}
+
+#[tokio::test]
+async fn direct_mode_accepts_multiple_sequential_sessions() {
+    let model_id = "stage-0";
+    let engine = match create_engine_with_model(model_id) {
+        Some(e) => e,
+        None => {
+            println!("Skipping test: model assets not found");
+            return;
+        }
+    };
+
+    let receipt_key = ReceiptSigningKey::generate().unwrap();
+    let mock_provider = MockAttestationProvider::new();
+
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    drop(listener);
+
+    let addr_str = addr.to_string();
+    let server_handle = tokio::spawn(async move {
+        let transport_provider = MockProvider::new();
+        let transport_verifier = MockVerifier::new();
+        run_direct_tcp(
+            engine,
+            mock_provider,
+            receipt_key,
+            &addr_str,
+            &transport_provider,
+            &transport_verifier,
+            [0u8; 32],
+            None,
+            None,
+            None,
+            None,
+            None,
+            "cyntrisec.com".to_string(),
+        )
+        .await
+    });
+
+    tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+
+    for _ in 0..2 {
+        let stream = tokio::net::TcpStream::connect(addr).await.unwrap();
+        let client_provider = MockProvider::new();
+        let client_verifier = MockVerifier::new();
+        let config = SessionConfig::builder()
+            .security_profile(SecurityProfile::Development)
+            .build()
+            .unwrap();
+
+        let mut channel = SecureChannel::connect_with_attestation(
+            stream,
+            &client_provider,
+            &client_verifier,
+            config,
+        )
+        .await
+        .unwrap();
+
+        let request = InferenceRequest {
+            model_id: model_id.to_string(),
+            input_data: b"Sequential session test".to_vec(),
+            input_shape: None,
+            generate: None,
+            max_tokens: None,
+            temperature: None,
+            top_p: None,
+        };
+        let request_bytes = serde_json::to_vec(&request).unwrap();
+        channel.send(Bytes::from(request_bytes)).await.unwrap();
+
+        let msg = channel.recv().await.unwrap();
+        let response_bytes = match msg {
+            Message::Data(data) => data,
+            other => panic!("Expected Data, got {:?}", other),
+        };
+        let response: InferenceResponse = serde_json::from_slice(&response_bytes).unwrap();
+        assert_eq!(response.output_tensor.len(), 384);
+        assert!(response.receipt.signature.is_some());
+
+        channel.shutdown().await.ok();
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+    }
+
+    stop_direct_server(server_handle).await;
 }
 
 #[tokio::test]
@@ -663,5 +757,5 @@ async fn direct_mode_malformed_manifest_fails_request() {
     }
 
     channel.shutdown().await.ok();
-    let _ = tokio::time::timeout(std::time::Duration::from_secs(2), server_handle).await;
+    stop_direct_server(server_handle).await;
 }

@@ -26,6 +26,7 @@ ZONE="${EPHEMERALML_GCP_ZONE:-us-central1-a}"
 CVM_IP=""
 CVM_PORT="9000"
 INSTANCE_NAME="ephemeralml-cvm"
+EXPECTED_AUDIENCE="${EPHEMERALML_GCP_WIP_AUDIENCE:-${GCP_WIP_AUDIENCE:-}}"
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -117,11 +118,19 @@ run_one_inference() {
 
     # Run client: env-var based config, writes receipts to /tmp/
     local EXIT_CODE=0
-    EPHEMERALML_ENCLAVE_ADDR="${CVM_IP}:${CVM_PORT}" \
-        EPHEMERALML_REQUIRE_MRTD=false \
-        EPHEMERALML_ALLOW_UNPINNED_AUDIENCE=true \
-        EPHEMERALML_GCP_VERIFY_MODEL_ID="stage-0" \
-        "$CLIENT_BIN" > "$OUTPUT_FILE" 2>&1 || EXIT_CODE=$?
+    if [[ -n "${EXPECTED_AUDIENCE}" ]]; then
+        EPHEMERALML_ENCLAVE_ADDR="${CVM_IP}:${CVM_PORT}" \
+            EPHEMERALML_REQUIRE_MRTD=false \
+            EPHEMERALML_EXPECTED_AUDIENCE="${EXPECTED_AUDIENCE}" \
+            EPHEMERALML_GCP_VERIFY_MODEL_ID="stage-0" \
+            "$CLIENT_BIN" > "$OUTPUT_FILE" 2>&1 || EXIT_CODE=$?
+    else
+        EPHEMERALML_ENCLAVE_ADDR="${CVM_IP}:${CVM_PORT}" \
+            EPHEMERALML_REQUIRE_MRTD=false \
+            EPHEMERALML_ALLOW_UNPINNED_AUDIENCE=true \
+            EPHEMERALML_GCP_VERIFY_MODEL_ID="stage-0" \
+            "$CLIENT_BIN" > "$OUTPUT_FILE" 2>&1 || EXIT_CODE=$?
+    fi
 
     local END_NS
     END_NS=$(date +%s%N)
@@ -182,7 +191,7 @@ if [[ -n "$RECEIPT_FILES" ]]; then
         VERIFY_OUT="${RUN_DIR}/verification/${BASENAME}_verify.json"
 
         # Use python3 for CBOR structure check
-        python3 << 'PYEOF' "$RF" "$VERIFY_OUT" 2>/dev/null
+        python3 - "$RF" "$VERIFY_OUT" << 'PYEOF' 2>/dev/null
 import sys, json, hashlib
 
 receipt_path = sys.argv[1]
@@ -298,8 +307,10 @@ cat > "${RUN_DIR}/summary.json" << EOF
   "cvm_ip": "${CVM_IP}",
   "cvm_port": ${CVM_PORT},
   "timestamp": "$(date -u +"%Y-%m-%dT%H:%M:%SZ")",
+  "total_tests": ${TOTAL},
   "total_inferences": ${TOTAL},
   "passed": ${PASSED},
+  "skipped": 0,
   "failed": ${FAILED},
   "receipts_collected": $(ls "${RUN_DIR}/receipts/"*.cbor 2>/dev/null | wc -l),
   "receipts_verified": ${VERIFIED}

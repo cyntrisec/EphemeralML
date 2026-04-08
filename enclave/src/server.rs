@@ -77,11 +77,15 @@ struct DirectInferenceResponse {
     model_identity_coverage: Option<BTreeMap<String, bool>>,
 }
 
-/// Accept a single client SecureChannel on `listen_addr` and serve inference
+/// Accept client SecureChannels on `listen_addr` and serve inference
 /// requests directly — no pipeline orchestrator needed.
 ///
 /// Intended for GCP smoke / E2E testing where a client connects with
 /// `SecureChannel::connect_with_attestation()` on a single port.
+///
+/// The server stays alive after each client session closes and accepts the
+/// next connection on the same listener. This is required for real pilot
+/// flows where multiple sequential clients connect to the same workload.
 #[allow(clippy::too_many_arguments)]
 pub async fn run_direct_tcp<A: crate::AttestationProvider + Send + Sync>(
     engine: crate::CandleInferenceEngine,
@@ -106,146 +110,156 @@ pub async fn run_direct_tcp<A: crate::AttestationProvider + Send + Sync>(
 
     let listener = tokio::net::TcpListener::bind(listen_addr).await?;
     println!("[direct] Listening on {}", listen_addr);
+    let mut receipt_key = receipt_key;
 
-    // Accept-retry loop: tolerate malformed connections (health checks, probes)
-    let mut channel = {
-        let mut last_err = None;
-        let mut result = None;
-        for attempt in 0..MAX_ACCEPT_RETRIES {
-            let (stream, peer) = listener.accept().await?;
-            stream.set_nodelay(true).ok();
-
-            // Compatibility fix: Development profile because the enclave does
-            // not verify anonymous external clients. This is intentional for
-            // ingress, but a distinct AnonymousIngress config should replace
-            // the generic Development profile once measurement pinning is
-            // wired on internal channels.
-            let config = SessionConfig::builder()
-                .security_profile(confidential_ml_transport::session::SecurityProfile::Development)
-                .build()
-                .expect("session config");
-            match SecureChannel::accept_with_attestation(
-                stream,
-                transport_provider,
-                transport_verifier,
-                config,
-            )
-            .await
-            {
-                Ok(ch) => {
-                    println!("[direct] Secure channel established with {}", peer);
-                    result = Some(ch);
-                    break;
-                }
-                Err(e) => {
-                    eprintln!(
-                        "[direct] Malformed connection from {} (attempt {}/{}): {}",
-                        peer,
-                        attempt + 1,
-                        MAX_ACCEPT_RETRIES,
-                        e,
-                    );
-                    last_err = Some(e);
-                    // Exponential backoff to limit resource exhaustion from rapid probes
-                    let delay = std::cmp::min(
-                        ACCEPT_RETRY_BASE_DELAY_MS * (1 << attempt.min(6)),
-                        ACCEPT_RETRY_MAX_DELAY_MS,
-                    );
-                    tokio::time::sleep(std::time::Duration::from_millis(delay)).await;
-                }
-            }
-        }
-        match result {
-            Some(ch) => ch,
-            None => {
-                return Err(format!(
-                    "max accept retries exhausted: {}",
-                    last_err.map(|e| e.to_string()).unwrap_or_default()
-                )
-                .into());
-            }
-        }
-    };
-
-    // Build ConnectionState for receipt generation.
-    // boot_attestation_hash binds receipts to hardware attestation evidence.
-    // In GCP mode: SHA-256 of the raw TDX quote generated at boot.
-    // In mock mode: SHA-256 of the mock attestation document (pre-computed
-    // at boot to match what the transport layer will produce).
-    // In production (Nitro): set during NSM attestation.
-    let attestation_hash = boot_attestation_hash;
-    let receipt_pk = receipt_key.public_key_bytes();
-    let session_id = hex::encode(Sha256::digest(receipt_pk));
-    let mut state = ConnectionState::new(
-        session_id,
-        receipt_key,
-        attestation_hash,
-        "direct-client".to_string(),
-        1,
-    );
-
-    println!("[direct] Ready for inference requests");
-
-    // Request loop
     loop {
-        let msg = match channel.recv().await {
-            Ok(m) => m,
-            Err(e) => {
-                println!("[direct] Channel closed: {}", e);
-                break;
+        // Accept-retry loop: tolerate malformed connections (health checks, probes)
+        let mut channel = {
+            let mut last_err = None;
+            let mut result = None;
+            for attempt in 0..MAX_ACCEPT_RETRIES {
+                let (stream, peer) = listener.accept().await?;
+                stream.set_nodelay(true).ok();
+
+                // Compatibility fix: Development profile because the enclave does
+                // not verify anonymous external clients. This is intentional for
+                // ingress, but a distinct AnonymousIngress config should replace
+                // the generic Development profile once measurement pinning is
+                // wired on internal channels.
+                let config = SessionConfig::builder()
+                    .security_profile(
+                        confidential_ml_transport::session::SecurityProfile::Development,
+                    )
+                    .build()
+                    .expect("session config");
+                match SecureChannel::accept_with_attestation(
+                    stream,
+                    transport_provider,
+                    transport_verifier,
+                    config,
+                )
+                .await
+                {
+                    Ok(ch) => {
+                        println!("[direct] Secure channel established with {}", peer);
+                        result = Some(ch);
+                        break;
+                    }
+                    Err(e) => {
+                        eprintln!(
+                            "[direct] Malformed connection from {} (attempt {}/{}): {}",
+                            peer,
+                            attempt + 1,
+                            MAX_ACCEPT_RETRIES,
+                            e,
+                        );
+                        last_err = Some(e);
+                        // Exponential backoff to limit resource exhaustion from rapid probes
+                        let delay = std::cmp::min(
+                            ACCEPT_RETRY_BASE_DELAY_MS * (1 << attempt.min(6)),
+                            ACCEPT_RETRY_MAX_DELAY_MS,
+                        );
+                        tokio::time::sleep(std::time::Duration::from_millis(delay)).await;
+                    }
+                }
+            }
+            match result {
+                Some(ch) => ch,
+                None => {
+                    return Err(format!(
+                        "max accept retries exhausted: {}",
+                        last_err.map(|e| e.to_string()).unwrap_or_default()
+                    )
+                    .into());
+                }
             }
         };
 
-        match msg {
-            Message::Data(bytes) => {
-                match handle_direct_request(
-                    &bytes,
-                    &engine,
-                    &attestation_provider,
-                    &mut state,
-                    boot_attestation_bytes.as_deref(),
-                    model_manifest_json.as_deref(),
-                    model_hash,
-                    model_hash_scheme.as_deref(),
-                    model_identity_coverage.as_deref(),
-                    &receipt_issuer,
-                ) {
-                    Ok(result) => {
-                        channel
-                            .send(Bytes::copy_from_slice(&result.response_json))
-                            .await?;
-                        println!(
-                            "[direct] Response sent: {} floats, {}ms, seq={}",
-                            result.n_floats, result.exec_ms, result.sequence,
-                        );
-                    }
-                    Err(e) => {
-                        eprintln!("[direct] Request failed: {}", e);
-                        // Send redacted error back to client to avoid leaking
-                        // internal details (file paths, stack traces).
-                        let err_json = serde_json::json!({"error": "Inference request failed"});
-                        let err_bytes =
-                            Zeroizing::new(serde_json::to_vec(&err_json).unwrap_or_default());
-                        if let Err(send_err) =
-                            channel.send(Bytes::copy_from_slice(&err_bytes)).await
-                        {
-                            eprintln!("[direct] Failed to send error response: {}", send_err);
-                            break;
+        // Build ConnectionState for receipt generation.
+        // boot_attestation_hash binds receipts to hardware attestation evidence.
+        // In GCP mode: SHA-256 of the raw TDX quote generated at boot.
+        // In mock mode: SHA-256 of the mock attestation document (pre-computed
+        // at boot to match what the transport layer will produce).
+        // In production (Nitro): set during NSM attestation.
+        let attestation_hash = boot_attestation_hash;
+        let receipt_pk = receipt_key.public_key_bytes();
+        let session_id = hex::encode(Sha256::digest(receipt_pk));
+        let mut state = ConnectionState::new(
+            session_id,
+            receipt_key,
+            attestation_hash,
+            "direct-client".to_string(),
+            1,
+        );
+
+        println!("[direct] Ready for inference requests");
+
+        // Request loop for one secure session. When it closes, go back to
+        // accept() so the direct-mode workload can serve the next client.
+        loop {
+            let msg = match channel.recv().await {
+                Ok(m) => m,
+                Err(e) => {
+                    println!("[direct] Channel closed: {}", e);
+                    break;
+                }
+            };
+
+            match msg {
+                Message::Data(bytes) => {
+                    match handle_direct_request(
+                        &bytes,
+                        &engine,
+                        &attestation_provider,
+                        &mut state,
+                        boot_attestation_bytes.as_deref(),
+                        model_manifest_json.as_deref(),
+                        model_hash,
+                        model_hash_scheme.as_deref(),
+                        model_identity_coverage.as_deref(),
+                        &receipt_issuer,
+                    ) {
+                        Ok(result) => {
+                            channel
+                                .send(Bytes::copy_from_slice(&result.response_json))
+                                .await?;
+                            println!(
+                                "[direct] Response sent: {} floats, {}ms, seq={}",
+                                result.n_floats, result.exec_ms, result.sequence,
+                            );
+                        }
+                        Err(e) => {
+                            eprintln!("[direct] Request failed: {}", e);
+                            // Send redacted error back to client to avoid leaking
+                            // internal details (file paths, stack traces).
+                            let err_json = serde_json::json!({"error": "Inference request failed"});
+                            let err_bytes =
+                                Zeroizing::new(serde_json::to_vec(&err_json).unwrap_or_default());
+                            if let Err(send_err) =
+                                channel.send(Bytes::copy_from_slice(&err_bytes)).await
+                            {
+                                eprintln!("[direct] Failed to send error response: {}", send_err);
+                                break;
+                            }
                         }
                     }
                 }
-            }
-            Message::Shutdown => {
-                println!("[direct] Client initiated shutdown");
-                break;
-            }
-            Message::Heartbeat => {}
-            other => {
-                eprintln!("[direct] Unexpected message: {:?}", other);
+                Message::Shutdown => {
+                    println!("[direct] Client initiated shutdown");
+                    break;
+                }
+                Message::Heartbeat => {}
+                other => {
+                    eprintln!("[direct] Unexpected message: {:?}", other);
+                }
             }
         }
+
+        // Reuse the same attested receipt key across sequential sessions.
+        receipt_key = state.receipt_signing_key;
     }
 
+    #[allow(unreachable_code)]
     Ok(())
 }
 

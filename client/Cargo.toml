@@ -40,6 +40,7 @@ rand = { workspace = true }
 # Client always needs transport mock (client is not in a TEE) and tcp.
 confidential-ml-transport = { workspace = true, features = ["mock", "tcp"] }
 bytes = { workspace = true }
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
 [dev-dependencies]
 proptest = { workspace = true }
@@ -70,4 +71,3 @@ path = "src/bin/ephemeralml_verify.rs"
 [[bin]]
 name = "ephemeralml"
 path = "src/bin/ephemeralml.rs"
-

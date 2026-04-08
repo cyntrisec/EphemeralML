@@ -1864,6 +1864,7 @@ dependencies = [
  "thiserror 1.0.69",
  "tokenizers",
  "tokio",
+ "tracing-subscriber",
  "uuid",
  "x509-parser",
 ]

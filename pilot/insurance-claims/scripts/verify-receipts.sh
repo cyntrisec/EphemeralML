@@ -72,7 +72,7 @@ for RECEIPT_FILE in ${RECEIPT_FILES}; do
     VERIFY_OUTPUT="${VERIFY_DIR}/${BASENAME}_verify.json"
 
     # Use python3 to parse and validate the COSE_Sign1 structure
-    python3 << 'PYEOF' "$RECEIPT_FILE" "$VERIFY_OUTPUT" "$IS_TAMPERED" 2>/dev/null
+    python3 - "$RECEIPT_FILE" "$VERIFY_OUTPUT" "$IS_TAMPERED" << 'PYEOF' 2>/dev/null
 import sys, json, hashlib, struct
 
 receipt_path = sys.argv[1]

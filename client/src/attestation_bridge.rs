@@ -725,8 +725,11 @@ struct CsJwtClaims {
     #[serde(default)]
     swname: String,
     /// Software version of the Confidential Space image.
+    ///
+    /// Real Launcher tokens currently emit this as an array (for example
+    /// `[260300]`), not a bare string, so keep it schema-flexible.
     #[serde(default)]
-    swversion: String,
+    swversion: serde_json::Value,
     /// Submodule claims (container image, GCE instance, etc.).
     #[serde(default)]
     submods: CsJwtSubmods,
@@ -1704,6 +1707,40 @@ mod tests {
             "Expected swname mismatch error, got: {}",
             err
         );
+    }
+
+    #[tokio::test]
+    async fn test_cs_envelope_accepts_swversion_array_shape() {
+        let (enc_key, dec_key) = test_rsa_keys();
+        let nonce = b"nonce";
+        let nonce_hex = hex::encode(nonce);
+
+        let mut header = Header::new(Algorithm::RS256);
+        header.kid = Some(TEST_KID.to_string());
+        let claims = serde_json::json!({
+            "iss": "https://confidentialcomputing.googleapis.com",
+            "exp": 9999999999u64,
+            "iat": std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_secs(),
+            "eat_nonce": nonce_hex,
+            "swname": "CONFIDENTIAL_SPACE",
+            "swversion": [260300],
+            "submods": {
+                "container": { "image_digest": "sha256:test-digest" },
+                "gce": { "project_id": "test-project", "zone": "us-central1-a" }
+            }
+        });
+        let jwt = jsonwebtoken::encode(&header, &claims, &enc_key).unwrap();
+
+        let envelope = make_cs_envelope(&jwt, nonce);
+        let cbor = envelope.to_cbor_deterministic().unwrap();
+        let verifier = make_verifier(dec_key);
+
+        let doc = CmlAttestationDocument::new(cbor);
+        let result = verifier.verify(&doc).await;
+        assert!(result.is_ok(), "Expected OK, got: {:?}", result.err());
     }
 
     #[tokio::test]

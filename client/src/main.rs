@@ -5,6 +5,15 @@ use ephemeral_ml_client::secure_client::SecureClient;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let _ = tracing_subscriber::fmt()
+        .with_env_filter(
+            tracing_subscriber::EnvFilter::try_from_default_env()
+                .unwrap_or_else(|_| "warn,confidential_ml_transport=warn".into()),
+        )
+        .with_target(false)
+        .with_writer(std::io::stderr)
+        .try_init();
+
     #[cfg(feature = "mock")]
     {
         println!("EphemeralML Client (Mock Mode)");

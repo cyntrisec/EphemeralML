@@ -27,7 +27,8 @@ BOLD="\033[1m"; GREEN="\033[32m"; RESET="\033[0m"
 info()  { echo -e "  ${BOLD}$1${RESET}"; }
 ok()    { echo -e "  ${GREEN}${BOLD}$1${RESET}"; }
 
-BUNDLE_DIR="${PILOT_DIR}/artifacts/pilot-bundle-$(date -u +%Y%m%d)"
+RUN_NAME="$(basename "${RUN_DIR}")"
+BUNDLE_DIR="${PILOT_DIR}/artifacts/pilot-bundle-${RUN_NAME}"
 mkdir -p "${BUNDLE_DIR}"
 
 echo ""
@@ -60,7 +61,7 @@ fi
 
 # Generate summary table
 info "Generating summary table..."
-python3 << 'PYEOF' "${BUNDLE_DIR}" 2>/dev/null || true
+python3 - "${BUNDLE_DIR}" << 'PYEOF' 2>/dev/null || true
 import json, sys, os, glob
 
 bundle_dir = sys.argv[1]
@@ -105,7 +106,7 @@ md.append("| Scenario | Claim ID | Status | Latency (ms) | Receipt | HTTP |")
 md.append("|----------|----------|--------|-------------|---------|------|")
 for r in results:
     receipt = "yes" if r.get("receipt_present") == "true" else "no"
-    md.append(f"| {r['scenario']} | {r['claim_id']} | {r['status']} | {r['latency_ms']} | {receipt} | {r['http_status']} |")
+    md.append(f"| {r['scenario']} | {r['claim_id']} | {r['status']} | {r['latency_ms']} | {receipt} | {r.get('http_status', 'N/A')} |")
 
 md.append("")
 
