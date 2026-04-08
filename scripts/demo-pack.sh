@@ -26,6 +26,8 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 PACK_DIR="$PROJECT_DIR/demo-pack"
 SKIP_BUILD="${1:-}"
+TARGET_DIR="${CARGO_TARGET_DIR:-/tmp/ephemeralml-target}"
+CARGO_LOCAL="$SCRIPT_DIR/cargo-local.sh"
 
 echo
 echo "  ╔══════════════════════════════════════════════╗"
@@ -66,9 +68,9 @@ fi
 
 echo "  [2/5] Generating AIR v1 receipt..."
 
-VERIFY_BIN="$PROJECT_DIR/target/release/ephemeralml-verify"
+VERIFY_BIN="$TARGET_DIR/release/ephemeralml-verify"
 if [ ! -f "$VERIFY_BIN" ]; then
-    VERIFY_BIN="$PROJECT_DIR/target/debug/ephemeralml-verify"
+    VERIFY_BIN="$TARGET_DIR/debug/ephemeralml-verify"
 fi
 
 # Use the verifier API sample endpoint to get a signed AIR v1 receipt.
@@ -77,15 +79,15 @@ VERIFIER_PORT=18932
 VERIFIER_PID=""
 
 start_temp_verifier() {
-    local bin="$PROJECT_DIR/target/release/ephemeralml-verifier"
+    local bin="$TARGET_DIR/release/ephemeralml-verifier"
     if [ ! -f "$bin" ]; then
-        bin="$PROJECT_DIR/target/debug/ephemeralml-verifier"
+        bin="$TARGET_DIR/debug/ephemeralml-verifier"
     fi
     if [ ! -f "$bin" ]; then
         echo "        Building verifier..."
         cd "$PROJECT_DIR"
-        cargo build --release -p ephemeralml-verifier-api 2>&1 | tail -2
-        bin="$PROJECT_DIR/target/release/ephemeralml-verifier"
+        bash "$CARGO_LOCAL" build --release -p ephemeralml-verifier-api 2>&1 | tail -2
+        bin="$TARGET_DIR/release/ephemeralml-verifier"
     fi
     "$bin" --mode public-trust-center --port "$VERIFIER_PORT" --rate-limit 100 \
         > /dev/null 2>&1 &

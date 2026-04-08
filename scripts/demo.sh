@@ -22,10 +22,12 @@ PID_FILE="$PROJECT_DIR/.demo-server.pid"
 RECEIPT_FILE="$PROJECT_DIR/demo-receipt.json"
 PUBKEY_FILE="$PROJECT_DIR/demo-receipt.json.pubkey"
 TAMPERED_FILE="$PROJECT_DIR/demo-receipt-tampered.json"
+TARGET_DIR="${CARGO_TARGET_DIR:-/tmp/ephemeralml-target}"
+CARGO_LOCAL="$SCRIPT_DIR/cargo-local.sh"
 
-ENCLAVE_BIN="$PROJECT_DIR/target/release/ephemeral-ml-enclave"
-CLI_BIN="$PROJECT_DIR/target/release/ephemeralml"
-VERIFY_BIN="$PROJECT_DIR/target/release/ephemeralml-verify"
+ENCLAVE_BIN="$TARGET_DIR/release/ephemeral-ml-enclave"
+CLI_BIN="$TARGET_DIR/release/ephemeralml"
+VERIFY_BIN="$TARGET_DIR/release/ephemeralml-verify"
 
 # ── Helpers ──────────────────────────────────────────────
 
@@ -41,13 +43,13 @@ ensure_built() {
     if [ ! -f "$ENCLAVE_BIN" ] || [ ! -f "$CLI_BIN" ] || [ ! -f "$VERIFY_BIN" ]; then
         echo "  Building (mock mode, release)..."
         cd "$PROJECT_DIR"
-        cargo build --release --features mock 2>&1 | tail -3
+        bash "$CARGO_LOCAL" build --release --features mock 2>&1 | tail -3
         echo "  Build complete."
         echo
     fi
 
-    if [ ! -f "$VERIFY_BIN" ] && [ -f "$PROJECT_DIR/target/debug/ephemeralml-verify" ]; then
-        VERIFY_BIN="$PROJECT_DIR/target/debug/ephemeralml-verify"
+    if [ ! -f "$VERIFY_BIN" ] && [ -f "$TARGET_DIR/debug/ephemeralml-verify" ]; then
+        VERIFY_BIN="$TARGET_DIR/debug/ephemeralml-verify"
     fi
 }
 

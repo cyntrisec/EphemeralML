@@ -49,20 +49,22 @@ This runs the complete 10-step golden path: KMS setup, model packaging, GPU depl
 
 ## Building the Project
 
+> **Local disk tip**: for everyday local work, prefer `bash scripts/cargo-local.sh <cargo args>`. It writes build output to `/tmp/ephemeralml-target` instead of `./target`, which keeps the checkout much smaller.
+
 ### Mock Mode (Local Development)
 ```bash
-cargo build --features mock
+bash scripts/cargo-local.sh build --features mock
 ```
 
 ### Production Mode (AWS Nitro Enclaves)
 ```bash
-cargo build --no-default-features --features production
+bash scripts/cargo-local.sh build --no-default-features --features production
 ```
 
 ### GCP Mode (Confidential Space / TDX)
 ```bash
-cargo build --no-default-features --features gcp -p ephemeral-ml-enclave
-cargo build --no-default-features --features gcp -p ephemeral-ml-client
+bash scripts/cargo-local.sh build --no-default-features --features gcp -p ephemeral-ml-enclave
+bash scripts/cargo-local.sh build --no-default-features --features gcp -p ephemeral-ml-client
 ```
 
 ### GCP GPU Mode (Confidential Space / TDX + H100 CC)
@@ -71,7 +73,7 @@ cargo build --no-default-features --features gcp -p ephemeral-ml-client
 docker build -f Dockerfile.gpu -t ephemeral-ml-gpu .
 
 # Or build locally (requires CUDA 12.2 toolkit)
-cargo build --release --no-default-features --features gcp,cuda -p ephemeral-ml-enclave
+bash scripts/cargo-local.sh build --release --no-default-features --features gcp,cuda -p ephemeral-ml-enclave
 ```
 
 ## Running the Demo
@@ -102,13 +104,13 @@ bash scripts/demo.sh down
 
 **Terminal 1 — Start local mock server:**
 ```bash
-cargo run --release --features mock --bin ephemeral-ml-enclave -- \
+bash scripts/cargo-local.sh run --release --features mock --bin ephemeral-ml-enclave -- \
     --model-dir test_assets/minilm --model-id stage-0 --direct
 ```
 
 **Terminal 2 — Run CLI inference:**
 ```bash
-cargo run --release --features mock --bin ephemeralml -- \
+bash scripts/cargo-local.sh run --release --features mock --bin ephemeralml -- \
     infer --addr 127.0.0.1:9000 --text "Patient presents with acute respiratory distress." \
     --receipt demo-receipt.json
 ```
@@ -216,7 +218,7 @@ EphemeralML defaults to **fail-closed** for all security-sensitive settings. Pro
 
 ### Run all tests
 ```bash
-cargo test --features mock
+bash scripts/cargo-local.sh test --features mock
 ```
 
 ### Run specific test suites

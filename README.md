@@ -56,6 +56,22 @@ Open-source boundary note:
 - managed-service operations, live infrastructure inventory, and pre-interface moat work stay private
 - see [`docs/OPEN_SOURCE_BOUNDARY.md`](docs/OPEN_SOURCE_BOUNDARY.md)
 
+## Local Disk Hygiene
+
+The Git repository is small, but a working checkout can grow quickly because local build and model caches live next to the source tree.
+
+Typical large directories:
+- `target/` — Rust build output; safe to delete at any time
+- `test_assets/` — local model weights and test fixtures; mostly ignored and re-downloadable
+- `infra/**/.terraform/` — Terraform provider/plugin cache created by local infra work
+
+Recommended local workflow:
+- use [`scripts/cargo-local.sh`](scripts/cargo-local.sh) for day-to-day builds and tests so Cargo writes to `/tmp/ephemeralml-target` instead of the repo root
+- treat `target/`, local model weights, and Terraform caches as disposable workspace state, not product source
+- only keep large local assets you are actively using for a demo or pilot
+
+For what to actively maintain versus freeze, see [`docs/REPO_MAINTENANCE_SCOPE.md`](docs/REPO_MAINTENANCE_SCOPE.md).
+
 ---
 
 ## Why EphemeralML?

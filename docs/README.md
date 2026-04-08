@@ -15,6 +15,7 @@ This repository serves multiple audiences: developers integrating the product, r
 - [`verifier-api.md`](verifier-api.md) — verifier service surface
 - [`cli-ux.md`](cli-ux.md) — operator and developer CLI ergonomics
 - [`infra.md`](infra.md) — infrastructure notes and Nitro deployment loop
+- [`REPO_MAINTENANCE_SCOPE.md`](REPO_MAINTENANCE_SCOPE.md) — active vs frozen areas and local disk hygiene
 - [`TROUBLESHOOTING.md`](TROUBLESHOOTING.md) — operational debugging notes
 
 ## Security and Trust
@@ -33,4 +34,3 @@ This repository serves multiple audiences: developers integrating the product, r
 ## Standards
 
 - [`../spec/v1/README.md`](../spec/v1/README.md) — AIR v1 entrypoint
-
