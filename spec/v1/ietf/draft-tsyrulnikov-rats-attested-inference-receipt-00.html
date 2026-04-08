@@ -2209,9 +2209,7 @@ inference in megabytes. Informational.<a href="#section-5.2.11-1" class="pilcrow
           <h4 id="name-security_mode-key-65548">
 <a href="#section-5.2.12" class="section-number selfRef">5.2.12. </a><a href="#name-security_mode-key-65548" class="section-name selfRef">security_mode -- key -65548</a>
           </h4>
-<p id="section-5.2.12-1">A text string identifying the security mode of the workload (e.g.,
-<code>"GatewayOnly"</code>, <code>"FullAttestation"</code>). Informational. Verifiers <span class="bcp14">MAY</span>
-require a specific security mode.<a href="#section-5.2.12-1" class="pilcrow">¶</a></p>
+<p id="section-5.2.12-1">A text string identifying the security mode of the workload. The value is implementation-defined; AIR v1 does not define a global registry for this field. Informational. Verifiers <span class="bcp14">MAY</span> require a specific security mode by local policy.<a href="#section-5.2.12-1" class="pilcrow">¶</a></p>
 </section>
 </div>
 <div id="mhscheme">
@@ -2973,7 +2971,7 @@ EAT profile:<a href="#section-13.1-6" class="pilcrow">¶</a></p>
   -65545: 1,                                   / sequence_number /
   -65546: 77,                                  / execution_time_ms /
   -65547: 0,                                   / memory_peak_mb /
-  -65548: "FullAttestation"                    / security_mode /
+  -65548: "example-profile"                     / security_mode /
 }
 </pre><a href="#section-13.1-7" class="pilcrow">¶</a>
 </div>

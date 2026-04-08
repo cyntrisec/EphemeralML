@@ -469,9 +469,10 @@ inference in megabytes. Informational.
 
 ### security_mode -- key -65548
 
-A text string identifying the security mode of the workload (e.g.,
-`"GatewayOnly"`, `"FullAttestation"`). Informational. Verifiers MAY
-require a specific security mode.
+A text string identifying the security mode of the workload. The value is
+implementation-defined; AIR v1 does not define a global registry for this
+field. Informational. Verifiers MAY require a specific security mode by
+local policy.
 
 ### model_hash_scheme -- key -65549 {#mhscheme}
 
@@ -988,7 +989,7 @@ EAT profile:
   -65545: 1,                                   / sequence_number /
   -65546: 77,                                  / execution_time_ms /
   -65547: 0,                                   / memory_peak_mb /
-  -65548: "FullAttestation"                    / security_mode /
+  -65548: "example-profile"                     / security_mode /
 }
 ~~~
 

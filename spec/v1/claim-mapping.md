@@ -202,8 +202,8 @@ These claims use negative integer keys to avoid collision with IANA CWT claim re
 |----------|-------|
 | CBOR type | tstr |
 | Required | Yes |
-| Semantics | Security mode of the workload (e.g., `"GatewayOnly"`, `"FullAttestation"`). |
-| Verification | Informational. Verifier MAY require a specific security mode. |
+| Semantics | Security mode of the workload. Value is implementation-defined; AIR v1 does not define a global registry for this field. |
+| Verification | Informational. Verifier MAY require a specific security mode by local policy. |
 
 ### model_hash_scheme — key -65549
 
