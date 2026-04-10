@@ -19,7 +19,14 @@
 
 set -euo pipefail
 
-PROJECT="${1:-${GOOGLE_CLOUD_PROJECT:-ephemeralml}}"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
+# shellcheck source=lib.sh
+source "${SCRIPT_DIR}/lib.sh"
+gcp_source_env_file "${PROJECT_DIR}"
+gcp_export_env_aliases
+
+PROJECT="${1:-${EPHEMERALML_GCP_PROJECT:-${GOOGLE_CLOUD_PROJECT:-ephemeralml}}}"
 REGION="${2:-us-central1}"
 THIRD_ARG="${3:-}"
 IMAGE_DIGEST=""
@@ -46,6 +53,10 @@ echo "  Pool:     ${POOL}"
 echo "  Provider: ${PROVIDER}"
 echo "  Bucket:   ${BUCKET}"
 echo ""
+
+if ! gcp_require_project_access "${PROJECT}" "non-interactive gcloud access"; then
+    exit 1
+fi
 
 # 1. KMS keyring + symmetric key
 echo "[1/5] Creating KMS keyring and key..."

@@ -16,6 +16,10 @@ PROJECT_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
 # Load shared UI helpers
 # shellcheck source=../lib/ui.sh
 source "${SCRIPT_DIR}/../lib/ui.sh"
+# shellcheck source=lib.sh
+source "${SCRIPT_DIR}/lib.sh"
+gcp_source_env_file "${PROJECT_DIR}"
+gcp_export_env_aliases
 
 # ---------------------------------------------------------------------------
 # Configuration
@@ -28,7 +32,7 @@ SA_NAME="ephemeralml-cvm"
 
 # Defaults — project must come from env or --project flag
 PROJECT="${EPHEMERALML_GCP_PROJECT:-}"
-ZONE="us-central1-a"
+ZONE="${EPHEMERALML_GCP_ZONE:-us-central1-a}"
 DEBUG=false
 TAG=""
 SKIP_BUILD=false
@@ -130,6 +134,10 @@ fi
 if [[ -z "${PROJECT}" ]]; then
     echo "ERROR: GCP project not set."
     echo "Set EPHEMERALML_GCP_PROJECT or pass --project PROJECT_ID"
+    exit 1
+fi
+
+if ! gcp_require_project_access "${PROJECT}" "non-interactive gcloud access"; then
     exit 1
 fi
 

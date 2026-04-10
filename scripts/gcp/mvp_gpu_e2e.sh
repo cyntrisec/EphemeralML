@@ -21,12 +21,16 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
+# shellcheck source=lib.sh
+source "${SCRIPT_DIR}/lib.sh"
+gcp_source_env_file "${PROJECT_DIR}"
+gcp_export_env_aliases
 
 # ---------------------------------------------------------------------------
 # Defaults
 # ---------------------------------------------------------------------------
-PROJECT=""
-ZONE="us-central1-a"
+PROJECT="${EPHEMERALML_GCP_PROJECT:-}"
+ZONE="${EPHEMERALML_GCP_ZONE:-us-central1-a}"
 REGION="us-central1"
 CPU_ONLY=false
 SKIP_SETUP=false
@@ -60,6 +64,10 @@ if [[ -z "${PROJECT}" ]]; then
 fi
 
 export EPHEMERALML_GCP_PROJECT="${PROJECT}"
+
+if ! gcp_require_project_access "${PROJECT}" "non-interactive gcloud access"; then
+    exit 1
+fi
 
 # Timestamps and evidence directory
 TIMESTAMP="$(date -u +"%Y%m%d_%H%M%S")"
@@ -121,8 +129,11 @@ else
         PROJECT_NUMBER=$(gcloud projects describe "${PROJECT}" --format='value(projectNumber)')
 
         export GCP_KMS_KEY="projects/${PROJECT}/locations/${REGION}/keyRings/${KEYRING}/cryptoKeys/${KEY}"
+        export EPHEMERALML_GCP_KMS_KEY="${GCP_KMS_KEY}"
         export GCP_WIP_AUDIENCE="//iam.googleapis.com/projects/${PROJECT_NUMBER}/locations/global/workloadIdentityPools/${POOL}/providers/${PROVIDER}"
+        export EPHEMERALML_GCP_WIP_AUDIENCE="${GCP_WIP_AUDIENCE}"
         export GCP_BUCKET="ephemeralml-models-${PROJECT}"
+        export EPHEMERALML_GCS_BUCKET="${GCP_BUCKET}"
         step_pass
     else
         step_fail "setup_kms.sh failed"
@@ -139,7 +150,7 @@ if bash "${SCRIPT_DIR}/package_model.sh" "${MODEL_DIR}" "models/minilm" \
 
     EXPECTED_MODEL_HASH="$(grep -oP 'SHA-256:\s+\K[0-9a-fA-F]{64}' \
         "${EVIDENCE_DIR}/package_model_log.txt" | tail -1 || true)"
-    MODEL_SIGNING_PUBKEY="$(grep -oP 'EPHEMERALML_MODEL_SIGNING_PUBKEY\s+\K[0-9a-fA-F]{64}' \
+    MODEL_SIGNING_PUBKEY="$(grep -oP 'EPHEMERALML_MODEL_SIGNING_PUBKEY[^0-9a-fA-F]*\K[0-9a-fA-F]{64}' \
         "${EVIDENCE_DIR}/package_model_log.txt" | tail -1 || true)"
 
     if [[ -z "${EXPECTED_MODEL_HASH}" ]]; then

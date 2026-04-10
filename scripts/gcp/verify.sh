@@ -19,6 +19,10 @@ PROJECT_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
 # Load shared UI helpers
 # shellcheck source=../lib/ui.sh
 source "${SCRIPT_DIR}/../lib/ui.sh"
+# shellcheck source=lib.sh
+source "${SCRIPT_DIR}/lib.sh"
+gcp_source_env_file "${PROJECT_DIR}"
+gcp_export_env_aliases
 
 # ---------------------------------------------------------------------------
 # Configuration
@@ -45,7 +49,7 @@ trap cleanup_temp EXIT
 
 # Defaults — project must come from env or --project flag
 PROJECT="${EPHEMERALML_GCP_PROJECT:-}"
-ZONE="us-central1-a"
+ZONE="${EPHEMERALML_GCP_ZONE:-us-central1-a}"
 IP=""
 GPU=false
 ALLOW_UNPINNED_AUDIENCE=false
@@ -83,6 +87,9 @@ ui_blank
 # 1. Resolve instance IP
 # ---------------------------------------------------------------------------
 if [[ -z "${IP}" ]]; then
+    if ! gcp_require_project_access "${PROJECT}" "instance lookup"; then
+        exit 1
+    fi
     ui_info "[1/4] Resolving instance IP..."
     IP="$(gcloud compute instances describe "${INSTANCE_NAME}" \
         --zone="${ZONE}" --project="${PROJECT}" \
@@ -152,7 +159,16 @@ elif $ALLOW_UNPINNED_AUDIENCE; then
     export EPHEMERALML_ALLOW_UNPINNED_AUDIENCE=true
 else
     ui_fail "ERROR: GCP_WIP_AUDIENCE not set and audience pinning is required."
-    ui_info "Set GCP_WIP_AUDIENCE (from setup_kms.sh output) or pass --allow-unpinned-audience."
+    if [[ -f "${PROJECT_DIR}/.env.gcp" ]]; then
+        ui_info "Loaded ${PROJECT_DIR}/.env.gcp, but it did not provide GCP_WIP_AUDIENCE."
+    else
+        ui_info "No ${PROJECT_DIR}/.env.gcp file found."
+    fi
+    ui_info "Fix one of these:"
+    ui_bullet "export GCP_WIP_AUDIENCE=\"//iam.googleapis.com/projects/.../locations/global/workloadIdentityPools/.../providers/...\""
+    ui_bullet "or set EPHEMERALML_GCP_WIP_AUDIENCE in .env.gcp"
+    ui_bullet "or rerun: bash scripts/gcp/setup_kms.sh ${PROJECT} ${ZONE%-*} --allow-broad-binding"
+    ui_bullet "or pass --allow-unpinned-audience for development only"
     exit 1
 fi
 

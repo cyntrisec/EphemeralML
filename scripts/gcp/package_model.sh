@@ -29,6 +29,11 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
+# shellcheck source=lib.sh
+source "${SCRIPT_DIR}/lib.sh"
+gcp_source_env_file "${PROJECT_DIR}"
+gcp_export_env_aliases
 
 MODEL_DIR="${1:?Usage: package_model.sh <model_dir> <gcs_prefix> [--model-id ID] [--version VER] [--dry-run]}"
 GCS_PREFIX="${2:?Usage: package_model.sh <model_dir> <gcs_prefix>}"
@@ -39,6 +44,8 @@ MODEL_ID="minilm-l6-v2"
 MODEL_VERSION="v1.0.0"
 MODEL_FORMAT="safetensors"
 DRY_RUN=false
+REUSE_EXISTING=true
+UPLOAD_TIMEOUT_SECONDS="${EPHEMERALML_GCP_UPLOAD_TIMEOUT_SECONDS:-900}"
 
 # Parse optional args
 while [[ $# -gt 0 ]]; do
@@ -47,6 +54,8 @@ while [[ $# -gt 0 ]]; do
         --version)   MODEL_VERSION="$2"; shift 2 ;;
         --format)    MODEL_FORMAT="$2"; shift 2 ;;
         --dry-run)   DRY_RUN=true; shift ;;
+        --no-reuse-existing) REUSE_EXISTING=false; shift ;;
+        --reuse-existing) REUSE_EXISTING=true; shift ;;
         *) echo "Unknown option: $1"; exit 1 ;;
     esac
 done
@@ -87,11 +96,13 @@ else
 fi
 
 if ! $DRY_RUN; then
-    KMS_KEY="${GCP_KMS_KEY:?Set GCP_KMS_KEY (from setup_kms.sh)}"
-    BUCKET="${GCP_BUCKET:?Set GCP_BUCKET (from setup_kms.sh)}"
+    KMS_KEY="${GCP_KMS_KEY:-${EPHEMERALML_GCP_KMS_KEY:-}}"
+    KMS_KEY="${KMS_KEY:?Set GCP_KMS_KEY or EPHEMERALML_GCP_KMS_KEY (from setup_kms.sh)}"
+    BUCKET="${GCP_BUCKET:-${EPHEMERALML_GCS_BUCKET:-}}"
+    BUCKET="${BUCKET:?Set GCP_BUCKET or EPHEMERALML_GCS_BUCKET (from setup_kms.sh)}"
 else
-    KMS_KEY="${GCP_KMS_KEY:-projects/test/locations/global/keyRings/kr/cryptoKeys/key}"
-    BUCKET="${GCP_BUCKET:-dry-run-bucket}"
+    KMS_KEY="${GCP_KMS_KEY:-${EPHEMERALML_GCP_KMS_KEY:-projects/test/locations/global/keyRings/kr/cryptoKeys/key}}"
+    BUCKET="${GCP_BUCKET:-${EPHEMERALML_GCS_BUCKET:-dry-run-bucket}}"
 fi
 
 TMPDIR=$(mktemp -d)
@@ -107,12 +118,134 @@ echo "  Format:      ${MODEL_FORMAT}"
 echo "  GCS target:  gs://${BUCKET}/${GCS_PREFIX}/"
 echo "  KMS key:     ${KMS_KEY}"
 echo "  Dry run:     ${DRY_RUN}"
+echo "  Reuse existing: ${REUSE_EXISTING}"
 echo ""
+
+derive_signing_pubkey() {
+    _PY_SIGNING_KEY="${EPHEMERALML_MODEL_SIGNING_KEY:-}" \
+    _PY_MODEL_DIR="${MODEL_DIR}" \
+    python3 -c "
+import os, sys
+try:
+    from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+except ImportError:
+    sys.exit(0)
+
+signing_key_hex = os.environ.get('_PY_SIGNING_KEY', '')
+if signing_key_hex:
+    sk_bytes = bytes.fromhex(signing_key_hex)
+elif os.path.isfile(os.path.join(os.environ['_PY_MODEL_DIR'], '.signing_key.hex')):
+    with open(os.path.join(os.environ['_PY_MODEL_DIR'], '.signing_key.hex'), 'r') as f:
+        sk_bytes = bytes.fromhex(f.read().strip())
+else:
+    sys.exit(0)
+
+if len(sk_bytes) != 32:
+    sys.exit(0)
+pk = Ed25519PrivateKey.from_private_bytes(sk_bytes).public_key().public_bytes_raw()
+print(pk.hex())
+"
+}
+
+print_signing_pubkey_hint() {
+    local pubkey="$1"
+    if [[ -n "${pubkey}" ]]; then
+        echo "  Public key (EPHEMERALML_MODEL_SIGNING_PUBKEY): ${pubkey}"
+        echo "  EPHEMERALML_MODEL_SIGNING_PUBKEY ${pubkey}"
+    fi
+}
+
+remote_package_matches() {
+    local manifest_uri="gs://${BUCKET}/${GCS_PREFIX}/manifest.json"
+    local remote_manifest="${TMPDIR}/remote-manifest.json"
+    local object_uri
+
+    if ! gcloud storage cat "${manifest_uri}" > "${remote_manifest}" 2>/dev/null; then
+        return 1
+    fi
+
+    _PY_MANIFEST="${remote_manifest}" \
+    _PY_MODEL_ID="${MODEL_ID}" \
+    _PY_MODEL_VERSION="${MODEL_VERSION}" \
+    _PY_MODEL_HASH="${MODEL_HASH}" \
+    _PY_KMS_KEY="${KMS_KEY}" \
+    python3 -c "
+import json, os, sys
+
+with open(os.environ['_PY_MANIFEST'], 'r') as f:
+    manifest = json.load(f)
+
+def bytes_to_hex(value):
+    if not isinstance(value, list):
+        return ''
+    try:
+        return bytes(value).hex()
+    except ValueError:
+        return ''
+
+ok = (
+    manifest.get('model_id') == os.environ['_PY_MODEL_ID'] and
+    manifest.get('version') == os.environ['_PY_MODEL_VERSION'] and
+    manifest.get('hash_algorithm') == 'sha256' and
+    bytes_to_hex(manifest.get('model_hash')) == os.environ['_PY_MODEL_HASH'] and
+    manifest.get('key_id') == os.environ['_PY_KMS_KEY']
+)
+sys.exit(0 if ok else 1)
+" || return 1
+
+    if [[ -n "${CONFIG}" ]]; then
+        object_uri="gs://${BUCKET}/${GCS_PREFIX}/config.json"
+        gcloud storage ls "${object_uri}" >/dev/null 2>&1 || return 1
+    fi
+    for object_uri in \
+        "gs://${BUCKET}/${GCS_PREFIX}/tokenizer.json" \
+        "gs://${BUCKET}/${GCS_PREFIX}/${WEIGHTS_ENC_NAME}" \
+        "gs://${BUCKET}/${GCS_PREFIX}/wrapped_dek.bin" \
+        "gs://${BUCKET}/${GCS_PREFIX}/manifest.json"; do
+        gcloud storage ls "${object_uri}" >/dev/null 2>&1 || return 1
+    done
+
+    return 0
+}
+
+upload_object() {
+    local src="$1"
+    local dst="$2"
+    if ! timeout "${UPLOAD_TIMEOUT_SECONDS}" gcloud storage cp "${src}" "${dst}"; then
+        echo "ERROR: Upload failed or timed out after ${UPLOAD_TIMEOUT_SECONDS}s: ${dst}"
+        echo "  If matching artifacts already exist in GCS, rerun with the same prefix to reuse them."
+        return 1
+    fi
+}
 
 # 1. Compute model hash (pre-encryption)
 echo "[1/6] Computing model hash..."
 MODEL_HASH=$(sha256sum "${WEIGHTS}" | cut -d' ' -f1)
 echo "  SHA-256: ${MODEL_HASH}"
+
+SIGNING_PUBKEY="$(derive_signing_pubkey || true)"
+print_signing_pubkey_hint "${SIGNING_PUBKEY}"
+
+if ! $DRY_RUN && $REUSE_EXISTING; then
+    echo "  Checking for matching packaged artifacts in GCS..."
+    if remote_package_matches; then
+        echo "  Reusing existing packaged artifacts from gs://${BUCKET}/${GCS_PREFIX}/"
+        echo ""
+        echo "=== Packaging Complete (reused existing artifacts) ==="
+        echo ""
+        echo "Model hash (for --expected-model-hash):"
+        echo "  ${MODEL_HASH}"
+        echo ""
+        echo "Server command:"
+        echo "  sudo ./ephemeral-ml-enclave --gcp --direct --model-source gcs-kms \\"
+        echo "      --model-format ${MODEL_FORMAT} \\"
+        echo "      --gcp-bucket ${BUCKET} --gcp-model-prefix ${GCS_PREFIX} \\"
+        echo "      --gcp-kms-key ${KMS_KEY} \\"
+        echo "      --gcp-wip-audience \${GCP_WIP_AUDIENCE} \\"
+        echo "      --expected-model-hash ${MODEL_HASH}"
+        exit 0
+    fi
+fi
 
 # 2. Generate random 32-byte DEK
 echo "[2/6] Generating DEK..."
@@ -296,12 +429,12 @@ if $DRY_RUN; then
     cat "${TMPDIR}/manifest.json"
 else
     if [[ -n "${CONFIG}" ]]; then
-        gcloud storage cp "${CONFIG}" "gs://${BUCKET}/${GCS_PREFIX}/config.json"
+        upload_object "${CONFIG}" "gs://${BUCKET}/${GCS_PREFIX}/config.json"
     fi
-    gcloud storage cp "${TOKENIZER}" "gs://${BUCKET}/${GCS_PREFIX}/tokenizer.json"
-    gcloud storage cp "${ENCRYPTED_FILE}" "gs://${BUCKET}/${GCS_PREFIX}/${WEIGHTS_ENC_NAME}"
-    gcloud storage cp "${WRAPPED_DEK}" "gs://${BUCKET}/${GCS_PREFIX}/wrapped_dek.bin"
-    gcloud storage cp "${TMPDIR}/manifest.json" "gs://${BUCKET}/${GCS_PREFIX}/manifest.json"
+    upload_object "${TOKENIZER}" "gs://${BUCKET}/${GCS_PREFIX}/tokenizer.json"
+    upload_object "${ENCRYPTED_FILE}" "gs://${BUCKET}/${GCS_PREFIX}/${WEIGHTS_ENC_NAME}"
+    upload_object "${WRAPPED_DEK}" "gs://${BUCKET}/${GCS_PREFIX}/wrapped_dek.bin"
+    upload_object "${TMPDIR}/manifest.json" "gs://${BUCKET}/${GCS_PREFIX}/manifest.json"
 fi
 
 echo ""
