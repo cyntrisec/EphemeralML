@@ -21,6 +21,7 @@
 ### Changed
 - **`ephemeral-ml-common` API cleanup**: Removed unused public surface that had no in-repo callers: `VERSION`, `SessionInfo`, `SessionStatus`, `cbor::map_contains_key()`, `metrics::peak_rss_mb()`, `ModelInfo::{weights_key, config_key, tokenizer_key}`, `InputValidator::{validate_manifest_size, validate_payload_size, validate_session_count, validate_session_duration, limits}`, and `ValidationError::{ManifestTooLarge, PayloadTooLarge, TooManySessions, SessionTooLong, SizeLimitExceeded}`. This is an intentional breaking API reduction; callers should use `map_get(...).is_some()`, `peak_rss_mb_with_source().0`, direct artifact key formatting where needed, and custom limit checks around `ValidationLimits` where those removed helpers were previously used.
 - **GCP operator script hardening**: `setup_kms.sh`, `deploy.sh`, `verify.sh`, `teardown.sh`, `package_model.sh`, and `mvp_gpu_e2e.sh` now auto-load `.env.gcp`, fail earlier on non-interactive `gcloud` account issues, reuse matching packaged model artifacts in GCS, and bound upload hangs with explicit timeouts.
+- **GPU teardown summary fix**: `teardown.sh` no longer prints a false CPU cost estimate on GPU runs. CPU keeps the built-in estimate; GPU only prints an estimate when an explicit hourly rate is supplied.
 
 ## [0.2.9] - 2026-02-19
 

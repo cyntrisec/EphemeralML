@@ -29,6 +29,7 @@ PROJECT="${EPHEMERALML_GCP_PROJECT:-}"
 ZONE="${EPHEMERALML_GCP_ZONE:-us-central1-a}"
 DELETE_IMAGE=false
 GPU=false
+HOURLY_RATE="${EPHEMERALML_GCP_HOURLY_RATE:-}"
 
 YES=false
 
@@ -40,13 +41,20 @@ while [[ $# -gt 0 ]]; do
         --zone)         ZONE="$2"; shift 2 ;;
         --project)      PROJECT="$2"; shift 2 ;;
         --gpu)          GPU=true; shift ;;
+        --hourly-rate)  HOURLY_RATE="$2"; shift 2 ;;
         *) echo "Unknown option: $1"; exit 1 ;;
     esac
 done
 
 # GPU mode: match deploy.sh instance name
+MACHINE_LABEL="c3-standard-4 on-demand"
 if $GPU; then
     INSTANCE_NAME="ephemeralml-gpu"
+    MACHINE_LABEL="a3-highgpu-1g Spot"
+fi
+
+if [[ -z "${HOURLY_RATE}" && "${GPU}" == "false" ]]; then
+    HOURLY_RATE="0.209"
 fi
 
 if [[ -z "${PROJECT}" ]]; then
@@ -125,9 +133,12 @@ if [[ -n "${CREATION_TIME}" ]]; then
     if [[ ${CREATED_EPOCH} -gt 0 ]]; then
         RUNTIME_MIN=$(( (NOW_EPOCH - CREATED_EPOCH) / 60 ))
         echo "  Instance ran for ~${RUNTIME_MIN} minutes."
-        # c3-standard-4: ~$0.209/hr (us-central1, on-demand)
-        COST="$(echo "scale=2; ${RUNTIME_MIN} * 0.209 / 60" | bc 2>/dev/null || echo '?')"
-        echo "  Estimated cost: ~\$${COST} (c3-standard-4 on-demand)"
+        if [[ -n "${HOURLY_RATE}" ]]; then
+            COST="$(echo "scale=2; ${RUNTIME_MIN} * ${HOURLY_RATE} / 60" | bc 2>/dev/null || echo '?')"
+            echo "  Estimated cost: ~\$${COST} (${MACHINE_LABEL})"
+        else
+            echo "  Estimated cost: not shown (${MACHINE_LABEL}; set EPHEMERALML_GCP_HOURLY_RATE or pass --hourly-rate to estimate)"
+        fi
     fi
 fi
 echo
