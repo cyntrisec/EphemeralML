@@ -26,6 +26,8 @@ pub struct EphemeralStageExecutor<A: AttestationProvider> {
     model_hash_scheme: Option<String>,
     /// Issuer identifier for AIR v1 receipts.
     receipt_issuer: String,
+    /// Optional boot-time attestation artifact to emit alongside receipts.
+    boot_attestation_bytes: Option<bytes::Bytes>,
 }
 
 impl<A: AttestationProvider> EphemeralStageExecutor<A> {
@@ -47,6 +49,7 @@ impl<A: AttestationProvider> EphemeralStageExecutor<A> {
             attestation_doc_hash,
             None,
             None,
+            None,
             "cyntrisec.com".to_string(),
         )
     }
@@ -57,6 +60,7 @@ impl<A: AttestationProvider> EphemeralStageExecutor<A> {
         provider: A,
         receipt_key: ReceiptSigningKey,
         attestation_doc_hash: Option<[u8; 32]>,
+        boot_attestation_bytes: Option<Vec<u8>>,
         model_hash: Option<[u8; 32]>,
         model_hash_scheme: Option<String>,
         receipt_issuer: String,
@@ -83,6 +87,7 @@ impl<A: AttestationProvider> EphemeralStageExecutor<A> {
             model_hash,
             model_hash_scheme,
             receipt_issuer,
+            boot_attestation_bytes: boot_attestation_bytes.map(bytes::Bytes::from),
         }
     }
 }
@@ -93,6 +98,10 @@ fn is_legacy_chain_receipt_name(name: &str) -> bool {
 
 fn is_aux_receipt_name(name: &str) -> bool {
     name == "__receipt_air_v1__" || name.starts_with("__receipt_air_v1__stage")
+}
+
+fn is_attestation_sidecar_name(name: &str) -> bool {
+    name == "__attestation__"
 }
 
 #[async_trait]
@@ -122,9 +131,11 @@ impl<A: AttestationProvider + Send + Sync> StageExecutor for EphemeralStageExecu
         for tensor in &inputs {
             if is_legacy_chain_receipt_name(&tensor.name) {
                 prev_receipt_tensors.push(tensor.clone());
-            } else if is_aux_receipt_name(&tensor.name) {
+            } else if is_aux_receipt_name(&tensor.name) || is_attestation_sidecar_name(&tensor.name)
+            {
                 // AIR v1 tensors are metadata sidecars and must not be chained into the
-                // legacy previous_receipt_hash. They are also not model inputs.
+                // legacy previous_receipt_hash. Attestation sidecars are proof artifacts,
+                // not model inputs.
             } else {
                 data_tensors.push(tensor);
             }
@@ -359,6 +370,15 @@ impl<A: AttestationProvider + Send + Sync> StageExecutor for EphemeralStageExecu
 
         if let Some(air_v1) = air_v1_tensor {
             out_tensors.push(air_v1);
+        }
+
+        if let Some(attestation_bytes) = &self.boot_attestation_bytes {
+            out_tensors.push(OwnedTensor {
+                name: "__attestation__".to_string(),
+                dtype: confidential_ml_transport::DType::U8,
+                shape: vec![attestation_bytes.len() as u32],
+                data: attestation_bytes.clone(),
+            });
         }
 
         Ok(ForwardOutput {

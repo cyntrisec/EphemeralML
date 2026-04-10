@@ -1,11 +1,11 @@
 # AWS Nitro Enclaves E2E — Final Report
 
-**Date:** 2026-02-25
-**Status:** SUCCESS — Full pipeline inference with PCR-pinned attestation on real Nitro hardware.
+**Date:** 2026-04-10/11
+**Status:** SUCCESS — Full pipeline inference with PCR-pinned attestation on real Nitro hardware, plus offline AIR v1 verification and trust-center upload verification.
 
 ## What Worked
 
-End-to-end confidential inference completed successfully:
+End-to-end confidential inference and receipt verification completed successfully:
 
 1. **Enclave launched** on real Nitro hardware (m6i.xlarge, us-east-1)
 2. **Host connected** over VSock (ports 5000/5001/5002) using pipeline mode
@@ -13,6 +13,9 @@ End-to-end confidential inference completed successfully:
 4. **PCR pinning** verified all 3 measurements (enforced by `nitro_e2e.sh`; host validation is fail-closed on missing/malformed PCRs unless `--allow-unpinned` is explicitly used)
 5. **MiniLM-L6-v2 inference** returned 384-dim embeddings in ~81ms host-observed latency (78ms enclave execution from `timing.json`)
 6. **Signed attestation receipt** produced with Ed25519 signature and persisted to local evidence (`receipt.json` + `receipt.raw`)
+7. **AIR v1 receipt** persisted as `receipt.cbor` and verified offline with `ephemeralml-verify`
+8. **Boot attestation sidecar** persisted as `attestation.cbor` and used to derive the receipt signing key during verification
+9. **Trust-center upload path** accepted the AWS AIR receipt and returned `{"verified":true,"format":"air_v1","verdict":"verified"}`
 
 ### Results Summary
 
@@ -22,7 +25,7 @@ End-to-end confidential inference completed successfully:
 | Embedding dimensions | 384 |
 | L2 norm | 7.3331 |
 | Inference time | ~81ms host-observed, 78ms enclave execution (`timing.json`) |
-| Receipt ID | `751067b8-b646-4098-973a-0f4bca807784` |
+| Receipt ID | `d703095a-7852-44a1-aa7f-ac6999d7d41d` |
 | First 5 dims | [-0.1558, 0.8509, -0.0341, 0.2921, 0.2311] |
 
 ## Infrastructure Configuration
@@ -44,9 +47,9 @@ End-to-end confidential inference completed successfully:
 
 | PCR | Prefix | Measures |
 |-----|--------|----------|
-| PCR0 | `6ed2877a...` | Enclave image hash |
+| PCR0 | `99d6cd9e...` | Enclave image hash |
 | PCR1 | `4b4d5b36...` | Linux kernel + boot config |
-| PCR2 | `95518cef...` | Application (binary + model weights) |
+| PCR2 | `8a489d26...` | Application (binary + model weights) |
 
 ## Bugs Found and Fixed
 
@@ -74,6 +77,22 @@ End-to-end confidential inference completed successfully:
 
 **Fix:** Stage the binary to `docker-stage/` before building. Updated `Dockerfile.enclave` to `COPY docker-stage/ephemeral-ml-enclave` and `scripts/nitro_e2e.sh` to create the staging directory.
 
+### 4. Stage Measurement Propagation Broke One-Way Nitro Data Channels
+
+**Root cause:** The host copied the enclave PCR allowlist into `StageSpec.expected_measurements`. The pipeline stage runtime reuses that field for its own data-channel verification, so the enclave tried to verify the non-TEE host as if it were another enclave and aborted with `missing required field: measurement[0]`.
+
+**Fix:** Keep PCR pinning on the host `SessionConfig`, but leave `StageSpec.expected_measurements` empty in the single-stage Nitro host flow. Also disable only the pipeline-level `require_measurements` sanity check in this path, while keeping transport-level measurement verification enabled.
+
+**Impact:** This preserves real Nitro PCR verification on control and data channels from the host side and restores the valid one-way attestation model for host-to-enclave deployments.
+
+### 5. AWS Receipt Verification Needed Attestation-Carried Key Provenance
+
+**Root cause:** The previous Nitro path could generate receipts, but the evidence bundle did not include a verification artifact that let the offline verifier or trust-center derive the receipt signing key without a separate manual pubkey export.
+
+**Fix:** Emit a boot attestation sidecar (`attestation.cbor`), add shared receipt-key extraction from attestation in the client crate, and let the verifier API upload flow accept `attestation_file` as an alternative to `public_key`.
+
+**Impact:** Nitro receipts are now verifiable offline and through the trust-center API using the attestation document captured during the real run.
+
 ## Security Caveats
 
 ### Current Limitations
@@ -82,7 +101,7 @@ End-to-end confidential inference completed successfully:
 
 2. **No IAM role / KMS integration.** The model is bundled in the EIF (measured in PCR2). For production with KMS-gated model release, the enclave needs an IAM role and KMS proxy.
 
-3. **Receipt verification is local.** The Ed25519 receipt signing key is generated inside the enclave at startup. There is no external root of trust binding the signing key to an attestation. The receipt's `attestation_hash` links back to the NSM document, but a standalone verifier would need the full attestation chain.
+3. **Trust-center verification is key-provenance aware but policy-light.** The trust center can now derive the receipt signing key from `attestation.cbor`, but it still does not enforce deployment-specific PCR allowlists by itself. Caller-supplied policy remains required for strong deployment matching.
 
 4. **Debug mode zeros PCRs.** Never use `--debug-mode` in production. The host binary now fails closed on missing or malformed PCR env vars (returns an error instead of warning and continuing). Pass `--allow-unpinned` to bypass for development/debugging only.
 
@@ -105,15 +124,19 @@ End-to-end confidential inference completed successfully:
 | E2E runbook | `docs/AWS_NITRO_E2E_RUNBOOK.md` |
 | Automation script | `scripts/nitro_e2e.sh` |
 | This report | `docs/AWS_NITRO_E2E_REPORT.md` |
-| Success-run evidence bundle | `evidence/aws-nitro-e2e-20260225_095649/` |
-| Dockerfile (fixed) | `enclave/Dockerfile.enclave` |
-| Attestation fix | `enclave/src/attestation.rs`, `enclave/src/attestation_bridge.rs` |
+| Latest success-run evidence bundle | `evidence/nitro-20260410_225206/` |
+| Earlier success-run evidence bundle | `evidence/aws-nitro-e2e-20260225_095649/` |
+| Attestation bridge fixes | `enclave/src/attestation.rs`, `enclave/src/attestation_bridge.rs` |
+| Nitro attestation-sidecar flow | `enclave/src/main.rs`, `enclave/src/stage_executor.rs`, `host/src/main.rs`, `client/src/receipt_key.rs`, `verifier-api/src/routes.rs` |
 
-Fresh success-run evidence is now checked in under `evidence/aws-nitro-e2e-20260225_095649/`, including:
+Fresh success-run evidence is now checked in under `evidence/nitro-20260410_225206/`, including:
 - `eif_build_output.json` and `pcr_measurements.json`
 - `enclave_launch.json` and `enclave_describe*.json`
 - `host_output.log`
-- `receipt.json` and `receipt.raw`
+- `receipt.json`, `receipt.raw`, and `receipt.cbor`
+- `attestation.cbor`
+- `legacy_verify.log`, `air_verify.log`, `verification.json`
+- `trust_center_verify.json` and `trust_center_server.log`
 - `timing.json`
 
 The older `evidence/aws-nitro-e2e-20260221_193937/` directory is retained as a blocked-run artifact for debugging history.
@@ -123,8 +146,8 @@ The older `evidence/aws-nitro-e2e-20260221_193937/` directory is retained as a b
 ### Short-term (before next E2E run)
 
 1. ~~**Harden host binary to fail-closed on missing PCRs**~~ — Done. `host/src/main.rs` now returns an error when `expected_pcrs` is empty (unless `--allow-unpinned`), and returns an error on malformed hex or wrong-length values.
-2. **Add integration test for `generate_attestation_for_transport`** — mock the NSM IOCTL response to verify the HPKE key lands in the attestation document's `public_key` field.
-3. ~~**Update `nitro_e2e.sh` to save evidence locally**~~ — Done. `nitro_e2e.sh` now persists a local evidence bundle (including `receipt.json`, `receipt.raw`, PCR JSON, Nitro JSON, and `timing.json`) before teardown.
+2. ~~**Close the Nitro AIR/trust-center gap**~~ — Done. `nitro_e2e.sh` now emits `attestation.cbor`, verifies legacy + AIR v1 receipts offline, and posts the AIR receipt to the verifier API using attestation-derived key provenance.
+3. **Add integration test for the single-stage Nitro measurement split** — assert that the host can enforce PCR pinning while the stage still accepts the non-TEE host in one-way attestation mode.
 4. **Pin the Dockerfile base image** — use `ubuntu:22.04@sha256:...` for reproducible builds.
 
 ### Medium-term (production readiness)

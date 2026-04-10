@@ -19,7 +19,9 @@ use clap::Parser;
 #[cfg(feature = "production")]
 use confidential_ml_pipeline::vsock::init_orchestrator_vsock;
 #[cfg(feature = "production")]
-use confidential_ml_transport::{MockProvider as HostMockProvider, NitroVerifier};
+use confidential_ml_transport::{
+    ExpectedMeasurements, MockProvider as HostMockProvider, NitroVerifier,
+};
 #[cfg(feature = "production")]
 use tokio_vsock::{VsockAddr, VsockListener, VMADDR_CID_ANY};
 #[cfg(feature = "production")]
@@ -42,6 +44,22 @@ fn save_receipt_raw(raw_bytes: &[u8], path: Option<&str>) -> Result<(), std::io:
     println!(
         "  Raw receipt ({} bytes) saved to {}",
         raw_bytes.len(),
+        path
+    );
+    Ok(())
+}
+
+/// Save raw boot attestation bytes to disk. Returns Ok(()) if path is None.
+#[cfg(any(feature = "production", test))]
+fn save_attestation_raw(
+    attestation_bytes: &[u8],
+    path: Option<&str>,
+) -> Result<(), std::io::Error> {
+    let Some(path) = path else { return Ok(()) };
+    std::fs::write(path, attestation_bytes)?;
+    println!(
+        "  Attestation document ({} bytes) saved to {}",
+        attestation_bytes.len(),
         path
     );
     Ok(())
@@ -215,6 +233,10 @@ struct ProdArgs {
     /// Save the AIR v1 receipt (COSE_Sign1 CBOR bytes) to this path.
     #[arg(long, env = "EPHEMERALML_RECEIPT_OUTPUT_AIR_V1")]
     receipt_output_air_v1: Option<String>,
+
+    /// Save the boot attestation document (COSE_Sign1 CBOR bytes) to this path.
+    #[arg(long, env = "EPHEMERALML_ATTESTATION_OUTPUT")]
+    attestation_output: Option<String>,
 }
 
 #[tokio::main]
@@ -410,6 +432,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             warn!("--allow-unpinned set: running WITHOUT PCR pinning. DO NOT USE IN PRODUCTION.");
         }
 
+        let expected_stage_measurements = ExpectedMeasurements::new(expected_pcrs.clone());
         let verifier = NitroVerifier::new(expected_pcrs)?;
 
         // Host is not inside a TEE — use MockProvider for the mutual handshake.
@@ -430,6 +453,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 layer_end: args.total_layers,
                 require_weight_hashes: false,
                 weight_hashes: vec![],
+                // Keep stage-side measurement expectations empty in the single-stage
+                // Nitro host->enclave flow. The host enforces PCR pinning via its
+                // own session config; sending the same measurements inside StageSpec
+                // would make the enclave try to verify the non-TEE host as if it
+                // were another enclave during the data-channel handshake.
                 expected_measurements: BTreeMap::new(),
                 endpoint: StageEndpoint {
                     control: PortSpec::VSock {
@@ -473,13 +501,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
         // 4. Initialize orchestrator — connects to enclave stage via VSock.
         info!("Connecting to enclave stage worker...");
-        // Compatibility fix: Development profile because explicit
-        // expected_measurements are not yet wired from the deployment config.
-        // NitroVerifier checks PCRs at the attestation layer, but the
-        // transport session itself is permissive. This should be restored to
-        // Production + explicit measurements once pinning is plumbed through.
+        let mut orch_config = OrchestratorConfig::default();
+        orch_config.session_config.expected_measurements = Some(expected_stage_measurements);
+        // The transport layer still enforces PCR pinning on every handshake.
+        // Disable only the pipeline-level "some StageSpec must carry measurements"
+        // sanity check because this single-stage Nitro flow keeps StageSpec empty to
+        // avoid making the enclave verify the non-TEE host as another enclave.
+        orch_config.require_measurements = false;
+
         let mut orch = init_orchestrator_vsock(
-            OrchestratorConfig::development(),
+            orch_config,
             manifest,
             data_out_listener,
             &verifier,
@@ -552,6 +583,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         error!(error = %e, "Failed to save AIR v1 receipt");
                     } else if args.receipt_output_air_v1.is_some() {
                         info!(size = t.data.len(), "AIR v1 receipt saved");
+                    }
+                } else if t.name == "__attestation__" {
+                    if let Err(e) =
+                        save_attestation_raw(&t.data, args.attestation_output.as_deref())
+                    {
+                        error!(error = %e, "Failed to save boot attestation");
+                    } else if args.attestation_output.is_some() {
+                        info!(size = t.data.len(), "Boot attestation saved");
                     }
                 } else {
                     print_embeddings(&t.data, &t.shape);
@@ -680,6 +719,21 @@ mod tests {
 
         let contents = std::fs::read(&path).unwrap();
         assert!(contents.is_empty());
+
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn save_attestation_raw_writes_bytes() {
+        let dir = std::env::temp_dir().join("ephemeralml-test-attestation");
+        let path = dir.join("attestation.cbor");
+        std::fs::create_dir_all(&dir).unwrap();
+
+        let attestation = [0xAB; 16];
+        save_attestation_raw(&attestation, Some(path.to_str().unwrap())).unwrap();
+
+        let contents = std::fs::read(&path).unwrap();
+        assert_eq!(contents, attestation);
 
         std::fs::remove_dir_all(&dir).ok();
     }

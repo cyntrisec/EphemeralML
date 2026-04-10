@@ -49,6 +49,7 @@ pub async fn verify_upload(
 ) -> Result<Json<TrustCenterResponse>, (StatusCode, Json<ErrorResponse>)> {
     let mut receipt_bytes: Option<Vec<u8>> = None;
     let mut public_key_hex: Option<String> = None;
+    let mut attestation_bytes: Option<Vec<u8>> = None;
     let mut expected_model: Option<String> = None;
     let mut measurement_type: String = "any".to_string();
     let mut max_age_secs: u64 = 0;
@@ -78,6 +79,13 @@ pub async fn verify_upload(
                     .await
                     .map_err(|e| bad_request(format!("Failed to read public_key_file: {}", e)))?;
                 public_key_hex = Some(hex::encode(&data));
+            }
+            "attestation_file" => {
+                let data = field
+                    .bytes()
+                    .await
+                    .map_err(|e| bad_request(format!("Failed to read attestation_file: {}", e)))?;
+                attestation_bytes = Some(data.to_vec());
             }
             "expected_model" => {
                 let text = field.text().await.map_err(|e| {
@@ -132,10 +140,15 @@ pub async fn verify_upload(
     }
 
     let receipt_data = receipt_bytes.ok_or_else(|| bad_request("Missing receipt_file field"))?;
-    let key_hex =
-        public_key_hex.ok_or_else(|| bad_request("Missing public_key or public_key_file field"))?;
-
-    let public_key = parse_hex_public_key(&key_hex)?;
+    let public_key = if let Some(key_hex) = public_key_hex {
+        parse_hex_public_key(&key_hex)?
+    } else if let Some(attestation) = attestation_bytes {
+        parse_attestation_public_key(&attestation)?
+    } else {
+        return Err(bad_request(
+            "Missing verification material: provide public_key, public_key_file, or attestation_file",
+        ));
+    };
 
     let policy = DispatchPolicy {
         expected_model,
@@ -149,6 +162,19 @@ pub async fn verify_upload(
         verify_dispatch::verify_bytes(&receipt_data, &public_key, &policy).map_err(bad_request)?;
 
     Ok(Json(response))
+}
+
+fn parse_attestation_public_key(
+    attestation: &[u8],
+) -> Result<VerifyingKey, (StatusCode, Json<ErrorResponse>)> {
+    ephemeral_ml_client::receipt_key::extract_key_from_attestation(attestation, false).map_err(
+        |e| {
+            bad_request(format!(
+                "Failed to extract receipt public key from attestation: {}",
+                e
+            ))
+        },
+    )
 }
 
 /// `GET /api/v1/samples/valid` — generate a fresh signed AIR v1 sample receipt.

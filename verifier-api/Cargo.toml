@@ -11,6 +11,7 @@ path = "src/main.rs"
 
 [dependencies]
 ephemeral-ml-common = { path = "../common" }
+ephemeral-ml-client = { path = "../client" }
 
 # Web framework
 axum = { version = "0.8", features = ["json", "multipart"] }

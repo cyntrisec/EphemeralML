@@ -198,6 +198,10 @@ pub const LANDING_HTML: &str = r##"<!DOCTYPE html>
         <label class="field-label">Or key file (.bin, 32 bytes)</label>
         <input type="file" id="publicKeyFile" accept=".bin,.key"/>
       </div>
+      <div class="field-group">
+        <label class="field-label">Or attestation file (.cbor / .bin)</label>
+        <input type="file" id="attestationFile" accept=".cbor,.bin"/>
+      </div>
       <button type="submit" class="btn-verify">Verify</button>
     </form>
   </div>
@@ -215,7 +219,7 @@ pub const LANDING_HTML: &str = r##"<!DOCTYPE html>
       <strong>Limitations</strong>
       <ul>
         <li>Confirms the receipt is correctly signed and structurally valid.</li>
-        <li>Does not independently verify attestation documents or hardware measurements.</li>
+        <li>Can derive the receipt key from a supplied attestation document, but does not enforce deployment-specific measurement policy by itself.</li>
         <li>Does not prove data was deleted after processing.</li>
         <li>Does not constitute a compliance determination.</li>
         <li>Deployment-specific trust policy depends on expected measurements, model allowlist, and freshness inputs.</li>
@@ -304,12 +308,16 @@ async function verifyUpload(e) {
   const fileInput = document.getElementById('receiptFile');
   const keyHex = document.getElementById('uploadKeyHex').value.trim();
   const keyFile = document.getElementById('publicKeyFile');
+  const attestationFile = document.getElementById('attestationFile');
   if (!fileInput.files.length) return alert('Select a receipt file.');
-  if (!keyHex && !keyFile.files.length) return alert('Provide a public key.');
+  if (!keyHex && !keyFile.files.length && !attestationFile.files.length) {
+    return alert('Provide a public key or attestation file.');
+  }
   const form = new FormData();
   form.append('receipt_file', fileInput.files[0]);
   if (keyHex) form.append('public_key', keyHex);
   else if (keyFile.files.length) form.append('public_key_file', keyFile.files[0]);
+  else if (attestationFile.files.length) form.append('attestation_file', attestationFile.files[0]);
   showSpinner(true);
   try {
     const resp = await fetch('/api/v1/verify/upload', {method: 'POST', body: form});

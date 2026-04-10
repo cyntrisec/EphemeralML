@@ -1,6 +1,6 @@
 # Multicloud E2E Validation Status
 
-**Last updated:** 2026-02-28
+**Last updated:** 2026-04-11
 **Canonical claims:** See `docs/publication/claim_definitions.md` for formal definitions and `docs/publication/claim_evidence_matrix.md` for traceability.
 
 EphemeralML has been validated single-stage E2E on AWS Nitro Enclaves and GCP Confidential Space (CPU and H100 GPU). All three platforms completed inference with MiniLM-L6-v2, produced Ed25519-signed attestation receipts, and verified them. Cross-cloud results validate functional and security correctness — they are NOT cross-provider overhead comparisons (different CPUs, different TEE architectures).
@@ -9,7 +9,7 @@ EphemeralML has been validated single-stage E2E on AWS Nitro Enclaves and GCP Co
 
 | Platform | Machine | TEE | Model | Execution | AIR v1 | Negative | Compliance | Evidence | Status |
 |----------|---------|-----|-------|-----------|--------|----------|------------|----------|--------|
-| AWS Nitro | m6i.xlarge | Nitro Enclave | MiniLM-L6-v2 | 76ms | Legacy JSON | PCR-pinned | N/A | `nitro-e2e-20260227T095832Z/` | **PASS** |
+| AWS Nitro | m6i.xlarge | Nitro Enclave | MiniLM-L6-v2 | 78ms | 11/11 PASS + trust center PASS | PCR-pinned | N/A | `nitro-20260410_225206/` | **PASS** |
 | GCP TDX CPU | c3-standard-4 | Intel TDX | MiniLM-L6-v2 | 75ms | 11/11 PASS | 2/2 PASS | 16/16 | `mvp-20260227_092628/` | **PASS** |
 | GCP TDX GPU | a3-highgpu-1g | TDX + H100 CC | MiniLM-L6-v2 | pipeline* | 11/11 PASS | 2/2 PASS | 16/16 | `mvp-20260227_095900/` | **PASS** |
 
@@ -19,9 +19,8 @@ EphemeralML has been validated single-stage E2E on AWS Nitro Enclaves and GCP Co
 
 ## 1. AWS Nitro Enclaves
 
-**Date:** 2026-02-27 (latest), 2026-02-25 (benchmark)
-**Commit:** `f1ba30d` (build), `a33dc8b` (HEAD at evidence collection)
-**Evidence:** `evidence/nitro-e2e-20260227T095832Z/` (latest), `artifacts/benchmarks/aws-nitro-modern-20260225-clean/` (benchmark)
+**Date:** 2026-04-10/11 (latest), 2026-02-25 (benchmark baseline)
+**Evidence:** `evidence/nitro-20260410_225206/` (latest), `artifacts/benchmarks/aws-nitro-modern-20260225-clean/` (benchmark)
 **Docs:** [`docs/AWS_NITRO_E2E_REPORT.md`](AWS_NITRO_E2E_REPORT.md), [`docs/AWS_NITRO_E2E_RUNBOOK.md`](AWS_NITRO_E2E_RUNBOOK.md)
 
 ### Configuration
@@ -50,18 +49,19 @@ EphemeralML has been validated single-stage E2E on AWS Nitro Enclaves and GCP Co
 | Build (enclave binary, production features) | ~11 min |
 | EIF build (Docker + nitro-cli) | ~2 min |
 | Enclave boot | ~10s |
-| Inference (MiniLM-L6-v2, 384-dim) | 78ms execution (`timing.json`), 118ms client E2E |
+| Inference (MiniLM-L6-v2, 384-dim) | 78ms execution (`timing.json`), 128ms host E2E |
 
-### Bugs Fixed During Run
+### 2026-04-10/11 Coverage Additions
 
-1. **Attestation public key mismatch (CRITICAL):** NSM doc contained RSA KMS key instead of HPKE handshake key. Fixed by adding `generate_attestation_for_transport()` with `public_key_override`.
-2. **Missing model weights in Dockerfile:** Added `model.safetensors` to COPY.
-3. **Docker build failure:** `.dockerignore` excludes `target/`; staged binary to `docker-stage/`.
+1. **Offline AIR verification on Nitro:** `scripts/nitro_e2e.sh` now saves `receipt.cbor`, `attestation.cbor`, and verifies both legacy and AIR v1 receipts with `ephemeralml-verify`.
+2. **Trust-center verification on Nitro:** the same run now posts the AWS AIR receipt plus `attestation.cbor` to the verifier API upload endpoint and records the JSON verdict.
+3. **One-way attestation data-channel fix:** Nitro PCR pinning is enforced in the host session config instead of being echoed into `StageSpec`, which previously made the enclave try to verify the non-TEE host as another enclave and abort with `missing required field: measurement[0]`.
 
 ### Evidence
 
 - Checked-in report: `docs/AWS_NITRO_E2E_REPORT.md`
-- `evidence/aws-nitro-e2e-20260225_095649/` — success run (receipt, raw receipt, PCRs, Nitro JSON, logs, timing)
+- `evidence/nitro-20260410_225206/` — latest success run (legacy receipt, AIR v1 receipt, boot attestation sidecar, offline verify logs, trust-center JSON verdict, PCRs, Nitro JSON, logs, timing)
+- `evidence/aws-nitro-e2e-20260225_095649/` — earlier success run (receipt, raw receipt, PCRs, Nitro JSON, logs, timing)
 - `evidence/aws-nitro-e2e-20260221_193937/REPORT.md` — earlier blocked run (kept for debugging history)
 
 ---
@@ -178,8 +178,8 @@ Each E2E run should produce the following standard artifacts:
 |----------|----------|--------|-------------|
 | Receipt | `receipt.json` | JSON | Signed `AttestationReceipt` with hashes, measurements, signature |
 | Receipt (raw) | `receipt.raw` | CBOR/JSON | Original `__receipt__` tensor bytes (wire format, for canonical verification) |
-| Receipt public key | `receipt.pubkey` | Hex text | Ed25519 signing key for offline verification |
-| Attestation | `attestation.bin` | Binary | Raw attestation (NSM COSE_Sign1 or TDX quote) |
+| Receipt public key | `receipt.pubkey` | Hex text | Ed25519 signing key for offline verification when exported separately |
+| Attestation | `attestation.cbor` / `attestation.bin` | Binary | Raw attestation (NSM COSE_Sign1 or TDX quote) |
 | Container/enclave logs | `container_logs.txt` | Text | Full enclave lifecycle output |
 | Instance metadata | `instance_describe.yaml` | YAML | Cloud provider instance configuration |
 | Report | `e2e_report.md` | Markdown | Human-readable summary with timings and trust bundle |
@@ -192,17 +192,17 @@ Each E2E run should produce the following standard artifacts:
 | `receipt.json` | Present | Present | Present |
 | `receipt.pubkey` | N/A* | Present | Present |
 | `receipt.raw` | Present | Not collected** | Not collected** |
-| `attestation.bin` | Not collected*** | Present | Present |
+| `attestation` sidecar | Present (`attestation.cbor`) | Present (`attestation.bin`) | Present (`attestation.bin`) |
 | `container_logs.txt` | Present (`host_output.log`) | Present | Present |
 | `instance_describe.yaml` | N/A | Present | Present |
 | `e2e_report.md` | `docs/AWS_NITRO_E2E_REPORT.md` | Not collected (2026-02-25 rerun) | Not collected (2026-02-25 rerun) |
 | `timing.json` | Implemented (via `nitro_e2e.sh`) | Implemented (via `verify.sh`) | Implemented (via `verify.sh`) |
 
-\*AWS Nitro host saves `receipt.json` and `receipt.raw` in the evidence bundle; no separate `receipt.pubkey` file is emitted in this flow.
+\*AWS Nitro now saves `attestation.cbor` and derives the receipt key from attestation during verification, so no separate `receipt.pubkey` export is required in the default flow.
 
 \*\*Raw receipt bytes (`receipt.raw`) are available via `--receipt-output-raw` on the host binary (AWS Nitro pipeline mode). GCP client saves parsed JSON only; raw wire bytes are available inside the client if needed.
 
-\*\*\*Nitro evidence bundle includes `pcr_measurements.json`, `eif_build_output.json`, `enclave_describe*.json`, and receipt artifacts. Unlike GCP, there is no standalone `attestation.bin` file in the current AWS script output.
+\*\*\*Nitro evidence bundles now include `attestation.cbor` alongside `receipt.cbor`, `verification.json`, and `trust_center_verify.json`.
 
 ---
 

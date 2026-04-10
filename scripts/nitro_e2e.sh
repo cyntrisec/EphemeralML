@@ -27,6 +27,10 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_DIR="${REPO_DIR:-$(dirname "$SCRIPT_DIR")}"
 EVIDENCE_DIR="/tmp/nitro-e2e-evidence"
 EIF_PATH="/tmp/ephemeral-ml-enclave.eif"
+VERIFY_BIN="$REPO_DIR/target/release/ephemeralml-verify"
+TRUST_CENTER_BIN="$REPO_DIR/target/release/ephemeralml-verifier"
+TRUST_CENTER_PORT="${TRUST_CENTER_PORT:-8091}"
+ATTESTATION_PATH="$EVIDENCE_DIR/attestation.cbor"
 
 # Defaults
 ENCLAVE_CID=16
@@ -59,6 +63,20 @@ done
 ts() { date '+%Y-%m-%d %H:%M:%S'; }
 log() { echo "[$(ts)] $*"; }
 fail() { echo "[$(ts)] FATAL: $*" >&2; exit 1; }
+cleanup_on_exit() {
+    if [ -n "${TRUST_CENTER_PID:-}" ]; then
+        kill "${TRUST_CENTER_PID}" 2>/dev/null || true
+        wait "${TRUST_CENTER_PID}" 2>/dev/null || true
+    fi
+    if [ -n "${CONSOLE_PID:-}" ]; then
+        kill "${CONSOLE_PID}" 2>/dev/null || true
+        wait "${CONSOLE_PID}" 2>/dev/null || true
+    fi
+    if [ "${ENCLAVE_LAUNCHED:-false}" = "true" ]; then
+        nitro-cli terminate-enclave --all >/dev/null 2>&1 || true
+    fi
+}
+trap cleanup_on_exit EXIT
 
 # --- Setup evidence directory ---
 rm -rf "$EVIDENCE_DIR"
@@ -77,28 +95,40 @@ echo ""
 if [ "$SKIP_BUILD" = false ]; then
     log "=== PHASE 1: BUILD ==="
 
-    log "[1/4] Building production enclave binary..."
+    log "[1/6] Building production enclave binary..."
     BUILD_START=$(date +%s)
     cargo build --release --no-default-features --features production \
         -p ephemeral-ml-enclave 2>&1 | tail -5
     BUILD_END=$(date +%s)
     log "       Enclave binary built in $((BUILD_END - BUILD_START))s"
 
-    log "[2/4] Building production host binary..."
+    log "[2/6] Building production host binary..."
     BUILD_START=$(date +%s)
     cargo build --release --no-default-features --features production \
         -p ephemeral-ml-host 2>&1 | tail -5
     BUILD_END=$(date +%s)
     log "       Host binary built in $((BUILD_END - BUILD_START))s"
 
-    log "[3/4] Building Docker image..."
+    log "[3/6] Building offline receipt verifier..."
+    BUILD_START=$(date +%s)
+    cargo build --release -p ephemeral-ml-client --bin ephemeralml-verify 2>&1 | tail -5
+    BUILD_END=$(date +%s)
+    log "       Receipt verifier built in $((BUILD_END - BUILD_START))s"
+
+    log "[4/6] Building trust center verifier API..."
+    BUILD_START=$(date +%s)
+    cargo build --release -p ephemeralml-verifier-api --bin ephemeralml-verifier 2>&1 | tail -5
+    BUILD_END=$(date +%s)
+    log "       Trust center verifier built in $((BUILD_END - BUILD_START))s"
+
+    log "[5/6] Building Docker image..."
     # target/ is in .dockerignore, so stage the binary outside it
     mkdir -p docker-stage
     cp target/release/ephemeral-ml-enclave docker-stage/
     docker build -f enclave/Dockerfile.enclave -t ephemeral-ml-enclave:latest . 2>&1 | tail -3
     log "       Docker image built."
 
-    log "[4/4] Building EIF (this takes ~30-60s)..."
+    log "[6/6] Building EIF (this takes ~30-60s)..."
     nitro-cli build-enclave \
         --docker-uri ephemeral-ml-enclave:latest \
         --output-file "$EIF_PATH" > "$EVIDENCE_DIR/eif_build_output.json" 2>&1
@@ -106,9 +136,15 @@ if [ "$SKIP_BUILD" = false ]; then
     echo ""
 else
     log "=== PHASE 1: BUILD (skipped) ==="
-    if [ ! -f "$EIF_PATH" ]; then
-        fail "EIF not found at $EIF_PATH. Cannot skip build without existing EIF."
-    fi
+    for required in \
+        "$EIF_PATH" \
+        "$REPO_DIR/target/release/ephemeral-ml-host" \
+        "$VERIFY_BIN" \
+        "$TRUST_CENTER_BIN"; do
+        if [ ! -f "$required" ]; then
+            fail "Required artifact not found at $required. Cannot skip build without existing binaries."
+        fi
+    done
     echo ""
 fi
 
@@ -229,6 +265,7 @@ ENCLAVE_OUTPUT=$(nitro-cli run-enclave "${ENCLAVE_RUN_ARGS[@]}" 2>&1) || {
     fail "Failed to launch enclave"
 }
 echo "$ENCLAVE_OUTPUT" | tee "$EVIDENCE_DIR/enclave_launch.json"
+ENCLAVE_LAUNCHED=true
 
 ENCLAVE_ID=$(echo "$ENCLAVE_OUTPUT" | python3 -c "import sys,json; print(json.load(sys.stdin)['EnclaveID'])" 2>/dev/null || echo "")
 if [ -z "$ENCLAVE_ID" ]; then
@@ -287,6 +324,7 @@ set +e
     --receipt-output "$EVIDENCE_DIR/receipt.json" \
     --receipt-output-raw "$EVIDENCE_DIR/receipt.raw" \
     --receipt-output-air-v1 "$EVIDENCE_DIR/receipt.cbor" \
+    --attestation-output "$ATTESTATION_PATH" \
     2>&1 | tee "$EVIDENCE_DIR/host_output.log"
 HOST_EXIT=${PIPESTATUS[0]}
 set -e
@@ -325,9 +363,131 @@ TIMEOF
 echo ""
 
 # ============================================================
-# PHASE 5: COLLECT EVIDENCE & CLEANUP
+# PHASE 5: RECEIPT & TRUST CENTER VERIFICATION
 # ============================================================
-log "=== PHASE 5: EVIDENCE COLLECTION ==="
+log "=== PHASE 5: RECEIPT & TRUST CENTER VERIFICATION ==="
+
+LEGACY_VERIFY_EXIT=1
+AIR_VERIFY_EXIT=1
+TRUST_CENTER_VERIFY_EXIT=1
+TRUST_CENTER_VERDICT="unknown"
+TRUST_CENTER_FORMAT="unknown"
+
+if [ "$HOST_EXIT" -eq 0 ]; then
+    [ -f "$EVIDENCE_DIR/receipt.json" ] || fail "Missing legacy receipt JSON at $EVIDENCE_DIR/receipt.json"
+    [ -f "$EVIDENCE_DIR/receipt.cbor" ] || fail "Missing AIR v1 receipt at $EVIDENCE_DIR/receipt.cbor"
+    [ -f "$ATTESTATION_PATH" ] || fail "Missing boot attestation sidecar at $ATTESTATION_PATH"
+
+    log "Verifying legacy receipt offline..."
+    set +e
+    "$VERIFY_BIN" \
+        "$EVIDENCE_DIR/receipt.json" \
+        --attestation "$ATTESTATION_PATH" \
+        --max-age 0 \
+        --format text \
+        2>&1 | tee "$EVIDENCE_DIR/legacy_verify.log"
+    LEGACY_VERIFY_EXIT=${PIPESTATUS[0]}
+    set -e
+    if [ "$LEGACY_VERIFY_EXIT" -ne 0 ]; then
+        fail "Legacy receipt verification failed (exit $LEGACY_VERIFY_EXIT)"
+    fi
+
+    log "Verifying AIR v1 receipt offline..."
+    set +e
+    "$VERIFY_BIN" \
+        "$EVIDENCE_DIR/receipt.cbor" \
+        --attestation "$ATTESTATION_PATH" \
+        --max-age 0 \
+        --format text \
+        2>&1 | tee "$EVIDENCE_DIR/air_verify.log"
+    AIR_VERIFY_EXIT=${PIPESTATUS[0]}
+    set -e
+    if [ "$AIR_VERIFY_EXIT" -ne 0 ]; then
+        fail "AIR v1 receipt verification failed (exit $AIR_VERIFY_EXIT)"
+    fi
+
+    log "Starting local trust center verifier API on 127.0.0.1:${TRUST_CENTER_PORT}..."
+    "$TRUST_CENTER_BIN" \
+        --mode public-trust-center \
+        --host 127.0.0.1 \
+        --port "$TRUST_CENTER_PORT" \
+        > "$EVIDENCE_DIR/trust_center_server.log" 2>&1 &
+    TRUST_CENTER_PID=$!
+
+    READY=false
+    for _attempt in $(seq 1 30); do
+        if curl -fsS "http://127.0.0.1:${TRUST_CENTER_PORT}/health" \
+            > "$EVIDENCE_DIR/trust_center_health.json"; then
+            READY=true
+            break
+        fi
+        sleep 1
+    done
+    if [ "$READY" != true ]; then
+        fail "Trust center verifier API did not become ready on 127.0.0.1:${TRUST_CENTER_PORT}"
+    fi
+
+    log "Submitting AWS AIR receipt to trust center API..."
+    set +e
+    curl -fsS \
+        -X POST \
+        -F "receipt_file=@${EVIDENCE_DIR}/receipt.cbor;type=application/octet-stream" \
+        -F "attestation_file=@${ATTESTATION_PATH};type=application/octet-stream" \
+        "http://127.0.0.1:${TRUST_CENTER_PORT}/api/v1/verify/upload" \
+        > "$EVIDENCE_DIR/trust_center_verify.json"
+    TRUST_CENTER_VERIFY_EXIT=$?
+    set -e
+    if [ "$TRUST_CENTER_VERIFY_EXIT" -ne 0 ]; then
+        fail "Trust center upload verification failed (curl exit $TRUST_CENTER_VERIFY_EXIT)"
+    fi
+
+    read -r TRUST_CENTER_VERDICT TRUST_CENTER_FORMAT < <(
+        python3 - "$EVIDENCE_DIR/trust_center_verify.json" <<'PY'
+import json, sys
+path = sys.argv[1]
+with open(path, "r", encoding="utf-8") as f:
+    data = json.load(f)
+verified = data.get("verified") is True
+verdict = data.get("verdict")
+fmt = data.get("format")
+if not verified or verdict != "verified" or fmt != "air_v1":
+    raise SystemExit(1)
+print(verdict, fmt)
+PY
+    ) || fail "Trust center response did not verify the AWS AIR receipt"
+
+    cat > "$EVIDENCE_DIR/verification.json" << VERIFYEOF
+{
+  "schema_version": 1,
+  "legacy_receipt_verified": true,
+  "legacy_verify_exit": ${LEGACY_VERIFY_EXIT},
+  "air_v1_verified": true,
+  "air_v1_verify_exit": ${AIR_VERIFY_EXIT},
+  "trust_center_verified": true,
+  "trust_center_verify_exit": ${TRUST_CENTER_VERIFY_EXIT},
+  "trust_center_verdict": "${TRUST_CENTER_VERDICT}",
+  "trust_center_format": "${TRUST_CENTER_FORMAT}",
+  "timestamp": "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+}
+VERIFYEOF
+
+    log "Legacy receipt verification: PASS"
+    log "AIR v1 receipt verification: PASS"
+    log "Trust center upload verification: PASS"
+
+    kill "$TRUST_CENTER_PID" 2>/dev/null || true
+    wait "$TRUST_CENTER_PID" 2>/dev/null || true
+    unset TRUST_CENTER_PID
+else
+    fail "Host orchestrator failed before verification; refusing to claim receipt validation"
+fi
+
+echo ""
+
+# ============================================================
+# PHASE 6: EVIDENCE COLLECTION
+# ============================================================
+log "=== PHASE 6: EVIDENCE COLLECTION ==="
 
 # Save enclave state after inference
 nitro-cli describe-enclaves > "$EVIDENCE_DIR/enclave_describe_post.json" 2>/dev/null || true
@@ -340,6 +500,7 @@ fi
 # Terminate enclave
 log "Terminating enclave..."
 nitro-cli terminate-enclave --all 2>/dev/null || true
+ENCLAVE_LAUNCHED=false
 
 # Generate artifact manifest (SHA-256 of all evidence files)
 log "Generating artifact manifest..."
@@ -384,7 +545,8 @@ echo ""
 
 if [ $HOST_EXIT -eq 0 ]; then
     log "  STATUS: SUCCESS"
-    log "  The host orchestrator completed inference with PCR-pinned attestation."
+    log "  The host orchestrator completed inference with PCR-pinned attestation,"
+    log "  offline AIR verification passed, and the trust center API accepted the AWS receipt."
 else
     log "  STATUS: FAILED (exit code $HOST_EXIT)"
     if [ "$DEBUG_MODE" = true ] && [ -f "$EVIDENCE_DIR/enclave_console.log" ]; then

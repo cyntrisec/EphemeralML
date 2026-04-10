@@ -11,17 +11,20 @@
 - **`model_hash_scheme` roundtrip tests**: 2 new tests verifying encode/decode for present and absent `model_hash_scheme`.
 - **CLI auto-chain**: `ephemeralml gcp setup-kms` now automatically persists KMS outputs (`EPHEMERALML_GCS_BUCKET`, `EPHEMERALML_GCP_KMS_KEY`, `EPHEMERALML_GCP_WIP_AUDIENCE` + `GCP_*` aliases) to `.env.gcp` so downstream commands pick them up without manual export.
 - **Receipt model_id from manifest**: In direct mode, receipts now use the manifest's `model_id` and `version` when a signed manifest is loaded, instead of defaulting to the client request's model_id.
+- **Nitro receipt-key extraction helper**: Added `ephemeral_ml_client::receipt_key::extract_key_from_attestation(...)` so offline verification and verifier API flows can derive the receipt signing key from a validated attestation document instead of requiring a separate exported pubkey file.
 
 ### Security
 - **Fail-closed `.env.gcp` persistence**: `setup-kms` now fails if `.env.gcp` update fails, instead of warning and continuing. Operators see the failure before proceeding to downstream commands.
 - **Fail-closed manifest parse**: If manifest JSON is present but fails to parse, the server rejects the request instead of silently falling back to the client's model_id. Preserves receipt integrity semantics.
 - **Structured trust verification (M2)**: 4-layer trust model (T1_PARSE → T2_CRYPTO → T3_CHAIN → T4_POLICY) with 36 typed error codes, TDX DCAP chain hardening (T3_CHAIN), and CS JWT verification hardening (CsJwtVerifyError enum with runtime enforcement).
 - **AIR v1 audit fixes**: Pipeline chaining now excludes AIR v1 sidecar tensors from legacy `previous_receipt_hash`, `ephemeralml-verify` rejects legacy-only flags in AIR mode instead of silently ignoring them, and GCP `verify.sh`/`mvp_gpu_e2e.sh` support strict AIR v1 verification enforcement (enabled by default in MVP E2E via `EPHEMERALML_REQUIRE_AIR_V1_VERIFY=true`).
+- **Nitro AIR/trust-center evidence path**: The Nitro pipeline now emits a boot attestation sidecar (`__attestation__`), `ephemeralml-verify` can verify both legacy and AIR v1 receipts from that attestation, and the verifier API upload flow accepts `attestation_file` as an alternative to raw public-key input.
 
 ### Changed
 - **`ephemeral-ml-common` API cleanup**: Removed unused public surface that had no in-repo callers: `VERSION`, `SessionInfo`, `SessionStatus`, `cbor::map_contains_key()`, `metrics::peak_rss_mb()`, `ModelInfo::{weights_key, config_key, tokenizer_key}`, `InputValidator::{validate_manifest_size, validate_payload_size, validate_session_count, validate_session_duration, limits}`, and `ValidationError::{ManifestTooLarge, PayloadTooLarge, TooManySessions, SessionTooLong, SizeLimitExceeded}`. This is an intentional breaking API reduction; callers should use `map_get(...).is_some()`, `peak_rss_mb_with_source().0`, direct artifact key formatting where needed, and custom limit checks around `ValidationLimits` where those removed helpers were previously used.
 - **GCP operator script hardening**: `setup_kms.sh`, `deploy.sh`, `verify.sh`, `teardown.sh`, `package_model.sh`, and `mvp_gpu_e2e.sh` now auto-load `.env.gcp`, fail earlier on non-interactive `gcloud` account issues, reuse matching packaged model artifacts in GCS, and bound upload hangs with explicit timeouts.
 - **GPU teardown summary fix**: `teardown.sh` no longer prints a false CPU cost estimate on GPU runs. CPU keeps the built-in estimate; GPU only prints an estimate when an explicit hourly rate is supplied.
+- **Nitro orchestration measurement handling**: The single-stage Nitro host now enforces PCR pinning through the host `SessionConfig` instead of echoing the same measurements into `StageSpec`. This keeps host-side attestation fail-closed while avoiding an invalid enclave attempt to verify the non-TEE host as another enclave during the data-channel handshake.
 
 ## [0.2.9] - 2026-02-19
 

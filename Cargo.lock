@@ -1886,6 +1886,7 @@ dependencies = [
  "base64 0.22.1",
  "clap",
  "ed25519-dalek",
+ "ephemeral-ml-client",
  "ephemeral-ml-common",
  "hex",
  "rand 0.8.5",

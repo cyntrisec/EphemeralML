@@ -22,6 +22,7 @@ pub mod freshness;
 pub mod gcp;
 pub mod model_validation;
 pub mod policy;
+pub mod receipt_key;
 pub mod secure_client;
 pub mod types;
 

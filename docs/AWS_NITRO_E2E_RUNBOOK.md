@@ -211,6 +211,8 @@ Successful run shows:
 4. Inference complete (~78ms enclave execution for MiniLM-L6-v2; ~118ms host E2E in current evidence)
 5. Embedding output (384 dimensions, L2 norm ~7.3)
 6. Signed attestation receipt with PCR measurements
+7. `receipt.cbor` and `attestation.cbor` persisted for offline verification
+8. Offline legacy + AIR v1 verification passes, and the trust-center upload path accepts the AWS AIR receipt
 
 ## Evidence Artifacts
 
@@ -221,6 +223,8 @@ Successful run shows:
 | Host output log | Full pipeline trace: handshake, health check, inference, receipt |
 | `receipt.json` | Parsed attestation receipt saved by host (`--receipt-output`) |
 | `receipt.raw` | Raw `__receipt__` tensor bytes (wire format) saved by host (`--receipt-output-raw`) |
+| `receipt.cbor` | AIR v1 COSE_Sign1 receipt saved by host (`--receipt-output-air-v1`) |
+| `attestation.cbor` | Boot attestation sidecar saved by host (`--attestation-output`) |
 | Receipt (in log) | Human-readable receipt summary printed by host binary (receipt ID, hashes, PCRs, signature) |
 
 ## Security Notes

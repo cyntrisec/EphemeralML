@@ -133,13 +133,14 @@ AIR v1 receipts submitted as base64 strings or uploaded as `.cbor` files are aut
 | `receipt_file` | file | Yes | Receipt (JSON or CBOR) |
 | `public_key` | text | Yes* | 64-char hex Ed25519 key |
 | `public_key_file` | file | Yes* | 32-byte binary Ed25519 key |
+| `attestation_file` | file | Yes* | Attestation document used to derive the receipt signing key |
 | `expected_model` | text | No | Expected model ID |
 | `measurement_type` | text | No | Expected measurement type |
 | `max_age_secs` | text | No | Max receipt age (integer) |
 | `expected_attestation_source` | text | No | Expected attestation source |
 | `expected_image_digest` | text | No | Expected image digest |
 
-\* Provide either `public_key` or `public_key_file`, not both.
+\* Provide one of `public_key`, `public_key_file`, or `attestation_file`.
 
 ## curl Examples
 
@@ -166,6 +167,18 @@ curl -X POST https://verifier.example.com/api/v1/verify/upload \
   -F "expected_model=minilm-l6-v2" \
   -F "expected_image_digest=sha256:068c3cdf..."
 ```
+
+### Multipart upload using attestation instead of a raw public key
+
+```bash
+curl -X POST https://verifier.example.com/api/v1/verify/upload \
+  -H "X-API-Key: YOUR_API_KEY" \
+  -F "receipt_file=@receipt.cbor;type=application/octet-stream" \
+  -F "attestation_file=@attestation.cbor;type=application/octet-stream" \
+  -F "measurement_type=nitro-pcr"
+```
+
+In this flow the verifier derives the receipt signing key from the supplied attestation document. That proves key provenance, but deployment-specific PCR or image policy still has to come from the caller's explicit policy fields.
 
 ### Local dev (public trust center)
 

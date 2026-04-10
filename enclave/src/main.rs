@@ -1216,6 +1216,7 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
                 engine,
                 tee_provider,
                 receipt_key,
+                Some(boot_attestation_hash),
                 None,
                 loaded_model_hash,
                 loaded_model_hash_scheme.clone(),
@@ -1397,6 +1398,7 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
                 None,
                 None,
                 None,
+                None,
                 args.receipt_issuer.clone(),
             );
 
@@ -1525,12 +1527,32 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
             "Model registered successfully"
         );
 
+        let (boot_attestation_hash, boot_attestation_bytes) = {
+            use ephemeral_ml_enclave::AttestationProvider;
+            use sha2::{Digest, Sha256};
+
+            let boot_nonce = [0u8; 32];
+            let boot_doc = attestation_provider.generate_attestation(&boot_nonce, receipt_pk)?;
+            let boot_doc_bytes = boot_doc.signature;
+            let attestation_hash: [u8; 32] = Sha256::digest(&boot_doc_bytes).into();
+
+            info!(
+                step = "boot_evidence",
+                attestation_doc_hash = %hex::encode(attestation_hash),
+                bytes = boot_doc_bytes.len(),
+                "Captured Nitro boot attestation for receipt binding"
+            );
+
+            (attestation_hash, boot_doc_bytes)
+        };
+
         // Build stage executor and attestation bridge (with AIR v1 receipt support)
         let executor = EphemeralStageExecutor::with_air_v1(
             engine,
             attestation_provider.clone(),
             receipt_key,
-            None,
+            Some(boot_attestation_hash),
+            Some(boot_attestation_bytes),
             model_hash,
             None,
             args.receipt_issuer.clone(),
