@@ -19,14 +19,6 @@ impl MockSecureClient {
         }
     }
 
-    pub fn with_tcp_endpoint(host: String, port: u16) -> Self {
-        Self {
-            mock_attestation_valid: true,
-            tcp_host: host,
-            tcp_port: port,
-        }
-    }
-
     pub fn with_invalid_attestation() -> Self {
         Self {
             mock_attestation_valid: false,

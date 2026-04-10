@@ -155,27 +155,3 @@ impl AuditLogger {
         .await;
     }
 }
-
-/// Sync fallback for contexts where async isn't available
-pub fn log_sync(
-    event_type: AuditEventType,
-    severity: AuditSeverity,
-    session_id: Option<String>,
-    details: HashMap<String, Value>,
-) {
-    let entry = AuditLogEntry {
-        entry_id: uuid::Uuid::new_v4().to_string(),
-        timestamp: ephemeral_ml_common::current_timestamp().unwrap_or(0),
-        event_type,
-        session_id,
-        client_id: None,
-        model_id: None,
-        details,
-        severity,
-        is_metric: false,
-    };
-
-    if let Ok(json) = serde_json::to_string(&entry) {
-        println!("[AUDIT] {}", json);
-    }
-}

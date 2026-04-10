@@ -43,7 +43,6 @@ bytes = { workspace = true }
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
 [dev-dependencies]
-proptest = { workspace = true }
 rand = { workspace = true }
 
 [features]

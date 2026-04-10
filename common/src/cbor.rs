@@ -109,8 +109,3 @@ pub fn map_get<'a>(entries: &'a [(Value, Value)], key: &Value) -> Option<&'a Val
         .iter()
         .find_map(|(k, v)| if k == key { Some(v) } else { None })
 }
-
-/// Check if a key exists in a ciborium Map's entries.
-pub fn map_contains_key(entries: &[(Value, Value)], key: &Value) -> bool {
-    entries.iter().any(|(k, _)| k == key)
-}

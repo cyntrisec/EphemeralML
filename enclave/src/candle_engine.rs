@@ -216,11 +216,6 @@ impl CandleInferenceEngine {
         }
     }
 
-    /// Helper to get device info
-    pub fn device(&self) -> &Device {
-        &self.device
-    }
-
     fn execute_bert(&self, loaded: &LoadedBertModel, input: &[u8]) -> Result<Vec<f32>> {
         let text = std::str::from_utf8(input).map_err(|e| {
             EnclaveError::Enclave(EphemeralError::InvalidInput(format!(

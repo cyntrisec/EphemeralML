@@ -56,16 +56,6 @@ pub fn build_router() -> Router {
     build_router_inner(CorsLayer::permissive(), state)
 }
 
-/// Build the router with explicit allowed origins (legacy API, no auth/rate limit).
-pub fn build_router_with_origins(origins: &[String]) -> Router {
-    let cors = make_cors_layer(origins);
-    let state = AppState {
-        api_key: None,
-        rate_limiter: None,
-    };
-    build_router_inner(cors, state)
-}
-
 /// Build the router with full production configuration.
 ///
 /// Enforces mode invariants:

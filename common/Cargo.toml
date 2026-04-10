@@ -25,7 +25,6 @@ coset = { workspace = true }
 # Confidential ML transport
 confidential-ml-transport = { workspace = true, features = ["tcp"] }
 bytes = { workspace = true }
-async-trait = { workspace = true }
 tokio = { version = "1.50", features = ["io-util"] }
 
 # Lazy initialization

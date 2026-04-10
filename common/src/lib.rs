@@ -26,7 +26,6 @@ pub use error::{
 
 pub use types::{
     AttestationDocument, AuditEventType, AuditLogEntry, AuditSeverity, PcrMeasurements,
-    SessionInfo, SessionStatus,
 };
 
 pub use kms_proxy::{
@@ -47,9 +46,6 @@ pub use transport_types::{
 pub use validation::{InputValidator, ValidationError, ValidationLimits};
 
 pub use receipt_verify::{verify_receipt, CheckResults, CheckStatus, VerifyOptions, VerifyResult};
-
-/// Version information for the common crate
-pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 
 /// Generate a new UUID v4 string
 pub fn generate_id() -> String {

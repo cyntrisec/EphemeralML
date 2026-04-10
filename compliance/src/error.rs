@@ -55,13 +55,6 @@ impl ComplianceError {
         }
     }
 
-    pub fn policy_violation(message: impl Into<String>) -> Self {
-        Self::PolicyViolation {
-            reason: ReasonCode::PolicyRuleViolated as u32,
-            message: message.into(),
-        }
-    }
-
     pub fn signature_error(message: impl Into<String>) -> Self {
         Self::SignatureError {
             reason: ReasonCode::SignatureInvalid as u32,

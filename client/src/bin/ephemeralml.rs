@@ -127,10 +127,6 @@ struct PipelineProofBundle {
     model_name: String,
     num_stages: usize,
     stage_receipts: Vec<StageReceiptEntry>,
-    #[allow(dead_code)]
-    chain_valid: bool,
-    #[allow(dead_code)]
-    timestamp: u64,
 }
 
 #[derive(serde::Deserialize)]

@@ -38,13 +38,6 @@ impl<A: crate::attestation::AttestationProvider> KmsClient<A> {
         }
     }
 
-    /// Mock decryption for benchmarking. Only available in test/mock builds
-    /// to prevent accidental use in production.
-    #[cfg(any(test, feature = "mock"))]
-    pub async fn decrypt_mock(&self, _ciphertext: &[u8], fixed_key: [u8; 32]) -> Result<Vec<u8>> {
-        Ok(fixed_key.to_vec())
-    }
-
     pub fn proxy_client(&self) -> &KmsProxyClient {
         &self.proxy_client
     }

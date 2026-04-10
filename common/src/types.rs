@@ -33,29 +33,6 @@ impl PcrMeasurements {
     }
 }
 
-/// Session information for tracking inference sessions
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
-pub struct SessionInfo {
-    pub session_id: String,
-    pub client_id: String,
-    pub model_id: String,
-    pub created_at: u64,
-    pub last_activity: u64,
-    pub status: SessionStatus,
-}
-
-/// Status of an inference session
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
-pub enum SessionStatus {
-    Initializing,
-    AttestationPending,
-    AttestationVerified,
-    InferenceInProgress,
-    Completed,
-    Failed,
-    Expired,
-}
-
 /// Audit log entry for security events
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 pub struct AuditLogEntry {

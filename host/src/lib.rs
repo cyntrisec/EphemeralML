@@ -21,7 +21,6 @@ pub mod error;
 pub mod kms_proxy_server;
 pub mod limits;
 pub mod metrics;
-pub mod otel;
 pub mod pcr;
 pub mod rate_limit;
 pub mod retry;

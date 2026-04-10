@@ -28,21 +28,6 @@ pub struct ModelInfo {
 }
 
 impl ModelInfo {
-    /// Returns the S3/local artifact key for encrypted weights
-    pub fn weights_key(&self, model_id: &str) -> String {
-        format!("{}-weights", model_id)
-    }
-
-    /// Returns the S3/local artifact key for config
-    pub fn config_key(&self, model_id: &str) -> String {
-        format!("{}-config", model_id)
-    }
-
-    /// Returns the S3/local artifact key for tokenizer
-    pub fn tokenizer_key(&self, model_id: &str) -> String {
-        format!("{}-tokenizer", model_id)
-    }
-
     /// Returns the local encrypted weights filename
     pub fn weights_filename(&self, model_id: &str) -> String {
         format!("{}-weights.enc", model_id)

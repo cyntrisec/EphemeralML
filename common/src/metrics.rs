@@ -13,14 +13,6 @@ fn parse_proc_status_kb(status: &str, key: &str) -> Option<u64> {
     })
 }
 
-/// Peak resident memory (RSS) in MB.
-///
-/// Linux exposes this as `VmHWM` (high-water mark for RSS) in `/proc/self/status`.
-/// Falls back to current `VmRSS` if `VmHWM` is not available.
-pub fn peak_rss_mb() -> f64 {
-    peak_rss_mb_with_source().0
-}
-
 /// Peak resident memory (RSS) in MB, along with the `/proc/self/status` key used.
 pub fn peak_rss_mb_with_source() -> (f64, &'static str) {
     let status = match std::fs::read_to_string("/proc/self/status") {

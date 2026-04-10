@@ -20,13 +20,11 @@ tower-http = { version = "0.6", features = ["cors", "trace", "limit", "set-heade
 # Serialization
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
-ciborium = "0.2"
 
 # Crypto
 ed25519-dalek = { version = "2.0", features = ["rand_core"] }
 hex = "0.4"
 base64 = "0.22"
-subtle = "2.5"
 
 # Logging
 tracing = "0.1"

@@ -42,20 +42,8 @@ pub enum ValidationError {
     #[error("Model ID length {length} exceeds maximum {max}")]
     ModelIdTooLong { length: usize, max: usize },
 
-    #[error("Manifest size {size} exceeds maximum {max}")]
-    ManifestTooLarge { size: usize, max: usize },
-
-    #[error("Payload size {size} exceeds maximum {max}")]
-    PayloadTooLarge { size: usize, max: usize },
-
     #[error("Allocation size {size} exceeds maximum {max}")]
     AllocationTooLarge { size: usize, max: usize },
-
-    #[error("Too many concurrent sessions: {current}, maximum: {max}")]
-    TooManySessions { current: usize, max: usize },
-
-    #[error("Session duration {duration} exceeds maximum {max}")]
-    SessionTooLong { duration: u64, max: u64 },
 
     #[error("Invalid model ID: {reason}")]
     InvalidModelId { reason: String },
@@ -68,9 +56,6 @@ pub enum ValidationError {
 
     #[error("Excessive allocation detected: {reason}")]
     ExcessiveAllocation { reason: String },
-
-    #[error("Message size limit exceeded: {0}")]
-    SizeLimitExceeded(String),
 
     #[error("Invalid format: {0}")]
     InvalidFormat(String),
@@ -140,56 +125,12 @@ impl InputValidator {
         Ok(())
     }
 
-    /// Validate manifest size
-    pub fn validate_manifest_size(&self, size: usize) -> Result<(), ValidationError> {
-        if size > self.limits.max_manifest_size {
-            return Err(ValidationError::ManifestTooLarge {
-                size,
-                max: self.limits.max_manifest_size,
-            });
-        }
-        Ok(())
-    }
-
-    /// Validate payload size for decompression bomb protection
-    pub fn validate_payload_size(&self, size: usize) -> Result<(), ValidationError> {
-        if size > self.limits.max_payload_size {
-            return Err(ValidationError::PayloadTooLarge {
-                size,
-                max: self.limits.max_payload_size,
-            });
-        }
-        Ok(())
-    }
-
     /// Validate allocation size to prevent excessive memory usage
     pub fn validate_allocation_size(&self, size: usize) -> Result<(), ValidationError> {
         if size > self.limits.max_allocation_size {
             return Err(ValidationError::AllocationTooLarge {
                 size,
                 max: self.limits.max_allocation_size,
-            });
-        }
-        Ok(())
-    }
-
-    /// Validate number of concurrent sessions
-    pub fn validate_session_count(&self, current: usize) -> Result<(), ValidationError> {
-        if current >= self.limits.max_concurrent_sessions {
-            return Err(ValidationError::TooManySessions {
-                current,
-                max: self.limits.max_concurrent_sessions,
-            });
-        }
-        Ok(())
-    }
-
-    /// Validate session duration
-    pub fn validate_session_duration(&self, duration: u64) -> Result<(), ValidationError> {
-        if duration > self.limits.max_session_duration {
-            return Err(ValidationError::SessionTooLong {
-                duration,
-                max: self.limits.max_session_duration,
             });
         }
         Ok(())
@@ -258,11 +199,6 @@ impl InputValidator {
         self.validate_allocation_size(total_bytes)?;
 
         Ok(())
-    }
-
-    /// Get current validation limits
-    pub fn limits(&self) -> &ValidationLimits {
-        &self.limits
     }
 }
 

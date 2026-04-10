@@ -18,6 +18,9 @@
 - **Structured trust verification (M2)**: 4-layer trust model (T1_PARSE → T2_CRYPTO → T3_CHAIN → T4_POLICY) with 36 typed error codes, TDX DCAP chain hardening (T3_CHAIN), and CS JWT verification hardening (CsJwtVerifyError enum with runtime enforcement).
 - **AIR v1 audit fixes**: Pipeline chaining now excludes AIR v1 sidecar tensors from legacy `previous_receipt_hash`, `ephemeralml-verify` rejects legacy-only flags in AIR mode instead of silently ignoring them, and GCP `verify.sh`/`mvp_gpu_e2e.sh` support strict AIR v1 verification enforcement (enabled by default in MVP E2E via `EPHEMERALML_REQUIRE_AIR_V1_VERIFY=true`).
 
+### Changed
+- **`ephemeral-ml-common` API cleanup**: Removed unused public surface that had no in-repo callers: `VERSION`, `SessionInfo`, `SessionStatus`, `cbor::map_contains_key()`, `metrics::peak_rss_mb()`, `ModelInfo::{weights_key, config_key, tokenizer_key}`, `InputValidator::{validate_manifest_size, validate_payload_size, validate_session_count, validate_session_duration, limits}`, and `ValidationError::{ManifestTooLarge, PayloadTooLarge, TooManySessions, SessionTooLong, SizeLimitExceeded}`. This is an intentional breaking API reduction; callers should use `map_get(...).is_some()`, `peak_rss_mb_with_source().0`, direct artifact key formatting where needed, and custom limit checks around `ValidationLimits` where those removed helpers were previously used.
+
 ## [0.2.9] - 2026-02-19
 
 ### Added
