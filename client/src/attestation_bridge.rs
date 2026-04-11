@@ -268,14 +268,32 @@ impl TdxEnvelopeVerifierBridge {
             );
         }
 
-        // Warn loudly if both security bypasses are active simultaneously.
+        // F10 fix: Fail hard if both security bypasses are active simultaneously,
+        // unless the operator explicitly acknowledges the risk.
+        //
+        // With both MRTD and audience pinning bypassed, attestation provides
+        // almost no security — only the cryptographic signature is checked.
+        // Require an explicit override to prevent accidental unsafe deployment.
         let mrtd_bypassed = mrtd.is_none();
         let aud_bypassed = cs_policy.expected_audience.is_none();
         if mrtd_bypassed && aud_bypassed {
+            let insecure_override = std::env::var("EPHEMERALML_INSECURE_ALLOW_UNPINNED")
+                .map(|v| v == "I_UNDERSTAND")
+                .unwrap_or(false);
+            if !insecure_override {
+                return Err(ClientError::Client(EphemeralError::ConfigurationError(
+                    "Both MRTD pinning and audience pinning are bypassed. \
+                     This configuration provides almost no attestation security. \
+                     For production: set EPHEMERALML_EXPECTED_MRTD and EPHEMERALML_EXPECTED_AUDIENCE. \
+                     For development: set EPHEMERALML_INSECURE_ALLOW_UNPINNED=I_UNDERSTAND \
+                     to acknowledge the risk."
+                        .to_string(),
+                )));
+            }
             eprintln!(
-                "[client] ERROR: Both MRTD pinning and audience pinning are bypassed. \
-                 This configuration is unsafe for any non-development use. \
-                 Set EPHEMERALML_EXPECTED_MRTD and EPHEMERALML_EXPECTED_AUDIENCE for production."
+                "[client] WARNING: Both MRTD and audience pinning bypassed \
+                 (EPHEMERALML_INSECURE_ALLOW_UNPINNED=I_UNDERSTAND). \
+                 Attestation security is minimal. Do NOT use in production."
             );
         }
 
@@ -858,11 +876,12 @@ mod tests {
     use std::sync::{Mutex, OnceLock};
 
     const TEST_KID: &str = "test-key-1";
-    const STRICT_ENV_VARS: [&str; 4] = [
+    const STRICT_ENV_VARS: [&str; 5] = [
         "EPHEMERALML_ALLOW_UNPINNED_AUDIENCE",
         "EPHEMERALML_REQUIRE_MRTD",
         "EPHEMERALML_EXPECTED_AUDIENCE",
         "EPHEMERALML_EXPECTED_MRTD",
+        "EPHEMERALML_INSECURE_ALLOW_UNPINNED",
     ];
 
     fn env_test_lock() -> &'static Mutex<()> {
@@ -978,6 +997,8 @@ mod tests {
         let _env_lock = lock_env_vars();
         std::env::set_var("EPHEMERALML_REQUIRE_MRTD", "false");
         std::env::set_var("EPHEMERALML_ALLOW_UNPINNED_AUDIENCE", "true");
+        // F10: both bypasses active requires explicit insecure override.
+        std::env::set_var("EPHEMERALML_INSECURE_ALLOW_UNPINNED", "I_UNDERSTAND");
         TdxEnvelopeVerifierBridge::new(None)
             .unwrap()
             .with_jwks_cache(test_jwks_cache(decoding_key))
@@ -1660,14 +1681,55 @@ mod tests {
     fn test_strict_mode_allows_explicit_opt_out() {
         let _env_guard = StrictEnvGuard::acquire();
         // Explicitly opt out of both strict checks (development mode).
+        // F10: both bypasses require the insecure override.
         std::env::set_var("EPHEMERALML_ALLOW_UNPINNED_AUDIENCE", "true");
         std::env::set_var("EPHEMERALML_REQUIRE_MRTD", "false");
+        std::env::set_var("EPHEMERALML_INSECURE_ALLOW_UNPINNED", "I_UNDERSTAND");
         std::env::remove_var("EPHEMERALML_EXPECTED_AUDIENCE");
         std::env::remove_var("EPHEMERALML_EXPECTED_MRTD");
 
         match TdxEnvelopeVerifierBridge::new(None) {
             Ok(_) => {} // pass
             Err(e) => panic!("Expected OK with explicit opt-out, got: {}", e),
+        }
+    }
+
+    /// F10 test: Both bypasses without insecure override → error.
+    #[test]
+    fn test_f10_dual_bypass_without_override_fails() {
+        let _env_guard = StrictEnvGuard::acquire();
+        std::env::set_var("EPHEMERALML_ALLOW_UNPINNED_AUDIENCE", "true");
+        std::env::set_var("EPHEMERALML_REQUIRE_MRTD", "false");
+        std::env::remove_var("EPHEMERALML_EXPECTED_AUDIENCE");
+        std::env::remove_var("EPHEMERALML_EXPECTED_MRTD");
+        std::env::remove_var("EPHEMERALML_INSECURE_ALLOW_UNPINNED");
+
+        let result = TdxEnvelopeVerifierBridge::new(None);
+        match result {
+            Ok(_) => panic!("dual bypass without I_UNDERSTAND override should fail"),
+            Err(e) => {
+                let err_msg = format!("{e}");
+                assert!(
+                    err_msg.contains("EPHEMERALML_INSECURE_ALLOW_UNPINNED"),
+                    "error should mention the required override env var, got: {err_msg}"
+                );
+            }
+        }
+    }
+
+    /// F10 test: Wrong override value → still fails.
+    #[test]
+    fn test_f10_dual_bypass_wrong_override_fails() {
+        let _env_guard = StrictEnvGuard::acquire();
+        std::env::set_var("EPHEMERALML_ALLOW_UNPINNED_AUDIENCE", "true");
+        std::env::set_var("EPHEMERALML_REQUIRE_MRTD", "false");
+        std::env::set_var("EPHEMERALML_INSECURE_ALLOW_UNPINNED", "true"); // wrong value
+        std::env::remove_var("EPHEMERALML_EXPECTED_AUDIENCE");
+        std::env::remove_var("EPHEMERALML_EXPECTED_MRTD");
+
+        match TdxEnvelopeVerifierBridge::new(None) {
+            Ok(_) => panic!("dual bypass with wrong override value should fail"),
+            Err(_) => {} // expected
         }
     }
 

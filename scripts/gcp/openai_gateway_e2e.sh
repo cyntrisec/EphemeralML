@@ -158,6 +158,7 @@ if $USE_DOCKER; then
           -e EPHEMERALML_EXPECTED_AUDIENCE="${GCP_WIP_AUDIENCE}" \
           -e EPHEMERALML_REQUIRE_MRTD=false \
           -e EPHEMERALML_ALLOW_UNPINNED_AUDIENCE="$($ALLOW_UNPINNED_AUDIENCE && echo true || echo false)" \
+          -e EPHEMERALML_INSECURE_ALLOW_UNPINNED="$($ALLOW_UNPINNED_AUDIENCE && echo I_UNDERSTAND || echo "")" \
           -e RUST_LOG=ephemeralml_gateway=info \
           "${DOCKER_IMAGE}" \
           --backend-addr "${IP}:9000" \
@@ -177,6 +178,7 @@ else
         EPHEMERALML_EXPECTED_AUDIENCE="${GCP_WIP_AUDIENCE}" \
         EPHEMERALML_REQUIRE_MRTD=false \
         EPHEMERALML_ALLOW_UNPINNED_AUDIENCE=$($ALLOW_UNPINNED_AUDIENCE && echo true || echo false) \
+        EPHEMERALML_INSECURE_ALLOW_UNPINNED=$($ALLOW_UNPINNED_AUDIENCE && echo I_UNDERSTAND || echo "") \
         RUST_LOG=ephemeralml_gateway=info \
         TMPDIR="${TMP_WORK_DIR}" RUSTC_WRAPPER= CARGO_INCREMENTAL=0 CARGO_TARGET_DIR="${TARGET_DIR}" \
         cargo run --release --no-default-features --features gcp -p ephemeralml-gateway -- \

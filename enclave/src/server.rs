@@ -121,11 +121,33 @@ pub async fn run_direct_tcp<A: crate::AttestationProvider + Send + Sync>(
                 let (stream, peer) = listener.accept().await?;
                 stream.set_nodelay(true).ok();
 
-                // Compatibility fix: Development profile because the enclave does
-                // not verify anonymous external clients. This is intentional for
-                // ingress, but a distinct AnonymousIngress config should replace
-                // the generic Development profile once measurement pinning is
-                // wired on internal channels.
+                // Server attestation mode: anonymous-ingress.
+                //
+                // Clients are not in enclaves and cannot provide attestation.
+                // The enclave accepts any client that completes the handshake.
+                // Trust is asymmetric: the client verifies the enclave, but
+                // not vice versa.
+                //
+                // Future: a "mutual" mode (SecurityProfile::Production with
+                // expected_measurements) would enable enclave-to-enclave
+                // pipeline channels. Not wired yet — requires measurement
+                // propagation from deployment config.
+                //
+                // Controlled by EPHEMERALML_SERVER_ATTESTATION_MODE env var.
+                // Currently only "anonymous-ingress" is supported.
+                let server_mode = std::env::var("EPHEMERALML_SERVER_ATTESTATION_MODE")
+                    .unwrap_or_else(|_| "anonymous-ingress".to_string());
+                if server_mode != "anonymous-ingress" {
+                    tracing::warn!(
+                        "EPHEMERALML_SERVER_ATTESTATION_MODE={server_mode:?} is not yet \
+                         supported (mutual mode requires expected_measurements wiring). \
+                         Using anonymous-ingress."
+                    );
+                }
+                tracing::info!(
+                    "Server attestation mode: anonymous-ingress \
+                     (client measurements NOT verified)"
+                );
                 let config = SessionConfig::builder()
                     .security_profile(
                         confidential_ml_transport::session::SecurityProfile::Development,
