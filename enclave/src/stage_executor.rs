@@ -55,6 +55,11 @@ impl<A: AttestationProvider> EphemeralStageExecutor<A> {
     }
 
     /// Create a new stage executor with AIR v1 receipt parameters.
+    ///
+    /// This constructor intentionally threads multiple independent receipt fields
+    /// at enclave bootstrap time, so a local lint suppression is clearer than
+    /// forcing an extra wrapper type only to satisfy Clippy's argument count.
+    #[allow(clippy::too_many_arguments)]
     pub fn with_air_v1(
         engine: CandleInferenceEngine,
         provider: A,
