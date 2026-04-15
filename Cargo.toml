@@ -24,7 +24,7 @@ categories = ["cryptography", "science"]
 # Core ML framework dependencies
 candle-core = "0.9"
 candle-nn = "0.9"
-candle-transformers = "0.9"
+candle-transformers = "0.10"
 safetensors = "0.7"
 tokenizers = "0.22"
 
