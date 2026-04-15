@@ -40,12 +40,13 @@ The repository is intentionally split between product crates, standards artifact
 | `spec/v1/` | Frozen AIR v1 normative specification and vectors |
 | `docs/` | Architecture, benchmark methodology, production notes, and publication-facing documentation |
 | `scripts/`, `infra/`, `manifests/` | Operational helpers and deployment scaffolding |
-| `site/pages-root/` and `site/marketing/` | GitHub Pages source: redirecting repo domain surface plus marketing/docs site source |
+| `site/pages-root/` | GitHub Pages source for the legacy repo-domain redirect to `https://cyntrisec.com/docs` |
 | `evidence/`, `artifacts/benchmarks/`, `demo-artifacts/` | Reproducibility artifacts and public benchmark/evaluation bundles |
 
 Open-source boundary note:
 - verifier logic, AIR v1, public demos, and reproducible evidence stay public
 - managed-service operations, live infrastructure inventory, and pre-interface moat work stay private
+- the static `cyntrisec.com` marketing/docs site now lives in a separate private web repo
 - see [`docs/OPEN_SOURCE_BOUNDARY.md`](docs/OPEN_SOURCE_BOUNDARY.md)
 
 ## Local Disk Hygiene

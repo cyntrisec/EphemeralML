@@ -13,7 +13,7 @@ These paths are the current product and pilot-critical surface. Changes here sho
 | `enclave/` | Core confidential inference path, model loading, receipt emission |
 | `verifier-api/` | Public verifier surface and trust-verification story |
 | `pilot/` | Reusable pilot kits and buyer-facing technical proof paths |
-| `docs/`, `site/marketing/` | Trust-model messaging, technical diligence, pilot-facing documentation |
+| `docs/` | Public product architecture, benchmark methodology, and technical diligence that still belongs with the open-source repo |
 | `spec/v1/` | AIR v1 public standard surface; frozen unless explicitly revised |
 
 ## Maintained But Usually Stable
