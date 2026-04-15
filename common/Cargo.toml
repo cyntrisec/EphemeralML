@@ -25,7 +25,7 @@ coset = { workspace = true }
 # Confidential ML transport
 confidential-ml-transport = { workspace = true, features = ["tcp"] }
 bytes = { workspace = true }
-tokio = { version = "1.50", features = ["io-util"] }
+tokio = { version = "1.52", features = ["io-util"] }
 
 # Lazy initialization
 lazy_static = "1.4"
