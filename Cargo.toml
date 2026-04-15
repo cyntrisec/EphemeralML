@@ -37,7 +37,7 @@ tokio = { version = "1.50", features = ["full"] }
 tokio-vsock = "0.7"
 
 # AWS Nitro Enclaves (only for real enclave builds)
-aws-nitro-enclaves-nsm-api = "0.4"
+aws-nitro-enclaves-nsm-api = "0.5"
 
 # Error handling and utilities
 anyhow = "1.0"

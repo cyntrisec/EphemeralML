@@ -273,6 +273,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "aws-nitro-enclaves-nsm-api"
+version = "0.5.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "597f622c473bdc54103cfe964bbad00609df2bb88a0ac6cee0fc951aaee9694e"
+dependencies = [
+ "libc",
+ "log",
+ "nix 0.26.4",
+ "serde",
+ "serde_bytes",
+ "serde_cbor",
+]
+
+[[package]]
 name = "aws-runtime"
 version = "1.7.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1164,7 +1178,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "31da87a74bbc4ed3603dda96399243517fb908075d768bf382ffd7e962a6f060"
 dependencies = [
  "async-trait",
- "aws-nitro-enclaves-nsm-api",
+ "aws-nitro-enclaves-nsm-api 0.4.0",
  "bytes",
  "chacha20poly1305",
  "ciborium",
@@ -1792,7 +1806,7 @@ dependencies = [
  "anyhow",
  "async-trait",
  "aws-config",
- "aws-nitro-enclaves-nsm-api",
+ "aws-nitro-enclaves-nsm-api 0.5.0",
  "aws-sdk-kms",
  "base64 0.22.1",
  "bytes",
