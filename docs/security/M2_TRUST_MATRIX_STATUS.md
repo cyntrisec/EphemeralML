@@ -130,7 +130,7 @@ Result builders: `from_csjwt_error()`, `csjwt_pass()`, `csjwt_pass_no_audience_p
 
 ### AttestCheckCode (ephemeral-ml-common)
 
-36 enum variants. Full `from_code_str()` mapping for all 38 canonical codes (includes
+38 enum variants. Full `from_code_str()` mapping for all 38 canonical codes (includes
 aliases). `layer()` returns the trust layer for any code.
 
 ---
