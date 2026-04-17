@@ -28,7 +28,7 @@ jobs:
           test -f site/pages-root/robots.txt
           test -f site/pages-root/sitemap.xml
 
-      - uses: actions/configure-pages@v5
+      - uses: actions/configure-pages@v6
 
       - uses: actions/upload-pages-artifact@v4
         with:
