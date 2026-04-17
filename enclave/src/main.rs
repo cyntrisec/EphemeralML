@@ -1140,8 +1140,9 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
             let boot_attestation_bytes: std::sync::Arc<Vec<u8>>;
             {
                 use ephemeral_ml_common::{
-                    CpuEvidenceSummary, EvidenceBinding, EvidenceVerifierSummary, MeasurementEntry,
-                    PlatformEvidenceBundle, PLATFORM_EVIDENCE_V1,
+                    CloudEvidenceSummary, CpuEvidenceSummary, EvidenceBinding,
+                    EvidenceVerifierSummary, MeasurementEntry, PlatformEvidenceBundle,
+                    PLATFORM_EVIDENCE_V1,
                 };
                 use ephemeral_ml_enclave::tee_provider::TeeAttestationEnvelope;
                 use ephemeral_ml_enclave::trust_evidence::TrustEvidenceBundle;
@@ -1205,7 +1206,25 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
                         ],
                     }),
                     gpu: None,
-                    cloud: None,
+                    cloud: Some(CloudEvidenceSummary {
+                        attestation_source: if cs_mode {
+                            "cs-tdx".to_string()
+                        } else {
+                            "gcp-tdx".to_string()
+                        },
+                        // Fetched at client-handshake time, not boot time: the
+                        // launcher JWT's `iat` would change every reboot and
+                        // churn the canonical bundle hash.
+                        launcher_jwt_sha256: None,
+                        // Requires a launcher-token fetch or metadata-server
+                        // call — left for a later pass; the image digest is
+                        // already committed elsewhere via container measurements.
+                        image_digest: None,
+                        project_id: Some(args.gcp_project.clone()),
+                        // Zone is more specific than `gcp_location` (region);
+                        // reading it needs the GCE metadata server. Deferred.
+                        zone: None,
+                    }),
                     verifier: EvidenceVerifierSummary {
                         cpu_verifier: "cml-transport-tdx".to_string(),
                         gpu_verifier: None,

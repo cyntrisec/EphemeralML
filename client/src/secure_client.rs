@@ -188,6 +188,66 @@ impl SecureEnclaveClient {
     pub fn server_platform_evidence_hash(&self) -> Option<[u8; 32]> {
         self.server_platform_evidence_hash
     }
+
+    /// Verify an externally-delivered platform evidence bundle against the
+    /// attested values captured during the handshake.
+    ///
+    /// The enclave exports its bundle CBOR alongside the boot attestation
+    /// (see `PLATFORM_EVIDENCE_EXPORT_PATH` in the enclave binary). Once an
+    /// operator or out-of-band channel delivers those bytes to the client,
+    /// this method:
+    ///   1. Confirms a handshake has produced an attested hash, receipt
+    ///      signing key, and attestation hash.
+    ///   2. Recomputes the canonical bundle hash and checks it against the
+    ///      value embedded in the server's attested `user_data`.
+    ///   3. Cross-checks `binding.receipt_signing_key` and
+    ///      `binding.base_attestation_hash` against the session values.
+    ///
+    /// Returns the decoded bundle on success, or a clear error identifying
+    /// the specific mismatch. Must be called after `establish_channel`.
+    pub fn verify_platform_evidence(
+        &self,
+        bundle_bytes: &[u8],
+    ) -> Result<ephemeral_ml_common::PlatformEvidenceBundle> {
+        let expected_hash = self.server_platform_evidence_hash.ok_or_else(|| {
+            ClientError::Client(EphemeralError::AttestationError(
+                "No platform_evidence_hash captured — call establish_channel first, \
+                 and confirm the server embedded the hash in attestation user_data"
+                    .to_string(),
+            ))
+        })?;
+        let expected_signing_key = self.server_receipt_signing_key.ok_or_else(|| {
+            ClientError::Client(EphemeralError::AttestationError(
+                "No server receipt signing key captured from handshake".to_string(),
+            ))
+        })?;
+        let expected_attestation_hash = self.server_attestation_hash.ok_or_else(|| {
+            ClientError::Client(EphemeralError::AttestationError(
+                "No server attestation hash captured from handshake".to_string(),
+            ))
+        })?;
+        ephemeral_ml_common::PlatformEvidenceBundle::verify_binding(
+            bundle_bytes,
+            &expected_hash,
+            &expected_signing_key,
+            &expected_attestation_hash,
+        )
+        .map_err(ClientError::Client)
+    }
+
+    /// Inject session state for tests that need to exercise
+    /// `verify_platform_evidence` without setting up a full handshake.
+    #[cfg(test)]
+    pub(crate) fn set_session_state_for_test(
+        &mut self,
+        attestation_hash: [u8; 32],
+        receipt_signing_key: [u8; 32],
+        platform_evidence_hash: [u8; 32],
+    ) {
+        self.server_attestation_hash = Some(attestation_hash);
+        self.server_receipt_signing_key = Some(receipt_signing_key);
+        self.server_platform_evidence_hash = Some(platform_evidence_hash);
+    }
 }
 
 #[async_trait::async_trait]
@@ -985,5 +1045,88 @@ mod tests {
         } else {
             panic!("Expected Data message");
         }
+    }
+
+    /// Full Phase 1 binding-chain test: build a real bundle on the "server"
+    /// side, hash it, simulate the fields the handshake would have captured,
+    /// and prove `verify_platform_evidence` accepts matching bundle bytes
+    /// and rejects each kind of tamper.
+    #[tokio::test]
+    async fn verify_platform_evidence_matches_attested_values() {
+        use ephemeral_ml_common::{
+            CloudEvidenceSummary, CpuEvidenceSummary, EvidenceBinding, EvidenceVerifierSummary,
+            MeasurementEntry, PlatformEvidenceBundle, PLATFORM_EVIDENCE_V1,
+        };
+
+        let attestation_hash: [u8; 32] = [0x44; 32];
+        let signing_key: [u8; 32] = [0x11; 32];
+
+        let bundle = PlatformEvidenceBundle {
+            version: PLATFORM_EVIDENCE_V1,
+            platform_profile: "gcp-cs-tdx".to_string(),
+            generated_at: 1_744_500_000,
+            binding: EvidenceBinding {
+                receipt_signing_key: signing_key,
+                hpke_public_key: Some([0x22; 32]),
+                model_id: "stage-0".to_string(),
+                model_hash: Some([0x33; 32]),
+                base_attestation_hash: attestation_hash,
+            },
+            cpu: Some(CpuEvidenceSummary {
+                tee_type: "tdx".to_string(),
+                measurement_type: "tdx-mrtd-rtmr".to_string(),
+                measurements: vec![MeasurementEntry {
+                    index: 0,
+                    value: vec![0xAA; 48],
+                }],
+            }),
+            gpu: None,
+            cloud: Some(CloudEvidenceSummary {
+                attestation_source: "cs-tdx".to_string(),
+                launcher_jwt_sha256: None,
+                image_digest: None,
+                project_id: Some("p".to_string()),
+                zone: None,
+            }),
+            verifier: EvidenceVerifierSummary {
+                cpu_verifier: "cml-transport-tdx".to_string(),
+                gpu_verifier: None,
+                policy_version: "v1-default".to_string(),
+            },
+        };
+        let bundle_bytes = bundle.to_cbor_deterministic().unwrap();
+        let bundle_hash = bundle.document_hash().unwrap();
+
+        let mut client = SecureEnclaveClient::new("test-client".to_string());
+        client.set_session_state_for_test(attestation_hash, signing_key, bundle_hash);
+
+        let verified = client.verify_platform_evidence(&bundle_bytes).unwrap();
+        assert_eq!(verified.binding.receipt_signing_key, signing_key);
+        assert_eq!(verified.binding.base_attestation_hash, attestation_hash);
+        assert_eq!(verified.platform_profile, "gcp-cs-tdx");
+
+        // Tamper with an unrelated byte — hash must not match.
+        let mut tampered = bundle_bytes.clone();
+        let last = tampered.len() - 1;
+        tampered[last] ^= 0xFF;
+        assert!(client.verify_platform_evidence(&tampered).is_err());
+
+        // Inject a bundle with the wrong binding.receipt_signing_key: the
+        // canonical hash will also differ (keys are hashed), but the
+        // mismatch must still surface via verify_binding.
+        let mut wrong_bundle = bundle.clone();
+        wrong_bundle.binding.receipt_signing_key = [0x99; 32];
+        let wrong_bytes = wrong_bundle.to_cbor_deterministic().unwrap();
+        assert!(client.verify_platform_evidence(&wrong_bytes).is_err());
+    }
+
+    #[tokio::test]
+    async fn verify_platform_evidence_errors_before_handshake() {
+        let client = SecureEnclaveClient::new("test-client".to_string());
+        let err = client.verify_platform_evidence(b"ignored").unwrap_err();
+        // Any error is fine — just prove the method doesn't silently accept
+        // untrusted bundles when the session has not been attested yet.
+        let msg = format!("{}", err);
+        assert!(msg.contains("platform_evidence_hash") || msg.contains("No "));
     }
 }
