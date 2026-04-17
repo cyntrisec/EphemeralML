@@ -14,7 +14,7 @@ ephemeral-ml-client = { path = "../client" }
 
 # Web framework
 axum = { version = "0.8", features = ["json"] }
-tokio = { version = "1.50", features = ["full"] }
+tokio = { version = "1.52", features = ["full"] }
 tower-http = { version = "0.6", features = ["cors", "trace", "limit"] }
 futures = "0.3"
 
