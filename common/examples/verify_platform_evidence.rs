@@ -48,10 +48,20 @@ fn main() -> ExitCode {
     let expected_signing_key = parse_hash("receipt_signing_key", &args[3]);
     let expected_attestation_hash = parse_hash("base_attestation_hash", &args[4]);
 
-    println!("Bundle file:              {} ({} bytes)", bundle_path, bundle_bytes.len());
+    println!(
+        "Bundle file:              {} ({} bytes)",
+        bundle_path,
+        bundle_bytes.len()
+    );
     println!("Expected bundle hash:     {}", hex::encode(expected_hash));
-    println!("Expected signing key:     {}", hex::encode(expected_signing_key));
-    println!("Expected attest hash:     {}", hex::encode(expected_attestation_hash));
+    println!(
+        "Expected signing key:     {}",
+        hex::encode(expected_signing_key)
+    );
+    println!(
+        "Expected attest hash:     {}",
+        hex::encode(expected_attestation_hash)
+    );
 
     match PlatformEvidenceBundle::verify_binding(
         &bundle_bytes,
@@ -74,13 +84,19 @@ fn main() -> ExitCode {
             if let Some(cpu) = &bundle.cpu {
                 println!("  cpu.tee_type:           {}", cpu.tee_type);
                 println!("  cpu.measurement_type:   {}", cpu.measurement_type);
-                println!("  cpu.measurements:       {} entries", cpu.measurements.len());
+                println!(
+                    "  cpu.measurements:       {} entries",
+                    cpu.measurements.len()
+                );
             }
             if let Some(cloud) = &bundle.cloud {
                 println!("  cloud.source:           {}", cloud.attestation_source);
             }
             println!("  verifier.cpu:           {}", bundle.verifier.cpu_verifier);
-            println!("  verifier.policy:        {}", bundle.verifier.policy_version);
+            println!(
+                "  verifier.policy:        {}",
+                bundle.verifier.policy_version
+            );
             ExitCode::SUCCESS
         }
         Err(e) => {

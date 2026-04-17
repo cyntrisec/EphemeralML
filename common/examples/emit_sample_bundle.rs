@@ -52,7 +52,10 @@ fn main() {
     println!("bundle_path={}", path);
     println!("bundle_bytes={}", bytes.len());
     println!("hash={}", hex::encode(hash));
-    println!("receipt_signing_key={}", hex::encode(bundle.binding.receipt_signing_key));
+    println!(
+        "receipt_signing_key={}",
+        hex::encode(bundle.binding.receipt_signing_key)
+    );
     println!(
         "base_attestation_hash={}",
         hex::encode(bundle.binding.base_attestation_hash)
