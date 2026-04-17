@@ -50,6 +50,7 @@ pub struct EnclaveIdentity {
     pub protocol_version: u32,
     pub supported_features: Vec<String>,
     pub attestation_hash: [u8; 32],
+    pub platform_evidence_hash: Option<[u8; 32]>,
     pub kms_public_key: Option<Vec<u8>>, // RSA SPKI DER
 }
 
@@ -60,6 +61,8 @@ pub struct AttestationUserData {
     pub receipt_signing_key: [u8; 32],
     pub protocol_version: u32,
     pub supported_features: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub platform_evidence_hash: Option<[u8; 32]>,
 }
 
 /// AWS Nitro Enclaves Root CA (G1)
@@ -107,46 +110,57 @@ impl AttestationVerifier {
             let attestation_hash = self.calculate_attestation_hash(doc)?;
 
             // Try to parse the CBOR payload in doc.signature to extract real keys
-            let (hpke_public_key, receipt_signing_key, measurements, kms_public_key) =
-                if let Ok(parsed) =
-                    ephemeral_ml_common::cbor::from_slice::<CborValue>(&doc.signature)
-                {
-                    if let Some(map) = cbor_as_map(&parsed) {
-                        // Extract user_data containing keys — reject if missing or unparseable
-                        let ud_bytes = get_bytes_field(map, "user_data").map_err(|_| {
-                            ClientError::Client(crate::EphemeralError::AttestationError(
-                                "Mock attestation missing user_data field".to_string(),
-                            ))
+            let (
+                hpke_public_key,
+                receipt_signing_key,
+                measurements,
+                kms_public_key,
+                platform_evidence_hash,
+            ) = if let Ok(parsed) =
+                ephemeral_ml_common::cbor::from_slice::<CborValue>(&doc.signature)
+            {
+                if let Some(map) = cbor_as_map(&parsed) {
+                    // Extract user_data containing keys — reject if missing or unparseable
+                    let ud_bytes = get_bytes_field(map, "user_data").map_err(|_| {
+                        ClientError::Client(crate::EphemeralError::AttestationError(
+                            "Mock attestation missing user_data field".to_string(),
+                        ))
+                    })?;
+                    let ud =
+                        serde_json::from_slice::<AttestationUserData>(&ud_bytes).map_err(|e| {
+                            ClientError::Client(crate::EphemeralError::AttestationError(format!(
+                                "Mock attestation user_data parse failed: {}",
+                                e
+                            )))
                         })?;
-                        let ud = serde_json::from_slice::<AttestationUserData>(&ud_bytes).map_err(
-                            |e| {
-                                ClientError::Client(crate::EphemeralError::AttestationError(
-                                    format!("Mock attestation user_data parse failed: {}", e),
-                                ))
-                            },
-                        )?;
 
-                        // Extract PCRs
-                        let pcrs = self.extract_pcrs(map).unwrap_or_else(|_| doc.pcrs.clone());
+                    // Extract PCRs
+                    let pcrs = self.extract_pcrs(map).unwrap_or_else(|_| doc.pcrs.clone());
 
-                        // Extract KMS public key
-                        let kms_pk = get_bytes_field(map, "public_key").ok();
+                    // Extract KMS public key
+                    let kms_pk = get_bytes_field(map, "public_key").ok();
 
-                        (ud.hpke_public_key, ud.receipt_signing_key, pcrs, kms_pk)
-                    } else {
-                        return Err(ClientError::Client(
-                            crate::EphemeralError::AttestationError(
-                                "Mock attestation payload is not a CBOR map".to_string(),
-                            ),
-                        ));
-                    }
+                    (
+                        ud.hpke_public_key,
+                        ud.receipt_signing_key,
+                        pcrs,
+                        kms_pk,
+                        ud.platform_evidence_hash,
+                    )
                 } else {
                     return Err(ClientError::Client(
                         crate::EphemeralError::AttestationError(
-                            "Mock attestation signature is not valid CBOR".to_string(),
+                            "Mock attestation payload is not a CBOR map".to_string(),
                         ),
                     ));
-                };
+                }
+            } else {
+                return Err(ClientError::Client(
+                    crate::EphemeralError::AttestationError(
+                        "Mock attestation signature is not valid CBOR".to_string(),
+                    ),
+                ));
+            };
 
             return Ok(EnclaveIdentity {
                 module_id: "mock-enclave".to_string(),
@@ -156,6 +170,7 @@ impl AttestationVerifier {
                 protocol_version: 1,
                 supported_features: vec![],
                 attestation_hash,
+                platform_evidence_hash,
                 kms_public_key,
             });
         }
@@ -326,6 +341,7 @@ impl AttestationVerifier {
             protocol_version: user_data.protocol_version,
             supported_features: user_data.supported_features,
             attestation_hash,
+            platform_evidence_hash: user_data.platform_evidence_hash,
             kms_public_key,
         })
     }

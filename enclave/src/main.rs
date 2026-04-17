@@ -223,6 +223,48 @@ fn classify_exit_code(err: &str) -> i32 {
     1
 }
 
+/// Default filesystem path for exporting the platform-evidence bundle.
+///
+/// The attested `platform_evidence_hash` in transport user-data commits to
+/// this bundle. Verifiers need the bundle bytes (not just the hash) to check
+/// the binding via [`ephemeral_ml_common::PlatformEvidenceBundle::verify_binding`].
+/// For now the enclave drops the bytes here and the operator is expected to
+/// deliver the file to the verifier out-of-band (copy, HTTP pull, etc.).
+/// A transport-level delivery endpoint is a later enhancement.
+pub const PLATFORM_EVIDENCE_EXPORT_PATH: &str = "/tmp/ephemeralml-platform-evidence.cbor";
+
+/// Serialize a `PlatformEvidenceBundle` to `PLATFORM_EVIDENCE_EXPORT_PATH`
+/// and log its location. Failures are logged but non-fatal: the attested
+/// hash is already committed in `user_data`; losing the export file only
+/// degrades operator observability, it does not weaken the attestation.
+#[allow(dead_code)]
+fn export_platform_evidence(bundle: &ephemeral_ml_common::PlatformEvidenceBundle, hash: &[u8; 32]) {
+    let bytes = match bundle.to_cbor_deterministic() {
+        Ok(b) => b,
+        Err(e) => {
+            warn!(
+                error = %e,
+                "Failed to encode platform-evidence bundle; export skipped"
+            );
+            return;
+        }
+    };
+    match std::fs::write(PLATFORM_EVIDENCE_EXPORT_PATH, &bytes) {
+        Ok(()) => info!(
+            path = PLATFORM_EVIDENCE_EXPORT_PATH,
+            bytes = bytes.len(),
+            hash = %hex::encode(hash),
+            "Exported platform-evidence bundle for operator retrieval"
+        ),
+        Err(e) => warn!(
+            path = PLATFORM_EVIDENCE_EXPORT_PATH,
+            error = %e,
+            "Failed to write platform-evidence bundle; operators will need \
+             the bundle delivered via another channel to verify the binding"
+        ),
+    }
+}
+
 #[tokio::main]
 async fn main() {
     // Initialize structured logging before anything else
@@ -279,7 +321,8 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
             let nonce = [0xAB; 32];
 
             println!("  Generating TDX attestation...");
-            let doc = provider.generate_attestation(&nonce, receipt_key.public_key_bytes())?;
+            let doc =
+                provider.generate_attestation(&nonce, receipt_key.public_key_bytes(), None)?;
 
             let envelope = TeeAttestationEnvelope::from_cbor(&doc.signature)
                 .map_err(|e| format!("envelope decode: {}", e))?;
@@ -1093,14 +1136,19 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
 
             // 4. Emit trust evidence bundle and capture boot attestation hash + raw bytes
             let boot_attestation_hash: [u8; 32];
+            let platform_evidence_hash: [u8; 32];
             let boot_attestation_bytes: std::sync::Arc<Vec<u8>>;
             {
+                use ephemeral_ml_common::{
+                    CpuEvidenceSummary, EvidenceBinding, EvidenceVerifierSummary, MeasurementEntry,
+                    PlatformEvidenceBundle, PLATFORM_EVIDENCE_V1,
+                };
                 use ephemeral_ml_enclave::tee_provider::TeeAttestationEnvelope;
                 use ephemeral_ml_enclave::trust_evidence::TrustEvidenceBundle;
                 use ephemeral_ml_enclave::AttestationProvider;
 
                 let boot_nonce = [0u8; 32];
-                let boot_doc = tee_provider.generate_attestation(&boot_nonce, receipt_pk)?;
+                let boot_doc = tee_provider.generate_attestation(&boot_nonce, receipt_pk, None)?;
                 let envelope = TeeAttestationEnvelope::from_cbor(&boot_doc.signature)
                     .map_err(|e| format!("trust evidence: {}", e))?;
                 let raw_quote = &envelope.tdx_wire[16..];
@@ -1121,6 +1169,51 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
                 boot_attestation_hash = bundle.quote_hash;
                 // Store raw attestation bytes for client sidecar evidence
                 boot_attestation_bytes = std::sync::Arc::new(raw_quote.to_vec());
+
+                let measurements = tee_provider.get_pcr_measurements()?;
+                let platform_evidence = PlatformEvidenceBundle {
+                    version: PLATFORM_EVIDENCE_V1,
+                    platform_profile: if cs_mode {
+                        "gcp-cs-tdx".to_string()
+                    } else {
+                        "gcp-cvm-tdx".to_string()
+                    },
+                    generated_at: ephemeral_ml_common::current_timestamp()?,
+                    binding: EvidenceBinding {
+                        receipt_signing_key: receipt_pk,
+                        hpke_public_key: Some(tee_provider.get_hpke_public_key()),
+                        model_id: args.model_id.clone(),
+                        model_hash: loaded_model_hash,
+                        base_attestation_hash: boot_attestation_hash,
+                    },
+                    cpu: Some(CpuEvidenceSummary {
+                        tee_type: "tdx".to_string(),
+                        measurement_type: "tdx-mrtd-rtmr".to_string(),
+                        measurements: vec![
+                            MeasurementEntry {
+                                index: 0,
+                                value: measurements.pcr0,
+                            },
+                            MeasurementEntry {
+                                index: 1,
+                                value: measurements.pcr1,
+                            },
+                            MeasurementEntry {
+                                index: 2,
+                                value: measurements.pcr2,
+                            },
+                        ],
+                    }),
+                    gpu: None,
+                    cloud: None,
+                    verifier: EvidenceVerifierSummary {
+                        cpu_verifier: "cml-transport-tdx".to_string(),
+                        gpu_verifier: None,
+                        policy_version: "v1-default".to_string(),
+                    },
+                };
+                platform_evidence_hash = platform_evidence.document_hash()?;
+                export_platform_evidence(&platform_evidence, &platform_evidence_hash);
             }
 
             // 5. Create transport attestation bridge (for SecureChannel handshake)
@@ -1129,10 +1222,16 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
                 if args.synthetic {
                     warn!("Using synthetic TDX provider for transport bridge — NOT FOR PRODUCTION");
                     let p = TeeAttestationProvider::synthetic();
-                    Box::new(TeeAttestationBridge::new(p, receipt_pk))
+                    Box::new(
+                        TeeAttestationBridge::new(p, receipt_pk)
+                            .with_platform_evidence_hash(platform_evidence_hash),
+                    )
                 } else if has_tsm {
                     let p = TeeAttestationProvider::new()?;
-                    Box::new(TeeAttestationBridge::new(p, receipt_pk))
+                    Box::new(
+                        TeeAttestationBridge::new(p, receipt_pk)
+                            .with_platform_evidence_hash(platform_evidence_hash),
+                    )
                 } else if cs_mode {
                     // CS mode without configfs-tsm: use Launcher JWT for transport attestation.
                     // The WIP audience is needed for the JWT audience field.
@@ -1151,7 +1250,8 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
                         ephemeral_ml_enclave::cs_transport_bridge::CsTransportAttestationBridge::new(
                             receipt_pk,
                             wip_audience.to_string(),
-                        ),
+                        )
+                        .with_platform_evidence_hash(platform_evidence_hash),
                     )
                 } else {
                     return Err("No TDX attestation source for transport bridge.\n\
@@ -1199,6 +1299,7 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
                     bridge.as_ref(),
                     &client_verifier,
                     boot_attestation_hash,
+                    Some(platform_evidence_hash),
                     Some(boot_attestation_bytes),
                     manifest_arc,
                     loaded_model_hash,
@@ -1217,6 +1318,7 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
                 tee_provider,
                 receipt_key,
                 Some(boot_attestation_hash),
+                Some(platform_evidence_hash),
                 None,
                 loaded_model_hash,
                 loaded_model_hash_scheme.clone(),
@@ -1386,6 +1488,7 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
                 None,
                 None,
                 None,
+                None,
                 args.receipt_issuer.clone(),
             )
             .await
@@ -1395,6 +1498,7 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
                 engine,
                 mock_provider,
                 receipt_key,
+                None,
                 None,
                 None,
                 None,
@@ -1527,23 +1631,75 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
             "Model registered successfully"
         );
 
-        let (boot_attestation_hash, boot_attestation_bytes) = {
+        let ((boot_attestation_hash, platform_evidence_hash), boot_attestation_bytes) = {
+            use ephemeral_ml_common::{
+                CloudEvidenceSummary, CpuEvidenceSummary, EvidenceBinding, EvidenceVerifierSummary,
+                MeasurementEntry, PlatformEvidenceBundle, PLATFORM_EVIDENCE_V1,
+            };
             use ephemeral_ml_enclave::AttestationProvider;
             use sha2::{Digest, Sha256};
 
             let boot_nonce = [0u8; 32];
-            let boot_doc = attestation_provider.generate_attestation(&boot_nonce, receipt_pk)?;
+            let boot_doc =
+                attestation_provider.generate_attestation(&boot_nonce, receipt_pk, None)?;
             let boot_doc_bytes = boot_doc.signature;
             let attestation_hash: [u8; 32] = Sha256::digest(&boot_doc_bytes).into();
+            let measurements = attestation_provider.get_pcr_measurements()?;
+            let platform_evidence = PlatformEvidenceBundle {
+                version: PLATFORM_EVIDENCE_V1,
+                platform_profile: "aws-nitro-enclave".to_string(),
+                generated_at: ephemeral_ml_common::current_timestamp()?,
+                binding: EvidenceBinding {
+                    receipt_signing_key: receipt_pk,
+                    hpke_public_key: Some(attestation_provider.get_hpke_public_key()),
+                    model_id: args.model_id.clone(),
+                    model_hash,
+                    base_attestation_hash: attestation_hash,
+                },
+                cpu: Some(CpuEvidenceSummary {
+                    tee_type: "nitro".to_string(),
+                    measurement_type: "nitro-pcr".to_string(),
+                    measurements: vec![
+                        MeasurementEntry {
+                            index: 0,
+                            value: measurements.pcr0,
+                        },
+                        MeasurementEntry {
+                            index: 1,
+                            value: measurements.pcr1,
+                        },
+                        MeasurementEntry {
+                            index: 2,
+                            value: measurements.pcr2,
+                        },
+                    ],
+                }),
+                gpu: None,
+                cloud: Some(CloudEvidenceSummary {
+                    attestation_source: "aws-nitro".to_string(),
+                    launcher_jwt_sha256: None,
+                    image_digest: None,
+                    project_id: None,
+                    zone: None,
+                }),
+                verifier: EvidenceVerifierSummary {
+                    cpu_verifier: "nitro-cose".to_string(),
+                    gpu_verifier: None,
+                    policy_version: "v1-default".to_string(),
+                },
+            };
+            let platform_evidence_hash = platform_evidence.document_hash()?;
+            export_platform_evidence(&platform_evidence, &platform_evidence_hash);
 
             info!(
                 step = "boot_evidence",
                 attestation_doc_hash = %hex::encode(attestation_hash),
+                platform_evidence_hash = %hex::encode(platform_evidence_hash),
                 bytes = boot_doc_bytes.len(),
                 "Captured Nitro boot attestation for receipt binding"
             );
 
-            (attestation_hash, boot_doc_bytes)
+            ((attestation_hash, platform_evidence_hash), boot_doc_bytes)
         };
 
         // Build stage executor and attestation bridge (with AIR v1 receipt support)
@@ -1552,12 +1708,14 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
             attestation_provider.clone(),
             receipt_key,
             Some(boot_attestation_hash),
+            Some(platform_evidence_hash),
             Some(boot_attestation_bytes),
             model_hash,
             None,
             args.receipt_issuer.clone(),
         );
-        let bridge = AttestationBridge::new(attestation_provider, receipt_pk);
+        let bridge = AttestationBridge::new(attestation_provider, receipt_pk)
+            .with_platform_evidence_hash(platform_evidence_hash);
 
         // Use MockVerifier for host connections: the host orchestrator is NOT inside a
         // TEE and cannot produce Nitro attestation. This is a one-way attestation model —

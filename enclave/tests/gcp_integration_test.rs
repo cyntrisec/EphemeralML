@@ -78,7 +78,9 @@ mod tests {
         let receipt_key = [0u8; 32];
 
         use ephemeral_ml_enclave::AttestationProvider;
-        let doc = provider.generate_attestation(&nonce, receipt_key).unwrap();
+        let doc = provider
+            .generate_attestation(&nonce, receipt_key, None)
+            .unwrap();
 
         // Decode the CBOR envelope
         use ephemeral_ml_enclave::tee_provider::TeeAttestationEnvelope;
@@ -113,7 +115,7 @@ mod tests {
 
         let provider = TeeAttestationProvider::synthetic();
         let doc = provider
-            .generate_attestation(&[0xAB; 32], [0x42; 32])
+            .generate_attestation(&[0xAB; 32], [0x42; 32], None)
             .unwrap();
 
         let original_hash: [u8; 32] = Sha256::digest(&doc.signature).into();
@@ -139,7 +141,7 @@ mod tests {
 
         let provider = TeeAttestationProvider::synthetic();
         let doc = provider
-            .generate_attestation(&[0u8; 32], [0u8; 32])
+            .generate_attestation(&[0u8; 32], [0u8; 32], None)
             .unwrap();
 
         let mut envelope = TeeAttestationEnvelope::from_cbor(&doc.signature).unwrap();
@@ -227,10 +229,10 @@ mod tests {
         let provider = TeeAttestationProvider::synthetic();
 
         let doc1 = provider
-            .generate_attestation(&[0xAA; 32], [0u8; 32])
+            .generate_attestation(&[0xAA; 32], [0u8; 32], None)
             .unwrap();
         let doc2 = provider
-            .generate_attestation(&[0xBB; 32], [0u8; 32])
+            .generate_attestation(&[0xBB; 32], [0u8; 32], None)
             .unwrap();
 
         let envelope1 = TeeAttestationEnvelope::from_cbor(&doc1.signature).unwrap();

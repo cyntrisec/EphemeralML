@@ -24,6 +24,7 @@ pub struct CsTransportAttestationBridge {
     token_client: CsTokenClient,
     receipt_public_key: [u8; 32],
     wip_audience: String,
+    platform_evidence_hash: Option<[u8; 32]>,
 }
 
 impl CsTransportAttestationBridge {
@@ -37,6 +38,7 @@ impl CsTransportAttestationBridge {
             token_client: CsTokenClient::new(),
             receipt_public_key,
             wip_audience,
+            platform_evidence_hash: None,
         }
     }
 
@@ -51,7 +53,13 @@ impl CsTransportAttestationBridge {
             token_client,
             receipt_public_key,
             wip_audience,
+            platform_evidence_hash: None,
         }
+    }
+
+    pub fn with_platform_evidence_hash(mut self, platform_evidence_hash: [u8; 32]) -> Self {
+        self.platform_evidence_hash = Some(platform_evidence_hash);
+        self
     }
 }
 
@@ -96,7 +104,8 @@ impl confidential_ml_transport::AttestationProvider for CsTransportAttestationBr
             self.receipt_public_key,
             handshake_pk.to_vec(),
             nonce_bytes.to_vec(),
-        );
+        )
+        .with_platform_evidence_hash_opt(self.platform_evidence_hash);
 
         // Validate structure before encoding.
         envelope.validate_structure().map_err(|e| {
@@ -193,7 +202,8 @@ mod tests {
             CsTokenClient::with_socket_path(socket_str),
             [0xAA; 32],
             "test-audience".to_string(),
-        );
+        )
+        .with_platform_evidence_hash([0xCC; 32]);
 
         let handshake_pk = [0xBB; 32];
         let doc = bridge
@@ -209,6 +219,7 @@ mod tests {
         assert_eq!(envelope.nonce, test_nonce.to_vec());
         assert_eq!(envelope.protocol_version, 1);
         assert_eq!(envelope.launcher_jwt, jwt);
+        assert_eq!(envelope.platform_evidence_hash, Some([0xCC; 32]));
 
         // Validate structure
         envelope.validate_structure().unwrap();

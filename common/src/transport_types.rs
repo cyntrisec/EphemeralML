@@ -22,8 +22,11 @@ pub struct EphemeralUserData {
     /// Supported features for negotiation
     pub supported_features: Vec<String>,
     /// RSA public key for KMS key wrapping (DER-encoded, optional)
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub kms_public_key: Option<Vec<u8>>,
+    /// Hash of the canonical platform evidence bundle for this session.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub platform_evidence_hash: Option<[u8; 32]>,
 }
 
 impl EphemeralUserData {
@@ -37,11 +40,25 @@ impl EphemeralUserData {
             protocol_version,
             supported_features,
             kms_public_key: None,
+            platform_evidence_hash: None,
         }
     }
 
     pub fn with_kms_key(mut self, kms_public_key: Vec<u8>) -> Self {
         self.kms_public_key = Some(kms_public_key);
+        self
+    }
+
+    pub fn with_platform_evidence_hash(mut self, platform_evidence_hash: [u8; 32]) -> Self {
+        self.platform_evidence_hash = Some(platform_evidence_hash);
+        self
+    }
+
+    pub fn with_platform_evidence_hash_opt(
+        mut self,
+        platform_evidence_hash: Option<[u8; 32]>,
+    ) -> Self {
+        self.platform_evidence_hash = platform_evidence_hash;
         self
     }
 
@@ -73,8 +90,11 @@ impl EphemeralUserData {
 ///   "handshake_public_key": <32 bytes>,   // X25519 DH key from SecureChannel handshake
 ///   "launcher_jwt": "<OIDC JWT string>",  // Confidential Space Launcher token
 ///   "nonce": <bytes>,                     // Handshake nonce (binds attestation to session)
-///   "platform": "cs-tdx",                // Platform identifier
-///   "protocol_version": 1,               // Protocol version
+///   "platform": "cs-tdx",                 // Platform identifier
+///   "platform_evidence_hash": <32 bytes>?, // Optional. SHA-256 of canonical platform
+///                                         // evidence bundle (see `platform_evidence.rs`).
+///                                         // Omitted if the enclave did not build a bundle.
+///   "protocol_version": 1,                // Protocol version
 ///   "receipt_signing_key": <32 bytes>,    // Ed25519 public key for receipt verification
 /// }
 /// ```
@@ -103,6 +123,10 @@ pub struct CsTransportAttestation {
 
     /// Protocol version for forward compatibility.
     pub protocol_version: u32,
+
+    /// Hash of the canonical platform evidence bundle for this session.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub platform_evidence_hash: Option<[u8; 32]>,
 }
 
 /// Expected platform string for Confidential Space TDX attestation envelopes.
@@ -129,7 +153,21 @@ impl CsTransportAttestation {
             handshake_public_key,
             nonce,
             protocol_version: 1,
+            platform_evidence_hash: None,
         }
+    }
+
+    pub fn with_platform_evidence_hash(mut self, platform_evidence_hash: [u8; 32]) -> Self {
+        self.platform_evidence_hash = Some(platform_evidence_hash);
+        self
+    }
+
+    pub fn with_platform_evidence_hash_opt(
+        mut self,
+        platform_evidence_hash: Option<[u8; 32]>,
+    ) -> Self {
+        self.platform_evidence_hash = platform_evidence_hash;
+        self
     }
 
     /// Encode as deterministic CBOR (sorted map keys for consistent hashing).
@@ -218,6 +256,8 @@ pub struct ConnectionState {
     pub receipt_signing_key: ReceiptSigningKey,
     /// SHA-256 hash of the attestation document
     pub attestation_hash: [u8; 32],
+    /// Hash of the canonical platform evidence bundle, if one was generated.
+    pub platform_evidence_hash: Option<[u8; 32]>,
     /// Client identifier
     pub client_id: String,
     /// Monotonic sequence number for receipts
@@ -240,6 +280,7 @@ impl ConnectionState {
             session_id,
             receipt_signing_key,
             attestation_hash,
+            platform_evidence_hash: None,
             client_id,
             next_sequence: 0,
             model_id: String::new(),
@@ -252,6 +293,19 @@ impl ConnectionState {
         let seq = self.next_sequence;
         self.next_sequence += 1;
         seq
+    }
+
+    pub fn with_platform_evidence_hash(mut self, platform_evidence_hash: [u8; 32]) -> Self {
+        self.platform_evidence_hash = Some(platform_evidence_hash);
+        self
+    }
+
+    pub fn with_platform_evidence_hash_opt(
+        mut self,
+        platform_evidence_hash: Option<[u8; 32]>,
+    ) -> Self {
+        self.platform_evidence_hash = platform_evidence_hash;
+        self
     }
 }
 
@@ -346,6 +400,15 @@ mod tests {
     }
 
     #[test]
+    fn test_ephemeral_user_data_with_platform_evidence_hash() {
+        let data =
+            EphemeralUserData::new([3u8; 32], 1, vec![]).with_platform_evidence_hash([0xAB; 32]);
+        let cbor = data.to_cbor().unwrap();
+        let decoded = EphemeralUserData::from_cbor(&cbor).unwrap();
+        assert_eq!(decoded.platform_evidence_hash, Some([0xAB; 32]));
+    }
+
+    #[test]
     fn test_connection_state_sequence() {
         let key = ReceiptSigningKey::generate().unwrap();
         let mut state = ConnectionState::new(
@@ -354,10 +417,12 @@ mod tests {
             [0u8; 32],
             "client-1".to_string(),
             1,
-        );
+        )
+        .with_platform_evidence_hash([0xCD; 32]);
         assert_eq!(state.next_seq(), 0);
         assert_eq!(state.next_seq(), 1);
         assert_eq!(state.next_seq(), 2);
+        assert_eq!(state.platform_evidence_hash, Some([0xCD; 32]));
     }
 
     fn make_test_jwt() -> String {
@@ -376,6 +441,20 @@ mod tests {
         let cbor = att.to_cbor_deterministic().unwrap();
         let decoded = CsTransportAttestation::from_cbor(&cbor).unwrap();
         assert_eq!(att, decoded);
+    }
+
+    #[test]
+    fn test_cs_transport_attestation_with_platform_evidence_hash() {
+        let att = CsTransportAttestation::new(
+            make_test_jwt(),
+            [0xAA; 32],
+            vec![0xBB; 32],
+            vec![0xCC; 16],
+        )
+        .with_platform_evidence_hash([0xEF; 32]);
+        let cbor = att.to_cbor_deterministic().unwrap();
+        let decoded = CsTransportAttestation::from_cbor(&cbor).unwrap();
+        assert_eq!(decoded.platform_evidence_hash, Some([0xEF; 32]));
     }
 
     #[test]

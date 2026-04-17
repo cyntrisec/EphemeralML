@@ -66,6 +66,7 @@ mod tests {
         let provider = MockAttestationProvider::new();
         let mut state = ConnectionState {
             attestation_hash: [7u8; 32],
+            platform_evidence_hash: None,
             receipt_signing_key: ReceiptSigningKey::generate().unwrap(),
             session_id: "test-session".into(),
             client_id: "test-client".into(),

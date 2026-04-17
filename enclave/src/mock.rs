@@ -73,6 +73,7 @@ impl MockAttestationProvider {
         &self,
         nonce: &[u8],
         receipt_public_key: [u8; 32],
+        platform_evidence_hash: Option<[u8; 32]>,
     ) -> Result<AttestationDocument> {
         if !self.valid_attestation {
             return Err(EnclaveError::Enclave(EphemeralError::AttestationError(
@@ -86,6 +87,8 @@ impl MockAttestationProvider {
             receipt_signing_key: [u8; 32],
             protocol_version: u32,
             supported_features: Vec<String>,
+            #[serde(default, skip_serializing_if = "Option::is_none")]
+            platform_evidence_hash: Option<[u8; 32]>,
         }
 
         let user_data = MockAttestationUserData {
@@ -93,6 +96,7 @@ impl MockAttestationProvider {
             receipt_signing_key: receipt_public_key,
             protocol_version: 1,
             supported_features: vec!["gateway".to_string()],
+            platform_evidence_hash,
         };
 
         let user_data_bytes = serde_json::to_vec(&user_data).map_err(|e| {
@@ -171,8 +175,9 @@ impl AttestationProvider for MockAttestationProvider {
         &self,
         nonce: &[u8],
         receipt_public_key: [u8; 32],
+        platform_evidence_hash: Option<[u8; 32]>,
     ) -> Result<AttestationDocument> {
-        self.generate_attestation_with_keys(nonce, receipt_public_key)
+        self.generate_attestation_with_keys(nonce, receipt_public_key, platform_evidence_hash)
     }
 
     fn get_pcr_measurements(&self) -> Result<PcrMeasurements> {

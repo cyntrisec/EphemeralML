@@ -15,6 +15,7 @@ use confidential_ml_transport::AttestationProvider as CmlAttestationProvider;
 pub struct AttestationBridge<P: EphemeralAttestationProvider> {
     inner: P,
     receipt_public_key: [u8; 32],
+    platform_evidence_hash: Option<[u8; 32]>,
 }
 
 impl<P: EphemeralAttestationProvider> AttestationBridge<P> {
@@ -29,7 +30,13 @@ impl<P: EphemeralAttestationProvider> AttestationBridge<P> {
         Self {
             inner,
             receipt_public_key,
+            platform_evidence_hash: None,
         }
+    }
+
+    pub fn with_platform_evidence_hash(mut self, platform_evidence_hash: [u8; 32]) -> Self {
+        self.platform_evidence_hash = Some(platform_evidence_hash);
+        self
     }
 
     /// Get a reference to the inner provider (for KMS decrypt, PCRs, etc.)
@@ -55,7 +62,12 @@ impl<P: EphemeralAttestationProvider> CmlAttestationProvider for AttestationBrid
         // This is required for the handshake verifier to confirm key binding.
         let doc = self
             .inner
-            .generate_attestation_for_transport(nonce_bytes, self.receipt_public_key, public_key)
+            .generate_attestation_for_transport(
+                nonce_bytes,
+                self.receipt_public_key,
+                public_key,
+                self.platform_evidence_hash,
+            )
             .map_err(|e| {
                 confidential_ml_transport::error::AttestError::GenerationFailed(format!(
                     "Attestation generation failed: {}",
@@ -128,6 +140,38 @@ mod tests {
         let receipt_key = [0xBB; 32];
         let bridge = AttestationBridge::new(mock, receipt_key);
         assert_eq!(bridge.receipt_public_key(), &[0xBB; 32]);
+    }
+
+    #[tokio::test]
+    async fn bridge_embeds_platform_evidence_hash_in_attestation() {
+        let mock = MockAttestationProvider::new();
+        let bridge =
+            AttestationBridge::new(mock, [0xAA; 32]).with_platform_evidence_hash([0xCC; 32]);
+
+        let doc = bridge.attest(None, Some(&[0xAB; 32]), None).await.unwrap();
+
+        use ciborium::Value;
+
+        let cbor: Value = ephemeral_ml_common::cbor::from_slice(&doc.raw).unwrap();
+        let map = match cbor {
+            Value::Map(m) => m,
+            _ => panic!("Expected CBOR map"),
+        };
+
+        let ud_key = Value::Text("user_data".to_string());
+        let ud_bytes = match ephemeral_ml_common::cbor::map_get(&map, &ud_key) {
+            Some(Value::Bytes(b)) => b,
+            _ => panic!("No user_data bytes in attestation"),
+        };
+
+        let ud: serde_json::Value = serde_json::from_slice(ud_bytes).unwrap();
+        let peh = ud["platform_evidence_hash"]
+            .as_array()
+            .expect("platform_evidence_hash should be an array");
+        assert_eq!(peh.len(), 32);
+        for byte in peh {
+            assert_eq!(byte.as_u64().unwrap() as u8, 0xCC);
+        }
     }
 
     #[tokio::test]

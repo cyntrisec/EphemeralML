@@ -137,6 +137,7 @@ pub struct SecureEnclaveClient {
     pub receipt_verifier: ReceiptVerifier,
     server_receipt_signing_key: Option<[u8; 32]>,
     server_attestation_hash: Option<[u8; 32]>,
+    server_platform_evidence_hash: Option<[u8; 32]>,
     /// Tracks the last seen sequence number for replay detection
     last_sequence_number: u64,
     /// Maximum allowed receipt age in seconds (default: 5 minutes)
@@ -151,6 +152,7 @@ impl SecureEnclaveClient {
             receipt_verifier: ReceiptVerifier::new(vec![]),
             server_receipt_signing_key: None,
             server_attestation_hash: None,
+            server_platform_evidence_hash: None,
             last_sequence_number: u64::MAX, // sentinel: no receipts seen yet
             max_receipt_age_secs: 300,      // 5 minutes
         }
@@ -167,6 +169,7 @@ impl SecureEnclaveClient {
             receipt_verifier: ReceiptVerifier::new(vec![]),
             server_receipt_signing_key: None,
             server_attestation_hash: None,
+            server_platform_evidence_hash: None,
             last_sequence_number: u64::MAX, // sentinel: no receipts seen yet
             max_receipt_age_secs: 300,
         }
@@ -180,6 +183,10 @@ impl SecureEnclaveClient {
     /// Returns the server's Ed25519 receipt signing public key, if available.
     pub fn server_receipt_signing_key(&self) -> Option<[u8; 32]> {
         self.server_receipt_signing_key
+    }
+
+    pub fn server_platform_evidence_hash(&self) -> Option<[u8; 32]> {
+        self.server_platform_evidence_hash
     }
 }
 
@@ -241,6 +248,7 @@ impl SecureClient for SecureEnclaveClient {
             if let Some(ref user_data_bytes) = attestation.user_data {
                 if let Ok(user_data) = EphemeralUserData::from_cbor(user_data_bytes) {
                     self.server_receipt_signing_key = Some(user_data.receipt_signing_key);
+                    self.server_platform_evidence_hash = user_data.platform_evidence_hash;
                 }
             }
         }

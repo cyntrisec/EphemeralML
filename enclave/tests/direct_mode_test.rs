@@ -108,6 +108,7 @@ async fn direct_mode_happy_path() {
             None,
             None,
             None,
+            None,
             "cyntrisec.com".to_string(),
         )
         .await
@@ -245,6 +246,7 @@ async fn direct_mode_malformed_json_no_crash() {
             None,
             None,
             None,
+            None,
             "cyntrisec.com".to_string(),
         )
         .await
@@ -355,6 +357,7 @@ async fn setup_direct_server_with_manifest(
             &transport_provider,
             &transport_verifier,
             [0u8; 32],
+            None,
             None,
             manifest_arc,
             None,
@@ -646,6 +649,7 @@ async fn direct_mode_accepts_multiple_sequential_sessions() {
             &transport_provider,
             &transport_verifier,
             [0u8; 32],
+            None,
             None,
             None,
             None,

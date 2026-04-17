@@ -57,7 +57,8 @@ impl CoseVerifierBridge {
             identity.receipt_signing_key,
             identity.protocol_version,
             identity.supported_features.clone(),
-        );
+        )
+        .with_platform_evidence_hash_opt(identity.platform_evidence_hash);
         let ud_cbor = user_data.to_cbor().ok();
 
         VerifiedAttestation {
@@ -609,7 +610,8 @@ impl TdxEnvelopeVerifierBridge {
             receipt_key,
             envelope.protocol_version,
             vec!["cs-tdx".to_string()],
-        );
+        )
+        .with_platform_evidence_hash_opt(envelope.platform_evidence_hash);
         let ud_cbor = ud.to_cbor().map_err(|e| {
             AttestError::VerificationFailed(format!("CS user_data CBOR encode failed: {}", e))
         })?;
@@ -1029,6 +1031,27 @@ mod tests {
         assert_eq!(verified.public_key, Some(vec![0xBB; 32]));
         assert_eq!(verified.nonce, Some(nonce.to_vec()));
         assert!(verified.measurements.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_cs_envelope_preserves_platform_evidence_hash() {
+        let (enc_key, dec_key) = test_rsa_keys();
+        let nonce = b"test-nonce-value";
+        let nonce_hex = hex::encode(nonce);
+        let jwt = make_test_jwt(
+            &enc_key,
+            "https://confidentialcomputing.googleapis.com",
+            9999999999,
+            &[&nonce_hex],
+        );
+        let envelope = make_cs_envelope(&jwt, nonce).with_platform_evidence_hash([0x5A; 32]);
+        let cbor = envelope.to_cbor_deterministic().unwrap();
+
+        let verifier = make_verifier(dec_key);
+        let doc = CmlAttestationDocument::new(cbor);
+        let verified = verifier.verify(&doc).await.unwrap();
+        let user_data = EphemeralUserData::from_cbor(verified.user_data.as_ref().unwrap()).unwrap();
+        assert_eq!(user_data.platform_evidence_hash, Some([0x5A; 32]));
     }
 
     #[tokio::test]

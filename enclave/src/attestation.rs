@@ -29,6 +29,8 @@ pub struct AttestationUserData {
     pub receipt_signing_key: [u8; 32], // Ed25519 public key for receipts
     pub protocol_version: u32,         // Fixed to 1 for v1
     pub supported_features: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub platform_evidence_hash: Option<[u8; 32]>,
 }
 
 /// Ephemeral key pair for session establishment (X25519)
@@ -68,6 +70,7 @@ pub trait AttestationProvider: Send + Sync {
         &self,
         nonce: &[u8],
         receipt_public_key: [u8; 32],
+        platform_evidence_hash: Option<[u8; 32]>,
     ) -> Result<AttestationDocument>;
 
     /// Get current PCR measurements
@@ -118,8 +121,9 @@ pub trait AttestationProvider: Send + Sync {
         nonce: &[u8],
         receipt_public_key: [u8; 32],
         _handshake_public_key: Option<&[u8]>,
+        platform_evidence_hash: Option<[u8; 32]>,
     ) -> Result<AttestationDocument> {
-        self.generate_attestation(nonce, receipt_public_key)
+        self.generate_attestation(nonce, receipt_public_key, platform_evidence_hash)
     }
 
     /// Return the platform measurement type for receipt encoding.
@@ -267,6 +271,7 @@ impl AttestationProvider for NSMAttestationProvider {
         &self,
         nonce: &[u8],
         receipt_public_key: [u8; 32],
+        platform_evidence_hash: Option<[u8; 32]>,
     ) -> Result<AttestationDocument> {
         // Create user data with embedded keys
         let user_data = AttestationUserData {
@@ -274,6 +279,7 @@ impl AttestationProvider for NSMAttestationProvider {
             receipt_signing_key: receipt_public_key,
             protocol_version: 1,
             supported_features: vec!["gateway".to_string()], // v1 only supports Gateway mode
+            platform_evidence_hash,
         };
 
         let user_data_bytes = serde_json::to_vec(&user_data).map_err(|e| {
@@ -307,12 +313,14 @@ impl AttestationProvider for NSMAttestationProvider {
         nonce: &[u8],
         receipt_public_key: [u8; 32],
         handshake_public_key: Option<&[u8]>,
+        platform_evidence_hash: Option<[u8; 32]>,
     ) -> Result<AttestationDocument> {
         let user_data = AttestationUserData {
             hpke_public_key: self.hpke_keypair.public_key,
             receipt_signing_key: receipt_public_key,
             protocol_version: 1,
             supported_features: vec!["gateway".to_string()],
+            platform_evidence_hash,
         };
 
         let user_data_bytes = serde_json::to_vec(&user_data).map_err(|e| {
@@ -451,17 +459,24 @@ impl AttestationProvider for DefaultAttestationProvider {
         &self,
         nonce: &[u8],
         receipt_public_key: [u8; 32],
+        platform_evidence_hash: Option<[u8; 32]>,
     ) -> Result<AttestationDocument> {
         #[cfg(feature = "production")]
         {
-            self.nsm_provider
-                .generate_attestation(nonce, receipt_public_key)
+            self.nsm_provider.generate_attestation(
+                nonce,
+                receipt_public_key,
+                platform_evidence_hash,
+            )
         }
 
         #[cfg(all(feature = "mock", not(feature = "production")))]
         {
-            self.mock_provider
-                .generate_attestation(nonce, receipt_public_key)
+            self.mock_provider.generate_attestation(
+                nonce,
+                receipt_public_key,
+                platform_evidence_hash,
+            )
         }
     }
 
@@ -470,6 +485,7 @@ impl AttestationProvider for DefaultAttestationProvider {
         nonce: &[u8],
         receipt_public_key: [u8; 32],
         handshake_public_key: Option<&[u8]>,
+        platform_evidence_hash: Option<[u8; 32]>,
     ) -> Result<AttestationDocument> {
         #[cfg(feature = "production")]
         {
@@ -477,6 +493,7 @@ impl AttestationProvider for DefaultAttestationProvider {
                 nonce,
                 receipt_public_key,
                 handshake_public_key,
+                platform_evidence_hash,
             )
         }
 
@@ -484,8 +501,11 @@ impl AttestationProvider for DefaultAttestationProvider {
         {
             // Mock mode doesn't support key binding override
             let _ = handshake_public_key;
-            self.mock_provider
-                .generate_attestation(nonce, receipt_public_key)
+            self.mock_provider.generate_attestation(
+                nonce,
+                receipt_public_key,
+                platform_evidence_hash,
+            )
         }
     }
 
@@ -600,6 +620,7 @@ mod tests {
             receipt_signing_key: [2u8; 32],
             protocol_version: 1,
             supported_features: vec!["gateway".to_string()],
+            platform_evidence_hash: None,
         };
 
         let serialized = serde_json::to_vec(&user_data).unwrap();
@@ -624,7 +645,9 @@ mod tests {
         let receipt_pk = [42u8; 32];
 
         // Should work in mock mode
-        let attestation = provider.generate_attestation(nonce, receipt_pk).unwrap();
+        let attestation = provider
+            .generate_attestation(nonce, receipt_pk, None)
+            .unwrap();
         assert_eq!(attestation.module_id, "mock-enclave");
         assert_eq!(attestation.nonce, Some(nonce.to_vec()));
 
@@ -643,7 +666,9 @@ mod tests {
         let nonce = b"test_nonce_12345678901234567890";
         let receipt_pk = [42u8; 32];
 
-        let attestation = provider.generate_attestation(nonce, receipt_pk).unwrap();
+        let attestation = provider
+            .generate_attestation(nonce, receipt_pk, None)
+            .unwrap();
 
         // Verify attestation contains expected fields
         assert_eq!(attestation.module_id, "mock-enclave");
@@ -661,7 +686,7 @@ mod tests {
         let nonce = b"test_nonce_12345678901234567890";
 
         // Should fail when configured to fail
-        let result = provider.generate_attestation(nonce, [0u8; 32]);
+        let result = provider.generate_attestation(nonce, [0u8; 32], None);
         assert!(result.is_err());
     }
 }

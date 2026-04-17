@@ -251,6 +251,7 @@ impl AttestationProvider for TeeAttestationProvider {
         &self,
         nonce: &[u8],
         receipt_public_key: [u8; 32],
+        platform_evidence_hash: Option<[u8; 32]>,
     ) -> Result<AttestationDocument> {
         // Build REPORTDATA: pk[0..32] || nonce[32..64]
         // Nonce must be exactly 32 bytes for canonical session binding.
@@ -276,6 +277,7 @@ impl AttestationProvider for TeeAttestationProvider {
             receipt_signing_key: receipt_public_key,
             protocol_version: 1,
             supported_features: vec!["gateway".to_string()],
+            platform_evidence_hash,
         };
         let user_data_bytes = serde_json::to_vec(&user_data).map_err(|e| {
             EnclaveError::Enclave(EphemeralError::SerializationError(e.to_string()))
@@ -407,6 +409,7 @@ impl TeeAttestationProvider {
         nonce: &[u8],
         handshake_pk: &[u8; 32],
         receipt_public_key: [u8; 32],
+        platform_evidence_hash: Option<[u8; 32]>,
     ) -> Result<AttestationDocument> {
         if nonce.len() != 32 {
             return Err(EnclaveError::Enclave(EphemeralError::ValidationError(
@@ -426,6 +429,7 @@ impl TeeAttestationProvider {
             receipt_signing_key: receipt_public_key,
             protocol_version: 1,
             supported_features: vec!["gateway".to_string()],
+            platform_evidence_hash,
         };
         let user_data_bytes = serde_json::to_vec(&user_data).map_err(|e| {
             EnclaveError::Enclave(EphemeralError::SerializationError(e.to_string()))
@@ -460,6 +464,7 @@ impl TeeAttestationProvider {
 pub struct TeeAttestationBridge {
     inner: TeeAttestationProvider,
     receipt_public_key: [u8; 32],
+    platform_evidence_hash: Option<[u8; 32]>,
 }
 
 impl TeeAttestationBridge {
@@ -467,7 +472,13 @@ impl TeeAttestationBridge {
         Self {
             inner,
             receipt_public_key,
+            platform_evidence_hash: None,
         }
+    }
+
+    pub fn with_platform_evidence_hash(mut self, platform_evidence_hash: [u8; 32]) -> Self {
+        self.platform_evidence_hash = Some(platform_evidence_hash);
+        self
     }
 
     pub fn inner(&self) -> &TeeAttestationProvider {
@@ -497,7 +508,12 @@ impl confidential_ml_transport::AttestationProvider for TeeAttestationBridge {
                 handshake_pk.copy_from_slice(pk);
             }
             self.inner
-                .generate_transport_attestation(nonce_bytes, &handshake_pk, self.receipt_public_key)
+                .generate_transport_attestation(
+                    nonce_bytes,
+                    &handshake_pk,
+                    self.receipt_public_key,
+                    self.platform_evidence_hash,
+                )
                 .map_err(|e| {
                     confidential_ml_transport::error::AttestError::GenerationFailed(format!(
                         "TEE attestation failed: {}",
@@ -507,7 +523,11 @@ impl confidential_ml_transport::AttestationProvider for TeeAttestationBridge {
         } else {
             // Fallback: no DH key provided, use HPKE key (boot-time attestation).
             self.inner
-                .generate_attestation(nonce_bytes, self.receipt_public_key)
+                .generate_attestation(
+                    nonce_bytes,
+                    self.receipt_public_key,
+                    self.platform_evidence_hash,
+                )
                 .map_err(|e| {
                     confidential_ml_transport::error::AttestError::GenerationFailed(format!(
                         "TEE attestation failed: {}",
@@ -577,7 +597,9 @@ mod tests {
         let receipt_key = [42u8; 32];
         let nonce = [0xAB; 32];
 
-        let doc = provider.generate_attestation(&nonce, receipt_key).unwrap();
+        let doc = provider
+            .generate_attestation(&nonce, receipt_key, None)
+            .unwrap();
 
         assert_eq!(doc.module_id, "tdx-cvm");
         assert_eq!(doc.nonce, Some(nonce.to_vec()));
@@ -602,7 +624,9 @@ mod tests {
     fn test_synthetic_quote_measurements() {
         let provider = TeeAttestationProvider::synthetic();
         let nonce = [0u8; 32];
-        let doc = provider.generate_attestation(&nonce, [0u8; 32]).unwrap();
+        let doc = provider
+            .generate_attestation(&nonce, [0u8; 32], None)
+            .unwrap();
 
         // MRTD should be 0xAA (our synthetic constant)
         assert!(doc.pcrs.pcr0.iter().all(|&b| b == 0xAA));
@@ -619,7 +643,9 @@ mod tests {
         let nonce = [0x42; 32];
         let receipt_key = [0x99; 32];
 
-        let doc = provider.generate_attestation(&nonce, receipt_key).unwrap();
+        let doc = provider
+            .generate_attestation(&nonce, receipt_key, None)
+            .unwrap();
 
         // Extract TDX wire, decode raw quote, check REPORTDATA
         let envelope = TeeAttestationEnvelope::from_cbor(&doc.signature).unwrap();
@@ -639,7 +665,7 @@ mod tests {
     fn test_tdx_wire_format_compatibility() {
         let provider = TeeAttestationProvider::synthetic();
         let doc = provider
-            .generate_attestation(&[0u8; 32], [0u8; 32])
+            .generate_attestation(&[0u8; 32], [0u8; 32], None)
             .unwrap();
 
         let envelope = TeeAttestationEnvelope::from_cbor(&doc.signature).unwrap();

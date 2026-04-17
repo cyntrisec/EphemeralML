@@ -10,6 +10,7 @@ pub mod kms_proxy;
 pub mod metrics;
 pub mod model_manifest;
 pub mod model_registry;
+pub mod platform_evidence;
 pub mod receipt_signing;
 pub mod receipt_verify;
 pub mod storage_protocol;
@@ -33,6 +34,11 @@ pub use kms_proxy::{
     KmsRequest, KmsResponse,
 };
 pub use model_manifest::ModelManifest;
+pub use platform_evidence::{
+    CloudEvidenceSummary, CpuEvidenceSummary, EvidenceBinding, EvidenceVerifierSummary,
+    GpuEvidenceHashes, GpuEvidenceSummary, MeasurementEntry, PlatformEvidenceBundle,
+    PLATFORM_EVIDENCE_V1,
+};
 
 pub use receipt_signing::{
     AttestationReceipt, AttestationUserData, DestroyAction, DestroyEvidence, EnclaveMeasurements,

@@ -50,6 +50,7 @@ impl<A: AttestationProvider> EphemeralStageExecutor<A> {
             None,
             None,
             None,
+            None,
             "cyntrisec.com".to_string(),
         )
     }
@@ -65,6 +66,7 @@ impl<A: AttestationProvider> EphemeralStageExecutor<A> {
         provider: A,
         receipt_key: ReceiptSigningKey,
         attestation_doc_hash: Option<[u8; 32]>,
+        platform_evidence_hash: Option<[u8; 32]>,
         boot_attestation_bytes: Option<Vec<u8>>,
         model_hash: Option<[u8; 32]>,
         model_hash_scheme: Option<String>,
@@ -82,7 +84,8 @@ impl<A: AttestationProvider> EphemeralStageExecutor<A> {
             attestation_hash,
             "pipeline".to_string(),
             1,
-        );
+        )
+        .with_platform_evidence_hash_opt(platform_evidence_hash);
 
         Self {
             engine,

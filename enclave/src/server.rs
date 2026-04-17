@@ -95,6 +95,7 @@ pub async fn run_direct_tcp<A: crate::AttestationProvider + Send + Sync>(
     transport_provider: &(dyn confidential_ml_transport::AttestationProvider + Sync),
     transport_verifier: &(dyn confidential_ml_transport::AttestationVerifier + Sync),
     boot_attestation_hash: [u8; 32],
+    platform_evidence_hash: Option<[u8; 32]>,
     boot_attestation_bytes: Option<std::sync::Arc<Vec<u8>>>,
     model_manifest_json: Option<std::sync::Arc<String>>,
     model_hash: Option<[u8; 32]>,
@@ -212,7 +213,8 @@ pub async fn run_direct_tcp<A: crate::AttestationProvider + Send + Sync>(
             attestation_hash,
             "direct-client".to_string(),
             1,
-        );
+        )
+        .with_platform_evidence_hash_opt(platform_evidence_hash);
 
         println!("[direct] Ready for inference requests");
 

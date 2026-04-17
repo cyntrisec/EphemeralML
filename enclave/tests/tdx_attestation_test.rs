@@ -22,7 +22,9 @@ mod tests {
         let receipt_key = [0x42; 32];
 
         // Generate attestation
-        let doc = provider.generate_attestation(&nonce, receipt_key).unwrap();
+        let doc = provider
+            .generate_attestation(&nonce, receipt_key, None)
+            .unwrap();
         assert_eq!(doc.module_id, "tdx-cvm");
 
         // Decode envelope
@@ -70,7 +72,9 @@ mod tests {
         let nonce = [0xAB; 32];
         let receipt_key = [0xCD; 32];
 
-        let doc = provider.generate_attestation(&nonce, receipt_key).unwrap();
+        let doc = provider
+            .generate_attestation(&nonce, receipt_key, None)
+            .unwrap();
         let envelope = TeeAttestationEnvelope::from_cbor(&doc.signature).unwrap();
 
         // Extract raw quote from wire format (skip marker + size)
@@ -110,7 +114,9 @@ mod tests {
         // This proves our wire format is compatible with cml-transport's TdxVerifier
         let provider = TeeAttestationProvider::synthetic();
         let nonce = [0u8; 32];
-        let doc = provider.generate_attestation(&nonce, [0u8; 32]).unwrap();
+        let doc = provider
+            .generate_attestation(&nonce, [0u8; 32], None)
+            .unwrap();
 
         let envelope = TeeAttestationEnvelope::from_cbor(&doc.signature).unwrap();
 
@@ -160,7 +166,7 @@ mod tests {
         let receipt_pk = receipt_key.public_key_bytes();
 
         let doc = provider
-            .generate_attestation(&[0u8; 32], receipt_pk)
+            .generate_attestation(&[0u8; 32], receipt_pk, None)
             .unwrap();
 
         let envelope = TeeAttestationEnvelope::from_cbor(&doc.signature).unwrap();
@@ -195,17 +201,17 @@ mod tests {
         let provider = TeeAttestationProvider::synthetic();
 
         // Too long
-        let result = provider.generate_attestation(&[0xFF; 64], [0u8; 32]);
+        let result = provider.generate_attestation(&[0xFF; 64], [0u8; 32], None);
         assert!(result.is_err());
         let err = format!("{:?}", result.unwrap_err());
         assert!(err.contains("exactly 32 bytes"), "Error: {}", err);
 
         // Too short
-        let result = provider.generate_attestation(&[0xAA; 16], [0u8; 32]);
+        let result = provider.generate_attestation(&[0xAA; 16], [0u8; 32], None);
         assert!(result.is_err());
 
         // Empty
-        let result = provider.generate_attestation(&[], [0u8; 32]);
+        let result = provider.generate_attestation(&[], [0u8; 32], None);
         assert!(result.is_err());
     }
 }

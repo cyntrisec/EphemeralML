@@ -54,9 +54,11 @@ impl<A: crate::attestation::AttestationProvider> KmsClient<A> {
         // 1. Generate attestation document with random nonce and receipt signing key binding
         let mut nonce = [0u8; 32];
         rand::rngs::OsRng.fill_bytes(&mut nonce);
-        let attestation_doc = self
-            .attestation_provider
-            .generate_attestation(&nonce, self.receipt_signing_pubkey)?;
+        let attestation_doc = self.attestation_provider.generate_attestation(
+            &nonce,
+            self.receipt_signing_pubkey,
+            None,
+        )?;
 
         let recipient_bytes = attestation_doc.signature; // In our impl, signature holds the CBOR bytes
 
