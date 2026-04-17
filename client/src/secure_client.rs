@@ -235,6 +235,97 @@ impl SecureEnclaveClient {
         .map_err(ClientError::Client)
     }
 
+    /// Fetch the platform evidence bundle over the attested SecureChannel
+    /// and verify it against the values captured during the handshake.
+    ///
+    /// Sends `{"op":"get_platform_evidence"}` as a JSON request (the server
+    /// dispatches by envelope, so this does not conflict with an inference
+    /// request), awaits the base64-encoded CBOR response, decodes it, and
+    /// calls [`verify_platform_evidence`]. Returns the decoded bundle.
+    ///
+    /// Requires `establish_channel` to have completed successfully.
+    pub async fn fetch_and_verify_platform_evidence(
+        &mut self,
+    ) -> Result<ephemeral_ml_common::PlatformEvidenceBundle> {
+        use bytes::Bytes;
+        use confidential_ml_transport::session::channel::Message;
+
+        let channel = self.channel.as_mut().ok_or_else(|| {
+            ClientError::Client(EphemeralError::AttestationError(
+                "No SecureChannel established — call establish_channel first".to_string(),
+            ))
+        })?;
+
+        let req = serde_json::to_vec(&serde_json::json!({
+            "op": "get_platform_evidence",
+        }))
+        .map_err(|e| {
+            ClientError::Client(EphemeralError::SerializationError(format!(
+                "Failed to build platform-evidence request: {}",
+                e
+            )))
+        })?;
+        channel.send(Bytes::from(req)).await.map_err(|e| {
+            ClientError::Client(EphemeralError::TransportError(format!(
+                "Failed to send platform-evidence request: {}",
+                e
+            )))
+        })?;
+
+        let msg = channel.recv().await.map_err(|e| {
+            ClientError::Client(EphemeralError::TransportError(format!(
+                "Failed to receive platform-evidence response: {}",
+                e
+            )))
+        })?;
+        let data = match msg {
+            Message::Data(bytes) => bytes,
+            other => {
+                return Err(ClientError::Client(EphemeralError::TransportError(
+                    format!(
+                        "Unexpected message kind for platform-evidence response: {:?}",
+                        other
+                    ),
+                )));
+            }
+        };
+
+        // Server may return either the success envelope or a
+        // `{"error":"..."}` response. Check for error first.
+        #[derive(serde::Deserialize)]
+        struct ErrorEnvelope<'a> {
+            error: &'a str,
+        }
+        if let Ok(err) = serde_json::from_slice::<ErrorEnvelope>(&data) {
+            return Err(ClientError::Client(EphemeralError::AttestationError(
+                format!("Server refused platform-evidence request: {}", err.error),
+            )));
+        }
+
+        #[derive(serde::Deserialize)]
+        struct Response {
+            platform_evidence_cbor_b64: String,
+        }
+        let resp: Response = serde_json::from_slice(&data).map_err(|e| {
+            ClientError::Client(EphemeralError::SerializationError(format!(
+                "Failed to parse platform-evidence response: {}",
+                e
+            )))
+        })?;
+
+        use base64::Engine as _;
+        let cbor = base64::engine::general_purpose::STANDARD
+            .decode(resp.platform_evidence_cbor_b64.as_bytes())
+            .map_err(|e| {
+                ClientError::Client(EphemeralError::SerializationError(format!(
+                    "Failed to decode platform-evidence base64: {}",
+                    e
+                )))
+            })?;
+
+        self.verify_platform_evidence(&cbor)
+    }
+
     /// Inject session state for tests that need to exercise
     /// `verify_platform_evidence` without setting up a full handshake.
     #[cfg(test)]

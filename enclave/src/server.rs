@@ -27,6 +27,43 @@ const DEFAULT_TEMPERATURE: f64 = 0.7;
 /// Default top-p (nucleus) sampling threshold.
 const DEFAULT_TOP_P: f64 = 0.9;
 
+/// Top-level request envelope carried in `Message::Data`. Untagged so existing
+/// clients that send plain inference JSON (no `op` field) continue to work
+/// unchanged — they fall through to the `Inference` variant.
+///
+/// The `Inference` variant is only used to satisfy deserialization as a
+/// fallback; the actual inference request is parsed a second time inside
+/// `handle_direct_request`, so we silence the dead-code warnings on its
+/// inner fields.
+#[derive(serde::Deserialize)]
+#[serde(untagged)]
+#[allow(dead_code)]
+enum DirectRequest {
+    PlatformEvidence(GetPlatformEvidenceRequest),
+    Inference(DirectInferenceRequest),
+}
+
+#[derive(serde::Deserialize)]
+#[allow(dead_code)]
+struct GetPlatformEvidenceRequest {
+    op: PlatformEvidenceOp,
+}
+
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
+enum PlatformEvidenceOp {
+    GetPlatformEvidence,
+}
+
+#[derive(serde::Serialize)]
+struct PlatformEvidenceResponse {
+    /// Base64 (standard, with padding) of the canonical CBOR for the
+    /// `PlatformEvidenceBundle`. The client recomputes
+    /// `document_hash()` on the decoded bytes and compares against the
+    /// `platform_evidence_hash` committed in attested user_data.
+    platform_evidence_cbor_b64: String,
+}
+
 #[derive(serde::Deserialize)]
 struct DirectInferenceRequest {
     model_id: String,
@@ -97,6 +134,10 @@ pub async fn run_direct_tcp<A: crate::AttestationProvider + Send + Sync>(
     boot_attestation_hash: [u8; 32],
     platform_evidence_hash: Option<[u8; 32]>,
     boot_attestation_bytes: Option<std::sync::Arc<Vec<u8>>>,
+    // Canonical CBOR of the platform evidence bundle served on request.
+    // `None` means this deployment did not build a bundle (e.g. pipeline /
+    // stage workloads) — the `get_platform_evidence` op will return an error.
+    platform_evidence_bundle: Option<std::sync::Arc<Vec<u8>>>,
     model_manifest_json: Option<std::sync::Arc<String>>,
     model_hash: Option<[u8; 32]>,
     model_hash_scheme: Option<String>,
@@ -231,6 +272,55 @@ pub async fn run_direct_tcp<A: crate::AttestationProvider + Send + Sync>(
 
             match msg {
                 Message::Data(bytes) => {
+                    // Try routing the request by envelope first. `untagged`
+                    // deserialize falls through to the Inference variant for
+                    // any JSON that does not carry a recognized `op` field,
+                    // so existing inference clients remain unchanged.
+                    if let Ok(DirectRequest::PlatformEvidence(_)) =
+                        serde_json::from_slice::<DirectRequest>(&bytes)
+                    {
+                        let resp_bytes = match platform_evidence_bundle.as_deref() {
+                            Some(cbor) => {
+                                use base64::Engine as _;
+                                let b64 = base64::engine::general_purpose::STANDARD.encode(cbor);
+                                let resp = PlatformEvidenceResponse {
+                                    platform_evidence_cbor_b64: b64,
+                                };
+                                match serde_json::to_vec(&resp) {
+                                    Ok(v) => v,
+                                    Err(e) => {
+                                        eprintln!(
+                                            "[direct] Failed to encode platform evidence response: {}",
+                                            e
+                                        );
+                                        serde_json::to_vec(&serde_json::json!({
+                                            "error": "Failed to encode platform evidence response"
+                                        }))
+                                        .unwrap_or_default()
+                                    }
+                                }
+                            }
+                            None => serde_json::to_vec(&serde_json::json!({
+                                "error": "Platform evidence bundle not available on this server"
+                            }))
+                            .unwrap_or_default(),
+                        };
+                        if let Err(send_err) =
+                            channel.send(Bytes::copy_from_slice(&resp_bytes)).await
+                        {
+                            eprintln!(
+                                "[direct] Failed to send platform evidence response: {}",
+                                send_err
+                            );
+                            break;
+                        }
+                        println!(
+                            "[direct] Served platform evidence ({} bytes)",
+                            platform_evidence_bundle.as_ref().map_or(0, |c| c.len())
+                        );
+                        continue;
+                    }
+
                     match handle_direct_request(
                         &bytes,
                         &engine,

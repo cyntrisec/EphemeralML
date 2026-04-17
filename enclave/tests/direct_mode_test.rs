@@ -109,6 +109,7 @@ async fn direct_mode_happy_path() {
             None,
             None,
             None,
+            None,
             "cyntrisec.com".to_string(),
         )
         .await
@@ -247,6 +248,7 @@ async fn direct_mode_malformed_json_no_crash() {
             None,
             None,
             None,
+            None,
             "cyntrisec.com".to_string(),
         )
         .await
@@ -357,6 +359,7 @@ async fn setup_direct_server_with_manifest(
             &transport_provider,
             &transport_verifier,
             [0u8; 32],
+            None,
             None,
             None,
             manifest_arc,
@@ -655,6 +658,7 @@ async fn direct_mode_accepts_multiple_sequential_sessions() {
             None,
             None,
             None,
+            None,
             "cyntrisec.com".to_string(),
         )
         .await
@@ -759,6 +763,185 @@ async fn direct_mode_malformed_manifest_fails_request() {
         }
         _ => {}
     }
+
+    channel.shutdown().await.ok();
+    stop_direct_server(server_handle).await;
+}
+
+/// Direct-mode `get_platform_evidence` op serves the bundle bytes it was
+/// given at construction and embeds the same hash in attested user_data.
+/// Proves Phase 3a: transport-level bundle delivery works end-to-end
+/// without the operator having to copy the /tmp file out-of-band.
+#[tokio::test]
+async fn direct_mode_serves_platform_evidence_on_request() {
+    let model_id = "stage-0";
+    let engine = match create_engine_with_model(model_id) {
+        Some(e) => e,
+        None => {
+            println!("Skipping test: model assets not found");
+            return;
+        }
+    };
+
+    let receipt_key = ReceiptSigningKey::generate().unwrap();
+    let mock_provider = MockAttestationProvider::new();
+
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    drop(listener);
+    let addr_str = addr.to_string();
+
+    // A representative bundle. The test does not need to match the enclave's
+    // own Phase 1 hashing policy — it just proves that whatever bytes the
+    // server was given come back verbatim over the wire.
+    let bundle_cbor: Vec<u8> = (0..256u16).flat_map(|n| n.to_le_bytes()).collect();
+    let bundle_hash: [u8; 32] = {
+        use sha2::{Digest, Sha256};
+        Sha256::digest(&bundle_cbor).into()
+    };
+    let bundle_arc = std::sync::Arc::new(bundle_cbor.clone());
+
+    let server_handle = tokio::spawn(async move {
+        let transport_provider = MockProvider::new();
+        let transport_verifier = MockVerifier::new();
+        run_direct_tcp(
+            engine,
+            mock_provider,
+            receipt_key,
+            &addr_str,
+            &transport_provider,
+            &transport_verifier,
+            [0u8; 32],
+            Some(bundle_hash),
+            None,
+            Some(bundle_arc),
+            None,
+            None,
+            None,
+            None,
+            "cyntrisec.com".to_string(),
+        )
+        .await
+    });
+
+    tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+
+    let stream = tokio::net::TcpStream::connect(addr).await.unwrap();
+    let client_provider = MockProvider::new();
+    let client_verifier = MockVerifier::new();
+    let config = SessionConfig::builder()
+        .security_profile(SecurityProfile::Development)
+        .build()
+        .unwrap();
+    let mut channel =
+        SecureChannel::connect_with_attestation(stream, &client_provider, &client_verifier, config)
+            .await
+            .unwrap();
+
+    let req = serde_json::to_vec(&serde_json::json!({"op":"get_platform_evidence"})).unwrap();
+    channel.send(Bytes::from(req)).await.unwrap();
+
+    let msg = channel.recv().await.unwrap();
+    let data = match msg {
+        Message::Data(d) => d,
+        other => panic!("Expected Data, got {:?}", other),
+    };
+
+    #[derive(Deserialize)]
+    struct Resp {
+        platform_evidence_cbor_b64: String,
+    }
+    let resp: Resp = serde_json::from_slice(&data).expect("valid platform-evidence response");
+    use base64::Engine as _;
+    let returned = base64::engine::general_purpose::STANDARD
+        .decode(resp.platform_evidence_cbor_b64.as_bytes())
+        .unwrap();
+    assert_eq!(
+        returned, bundle_cbor,
+        "server must return the exact bytes it was given"
+    );
+
+    channel.shutdown().await.ok();
+    stop_direct_server(server_handle).await;
+}
+
+/// Same direct-mode server configured without a bundle (pipeline/stage
+/// workloads) returns a clean JSON error instead of panicking or leaking
+/// stale bytes.
+#[tokio::test]
+async fn direct_mode_platform_evidence_unavailable_returns_error() {
+    let model_id = "stage-0";
+    let engine = match create_engine_with_model(model_id) {
+        Some(e) => e,
+        None => {
+            println!("Skipping test: model assets not found");
+            return;
+        }
+    };
+    let receipt_key = ReceiptSigningKey::generate().unwrap();
+    let mock_provider = MockAttestationProvider::new();
+
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    drop(listener);
+    let addr_str = addr.to_string();
+
+    let server_handle = tokio::spawn(async move {
+        let transport_provider = MockProvider::new();
+        let transport_verifier = MockVerifier::new();
+        run_direct_tcp(
+            engine,
+            mock_provider,
+            receipt_key,
+            &addr_str,
+            &transport_provider,
+            &transport_verifier,
+            [0u8; 32],
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            "cyntrisec.com".to_string(),
+        )
+        .await
+    });
+
+    tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+
+    let stream = tokio::net::TcpStream::connect(addr).await.unwrap();
+    let client_provider = MockProvider::new();
+    let client_verifier = MockVerifier::new();
+    let config = SessionConfig::builder()
+        .security_profile(SecurityProfile::Development)
+        .build()
+        .unwrap();
+    let mut channel =
+        SecureChannel::connect_with_attestation(stream, &client_provider, &client_verifier, config)
+            .await
+            .unwrap();
+
+    let req = serde_json::to_vec(&serde_json::json!({"op":"get_platform_evidence"})).unwrap();
+    channel.send(Bytes::from(req)).await.unwrap();
+
+    let msg = channel.recv().await.unwrap();
+    let data = match msg {
+        Message::Data(d) => d,
+        other => panic!("Expected Data, got {:?}", other),
+    };
+    let err_val: serde_json::Value =
+        serde_json::from_slice(&data).expect("server must respond with JSON");
+    assert!(
+        err_val
+            .get("error")
+            .and_then(|v| v.as_str())
+            .map(|s| s.contains("not available"))
+            .unwrap_or(false),
+        "expected unavailable-bundle error, got: {}",
+        err_val
+    );
 
     channel.shutdown().await.ok();
     stop_direct_server(server_handle).await;

@@ -228,28 +228,19 @@ fn classify_exit_code(err: &str) -> i32 {
 /// The attested `platform_evidence_hash` in transport user-data commits to
 /// this bundle. Verifiers need the bundle bytes (not just the hash) to check
 /// the binding via [`ephemeral_ml_common::PlatformEvidenceBundle::verify_binding`].
-/// For now the enclave drops the bytes here and the operator is expected to
-/// deliver the file to the verifier out-of-band (copy, HTTP pull, etc.).
-/// A transport-level delivery endpoint is a later enhancement.
+/// Clients can fetch the same bytes in-band via the direct-mode
+/// `get_platform_evidence` request; this file export is kept as a fallback
+/// for operator-driven retrieval (scp, `ephemeralml gcp verify`, etc.).
 pub const PLATFORM_EVIDENCE_EXPORT_PATH: &str = "/tmp/ephemeralml-platform-evidence.cbor";
 
-/// Serialize a `PlatformEvidenceBundle` to `PLATFORM_EVIDENCE_EXPORT_PATH`
-/// and log its location. Failures are logged but non-fatal: the attested
-/// hash is already committed in `user_data`; losing the export file only
-/// degrades operator observability, it does not weaken the attestation.
+/// Write the already-encoded platform-evidence CBOR to
+/// `PLATFORM_EVIDENCE_EXPORT_PATH` and log its location. Failures are
+/// logged but non-fatal: the attested hash is already committed in
+/// `user_data`; losing the export file only degrades operator
+/// observability, it does not weaken the attestation.
 #[allow(dead_code)]
-fn export_platform_evidence(bundle: &ephemeral_ml_common::PlatformEvidenceBundle, hash: &[u8; 32]) {
-    let bytes = match bundle.to_cbor_deterministic() {
-        Ok(b) => b,
-        Err(e) => {
-            warn!(
-                error = %e,
-                "Failed to encode platform-evidence bundle; export skipped"
-            );
-            return;
-        }
-    };
-    match std::fs::write(PLATFORM_EVIDENCE_EXPORT_PATH, &bytes) {
+fn export_platform_evidence_bytes(bytes: &[u8], hash: &[u8; 32]) {
+    match std::fs::write(PLATFORM_EVIDENCE_EXPORT_PATH, bytes) {
         Ok(()) => info!(
             path = PLATFORM_EVIDENCE_EXPORT_PATH,
             bytes = bytes.len(),
@@ -1138,6 +1129,7 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
             let boot_attestation_hash: [u8; 32];
             let platform_evidence_hash: [u8; 32];
             let boot_attestation_bytes: std::sync::Arc<Vec<u8>>;
+            let platform_evidence_bytes: std::sync::Arc<Vec<u8>>;
             {
                 use ephemeral_ml_common::{
                     CloudEvidenceSummary, CpuEvidenceSummary, EvidenceBinding,
@@ -1232,7 +1224,15 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
                     },
                 };
                 platform_evidence_hash = platform_evidence.document_hash()?;
-                export_platform_evidence(&platform_evidence, &platform_evidence_hash);
+                // Persist the deterministic CBOR once — reused both for
+                // filesystem export (operator retrieval) and for in-band
+                // delivery via the direct-mode `get_platform_evidence` op.
+                let bundle_cbor = platform_evidence.to_cbor_deterministic()?;
+                platform_evidence_bytes = std::sync::Arc::new(bundle_cbor);
+                export_platform_evidence_bytes(
+                    platform_evidence_bytes.as_slice(),
+                    &platform_evidence_hash,
+                );
             }
 
             // 5. Create transport attestation bridge (for SecureChannel handshake)
@@ -1320,6 +1320,7 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
                     boot_attestation_hash,
                     Some(platform_evidence_hash),
                     Some(boot_attestation_bytes),
+                    Some(platform_evidence_bytes.clone()),
                     manifest_arc,
                     loaded_model_hash,
                     loaded_model_hash_scheme.clone(),
@@ -1502,6 +1503,7 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
                 &mock_transport,
                 &client_verifier,
                 mock_attestation_hash,
+                None,
                 None,
                 None,
                 None,
@@ -1708,7 +1710,15 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
                 },
             };
             let platform_evidence_hash = platform_evidence.document_hash()?;
-            export_platform_evidence(&platform_evidence, &platform_evidence_hash);
+            // Nitro production uses VSock pipeline rather than run_direct_tcp;
+            // the bundle bytes are only needed for filesystem-based export here.
+            match platform_evidence.to_cbor_deterministic() {
+                Ok(cbor) => export_platform_evidence_bytes(&cbor, &platform_evidence_hash),
+                Err(e) => warn!(
+                    error = %e,
+                    "Failed to encode platform-evidence bundle; filesystem export skipped"
+                ),
+            }
 
             info!(
                 step = "boot_evidence",
