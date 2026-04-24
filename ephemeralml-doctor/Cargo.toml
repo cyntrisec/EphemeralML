@@ -1,0 +1,43 @@
+[package]
+name = "ephemeral-ml-doctor"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.75"
+license = "Apache-2.0"
+description = "Phase 1 BYOC preflight check binary. Verifies a deployed Cyntrisec pilot host is ready to run inference before ephemeralml-smoke-test exercises it."
+repository = "https://github.com/cyntrisec/EphemeralML"
+homepage = "https://ephemeralml.cyntrisec.com"
+
+[[bin]]
+name = "ephemeralml-doctor"
+path = "src/main.rs"
+
+[dependencies]
+clap = { version = "4.6", features = ["derive"] }
+serde = { workspace = true }
+serde_json = { workspace = true }
+serde_yaml = "0.9"
+thiserror = { workspace = true }
+tokio = { workspace = true }
+async-trait = { workspace = true }
+chrono = { version = "0.4", features = ["serde"] }
+hex = "0.4"
+sha2 = { workspace = true }
+
+# AWS SDK — pinned but not yet exercised in skeleton check implementations.
+# Real probe logic lands when the Phase 1 real-AWS deploy produces outputs.
+aws-config = "1.5"
+aws-sdk-s3 = "1.70"
+aws-sdk-kms = "1.60"
+aws-sdk-ssm = "1.55"
+
+# Minimal HTTP client for IMDSv2 token + identity probes. rustls-only to avoid
+# pulling OpenSSL; default features off keeps the binary size under the 20 MB
+# target from byoc-phase-1-ephemeralml-doctor-spec-2026-04-23.md.
+ureq = { version = "2.10", default-features = false, features = ["tls", "json"] }
+
+[dev-dependencies]
+assert_cmd = "2.0"
+predicates = "3.1"
+tempfile = "3.13"
+tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }

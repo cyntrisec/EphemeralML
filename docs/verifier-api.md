@@ -71,6 +71,10 @@ Set to `0` to disable in `secured-api` mode. `public-trust-center` mode requires
   "receipt": { ... },
   "public_key": "64-char-hex-ed25519-public-key",
   "expected_model": "minilm-l6-v2",
+  "expected_model_hash_hex": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "expected_request_hash_hex": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+  "expected_response_hash_hex": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+  "expected_security_mode": "production",
   "max_age_secs": 3600,
   "measurement_type": "any",
   "expected_attestation_source": "cs-tdx",
@@ -83,6 +87,10 @@ Set to `0` to disable in `secured-api` mode. `public-trust-center` mode requires
 | `receipt` | object/string | Yes | — | JSON receipt or base64 CBOR |
 | `public_key` | string | Yes | — | 64-char hex Ed25519 public key |
 | `expected_model` | string | No | skip | Expected model ID |
+| `expected_model_hash_hex` | string | No | skip | Expected AIR `model_hash` (32-byte hex) |
+| `expected_request_hash_hex` | string | No | skip | Expected AIR `request_hash` (32-byte hex) |
+| `expected_response_hash_hex` | string | No | skip | Expected AIR `response_hash` (32-byte hex) |
+| `expected_security_mode` | string | No | skip | Expected AIR `security_mode`; this production verifier accepts only `production` |
 | `max_age_secs` | u64 | No | `0` (skip) | Max receipt age |
 | `measurement_type` | string | No | `"any"` | Expected measurement type |
 | `expected_attestation_source` | string | No | skip | e.g. `"cs-tdx"`, `"nitro"` |
@@ -95,6 +103,8 @@ Set to `0` to disable in `secured-api` mode. `public-trust-center` mode requires
   "verdict": "verified",
   "verified": true,
   "format": "legacy",
+  "assurance_level": "legacy_local",
+  "tee_provenance_verified": false,
   "api_version": "v1",
   "verified_at": 1708000100,
   "receipt": {
@@ -122,6 +132,8 @@ Set to `0` to disable in `secured-api` mode. `public-trust-center` mode requires
 
 AIR v1 receipts submitted as base64 strings or uploaded as `.cbor` files are automatically detected and verified through the AIR v1 4-layer verification pipeline. The response shape is the same for both formats.
 
+For AIR v1, `verified=true` means the receipt-local signature, structure, and configured policy checks passed. Full TEE provenance additionally requires an `attestation_file` on the multipart endpoint. When no attestation is supplied, the response reports `assurance_level: "air_local"`, `tee_provenance_verified: false`, and skipped `tee_provenance` checks.
+
 ## Multipart Endpoint
 
 ### `POST /api/v1/verify/upload`
@@ -135,6 +147,10 @@ AIR v1 receipts submitted as base64 strings or uploaded as `.cbor` files are aut
 | `public_key_file` | file | Yes* | 32-byte binary Ed25519 key |
 | `attestation_file` | file | Yes* | Attestation document used to derive the receipt signing key |
 | `expected_model` | text | No | Expected model ID |
+| `expected_model_hash_hex` | text | No | Expected AIR `model_hash` |
+| `expected_request_hash_hex` | text | No | Expected AIR `request_hash` |
+| `expected_response_hash_hex` | text | No | Expected AIR `response_hash` |
+| `expected_security_mode` | text | No | Expected AIR `security_mode`; this production verifier accepts only `production` |
 | `measurement_type` | text | No | Expected measurement type |
 | `max_age_secs` | text | No | Max receipt age (integer) |
 | `expected_attestation_source` | text | No | Expected attestation source |
@@ -179,6 +195,8 @@ curl -X POST https://verifier.example.com/api/v1/verify/upload \
 ```
 
 In this flow the verifier derives the receipt signing key from the supplied attestation document. That proves key provenance, but deployment-specific PCR or image policy still has to come from the caller's explicit policy fields.
+
+For AIR v1 uploads, the verifier also compares `SHA-256(attestation_file)` to the receipt's `attestation_doc_hash` and rejects the verdict if the attestation hash, platform authenticity, or signing-key binding checks fail.
 
 ### Local dev (public trust center)
 

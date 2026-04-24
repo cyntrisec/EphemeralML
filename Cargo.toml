@@ -7,6 +7,8 @@ members = [
     "verifier-api",
     "gateway-api",
     "compliance",
+    "ephemeralml-doctor",
+    "ephemeralml-smoke-test",
 ]
 resolver = "2"
 
@@ -58,7 +60,6 @@ ciborium = "0.2"
 coset = "0.4"
 
 # RSA for KMS integration
-rsa = { version = "0.9", features = ["sha2"] }
 
 # X.509 and PKI
 openssl = "0.10"

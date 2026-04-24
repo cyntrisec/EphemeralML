@@ -15,6 +15,10 @@ use crate::view_model::TrustCenterResponse;
 #[derive(Debug, Default)]
 pub struct DispatchPolicy {
     pub expected_model: Option<String>,
+    pub expected_model_hash: Option<[u8; 32]>,
+    pub expected_request_hash: Option<[u8; 32]>,
+    pub expected_response_hash: Option<[u8; 32]>,
+    pub expected_security_mode: Option<String>,
     pub expected_measurement_type: Option<String>,
     pub max_age_secs: u64,
     pub expected_attestation_source: Option<String>,
@@ -100,8 +104,12 @@ fn verify_air(
     let air_policy = AirVerifyPolicy {
         max_age_secs: policy.max_age_secs,
         clock_skew_secs: 30,
-        expected_model_hash: None,
+        expected_model_hash: policy.expected_model_hash,
+        expected_request_hash: policy.expected_request_hash,
+        expected_response_hash: policy.expected_response_hash,
         expected_model_id: policy.expected_model.clone(),
+        expected_security_mode: policy.expected_security_mode.clone(),
+        allow_evaluation_mode: false,
         expected_platform: policy.expected_measurement_type.clone(),
         expected_nonce: None,
         require_nonce: false,

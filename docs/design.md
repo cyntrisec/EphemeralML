@@ -2,9 +2,9 @@
 
 ## Overview
 
-The Confidential Inference Gateway implements a defense-in-depth architecture for protecting model weights and sensitive user inputs during AI inference. The system operates on Layer 1 (Gateway) security providing TEE isolation with attestation-gated key release and end-to-end encrypted sessions using HPKE.
+The Confidential Inference Gateway implements a defense-in-depth architecture for protecting model weights and sensitive user inputs during AI inference. In v1, the security model is the Gateway path: TEE isolation, attestation-gated key release, end-to-end encrypted sessions using HPKE, and signed execution receipts.
 
-**Shield Mode (Layer 2) is future scope for v1**: In v1, Shield Mode interfaces and policy hooks exist, but no obfuscation is executed; all Shield Mode logic is inactive and reserved for v2.
+**Additional application-layer hardening beyond the Gateway is out of scope for v1**: v1 does not define or implement any secondary model-obfuscation layer.
 
 **Multi-cloud support**: The system supports two deployment targets:
 - **AWS Nitro Enclaves** (`--features production`): The host acts as a blind relay via VSock. All AWS API access is mediated through VSock proxies. Attestation uses NSM (COSE_Sign1).
@@ -105,7 +105,6 @@ sequenceDiagram
     style C fill:#4ecdc4
     style HP fill:#45b7d1
     style NSM fill:#ff6b6b
-    style SHIELD fill:#ffa726
 ```
 
 ### Security Zones
@@ -746,7 +745,6 @@ pub struct AttestationReceipt {
 #[derive(Serialize, Deserialize, Debug)]
 pub enum SecurityMode {
     GatewayOnly,
-    // Shield Mode reserved for v2
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -1161,16 +1159,13 @@ This positions v1 as a high-assurance solution for specific enterprise and gover
 *For any* model loading operation, the enclave should verify the signed model manifest, validate the model hash matches the manifest, and include the model hash in the AER to prevent model substitution attacks by the host.
 **Validates: Model integrity verification requirements**
 
-## Shield Mode (Future Scope - V2)
+## Future Hardening (Out of Scope for V1)
 
-Shield Mode provides Layer 2 security through leakage-resilient inference using structured weight obfuscation. **All Shield Mode logic is inactive in v1 and reserved for v2.**
-
-**Planned Features for V2**:
-- Keyed permutation+scaling masking for in-memory weights and tensors (inactive in v1)
-- Per-session masking factors that remain within enclave boundary (stubbed in v1)
-- Performance gating controls and accuracy preservation guarantees (inactive in v1)
-- Graceful degradation to Gateway-only protection if masking secrets are compromised (inactive in v1)
-- Support for hybrid CPU/GPU execution with obfuscated tensor processing (inactive in v1)
+Potential future hardening work beyond the Gateway path may include:
+- query-budget enforcement and abuse controls at the inference boundary
+- rate limiting and policy-gated workload behavior
+- optional privacy-preserving output controls where justified by the deployment
+- support for hybrid CPU/GPU execution with stronger application-layer guardrails
 
 ## Error Handling
 
@@ -1196,10 +1191,10 @@ The system implements comprehensive error handling with secure failure modes acr
 - **Response**: Secure cleanup of partial operations with explicit zeroization before failure
 - **Security**: Complete cleanup of sensitive materials; no partial state exposure to host
 
-### Shield Mode Failures
-- **Detection**: Performance threshold violations, masking secret compromise, or obfuscation failures
-- **Response**: Graceful degradation to Layer 1 (Gateway) protection with performance alerting
-- **Security**: Maintain baseline security guarantees; no exposure of obfuscation secrets
+### Future Hardening Failures
+- **Detection**: Policy violations, control misconfiguration, or unacceptable performance regressions
+- **Response**: Disable the hardening control and fall back to baseline Gateway protections
+- **Security**: Maintain baseline security guarantees; no reduction in attestation, key-release, or receipt integrity
 
 ## Testing Strategy
 
@@ -1237,10 +1232,10 @@ The testing approach combines unit testing for integration points and specific s
 - Each correctness property must be implemented as a single property-based test
 - Tests must run with minimum 100 iterations to ensure comprehensive coverage
 
-### Future Testing (V2)
+### Future Testing (V2+)
 
-**Shield Mode Testing** (disabled in v1):
-- Shield Mode effectiveness against defined attacker models
+**Future hardening testing** (out of scope for v1):
+- effectiveness of any added control against its stated attacker model
 - Performance impact measurement and gating validation
 - Accuracy preservation verification with evaluation datasetsge
 - Each test must be tagged with format: **Feature: confidential-inference-gateway, Property {number}: {property_text}**
@@ -1275,10 +1270,10 @@ The testing approach combines unit testing for integration points and specific s
 - Test that compromised host reveals no functional models, keys, or plaintext data
 - Validate VSock communication maintains encryption and authentication properties
 
-**Shield Mode Effectiveness Testing**:
-- Test obfuscated model weights cannot be used without proper masking secrets
-- Verify masking factor generation and session-specific uniqueness
-- Test graceful degradation when Shield Mode secrets are compromised
-- Validate performance gating prevents unacceptable performance degradation
+**Future Hardening Effectiveness Testing**:
+- Test each added control against its explicit attacker model
+- Verify any control-specific secrets or policies are scoped correctly
+- Test graceful fallback to baseline Gateway protections on control failure
+- Validate performance gating prevents unacceptable degradation
 
 The dual testing approach ensures both specific correctness (unit tests) and universal properties (property-based tests) are validated, providing comprehensive coverage of the system's security and functional requirements while maintaining the defense-in-depth architecture principles.

@@ -64,6 +64,7 @@ AIR_MODEL_HASH_SCHEME = -65549
 AIR_PROFILE_URI = "https://spec.cyntrisec.com/air/v1"
 ALLOWED_MEASUREMENT_TYPES = {"nitro-pcr", "tdx-mrtd-rtmr"}
 ALLOWED_MODEL_HASH_SCHEMES = {"sha256-single", "sha256-concat", "sha256-manifest"}
+ALLOWED_SECURITY_MODES = {"production", "evaluation"}
 
 COSE_TAG_SIGN1 = 18
 COSE_ALG_KEY = 1
@@ -76,8 +77,12 @@ COSE_CONTENT_TYPE_CWT = 61
 class VerifyPolicy:
     expected_nonce: bytes | None = None
     expected_model_hash: bytes | None = None
+    expected_request_hash: bytes | None = None
+    expected_response_hash: bytes | None = None
     expected_platform: str | None = None
     expected_model_id: str | None = None
+    expected_security_mode: str | None = None
+    allow_evaluation_mode: bool = False
     max_age_secs: int = 0
     clock_skew_secs: int = 0
     require_nonce: bool = False
@@ -112,6 +117,18 @@ def hex_to_bytes(s: str, field: str) -> bytes:
         return bytes.fromhex(s)
     except ValueError as exc:
         raise ValueError(f"{field} is not valid hex") from exc
+
+
+def policy_bool(value: Any, field: str) -> bool:
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        lowered = value.lower()
+        if lowered in ("true", "1", "yes"):
+            return True
+        if lowered in ("false", "0", "no", ""):
+            return False
+    raise ValueError(f"{field} must be boolean")
 
 
 def load_json(path: Path) -> dict[str, Any]:
@@ -253,7 +270,9 @@ def decode_and_validate_claims(payload: bytes) -> dict[Any, Any]:
     )
 
     _ = ensure_type(claims, AIR_POLICY_VERSION, str, "POLICY_VERSION")
-    _ = ensure_type(claims, AIR_SECURITY_MODE, str, "SECURITY_MODE")
+    security_mode = ensure_type(claims, AIR_SECURITY_MODE, str, "SECURITY_MODE")
+    if security_mode not in ALLOWED_SECURITY_MODES:
+        fail(3, "SECURITY_MODE", f"UNKNOWN_SECURITY_MODE:{security_mode}", f"unknown security_mode: {security_mode}")
     for key, check in [
         (AIR_SEQUENCE_NUMBER, "SEQ"),
         (AIR_EXECUTION_TIME_MS, "EXEC_MS"),
@@ -274,6 +293,11 @@ def decode_and_validate_claims(payload: bytes) -> dict[Any, Any]:
         if pcr not in measurements:
             fail(3, "MEAS", "BAD_MEASUREMENT_LENGTH", f"missing {pcr}")
         ensure_bstr_len(measurements[pcr], 48, 3, "MEAS", "BAD_MEASUREMENT_LENGTH", pcr)
+    for pcr in ("pcr3", "pcr4"):
+        if pcr in measurements and measurements[pcr] is not None:
+            ensure_bstr_len(measurements[pcr], 48, 3, "MEAS", "BAD_MEASUREMENT_LENGTH", pcr)
+    if mtype == "tdx-mrtd-rtmr" and measurements.get("pcr8") is not None:
+        fail(3, "MEAS", "TDX_PCR8_FORBIDDEN", "pcr8 is not allowed for TDX measurements")
     if "pcr8" in measurements and measurements["pcr8"] is not None:
         ensure_bstr_len(measurements["pcr8"], 48, 3, "MEAS", "BAD_MEASUREMENT_LENGTH", "pcr8")
 
@@ -302,10 +326,27 @@ def apply_policy(claims: dict[Any, Any], policy: VerifyPolicy, now_epoch: int) -
         if actual != policy.expected_model_hash:
             fail(4, "MHASH", "MODEL_HASH_MISMATCH", "model_hash does not match policy")
 
+    if policy.expected_request_hash is not None:
+        actual = bytes(claims[AIR_REQUEST_HASH])
+        if actual != policy.expected_request_hash:
+            fail(4, "RHASH", "REQUEST_HASH_MISMATCH", "request_hash does not match policy")
+
+    if policy.expected_response_hash is not None:
+        actual = bytes(claims[AIR_RESPONSE_HASH])
+        if actual != policy.expected_response_hash:
+            fail(4, "OHASH", "RESPONSE_HASH_MISMATCH", "response_hash does not match policy")
+
     if policy.expected_model_id is not None:
         actual_id = claims[AIR_MODEL_ID]
         if actual_id != policy.expected_model_id:
             fail(4, "MODEL", "MODEL_ID_MISMATCH", "model_id does not match policy")
+
+    actual_security_mode = claims[AIR_SECURITY_MODE]
+    if policy.expected_security_mode is not None:
+        if actual_security_mode != policy.expected_security_mode:
+            fail(4, "SECURITY_MODE_POLICY", "SECURITY_MODE_MISMATCH", "security_mode does not match policy")
+    elif actual_security_mode == "evaluation" and not policy.allow_evaluation_mode:
+        fail(4, "SECURITY_MODE_POLICY", "EVALUATION_MODE_REJECTED", "evaluation receipts are not accepted by default production policy")
 
     if policy.expected_platform is not None and policy.expected_platform != "any":
         measurements = claims[AIR_ENCLAVE_MEASUREMENTS]
@@ -332,10 +373,18 @@ def build_policy(policy_obj: dict[str, Any] | None) -> VerifyPolicy:
         policy.expected_nonce = hex_to_bytes(policy_obj["expected_nonce_hex"], "expected_nonce_hex")
     if "expected_model_hash_hex" in policy_obj:
         policy.expected_model_hash = hex_to_bytes(policy_obj["expected_model_hash_hex"], "expected_model_hash_hex")
+    if "expected_request_hash_hex" in policy_obj:
+        policy.expected_request_hash = hex_to_bytes(policy_obj["expected_request_hash_hex"], "expected_request_hash_hex")
+    if "expected_response_hash_hex" in policy_obj:
+        policy.expected_response_hash = hex_to_bytes(policy_obj["expected_response_hash_hex"], "expected_response_hash_hex")
     if "expected_platform" in policy_obj:
         policy.expected_platform = str(policy_obj["expected_platform"])
     if "expected_model_id" in policy_obj:
         policy.expected_model_id = str(policy_obj["expected_model_id"])
+    if "expected_security_mode" in policy_obj:
+        policy.expected_security_mode = str(policy_obj["expected_security_mode"])
+    if "allow_evaluation_mode" in policy_obj:
+        policy.allow_evaluation_mode = policy_bool(policy_obj["allow_evaluation_mode"], "allow_evaluation_mode")
     if "max_age_secs" in policy_obj:
         policy.max_age_secs = int(policy_obj["max_age_secs"])
     if "clock_skew_secs" in policy_obj:

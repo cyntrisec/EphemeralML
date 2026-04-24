@@ -72,17 +72,28 @@ impl RateLimiter {
     }
 }
 
-/// Extract client IP from X-Forwarded-For header (Cloud Run / load balancer)
-/// or fall back to ConnectInfo (direct connections).
+/// Extract client IP from ConnectInfo unless proxy headers are explicitly trusted.
 fn extract_ip(request: &Request) -> IpAddr {
-    // Cloud Run and most reverse proxies set X-Forwarded-For.
-    // The leftmost IP is the original client; rightmost is the last proxy.
-    // We take the leftmost (first) value.
-    if let Some(xff) = request.headers().get("x-forwarded-for") {
-        if let Ok(val) = xff.to_str() {
-            if let Some(first_ip) = val.split(',').next() {
-                if let Ok(ip) = first_ip.trim().parse::<IpAddr>() {
-                    return ip;
+    extract_ip_with_proxy_trust(request, trust_proxy_headers_enabled())
+}
+
+fn trust_proxy_headers_enabled() -> bool {
+    matches!(
+        std::env::var("TRUST_PROXY_HEADERS").as_deref(),
+        Ok("1") | Ok("true") | Ok("yes")
+    )
+}
+
+fn extract_ip_with_proxy_trust(request: &Request, trust_proxy_headers: bool) -> IpAddr {
+    if trust_proxy_headers {
+        if let Some(xff) = request.headers().get("x-forwarded-for") {
+            if let Ok(val) = xff.to_str() {
+                // The leftmost IP is the original client; only trust it when a
+                // deployment-level proxy strips client-supplied XFF.
+                if let Some(first_ip) = val.split(',').next() {
+                    if let Ok(ip) = first_ip.trim().parse::<IpAddr>() {
+                        return ip;
+                    }
                 }
             }
         }
@@ -125,5 +136,42 @@ pub async fn rate_limit_middleware(
             }),
         )
             .into_response()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use axum::body::Body;
+    use std::net::{Ipv4Addr, SocketAddr};
+
+    fn request_with_connect_ip(ip: IpAddr) -> Request {
+        let mut request = Request::builder()
+            .header("x-forwarded-for", "203.0.113.10, 198.51.100.20")
+            .body(Body::empty())
+            .unwrap();
+        request
+            .extensions_mut()
+            .insert(axum::extract::ConnectInfo(SocketAddr::new(ip, 443)));
+        request
+    }
+
+    #[test]
+    fn ignores_x_forwarded_for_unless_proxy_headers_are_trusted() {
+        let connect_ip = IpAddr::V4(Ipv4Addr::new(192, 0, 2, 55));
+        let request = request_with_connect_ip(connect_ip);
+
+        assert_eq!(extract_ip_with_proxy_trust(&request, false), connect_ip);
+    }
+
+    #[test]
+    fn uses_x_forwarded_for_when_proxy_headers_are_trusted() {
+        let connect_ip = IpAddr::V4(Ipv4Addr::new(192, 0, 2, 55));
+        let request = request_with_connect_ip(connect_ip);
+
+        assert_eq!(
+            extract_ip_with_proxy_trust(&request, true),
+            IpAddr::V4(Ipv4Addr::new(203, 0, 113, 10))
+        );
     }
 }

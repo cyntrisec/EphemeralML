@@ -133,11 +133,11 @@ fn print_receipt(receipt: &AttestationReceipt) {
     println!("  Execution time:  {} ms", receipt.execution_time_ms);
     println!("  Peak memory:     {} MB", receipt.memory_peak_mb);
     println!();
-    println!("  This receipt cryptographically proves:");
-    println!("    - Input/output hashes bind request to response");
-    println!("    - Execution occurred inside an attested enclave");
-    println!("    - Ed25519 signature prevents tampering");
-    println!("    - Enclave measurements verify code integrity");
+    println!("  Receipt claims parsed from artifact:");
+    println!("    - Input/output hashes bind request to response if verified by policy");
+    println!("    - Enclave execution requires signature and attestation verification");
+    println!("    - Ed25519 signature must be checked before relying on these claims");
+    println!("    - Measurements are evidence inputs, not code-integrity proof by parsing alone");
     println!("========================================================");
     println!();
 }
@@ -636,6 +636,8 @@ mod tests {
                 pcr0: vec![0u8; 48],
                 pcr1: vec![0u8; 48],
                 pcr2: vec![0u8; 48],
+                pcr3: None,
+                pcr4: None,
                 pcr8: None,
                 measurement_type: "nitro-pcr".into(),
             },

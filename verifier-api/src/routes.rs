@@ -2,11 +2,12 @@ use axum::extract::Multipart;
 use axum::http::StatusCode;
 use axum::response::{Html, Json};
 use ed25519_dalek::VerifyingKey;
+use sha2::{Digest, Sha256};
 
 use crate::api_types::{ErrorResponse, VerifyRequest};
 use crate::templates::LANDING_HTML;
 use crate::verify_dispatch::{self, DispatchPolicy};
-use crate::view_model::TrustCenterResponse;
+use crate::view_model::{CheckStatus, ReceiptFormat, TrustCenterCheck, TrustCenterResponse};
 
 /// `GET /` — landing page with paste/upload form.
 pub async fn landing_page() -> Html<&'static str> {
@@ -25,17 +26,36 @@ pub async fn verify_json(
     Json(body): Json<VerifyRequest>,
 ) -> Result<Json<TrustCenterResponse>, (StatusCode, Json<ErrorResponse>)> {
     let public_key = parse_hex_public_key(&body.public_key)?;
+    let expected_model_hash = parse_optional_hash32_hex(
+        body.expected_model_hash_hex.as_deref(),
+        "expected_model_hash_hex",
+    )?;
+    let expected_request_hash = parse_optional_hash32_hex(
+        body.expected_request_hash_hex.as_deref(),
+        "expected_request_hash_hex",
+    )?;
+    let expected_response_hash = parse_optional_hash32_hex(
+        body.expected_response_hash_hex.as_deref(),
+        "expected_response_hash_hex",
+    )?;
+    let expected_security_mode =
+        parse_expected_security_mode(body.expected_security_mode.as_deref())?;
 
     let policy = DispatchPolicy {
         expected_model: body.expected_model,
+        expected_model_hash,
+        expected_request_hash,
+        expected_response_hash,
+        expected_security_mode,
         expected_measurement_type: Some(body.measurement_type),
         max_age_secs: body.max_age_secs,
         expected_attestation_source: body.expected_attestation_source,
         expected_image_digest: body.expected_image_digest,
     };
 
-    let response = verify_dispatch::verify_json_value(&body.receipt, &public_key, &policy)
+    let mut response = verify_dispatch::verify_json_value(&body.receipt, &public_key, &policy)
         .map_err(bad_request)?;
+    annotate_air_provenance(&mut response, None, None, None);
 
     Ok(Json(response))
 }
@@ -51,6 +71,10 @@ pub async fn verify_upload(
     let mut public_key_hex: Option<String> = None;
     let mut attestation_bytes: Option<Vec<u8>> = None;
     let mut expected_model: Option<String> = None;
+    let mut expected_model_hash: Option<[u8; 32]> = None;
+    let mut expected_request_hash: Option<[u8; 32]> = None;
+    let mut expected_response_hash: Option<[u8; 32]> = None;
+    let mut expected_security_mode: Option<String> = None;
     let mut measurement_type: String = "any".to_string();
     let mut max_age_secs: u64 = 0;
     let mut expected_attestation_source: Option<String> = None;
@@ -96,6 +120,48 @@ pub async fn verify_upload(
                     expected_model = Some(trimmed);
                 }
             }
+            "expected_model_hash_hex" => {
+                let text = field.text().await.map_err(|e| {
+                    bad_request(format!(
+                        "Failed to read expected_model_hash_hex field: {}",
+                        e
+                    ))
+                })?;
+                expected_model_hash =
+                    parse_optional_hash32_hex(Some(text.trim()), "expected_model_hash_hex")?;
+            }
+            "expected_request_hash_hex" => {
+                let text = field.text().await.map_err(|e| {
+                    bad_request(format!(
+                        "Failed to read expected_request_hash_hex field: {}",
+                        e
+                    ))
+                })?;
+                expected_request_hash =
+                    parse_optional_hash32_hex(Some(text.trim()), "expected_request_hash_hex")?;
+            }
+            "expected_response_hash_hex" => {
+                let text = field.text().await.map_err(|e| {
+                    bad_request(format!(
+                        "Failed to read expected_response_hash_hex field: {}",
+                        e
+                    ))
+                })?;
+                expected_response_hash =
+                    parse_optional_hash32_hex(Some(text.trim()), "expected_response_hash_hex")?;
+            }
+            "expected_security_mode" => {
+                let text = field.text().await.map_err(|e| {
+                    bad_request(format!(
+                        "Failed to read expected_security_mode field: {}",
+                        e
+                    ))
+                })?;
+                let trimmed = text.trim().to_string();
+                if !trimmed.is_empty() {
+                    expected_security_mode = parse_expected_security_mode(Some(&trimmed))?;
+                }
+            }
             "measurement_type" => {
                 let text = field.text().await.map_err(|e| {
                     bad_request(format!("Failed to read measurement_type field: {}", e))
@@ -135,14 +201,14 @@ pub async fn verify_upload(
                     expected_image_digest = Some(trimmed);
                 }
             }
-            _ => {} // ignore unknown fields
+            _ => return Err(bad_request(format!("Unknown form field: {}", name))),
         }
     }
 
     let receipt_data = receipt_bytes.ok_or_else(|| bad_request("Missing receipt_file field"))?;
     let public_key = if let Some(key_hex) = public_key_hex {
         parse_hex_public_key(&key_hex)?
-    } else if let Some(attestation) = attestation_bytes {
+    } else if let Some(attestation) = attestation_bytes.as_deref() {
         parse_attestation_public_key(&attestation)?
     } else {
         return Err(bad_request(
@@ -152,14 +218,24 @@ pub async fn verify_upload(
 
     let policy = DispatchPolicy {
         expected_model,
+        expected_model_hash,
+        expected_request_hash,
+        expected_response_hash,
+        expected_security_mode,
         expected_measurement_type: Some(measurement_type),
         max_age_secs,
         expected_attestation_source,
         expected_image_digest,
     };
 
-    let response =
+    let mut response =
         verify_dispatch::verify_bytes(&receipt_data, &public_key, &policy).map_err(bad_request)?;
+    annotate_air_provenance(
+        &mut response,
+        Some(&receipt_data),
+        Some(&public_key),
+        attestation_bytes.as_deref(),
+    );
 
     Ok(Json(response))
 }
@@ -175,6 +251,214 @@ fn parse_attestation_public_key(
             ))
         },
     )
+}
+
+fn annotate_air_provenance(
+    response: &mut TrustCenterResponse,
+    receipt_data: Option<&[u8]>,
+    public_key: Option<&VerifyingKey>,
+    attestation: Option<&[u8]>,
+) {
+    if !matches!(response.format, ReceiptFormat::AirV1) {
+        return;
+    }
+
+    let Some(attestation) = attestation else {
+        response.add_check(provenance_check(
+            "attestation_doc_hash",
+            "Attestation document hash",
+            CheckStatus::Skip,
+            "tee_provenance",
+            Some("no attestation_file supplied; AIR-local verification only".to_string()),
+        ));
+        response.add_check(provenance_check(
+            "signing_key_binding",
+            "Signing key binding",
+            CheckStatus::Skip,
+            "tee_provenance",
+            Some("no attestation_file supplied; cannot bind AIR signing key to a TEE".to_string()),
+        ));
+        response.add_check(provenance_check(
+            "platform_attestation",
+            "Platform attestation authenticity",
+            CheckStatus::Skip,
+            "tee_provenance",
+            Some(
+                "no attestation_file supplied; platform attestation was not appraised".to_string(),
+            ),
+        ));
+        response.add_warning(
+            "AIR-local verification only: no attestation_file was supplied, so TEE provenance was not verified.",
+        );
+        return;
+    };
+
+    let Some(receipt_data) = receipt_data else {
+        response.add_warning(
+            "TEE provenance was not checked because the verifier did not receive raw AIR receipt bytes.",
+        );
+        return;
+    };
+    let Some(public_key) = public_key else {
+        response.add_warning(
+            "TEE provenance was not checked because the verifier did not receive the AIR signing public key.",
+        );
+        return;
+    };
+
+    let parsed = ephemeral_ml_common::air_receipt::parse_air_v1(receipt_data);
+    let mut hash_ok = false;
+    match parsed {
+        Ok(parsed) => {
+            let actual_hash: [u8; 32] = Sha256::digest(attestation).into();
+            if actual_hash == parsed.claims.attestation_doc_hash {
+                hash_ok = true;
+                response.add_check(provenance_check(
+                    "attestation_doc_hash",
+                    "Attestation document hash",
+                    CheckStatus::Pass,
+                    "tee_provenance",
+                    None,
+                ));
+            } else {
+                response.add_check(provenance_check(
+                    "attestation_doc_hash",
+                    "Attestation document hash",
+                    CheckStatus::Fail,
+                    "tee_provenance",
+                    Some(format!(
+                        "expected {}, got {}",
+                        hex::encode(parsed.claims.attestation_doc_hash),
+                        hex::encode(actual_hash)
+                    )),
+                ));
+            }
+        }
+        Err(err) => {
+            response.add_check(provenance_check(
+                "attestation_doc_hash",
+                "Attestation document hash",
+                CheckStatus::Fail,
+                "tee_provenance",
+                Some(format!(
+                    "failed to parse AIR receipt for attestation binding: {err}"
+                )),
+            ));
+        }
+    }
+
+    let mut platform_ok = false;
+    let mut key_binding_ok = false;
+    match ephemeral_ml_client::receipt_key::extract_key_from_attestation(attestation, false) {
+        Ok(attested_key) => {
+            platform_ok = true;
+            response.add_check(provenance_check(
+                "platform_attestation",
+                "Platform attestation authenticity",
+                CheckStatus::Pass,
+                "tee_provenance",
+                Some("attestation COSE signature and certificate chain accepted".to_string()),
+            ));
+
+            if attested_key.to_bytes() == public_key.to_bytes() {
+                key_binding_ok = true;
+                response.add_check(provenance_check(
+                    "signing_key_binding",
+                    "Signing key binding",
+                    CheckStatus::Pass,
+                    "tee_provenance",
+                    None,
+                ));
+            } else {
+                response.add_check(provenance_check(
+                    "signing_key_binding",
+                    "Signing key binding",
+                    CheckStatus::Fail,
+                    "tee_provenance",
+                    Some(format!(
+                        "attestation public key {} does not match receipt verification key {}",
+                        hex::encode(attested_key.to_bytes()),
+                        hex::encode(public_key.to_bytes())
+                    )),
+                ));
+            }
+        }
+        Err(err) => {
+            response.add_check(provenance_check(
+                "platform_attestation",
+                "Platform attestation authenticity",
+                CheckStatus::Fail,
+                "tee_provenance",
+                Some(err.to_string()),
+            ));
+            response.add_check(provenance_check(
+                "signing_key_binding",
+                "Signing key binding",
+                CheckStatus::Fail,
+                "tee_provenance",
+                Some(
+                    "could not extract an authenticated receipt signing key from attestation"
+                        .to_string(),
+                ),
+            ));
+        }
+    }
+
+    if response.verified && hash_ok && platform_ok && key_binding_ok {
+        response.set_tee_provenance_verified();
+    } else {
+        response.add_warning(
+            "TEE provenance was requested but not fully verified; see tee_provenance checks.",
+        );
+    }
+}
+
+fn provenance_check(
+    id: &'static str,
+    label: &'static str,
+    status: CheckStatus,
+    layer: &'static str,
+    detail: Option<String>,
+) -> TrustCenterCheck {
+    TrustCenterCheck {
+        id,
+        label,
+        status,
+        layer: Some(layer),
+        detail,
+    }
+}
+
+fn parse_optional_hash32_hex(
+    value: Option<&str>,
+    field_name: &str,
+) -> Result<Option<[u8; 32]>, (StatusCode, Json<ErrorResponse>)> {
+    let Some(value) = value.map(str::trim).filter(|v| !v.is_empty()) else {
+        return Ok(None);
+    };
+    let bytes = hex::decode(value)
+        .map_err(|_| bad_request(format!("{field_name} must be a 64-character hex string")))?;
+    let array: [u8; 32] = bytes
+        .try_into()
+        .map_err(|_| bad_request(format!("{field_name} must decode to exactly 32 bytes")))?;
+    Ok(Some(array))
+}
+
+fn parse_expected_security_mode(
+    value: Option<&str>,
+) -> Result<Option<String>, (StatusCode, Json<ErrorResponse>)> {
+    let Some(value) = value.map(str::trim).filter(|v| !v.is_empty()) else {
+        return Ok(None);
+    };
+    match value {
+        "production" => Ok(Some(value.to_string())),
+        "evaluation" => Err(bad_request(
+            "expected_security_mode=evaluation is not accepted by the production verifier; use an evaluation verifier",
+        )),
+        _ => Err(bad_request(
+            "expected_security_mode must be 'production' for this verifier",
+        )),
+    }
 }
 
 /// `GET /api/v1/samples/valid` — generate a fresh signed AIR v1 sample receipt.
@@ -273,7 +557,7 @@ fn sample_key_and_claims() -> (
         sequence_number: 1,
         execution_time_ms: 95,
         memory_peak_mb: 64,
-        security_mode: "GatewayOnly".to_string(),
+        security_mode: "production".to_string(),
         model_hash_scheme: None,
     };
 

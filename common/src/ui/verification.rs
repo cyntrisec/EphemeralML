@@ -100,6 +100,10 @@ pub fn air_check_meta(name: &str) -> VerificationCheckMeta {
             label: "Model hash scheme",
             layer: Some("claim"),
         },
+        "SECURITY_MODE" => VerificationCheckMeta {
+            label: "Security mode valid",
+            layer: Some("claim"),
+        },
         "FRESH" => VerificationCheckMeta {
             label: "Timestamp freshness",
             layer: Some("policy"),
@@ -108,8 +112,20 @@ pub fn air_check_meta(name: &str) -> VerificationCheckMeta {
             label: "Model hash match",
             layer: Some("policy"),
         },
+        "RHASH" => VerificationCheckMeta {
+            label: "Request hash match",
+            layer: Some("policy"),
+        },
+        "OHASH" => VerificationCheckMeta {
+            label: "Response hash match",
+            layer: Some("policy"),
+        },
         "MODEL" => VerificationCheckMeta {
             label: "Model ID match",
+            layer: Some("policy"),
+        },
+        "SECURITY_MODE_POLICY" => VerificationCheckMeta {
+            label: "Security mode policy",
             layer: Some("policy"),
         },
         "PLATFORM" => VerificationCheckMeta {

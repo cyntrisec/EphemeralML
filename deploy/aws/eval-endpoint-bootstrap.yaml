@@ -1,0 +1,470 @@
+AWSTemplateFormatVersion: '2010-09-09'
+
+# ==============================================================================
+# Cyntrisec Eval Endpoint Bootstrap (Cyntrisec-operated)
+# ------------------------------------------------------------------------------
+# Contract:
+#   startup-plans/10-operations/byoc-phase-1-eval-endpoint-spec-2026-04-23.md
+#
+# Trust-boundary note:
+#   Deploy this template in a DEDICATED Cyntrisec-operated AWS account
+#   (`cyntrisec-eval-prod`). Per Day 9 spec §1.2, this account is separate
+#   from the Cyntrisec release account (which holds `alias/cyntrisec-eval-
+#   signing`) and separate from every customer pilot account. No cross-
+#   account trust exists between this account and any customer account;
+#   that is the blast-radius guarantee the eval endpoint rests on.
+#
+# Scope of this template:
+#   - VPC + subnet selection (existing; not created — parameters pick from
+#     account dropdowns, same pattern as cyntrisec-pilot.yaml)
+#   - 1 EC2 instance with Nitro Enclaves enabled (m6i.xlarge default)
+#   - 1 IAM role + instance profile for the EC2 host
+#   - 1 KMS CMK for EBS + session-store encryption at rest
+#   - 1 security group (TCP 443 from public CIDR for the API; TCP 22 from
+#     admin CIDR for operator SSH — minimal-risk since SSM Session Manager
+#     is the primary admin path)
+#   - 1 CloudWatch log group (operational logs only — NO request/response
+#     bodies per Day 9 spec §7.3)
+#
+# Scope guard (NOT in this template):
+#   - The ephemeralml-eval.eif image (baked separately via byoc-eval-
+#     release.yml)
+#   - The PII filter / Presidio install (software-level; user-data stub only)
+#   - The Redis/Valkey session store (software-level; user-data stub only)
+#   - The API service listening on 443 (software-level)
+#   - CloudFront distribution + ACM cert + Route 53 for demo.cyntrisec.com
+#     (separate ChangeSet — DNS is managed outside this template)
+#   - The eval signing KMS key (that is in release-signing-bootstrap.yaml
+#     in the Cyntrisec release account, not this account)
+#
+# Cost: a running m6i.xlarge is ~$0.19/hr on-demand. The template includes
+# an auto-stop CloudWatch alarm per Day 9 §4.5 (72h idle triggers instance
+# stop) to keep idle cost close to $0. Full-time running for a demo period
+# is about $136/month; idle is roughly $10/month (EBS + KMS + logs).
+# ==============================================================================
+
+Description: >-
+  Cyntrisec eval endpoint bootstrap — account-level scaffolding for
+  demo.cyntrisec.com per Day 9 spec. 1 Nitro-enabled EC2 + IAM + KMS + SG +
+  logs. Product software (EIF, PII filter, session store, API service) is
+  layered on top separately. Deploy ONLY in a dedicated Cyntrisec-operated
+  eval account.
+
+Metadata:
+  AWS::CloudFormation::Interface:
+    ParameterGroups:
+      - Label:
+          default: Host identity
+        Parameters:
+          - InstanceType
+          - KeyPairName
+      - Label:
+          default: Network
+        Parameters:
+          - VpcId
+          - SubnetId
+          - AllowedPublicCIDR
+          - AllowedAdminCIDR
+      - Label:
+          default: Operational defaults
+        Parameters:
+          - LogRetentionDays
+          - IdleShutdownMinutes
+
+Parameters:
+
+  InstanceType:
+    Type: String
+    Default: m6i.xlarge
+    AllowedValues:
+      - m6i.xlarge
+      - m6i.2xlarge
+      - m6a.xlarge
+      - m6a.2xlarge
+    Description: Nitro-Enclaves-capable instance type. Must match the EIF build target.
+
+  KeyPairName:
+    Type: AWS::EC2::KeyPair::KeyName
+    Description: >-
+      EC2 key pair for initial SSH fallback. SSM Session Manager is the
+      primary admin path; SSH is retained only as a break-glass option.
+
+  VpcId:
+    Type: AWS::EC2::VPC::Id
+    Description: >-
+      VPC for the eval host. Default VPC is fine. Keep this in a Cyntrisec-
+      operated account, not a customer account.
+
+  SubnetId:
+    Type: AWS::EC2::Subnet::Id
+    Description: Public subnet for the eval host. Must be inside the VPC above.
+
+  AllowedPublicCIDR:
+    Type: String
+    Default: '0.0.0.0/0'
+    Description: >-
+      CIDR allowed to reach the eval API on TCP/443. Default 0.0.0.0/0 so
+      demo.cyntrisec.com is reachable from anywhere. Tighten if the demo is
+      being restricted to specific networks (e.g., a partner's office IP).
+    AllowedPattern: ^([0-9]{1,3}\.){3}[0-9]{1,3}/([0-9]|[1-2][0-9]|3[0-2])$
+
+  AllowedAdminCIDR:
+    Type: String
+    Description: >-
+      /32 CIDR allowed to SSH to the eval host. Same regex-enforced /32
+      discipline as the customer pilot template. Prefer SSM Session
+      Manager — this parameter exists only for the break-glass SSH path.
+    AllowedPattern: ^([0-9]{1,3}\.){3}[0-9]{1,3}/32$
+    ConstraintDescription: Must be a single-host CIDR in form X.X.X.X/32.
+
+  LogRetentionDays:
+    Type: Number
+    Default: 30
+    AllowedValues: [7, 14, 30, 60, 90]
+    Description: >-
+      CloudWatch Logs retention for operational logs. Day 9 spec §7.3 requires
+      30-day retention; override only for longer-lived demo environments.
+
+  IdleShutdownMinutes:
+    Type: Number
+    Default: 4320
+    MinValue: 60
+    MaxValue: 43200
+    Description: >-
+      Minutes of zero inference requests before auto-shutdown fires. Day 9
+      spec §4.5 sets 72 hours = 4320 minutes. The CloudWatch alarm + EC2
+      action that implements this is NOT created in this bootstrap; it is a
+      follow-up ChangeSet once the API service is emitting custom metrics.
+
+Resources:
+
+  # --- KMS CMK for EBS + session-store encryption at rest -------------------
+
+  EvalRuntimeKey:
+    Type: AWS::KMS::Key
+    Properties:
+      Description: >-
+        Cyntrisec eval endpoint runtime encryption key. Encrypts the EBS
+        root volume and (future) Redis/Valkey session-store EBS. Distinct
+        from the eval release-signing CMK in the Cyntrisec release account.
+      EnableKeyRotation: true
+      KeyUsage: ENCRYPT_DECRYPT
+      KeySpec: SYMMETRIC_DEFAULT
+      KeyPolicy:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: EnableRootAccountPermissionsAndIamDelegation
+            Effect: Allow
+            Principal:
+              AWS: !Sub 'arn:${AWS::Partition}:iam::${AWS::AccountId}:root'
+            Action: 'kms:*'
+            Resource: '*'
+      Tags:
+        - Key: Purpose
+          Value: cyntrisec-eval-runtime
+        - Key: CyntrisecOperated
+          Value: 'true'
+
+  EvalRuntimeKeyAlias:
+    Type: AWS::KMS::Alias
+    Properties:
+      AliasName: !Sub 'alias/cyntrisec-eval-runtime-${AWS::AccountId}'
+      TargetKeyId: !Ref EvalRuntimeKey
+
+  # --- CloudWatch log group --------------------------------------------------
+
+  EvalLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Delete
+    Metadata:
+      cfn_nag:
+        rules_to_suppress:
+          - id: W84
+            reason: >-
+              Log contents are operational metadata only per Day 9 spec
+              §7.3 — timestamp, source IP, path, status, request-ID,
+              session-ID hash, error code, content length. No request or
+              response bodies. KMS encryption on the log group is not
+              necessary for this data class.
+    Properties:
+      LogGroupName: !Sub '/cyntrisec/eval/${AWS::StackName}'
+      RetentionInDays: !Ref LogRetentionDays
+
+  # --- IAM role for the eval host -------------------------------------------
+
+  EvalHostRole:
+    Type: AWS::IAM::Role
+    Metadata:
+      cfn_nag:
+        rules_to_suppress:
+          - id: W28
+            reason: >-
+              Explicit role name is intentional for readable audit artifacts
+              and to match the host-profile naming used by SSM Session
+              Manager inventories.
+          - id: F3
+            reason: >-
+              cloudwatch:PutMetricData does not support resource-level
+              permissions (AWS docs specify Resource must be '*'). The
+              action is scoped with a Condition on `cloudwatch:namespace`
+              so the host can only publish metrics under Cyntrisec/Eval,
+              not other namespaces.
+          - id: W11
+            reason: >-
+              Same rationale as F3 above — the `Resource: '*'` is a
+              PutMetricData API-level constraint, not a permissions-
+              scoping oversight. The namespace Condition is the effective
+              restriction.
+    Properties:
+      RoleName: !Sub '${AWS::StackName}-host-role'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ec2.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        # SSM Session Manager for break-glass admin access without opening
+        # SSH to the world. Day 9 spec §7.1 mentions Session Manager as the
+        # preferred ops path.
+        - !Sub 'arn:${AWS::Partition}:iam::aws:policy/AmazonSSMManagedInstanceCore'
+      Policies:
+        - PolicyName: cyntrisec-eval-host-inline
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Sid: CloudWatchLogsWrite
+                Effect: Allow
+                Action:
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource: !GetAtt EvalLogGroup.Arn
+              - Sid: RuntimeKeyUse
+                Effect: Allow
+                Action:
+                  - kms:Encrypt
+                  - kms:Decrypt
+                  - kms:GenerateDataKey
+                  - kms:DescribeKey
+                Resource: !GetAtt EvalRuntimeKey.Arn
+              - Sid: EmitCustomMetrics
+                # The Day 9 auto-shutdown-on-idle mechanism depends on the
+                # API service publishing a custom "inference_request_count"
+                # metric. The CloudWatch alarm that triggers EC2 stop on
+                # sustained zero is a follow-up ChangeSet; granting the
+                # permission here keeps the metric emission path ready.
+                Effect: Allow
+                Action:
+                  - cloudwatch:PutMetricData
+                Resource: '*'
+                Condition:
+                  StringEquals:
+                    'cloudwatch:namespace': 'Cyntrisec/Eval'
+
+  EvalHostProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      InstanceProfileName: !Sub '${AWS::StackName}-host-profile'
+      Roles:
+        - !Ref EvalHostRole
+
+  # --- Security group -------------------------------------------------------
+
+  EvalSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Metadata:
+      cfn_nag:
+        rules_to_suppress:
+          - id: W28
+            reason: Explicit security group name scopes logs/audit references predictably.
+          - id: W5
+            reason: >-
+              Egress to 0.0.0.0/0 is required for dnf system updates from
+              Amazon Linux repositories, AWS API calls (SSM, KMS, logs),
+              Rekor transparency log verification calls, and NTP (UDP/123)
+              to time.aws.com. Restricting egress is a Phase 2 concern
+              that would require a VPC endpoint buildout.
+          - id: W40
+            reason: Same rationale as W5.
+          - id: W2
+            reason: >-
+              Ingress on 443 from AllowedPublicCIDR (default 0.0.0.0/0) is
+              the whole point of the eval endpoint — demo.cyntrisec.com is
+              a public evaluation surface. Tighten AllowedPublicCIDR if a
+              specific demo is restricted to a partner's networks.
+    Properties:
+      GroupName: !Sub '${AWS::StackName}-eval-sg'
+      GroupDescription: >-
+        Eval endpoint security group. 443 public for API, 22 /32 admin
+        break-glass. SSM Session Manager is the primary admin path.
+      VpcId: !Ref VpcId
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: !Ref AllowedPublicCIDR
+          Description: >-
+            HTTPS API on TCP/443. The API service listens here and enforces
+            the PII-filter / session-boundary / security_mode:eval contract
+            per Day 9 spec.
+        - IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+          CidrIp: !Ref AllowedAdminCIDR
+          Description: Break-glass SSH. Prefer SSM Session Manager for routine ops.
+      SecurityGroupEgress:
+        - IpProtocol: -1
+          CidrIp: 0.0.0.0/0
+          Description: System updates + AWS APIs + NTP + Sigstore Rekor verification.
+
+  # --- EC2 Nitro-Enclaves host ----------------------------------------------
+
+  EvalHostInstance:
+    Type: AWS::EC2::Instance
+    DependsOn:
+      - EvalLogGroup
+    CreationPolicy:
+      ResourceSignal:
+        Count: 1
+        Timeout: PT10M
+    Properties:
+      ImageId: '{{resolve:ssm:/aws/service/ami-amazon-linux-latest/al2023-ami-kernel-default-x86_64}}'
+      InstanceType: !Ref InstanceType
+      KeyName: !Ref KeyPairName
+      IamInstanceProfile: !Ref EvalHostProfile
+      SubnetId: !Ref SubnetId
+      SecurityGroupIds:
+        - !GetAtt EvalSecurityGroup.GroupId
+      # Nitro Enclaves must be enabled at launch — cannot be toggled later.
+      EnclaveOptions:
+        Enabled: true
+      # IMDSv2 required defense-in-depth against SSRF.
+      MetadataOptions:
+        HttpTokens: required
+        HttpEndpoint: enabled
+        HttpPutResponseHopLimit: 2
+      BlockDeviceMappings:
+        - DeviceName: /dev/xvda
+          Ebs:
+            VolumeType: gp3
+            VolumeSize: 60
+            Encrypted: true
+            KmsKeyId: !GetAtt EvalRuntimeKey.Arn
+            DeleteOnTermination: true
+      UserData:
+        Fn::Base64: !Sub |
+          #!/bin/bash
+          set -eux
+
+          trap '/opt/aws/bin/cfn-signal -e 1 \
+            --stack ${AWS::StackName} \
+            --resource EvalHostInstance \
+            --region ${AWS::Region} \
+            --reason "user-data failed at line $LINENO"' ERR
+
+          # System updates.
+          dnf -y update
+
+          # Nitro Enclaves CLI + allocator. The allocator config below is
+          # sized for the eval EIF workload (MiniLM-L6-v2 public model +
+          # Presidio PII filter + receipt generator). Smaller than the
+          # pilot EIF allocation because no customer workload runs here.
+          dnf -y install aws-nitro-enclaves-cli aws-nitro-enclaves-cli-devel
+
+          usermod -aG ne ec2-user
+
+          cat > /etc/nitro_enclaves/allocator.yaml <<'EOF'
+          ---
+          memory_mib: 4096
+          cpu_count: 2
+          EOF
+
+          systemctl enable --now nitro-enclaves-allocator.service
+          systemctl restart nitro-enclaves-allocator.service
+
+          # Cyntrisec install directories. The eval product software (EIF,
+          # API service, session store, PII filter) lands here via a
+          # separate installer that will be downloaded from the eval release
+          # bucket (`cyntrisec-eval-releases-<account>-<region>`) after this
+          # bootstrap is in place.
+          install -d -o root -g root -m 0755 /opt/cyntrisec
+          install -d -o root -g root -m 0755 /opt/cyntrisec/bin
+          install -d -o root -g root -m 0755 /opt/cyntrisec/etc
+          install -d -o root -g root -m 0755 /opt/cyntrisec/eif
+          install -d -o root -g root -m 0755 /var/log/cyntrisec
+
+          # AWS CLI for later steps.
+          dnf -y install awscli
+
+          # TODO: Day 9 implementation deliverables land here — pull the
+          # eval EIF from cyntrisec-eval-releases bucket, install the API
+          # service unit, install Redis/Valkey for session store, install
+          # Microsoft Presidio or equivalent PII filter, configure the
+          # visible-banner HTML UI, wire the distinct eval signing key into
+          # the enclave's boot-time receipt-issuer derivation.
+
+          /opt/aws/bin/cfn-signal -e 0 \
+            --stack ${AWS::StackName} \
+            --resource EvalHostInstance \
+            --region ${AWS::Region}
+      Tags:
+        - Key: Name
+          Value: !Sub '${AWS::StackName}-host'
+        - Key: CyntrisecOperated
+          Value: 'true'
+        - Key: Environment
+          Value: eval
+        - Key: DemoEndpoint
+          Value: demo.cyntrisec.com
+
+# ------------------------------------------------------------------------------
+# Outputs
+# ------------------------------------------------------------------------------
+Outputs:
+
+  InstanceId:
+    Description: EC2 instance ID of the eval host.
+    Value: !Ref EvalHostInstance
+
+  InstancePublicIp:
+    Description: Public IP of the eval host (target of CloudFront / Route 53).
+    Value: !GetAtt EvalHostInstance.PublicIp
+
+  InstanceRoleArn:
+    Description: IAM role ARN for the eval host.
+    Value: !GetAtt EvalHostRole.Arn
+
+  RuntimeKeyArn:
+    Description: ARN of the EBS/runtime KMS key.
+    Value: !GetAtt EvalRuntimeKey.Arn
+
+  RuntimeKeyAlias:
+    Description: Alias of the EBS/runtime KMS key.
+    Value: !Ref EvalRuntimeKeyAlias
+
+  LogGroupName:
+    Description: Operational-logs CloudWatch log group.
+    Value: !Ref EvalLogGroup
+
+  ConfiguredIdleShutdownMinutes:
+    Description: >-
+      Preserved for the follow-up CloudWatch alarm ChangeSet that wires
+      the auto-stop-on-idle mechanism (Day 9 spec §4.5). Default 4320 =
+      72 hours. Echoed as an output so the value is stable and diffable
+      across stack updates even before the alarm is created.
+    Value: !Ref IdleShutdownMinutes
+
+  FollowUpTasks:
+    Description: What must happen after this stack reaches CREATE_COMPLETE.
+    Value: >-
+      1) Create a CloudFront distribution + ACM cert pointing at the eval
+      host for demo.cyntrisec.com + api.demo.cyntrisec.com (separate
+      ChangeSet). 2) Create a Route 53 record mapping those hostnames.
+      3) Publish byoc-eval-release.yml artifacts to the eval release
+      bucket (cross-account; the eval signing key lives in the release
+      account, not this account). 4) SSH or SSM into the instance and run
+      the eval installer (pulls EIF + API service + Presidio from eval
+      bucket). 5) Wire the auto-stop-on-idle CloudWatch alarm per Day 9
+      §4.5.

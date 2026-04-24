@@ -1,0 +1,635 @@
+AWSTemplateFormatVersion: '2010-09-09'
+
+# ==============================================================================
+# Cyntrisec Release-Signing Bootstrap (Cyntrisec-operated)
+# ------------------------------------------------------------------------------
+# Contract:
+#   startup-plans/10-operations/byoc-phase-1-supply-chain-posture-spec-2026-04-23.md
+#
+# Trust-boundary note:
+#   This template is deployed in a Cyntrisec-owned AWS account — NOT in any
+#   customer account. It provisions the signing substrate that the Phase 1
+#   BYOC pilot depends on: KMS CMKs whose public keys are embedded into
+#   ephemeralml-doctor / ephemeralml-verify, IAM roles trusted only by the
+#   GitHub Actions OIDC provider bound to a specific repo + workflow + tag/
+#   branch pattern, and S3 release buckets whose writes are scoped to those
+#   roles only.
+#
+#   Do NOT deploy this into the same account as the customer pilot stack
+#   (`cyntrisec-pilot.yaml`). Keeping these accounts separate is the
+#   architectural guarantee the HIPAA Position Memo and MSA Security
+#   Addendum rest on: Cyntrisec-operated infrastructure cannot reach
+#   customer-operated infrastructure because no trust exists between the
+#   two accounts.
+#
+# What this template creates:
+#   - GitHub Actions OIDC identity provider (conditional)
+#   - 2 KMS asymmetric CMKs (production signing + eval signing; ECC_NIST_P256;
+#     SIGN_VERIFY only; never used for encryption)
+#   - 2 IAM roles trusted by the OIDC provider, each bound to a specific
+#     GHA workflow_ref + sub-claim pattern
+#   - 2 S3 release buckets (pilot + eval) with versioning + SSE-S3 encryption
+#     + PublicAccessBlock all-true + bucket policies that deny non-TLS and
+#     deny writes from anyone except the corresponding signer role
+#
+# What this template does NOT create:
+#   - CloudFront distribution for get.cyntrisec.com (separate ChangeSet)
+#   - Route 53 records (separate; DNS is managed elsewhere)
+#   - ACM certs (separate)
+#   - The broader EphemeralML release path (that uses a different workflow
+#     file — `.github/workflows/release.yml` — and does not flow through
+#     these KMS keys)
+#
+# Cost: roughly $2/month steady-state ($1/CMK for the 2 signing CMKs;
+# S3 + IAM + OIDC are negligible until real artifacts are published).
+# ==============================================================================
+
+Description: >-
+  Cyntrisec release-signing bootstrap. Provisions GitHub Actions OIDC trust,
+  2 KMS CMKs (production + eval), 2 IAM signer roles, and 2 S3 release
+  buckets in a Cyntrisec-owned account. Deploy ONLY in a Cyntrisec-operated
+  account, never in a customer account.
+
+# ------------------------------------------------------------------------------
+# Console UI grouping
+# ------------------------------------------------------------------------------
+Metadata:
+  AWS::CloudFormation::Interface:
+    ParameterGroups:
+      - Label:
+          default: GitHub Actions OIDC identity
+        Parameters:
+          - CreateOidcProvider
+          - GitHubOrg
+          - GitHubRepo
+      - Label:
+          default: Production signing constraints
+        Parameters:
+          - ProductionTagPattern
+          - ProductionWorkflowFile
+      - Label:
+          default: Eval signing constraints
+        Parameters:
+          - EvalBranchPattern
+          - EvalWorkflowFile
+      - Label:
+          default: Release buckets
+        Parameters:
+          - ReleaseBucketName
+          - EvalBucketName
+
+# ------------------------------------------------------------------------------
+# Parameters
+# ------------------------------------------------------------------------------
+Parameters:
+  CreateOidcProvider:
+    Type: String
+    Default: 'true'
+    AllowedValues: ['true', 'false']
+    Description: >-
+      Create the GitHub Actions OIDC identity provider in this account.
+      Set 'false' if this account already has the provider (only one per
+      account is allowed). When 'false', the IAM roles' trust policies
+      reference the pre-existing provider at the standard ARN.
+
+  GitHubOrg:
+    Type: String
+    Default: cyntrisec
+    Description: GitHub organization owning the release repository.
+    AllowedPattern: ^[A-Za-z0-9][A-Za-z0-9-]{0,38}$
+
+  GitHubRepo:
+    Type: String
+    Default: ephemeralml
+    Description: GitHub repository name.
+    AllowedPattern: ^[A-Za-z0-9][A-Za-z0-9_.-]{0,99}$
+
+  ProductionTagPattern:
+    Type: String
+    Default: 'pilot-v*'
+    Description: >-
+      Git tag glob that identifies Phase 1 pilot releases. The production
+      signer role's trust policy only allows OIDC tokens whose `sub` claim
+      matches refs/tags/<this-pattern>. Per Day 8 spec §3.1.
+
+  ProductionWorkflowFile:
+    Type: String
+    Default: byoc-pilot-release.yml
+    Description: >-
+      Workflow file that is allowed to assume the production signer role.
+      Token's `job_workflow_ref` must end with this filename. Defense-in-depth
+      on top of the tag pattern.
+
+  EvalBranchPattern:
+    Type: String
+    Default: main
+    Description: >-
+      Git branch name for eval releases. The eval signer role's trust
+      policy only allows OIDC tokens whose `sub` claim matches
+      refs/heads/<this-pattern>.
+
+  EvalWorkflowFile:
+    Type: String
+    Default: byoc-eval-release.yml
+    Description: Workflow file allowed to assume the eval signer role.
+
+  ReleaseBucketName:
+    Type: String
+    Default: ''
+    AllowedPattern: ^$|^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$
+    Description: >-
+      Pilot release bucket name. Leave blank to auto-generate
+      `cyntrisec-pilot-releases-{account}-{region}`.
+
+  EvalBucketName:
+    Type: String
+    Default: ''
+    AllowedPattern: ^$|^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$
+    Description: >-
+      Eval release bucket name. Leave blank to auto-generate
+      `cyntrisec-eval-releases-{account}-{region}`.
+
+# ------------------------------------------------------------------------------
+# Conditions
+# ------------------------------------------------------------------------------
+Conditions:
+  ShouldCreateOidcProvider: !Equals [!Ref CreateOidcProvider, 'true']
+  HasCustomReleaseBucketName: !Not [!Equals [!Ref ReleaseBucketName, '']]
+  HasCustomEvalBucketName: !Not [!Equals [!Ref EvalBucketName, '']]
+
+# ------------------------------------------------------------------------------
+# Resources
+# ------------------------------------------------------------------------------
+Resources:
+
+  # --- GitHub Actions OIDC identity provider --------------------------------
+  #
+  # Conditional. If the account already has it (one per account), the IAM
+  # roles below reference it by the standard ARN instead.
+
+  GithubOidcProvider:
+    Type: AWS::IAM::OIDCProvider
+    Condition: ShouldCreateOidcProvider
+    Properties:
+      Url: https://token.actions.githubusercontent.com
+      ClientIdList:
+        - sts.amazonaws.com
+      # AWS no longer validates ThumbprintList against the IdP's real cert
+      # thumbprint (since 2023 — AWS verifies JWTs against the OIDC JWKS
+      # directly) but the property is still required. Supply the widely-
+      # referenced GitHub thumbprint; any value is effectively a sentinel
+      # today, but using this one keeps us consistent with community docs.
+      ThumbprintList:
+        - 6938fd4d98bab03faadb97b34396831e3780aea1
+
+  # --- Production signing KMS CMK -------------------------------------------
+
+  ProductionSigningKey:
+    Type: AWS::KMS::Key
+    Metadata:
+      cfn_nag:
+        rules_to_suppress:
+          - id: F19
+            reason: >-
+              EnableKeyRotation is inapplicable to asymmetric CMKs (KeySpec
+              ECC_NIST_P256 with KeyUsage SIGN_VERIFY). AWS KMS only supports
+              automatic annual rotation for SYMMETRIC_DEFAULT CMKs. For this
+              signing key, rotation is via explicit replacement per Day 8
+              spec §2.4 (create new CMK, publish new public key, ship new
+              doctor/verifier binary, deprecate old CMK).
+    Properties:
+      Description: >-
+        Cyntrisec Phase 1 pilot release signing key. Used exclusively by the
+        cyntrisec-gha-release-signer role via cosign sign-blob with awskms://
+        URI. Private key never leaves KMS. Public key exported to cosign
+        verifiers at build time.
+      KeyUsage: SIGN_VERIFY
+      KeySpec: ECC_NIST_P256
+      # Asymmetric CMKs don't support automatic rotation; rotation is via
+      # explicit replacement per Day 8 spec §2.4. PendingWindowInDays is set
+      # to the minimum (7 days) so a compromised key can be replaced quickly.
+      PendingWindowInDays: 7
+      KeyPolicy:
+        Version: '2012-10-17'
+        Statement:
+          # Root-account delegation pattern (same as cyntrisec-pilot.yaml).
+          # The instance role's kms:Sign / kms:GetPublicKey permissions live
+          # in the role's inline policy below — no circular-dependency risk.
+          - Sid: EnableRootAccountPermissionsAndIamDelegation
+            Effect: Allow
+            Principal:
+              AWS: !Sub 'arn:${AWS::Partition}:iam::${AWS::AccountId}:root'
+            Action: 'kms:*'
+            Resource: '*'
+      Tags:
+        - Key: Purpose
+          Value: cyntrisec-release-signing
+        - Key: CyntrisecOperated
+          Value: 'true'
+
+  ProductionSigningKeyAlias:
+    Type: AWS::KMS::Alias
+    Properties:
+      AliasName: alias/cyntrisec-release-signing
+      TargetKeyId: !Ref ProductionSigningKey
+
+  # --- Eval signing KMS CMK --------------------------------------------------
+  #
+  # Cryptographically distinct from the production CMK. Per Day 9 spec, the
+  # production verifier rejects eval-signed receipts by virtue of embedded-
+  # public-key allowlisting.
+
+  EvalSigningKey:
+    Type: AWS::KMS::Key
+    Metadata:
+      cfn_nag:
+        rules_to_suppress:
+          - id: F19
+            reason: >-
+              Same rationale as ProductionSigningKey above — asymmetric CMKs
+              do not support automatic rotation.
+    Properties:
+      Description: >-
+        Cyntrisec eval endpoint release signing key. Used exclusively by the
+        cyntrisec-gha-eval-signer role. Distinct from the production CMK so
+        eval artifacts cannot accidentally verify as production.
+      KeyUsage: SIGN_VERIFY
+      KeySpec: ECC_NIST_P256
+      PendingWindowInDays: 7
+      KeyPolicy:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: EnableRootAccountPermissionsAndIamDelegation
+            Effect: Allow
+            Principal:
+              AWS: !Sub 'arn:${AWS::Partition}:iam::${AWS::AccountId}:root'
+            Action: 'kms:*'
+            Resource: '*'
+      Tags:
+        - Key: Purpose
+          Value: cyntrisec-eval-signing
+        - Key: CyntrisecOperated
+          Value: 'true'
+
+  EvalSigningKeyAlias:
+    Type: AWS::KMS::Alias
+    Properties:
+      AliasName: alias/cyntrisec-eval-signing
+      TargetKeyId: !Ref EvalSigningKey
+
+  # --- IAM role for production signing (GHA OIDC → this role) ---------------
+
+  ProductionSignerRole:
+    Type: AWS::IAM::Role
+    Metadata:
+      cfn_nag:
+        rules_to_suppress:
+          - id: W28
+            reason: >-
+              Explicit role name is intentional — the Day 8 spec pins this
+              name, the byoc-pilot-release.yml workflow references it via a
+              GitHub repository secret, and the OIDC trust policy binding
+              depends on knowing the exact name at provisioning time. Stack
+              updates that require role replacement are a deliberate incident-
+              response event per Day 8 §6.3.
+    Properties:
+      RoleName: cyntrisec-gha-release-signer
+      Description: >-
+        Assumed by GitHub Actions via OIDC from the Cyntrisec ephemeralml
+        repo's byoc-pilot-release.yml workflow on pilot-v* tag push. Can sign
+        with the production CMK and upload to the pilot release bucket only.
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Federated: !If
+                - ShouldCreateOidcProvider
+                - !Ref GithubOidcProvider
+                - !Sub 'arn:${AWS::Partition}:iam::${AWS::AccountId}:oidc-provider/token.actions.githubusercontent.com'
+            Action: sts:AssumeRoleWithWebIdentity
+            Condition:
+              StringEquals:
+                'token.actions.githubusercontent.com:aud': sts.amazonaws.com
+              StringLike:
+                # Both conditions must match — tag-pattern AND workflow-file.
+                # Neither alone is sufficient; this is the defense-in-depth
+                # binding per Day 8 spec §2.1.
+                'token.actions.githubusercontent.com:sub': !Sub 'repo:${GitHubOrg}/${GitHubRepo}:ref:refs/tags/${ProductionTagPattern}'
+                'token.actions.githubusercontent.com:job_workflow_ref': !Sub '${GitHubOrg}/${GitHubRepo}/.github/workflows/${ProductionWorkflowFile}@refs/tags/${ProductionTagPattern}'
+      Policies:
+        - PolicyName: cyntrisec-gha-release-signer-inline
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Sid: SignWithProductionKey
+                Effect: Allow
+                Action:
+                  - kms:Sign
+                  - kms:GetPublicKey
+                  - kms:DescribeKey
+                Resource: !GetAtt ProductionSigningKey.Arn
+              # Belt-and-suspenders: explicitly deny use of the eval key
+              # from this role. The Resource-scoped Allow above already
+              # prevents it, but an explicit Deny makes the segregation
+              # visible in any future policy audit.
+              - Sid: DenyEvalKeyAccess
+                Effect: Deny
+                Action: 'kms:*'
+                Resource: !GetAtt EvalSigningKey.Arn
+              - Sid: PublishToReleaseBucket
+                Effect: Allow
+                Action:
+                  - s3:PutObject
+                  - s3:AbortMultipartUpload
+                  - s3:ListBucketMultipartUploads
+                Resource:
+                  - !Sub '${ReleaseBucket.Arn}'
+                  - !Sub '${ReleaseBucket.Arn}/*'
+              - Sid: DenyEvalBucketAccess
+                Effect: Deny
+                Action: 's3:*'
+                Resource:
+                  - !Sub '${EvalBucket.Arn}'
+                  - !Sub '${EvalBucket.Arn}/*'
+
+  # --- IAM role for eval signing --------------------------------------------
+
+  EvalSignerRole:
+    Type: AWS::IAM::Role
+    Metadata:
+      cfn_nag:
+        rules_to_suppress:
+          - id: W28
+            reason: >-
+              Same rationale as ProductionSignerRole — pinned name required
+              by the byoc-eval-release.yml workflow and the OIDC trust
+              binding.
+    Properties:
+      RoleName: cyntrisec-gha-eval-signer
+      Description: >-
+        Assumed by GitHub Actions OIDC from byoc-eval-release.yml workflow
+        on branch-push. Can sign with the eval CMK only; explicitly denied
+        access to the production CMK.
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Federated: !If
+                - ShouldCreateOidcProvider
+                - !Ref GithubOidcProvider
+                - !Sub 'arn:${AWS::Partition}:iam::${AWS::AccountId}:oidc-provider/token.actions.githubusercontent.com'
+            Action: sts:AssumeRoleWithWebIdentity
+            Condition:
+              StringEquals:
+                'token.actions.githubusercontent.com:aud': sts.amazonaws.com
+              StringLike:
+                'token.actions.githubusercontent.com:sub': !Sub 'repo:${GitHubOrg}/${GitHubRepo}:ref:refs/heads/${EvalBranchPattern}'
+                'token.actions.githubusercontent.com:job_workflow_ref': !Sub '${GitHubOrg}/${GitHubRepo}/.github/workflows/${EvalWorkflowFile}@refs/heads/${EvalBranchPattern}'
+      Policies:
+        - PolicyName: cyntrisec-gha-eval-signer-inline
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Sid: SignWithEvalKey
+                Effect: Allow
+                Action:
+                  - kms:Sign
+                  - kms:GetPublicKey
+                  - kms:DescribeKey
+                Resource: !GetAtt EvalSigningKey.Arn
+              - Sid: DenyProductionKeyAccess
+                Effect: Deny
+                Action: 'kms:*'
+                Resource: !GetAtt ProductionSigningKey.Arn
+              - Sid: PublishToEvalBucket
+                Effect: Allow
+                Action:
+                  - s3:PutObject
+                  - s3:AbortMultipartUpload
+                  - s3:ListBucketMultipartUploads
+                Resource:
+                  - !Sub '${EvalBucket.Arn}'
+                  - !Sub '${EvalBucket.Arn}/*'
+              - Sid: DenyReleaseBucketAccess
+                Effect: Deny
+                Action: 's3:*'
+                Resource:
+                  - !Sub '${ReleaseBucket.Arn}'
+                  - !Sub '${ReleaseBucket.Arn}/*'
+
+  # --- Pilot release bucket -------------------------------------------------
+  #
+  # Private by default. Public read is expected to be served via a separate
+  # CloudFront distribution with Origin Access Control (OAC) that is NOT
+  # part of this template.
+
+  ReleaseBucket:
+    Type: AWS::S3::Bucket
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Metadata:
+      cfn_nag:
+        rules_to_suppress:
+          - id: W35
+            reason: >-
+              S3 server access logging is not configured here to avoid a
+              second logging-destination bucket in this bootstrap. CloudTrail
+              data events on this bucket are the production audit mechanism
+              and are expected to be enabled at the account level.
+    Properties:
+      BucketName: !If
+        - HasCustomReleaseBucketName
+        - !Ref ReleaseBucketName
+        - !Sub 'cyntrisec-pilot-releases-${AWS::AccountId}-${AWS::Region}'
+      VersioningConfiguration:
+        Status: Enabled
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              # Release artifacts are designed to be public; SSE-S3 (AES256)
+              # is sufficient and avoids the cost/complexity of a customer-
+              # managed KMS key on this bucket.
+              SSEAlgorithm: AES256
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      Tags:
+        - Key: Purpose
+          Value: cyntrisec-pilot-releases
+        - Key: CyntrisecOperated
+          Value: 'true'
+
+  ReleaseBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref ReleaseBucket
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: DenyUnencryptedTransport
+            Effect: Deny
+            Principal: '*'
+            Action: 's3:*'
+            Resource:
+              - !GetAtt ReleaseBucket.Arn
+              - !Sub '${ReleaseBucket.Arn}/*'
+            Condition:
+              Bool:
+                aws:SecureTransport: 'false'
+          # Explicit allow for the signer role — makes the intended write
+          # path obvious in the policy. (Identity-based policy on the role
+          # already permits it; having both is defense-in-depth.)
+          - Sid: AllowSignerRoleWrites
+            Effect: Allow
+            Principal:
+              AWS: !GetAtt ProductionSignerRole.Arn
+            Action:
+              - s3:PutObject
+              - s3:AbortMultipartUpload
+            Resource: !Sub '${ReleaseBucket.Arn}/*'
+
+  # --- Eval release bucket --------------------------------------------------
+
+  EvalBucket:
+    Type: AWS::S3::Bucket
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Metadata:
+      cfn_nag:
+        rules_to_suppress:
+          - id: W35
+            reason: >-
+              Same rationale as ReleaseBucket — CloudTrail data events at
+              the account level cover the audit path.
+    Properties:
+      BucketName: !If
+        - HasCustomEvalBucketName
+        - !Ref EvalBucketName
+        - !Sub 'cyntrisec-eval-releases-${AWS::AccountId}-${AWS::Region}'
+      VersioningConfiguration:
+        Status: Enabled
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      Tags:
+        - Key: Purpose
+          Value: cyntrisec-eval-releases
+        - Key: CyntrisecOperated
+          Value: 'true'
+
+  EvalBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref EvalBucket
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: DenyUnencryptedTransport
+            Effect: Deny
+            Principal: '*'
+            Action: 's3:*'
+            Resource:
+              - !GetAtt EvalBucket.Arn
+              - !Sub '${EvalBucket.Arn}/*'
+          - Sid: AllowSignerRoleWrites
+            Effect: Allow
+            Principal:
+              AWS: !GetAtt EvalSignerRole.Arn
+            Action:
+              - s3:PutObject
+              - s3:AbortMultipartUpload
+            Resource: !Sub '${EvalBucket.Arn}/*'
+
+# ------------------------------------------------------------------------------
+# Outputs — consumed by the byoc-pilot-release.yml and byoc-eval-release.yml
+# workflows as repository secrets (AWS_RELEASE_ROLE_ARN, etc.).
+# ------------------------------------------------------------------------------
+Outputs:
+
+  GithubOidcProviderArn:
+    Description: ARN of the GitHub Actions OIDC identity provider (created or referenced).
+    Value: !If
+      - ShouldCreateOidcProvider
+      - !Ref GithubOidcProvider
+      - !Sub 'arn:${AWS::Partition}:iam::${AWS::AccountId}:oidc-provider/token.actions.githubusercontent.com'
+
+  ProductionSigningKeyArn:
+    Description: ARN of the production release signing KMS CMK.
+    Value: !GetAtt ProductionSigningKey.Arn
+    Export:
+      Name: !Sub '${AWS::StackName}-ProductionSigningKeyArn'
+
+  ProductionSigningKeyAlias:
+    Description: Alias of the production release signing CMK.
+    Value: !Ref ProductionSigningKeyAlias
+    Export:
+      Name: !Sub '${AWS::StackName}-ProductionSigningKeyAlias'
+
+  EvalSigningKeyArn:
+    Description: ARN of the eval release signing KMS CMK.
+    Value: !GetAtt EvalSigningKey.Arn
+    Export:
+      Name: !Sub '${AWS::StackName}-EvalSigningKeyArn'
+
+  EvalSigningKeyAlias:
+    Description: Alias of the eval release signing CMK.
+    Value: !Ref EvalSigningKeyAlias
+    Export:
+      Name: !Sub '${AWS::StackName}-EvalSigningKeyAlias'
+
+  ProductionSignerRoleArn:
+    Description: >-
+      ARN of the production signer role. Set this as the
+      AWS_RELEASE_ROLE_ARN GitHub secret on the cyntrisec/ephemeralml repo.
+    Value: !GetAtt ProductionSignerRole.Arn
+    Export:
+      Name: !Sub '${AWS::StackName}-ProductionSignerRoleArn'
+
+  EvalSignerRoleArn:
+    Description: >-
+      ARN of the eval signer role. Set this as AWS_EVAL_ROLE_ARN GitHub secret.
+    Value: !GetAtt EvalSignerRole.Arn
+    Export:
+      Name: !Sub '${AWS::StackName}-EvalSignerRoleArn'
+
+  ReleaseBucketName:
+    Description: Pilot release bucket name.
+    Value: !Ref ReleaseBucket
+    Export:
+      Name: !Sub '${AWS::StackName}-ReleaseBucketName'
+
+  ReleaseBucketArn:
+    Description: Pilot release bucket ARN.
+    Value: !GetAtt ReleaseBucket.Arn
+
+  EvalBucketName:
+    Description: Eval release bucket name.
+    Value: !Ref EvalBucket
+    Export:
+      Name: !Sub '${AWS::StackName}-EvalBucketName'
+
+  EvalBucketArn:
+    Description: Eval release bucket ARN.
+    Value: !GetAtt EvalBucket.Arn
+
+  NextStepsReminder:
+    Description: Follow-up tasks after this stack reaches CREATE_COMPLETE.
+    Value: >-
+      1) Set GitHub repository secrets AWS_RELEASE_ROLE_ARN and
+      AWS_EVAL_ROLE_ARN from the corresponding Outputs. 2) Export the
+      production + eval public keys via `aws kms get-public-key` and embed
+      them into ephemeralml-doctor + ephemeralml-verify release artifacts.
+      3) Configure CloudFront distribution + ACM cert for get.cyntrisec.com
+      to serve the release bucket publicly (separate ChangeSet). 4) Run the
+      byoc-pilot-release.yml workflow with `dry_run: true` to validate end-
+      to-end before the first real pilot tag push.

@@ -713,9 +713,8 @@ Three mitigation strategies are planned:
 As NVIDIA H100 cGPU support matures, \textsc{EphemeralML} could extend to GPU-accelerated inference within a TEE.
 The Candle framework already supports CUDA backends via the \texttt{cuda} feature flag, and the blind relay architecture is agnostic to the compute backend.
 
-\paragraph{Shield Mode.}
-The current v1 implements ``Gateway Only'' mode where the enclave processes inference but does not protect against model extraction via repeated queries.
-A planned ``Shield Mode'' would add query budgets, differential privacy noise injection, and rate limiting at the enclave level.
+\paragraph{Future Hardening.}
+The current v1 implements the Gateway path only. Future work may add query budgets, differential privacy noise injection, and rate limiting at the enclave level, but these controls are out of scope for the present system and receipt format.
 
 \paragraph{Memory Overhead.}
 Enclave memory overhead scales with model size: \BenchEnclavePeakRssMb{}\,MB for \BenchModelName{} (86.7\,MB weights), 1{,}494\,MB for MiniLM-L12-v2 (127\,MB weights), and 2{,}826\,MB for BERT-base (440\,MB weights).

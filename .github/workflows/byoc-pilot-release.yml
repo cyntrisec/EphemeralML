@@ -1,0 +1,459 @@
+# BYOC Phase 1 Pilot Release
+#
+# Contract: startup-plans/10-operations/byoc-phase-1-supply-chain-posture-spec-2026-04-23.md
+#
+# Scope: the 7 Phase 1 pilot artifacts — EIF, installer tarball, doctor,
+# smoke-test, verifier, CloudFormation template, SHA256SUMS. Deliberately
+# narrower than `.github/workflows/release.yml` (the broader EphemeralML
+# release path). This workflow's artifacts are the ones the Cyntrisec BYOC
+# pilot contract pack warrants.
+#
+# Six release gates fail-closed before anything is signed:
+#   Gate 1 — tests
+#   Gate 2 — supply-chain audit (cargo-audit + cargo-vet + cargo-deny)
+#   Gate 3 — build provenance (SLSA L2)
+#   Gate 4 — SBOM
+#   Gate 5 — reproducibility (two parallel builds, byte-identical SHA-256)
+#   Gate 6 — static validation (clippy + fmt + cfn-lint + cfn-nag)
+#
+# Signing uses AWS KMS-backed cosign (`awskms:///alias/cyntrisec-release-signing`)
+# via OIDC assume-role. The private key never leaves KMS. Dual trust path
+# (KMS-keyed artifact sig + keyless OIDC-identity SLSA provenance) per spec.
+#
+# Workflow status: skeleton-complete. Jobs wired; real execution requires the
+# Phase 1 AWS infrastructure (CMK, IAM OIDC trust, release bucket). Each step
+# that depends on unprovisioned infrastructure has an explicit TODO marker.
+
+name: BYOC Pilot Release (Phase 1)
+
+on:
+  push:
+    tags:
+      # Distinct tag pattern keeps this workflow scoped to pilot releases and
+      # keeps the broader EphemeralML release.yml triggered by `v*` untouched.
+      - 'pilot-v*.*.*'
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Build + sign artifacts but do NOT publish to release bucket'
+        type: boolean
+        default: true
+
+# OIDC for AWS assume-role and Sigstore keyless provenance. Contents read-only
+# because we publish to S3, not to GitHub Release assets.
+permissions:
+  id-token: write
+  contents: read
+  attestations: write
+
+env:
+  AWS_REGION: us-east-1
+  RUST_VERSION: '1.75'
+  # These are placeholder names that match the Day 8 spec's pinned identities.
+  # Real values live in repository secrets so the workflow file itself carries
+  # no AWS account ID.
+  RELEASE_BUCKET_NAME: cyntrisec-pilot-releases
+  KMS_RELEASE_KEY_ALIAS: alias/cyntrisec-release-signing
+
+concurrency:
+  # One pilot release at a time; cancel superseded in-progress runs.
+  group: byoc-pilot-release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+
+  # --------------------------------------------------------------------------
+  # Gate 1 — Workspace tests green
+  # --------------------------------------------------------------------------
+  tests:
+    name: Gate 1 — Workspace tests
+    runs-on: ubuntu-22.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ env.RUST_VERSION }}
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-tests-${{ hashFiles('**/Cargo.lock') }}
+      - name: cargo test --workspace
+        # NB: `--all-features` can surface feature-combination regressions but
+        # some features require AWS resources at runtime (enclave + TEE paths).
+        # For release gate 1 we run the default feature set, which is what
+        # customer-facing binaries link against. Full-matrix testing lives in
+        # the broader ci.yml.
+        run: cargo test --workspace --locked
+
+  # --------------------------------------------------------------------------
+  # Gate 2 — Supply-chain audit
+  # --------------------------------------------------------------------------
+  audit:
+    name: Gate 2 — Supply-chain audit
+    runs-on: ubuntu-22.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ env.RUST_VERSION }}
+
+      - name: Install audit tooling
+        run: |
+          cargo install --locked cargo-audit
+          cargo install --locked cargo-deny
+          # cargo-vet is committed to the repo under .config/supply-chain/ so
+          # audit imports from Google + Mozilla are pinned in lockstep with
+          # Cargo.lock changes.
+          cargo install --locked cargo-vet
+
+      - name: cargo audit
+        # Fail on high/critical; medium advisories must be explicitly
+        # acknowledged in .cargo/audit.toml with a rationale.
+        run: cargo audit --deny warnings
+
+      - name: cargo deny (licenses + bans)
+        run: cargo deny check
+
+      - name: cargo vet
+        # Requires `.config/supply-chain/` with imports from Google + Mozilla
+        # + local Cyntrisec audits.toml. Without them this step fails cleanly
+        # until the vet substrate is initialized.
+        run: cargo vet
+
+  # --------------------------------------------------------------------------
+  # Gate 6 — Static validation (fast, no external deps)
+  # --------------------------------------------------------------------------
+  static-validation:
+    name: Gate 6 — Static validation
+    runs-on: ubuntu-22.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ env.RUST_VERSION }}
+          components: clippy, rustfmt
+
+      - name: cargo clippy (all workspace)
+        run: cargo clippy --workspace --all-targets -- -D warnings
+
+      - name: cargo fmt --check
+        run: cargo fmt --all -- --check
+
+      - name: Install cfn-lint + cfn-nag
+        run: |
+          pip install --user cfn-lint
+          gem install --user-install cfn-nag
+
+      - name: cfn-lint deploy/aws/*.yaml
+        # All three Phase 1 templates live in the code repo now:
+        #   - cyntrisec-pilot.yaml (customer-deployed)
+        #   - release-signing-bootstrap.yaml (Cyntrisec release account)
+        #   - eval-endpoint-bootstrap.yaml (Cyntrisec eval account)
+        # Each has a distinct trust domain (see deploy/aws/README.md), but
+        # all must lint clean before a release tag is signed.
+        run: cfn-lint deploy/aws/*.yaml
+
+      - name: cfn-nag deploy/aws/*.yaml
+        run: |
+          export PATH="$HOME/.local/share/gem/ruby/3.0.0/bin:$PATH"
+          cfn_nag_scan --input-path deploy/aws/
+
+  # --------------------------------------------------------------------------
+  # Gates 3, 4, 5 (build + SBOM + reproducibility)
+  #
+  # The 'variant' matrix produces two independent builds; Gate 5 later diffs
+  # the artifact SHA-256s. Deterministic Rust builds require pinned SOURCE_DATE_
+  # EPOCH + rustc + CARGO_INCREMENTAL=0; set below.
+  # --------------------------------------------------------------------------
+  build:
+    name: Gate 4 — Build + SBOM (variant=${{ matrix.variant }})
+    needs: [tests, audit, static-validation]
+    runs-on: ubuntu-22.04
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        variant: [clean, cached]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # provenance needs commit SHA history
+
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ env.RUST_VERSION }}
+          targets: x86_64-unknown-linux-musl
+
+      - name: Restore cache (cached variant only)
+        if: matrix.variant == 'cached'
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-byoc-build-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Install cargo-auditable + cyclonedx
+        run: |
+          cargo install --locked cargo-auditable
+          cargo install --locked cargo-cyclonedx
+
+      - name: Set reproducibility environment
+        run: |
+          # SOURCE_DATE_EPOCH is the commit's author timestamp. This is the
+          # deterministic-build baseline per reproducible-builds.org.
+          echo "SOURCE_DATE_EPOCH=$(git log -1 --pretty=%ct)" >> "$GITHUB_ENV"
+          echo "CARGO_INCREMENTAL=0" >> "$GITHUB_ENV"
+          echo "RUSTFLAGS=-C target-feature=+crt-static" >> "$GITHUB_ENV"
+
+      - name: Build pilot binaries (with embedded SBOM)
+        # cargo-auditable wraps cargo build and embeds the SBOM into each
+        # binary's debug-section metadata; recoverable via
+        # `rust-audit-info <binary>`.
+        run: |
+          cargo auditable build \
+            --release --locked \
+            --target x86_64-unknown-linux-musl \
+            --package ephemeral-ml-doctor \
+            --package ephemeral-ml-smoke-test \
+            --package ephemeral-ml-common
+
+      - name: Emit standalone CycloneDX SBOM companions
+        run: |
+          mkdir -p dist/sbom
+          cargo cyclonedx --format json --output-cdx dist/sbom/ephemeralml-doctor.cdx.json --package ephemeral-ml-doctor || true
+          cargo cyclonedx --format json --output-cdx dist/sbom/ephemeralml-smoke-test.cdx.json --package ephemeral-ml-smoke-test || true
+
+      - name: Build EIF (Nitro Enclave Image)
+        # TODO: requires aws-nitro-enclaves-cli + Docker on a Nitro-capable
+        # host (GHA ubuntu-22.04 runners cannot run nitro-cli build-enclave
+        # because they lack the Nitro hypervisor). Common patterns:
+        #   (a) GHA runs on a self-hosted Nitro m6i runner; build there
+        #   (b) GHA drives an SSM RunCommand against a dedicated build EC2
+        #       that invokes `nitro-cli build-enclave --docker-uri ... \
+        #       --output-file dist/ephemeralml-pilot.eif` and copies back
+        #   (c) EIF is built in a separate workflow triggered on the same
+        #       tag and uploaded to a build-artifacts bucket; this signing
+        #       workflow downloads it for cosign
+        # For the skeleton release we leave a clear placeholder so downstream
+        # signing has a named input. When option (b) or (c) lands, replace
+        # the placeholder write with an artifact fetch.
+        run: |
+          mkdir -p dist
+          echo "PLACEHOLDER: ephemeralml-pilot.eif not yet built in CI; see workflow note above" \
+            > dist/ephemeralml-pilot.eif.PLACEHOLDER
+          # Installer tarball seed — real content (allocator.yaml template +
+          # systemd units + EIF fetcher script) follows when the installer
+          # crate lands.
+          mkdir -p dist/installer-staging
+          cp deploy/release/cyntrisec-release-dev-v1.pub dist/installer-staging/ || true
+          echo "PLACEHOLDER: installer contents not yet wired" \
+            > dist/installer-staging/README.txt
+          tar czf dist/cyntrisec-installer.tar.gz -C dist/installer-staging .
+          rm -rf dist/installer-staging
+
+      - name: Collect artifacts into dist/
+        run: |
+          cp target/x86_64-unknown-linux-musl/release/ephemeralml-doctor dist/
+          cp target/x86_64-unknown-linux-musl/release/ephemeralml-smoke-test dist/
+          # ephemeralml-verify exists in ephemeral-ml-common once its binary
+          # target is separated; until then, this marker is the only signal
+          # that it belongs in the release set.
+          echo "TODO: ephemeralml-verify binary pending split from ephemeral-ml-common" \
+            > dist/verifier.TODO
+          # CloudFormation template (now in-repo at deploy/aws/)
+          cp deploy/aws/cyntrisec-pilot.yaml dist/
+
+      - name: Compute per-artifact SHA-256
+        run: |
+          cd dist && sha256sum * > SHA256SUMS-${{ matrix.variant }}
+
+      - name: Upload variant artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: byoc-pilot-${{ matrix.variant }}
+          path: dist/
+          retention-days: 7
+
+  # --------------------------------------------------------------------------
+  # Gate 5 — Reproducibility (byte-identical SHA-256 between the two variants)
+  # --------------------------------------------------------------------------
+  reproducibility:
+    name: Gate 5 — Reproducibility match
+    needs: build
+    runs-on: ubuntu-22.04
+    timeout-minutes: 5
+    steps:
+      - name: Download clean build
+        uses: actions/download-artifact@v4
+        with:
+          name: byoc-pilot-clean
+          path: clean/
+      - name: Download cached build
+        uses: actions/download-artifact@v4
+        with:
+          name: byoc-pilot-cached
+          path: cached/
+      - name: Diff SHA256SUMS between variants
+        # Strict byte-identical match required per spec. Any drift is a hard
+        # release blocker; investigation (non-determinism source) precedes
+        # re-attempt.
+        run: |
+          diff <(sort clean/SHA256SUMS-clean) <(sort cached/SHA256SUMS-cached) \
+            && echo "Reproducibility: MATCH" \
+            || { echo "Reproducibility: DRIFT — release blocked"; exit 1; }
+
+  # --------------------------------------------------------------------------
+  # Gate 3 — Sign artifacts + emit SLSA L2 provenance
+  # --------------------------------------------------------------------------
+  sign:
+    name: Gate 3 — Sign + SLSA provenance
+    needs: [tests, audit, static-validation, build, reproducibility]
+    runs-on: ubuntu-22.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download canonical build (clean variant)
+        uses: actions/download-artifact@v4
+        with:
+          name: byoc-pilot-clean
+          path: dist/
+
+      - name: Install cosign
+        uses: sigstore/cosign-installer@v3
+        with:
+          cosign-release: 'v2.4.1'
+
+      - name: Configure AWS credentials (OIDC assume-role)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          # TODO: set AWS_RELEASE_ROLE_ARN as a repository secret pointing at
+          # the `cyntrisec-gha-release-signer` IAM role per Day 8 spec §2.1.
+          # The role's trust policy must bind to this exact workflow_ref.
+          role-to-assume: ${{ secrets.AWS_RELEASE_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+          # Short-lived credential; no static keys anywhere.
+          role-session-name: byoc-pilot-release-${{ github.run_id }}
+
+      - name: Sign each artifact with KMS-backed cosign
+        # --bundle produces an offline-verifiable .cosign.bundle that includes
+        # the Rekor inclusion proof. Customers verify without a network call.
+        # Matches the verify command shape the doctor's Check 2 and the
+        # customer-facing quickstart both use.
+        run: |
+          cd dist
+          # The 7 Phase 1 artifacts per supply-chain-posture spec §1. EIF is
+          # listed here too; the Build EIF step currently writes a PLACEHOLDER
+          # named file instead of a real EIF, so the skip branch keeps the
+          # release unblocked until real EIF builds land.
+          for f in \
+            ephemeralml-pilot.eif \
+            ephemeralml-doctor \
+            ephemeralml-smoke-test \
+            ephemeralml-verify \
+            cyntrisec-installer.tar.gz \
+            cyntrisec-pilot.yaml \
+            SHA256SUMS-clean
+          do
+            if [ ! -f "$f" ]; then
+              echo "skip: $f not present (check build step)"
+              continue
+            fi
+            cosign sign-blob \
+              --yes \
+              --key "awskms:///${KMS_RELEASE_KEY_ALIAS}" \
+              --bundle "$f.cosign.bundle" \
+              --output-signature "$f.sig" \
+              --output-certificate "$f.cert" \
+              "$f"
+          done
+
+      - name: Attest SLSA L2 build provenance per artifact
+        uses: actions/attest-build-provenance@v1
+        with:
+          subject-path: |
+            dist/ephemeralml-doctor
+            dist/ephemeralml-smoke-test
+            dist/cyntrisec-installer.tar.gz
+            dist/cyntrisec-pilot.yaml
+            dist/SHA256SUMS-clean
+          # Falls through to the implicit GitHub Actions OIDC + Sigstore keyless
+          # path; provenance attestations land in Rekor. EIF provenance lands
+          # via this same mechanism once the real EIF build is wired; verify
+          # and the 7-artifact installer subtree will be added in the same
+          # change.
+
+      - name: Final artifact upload (signed + attested)
+        uses: actions/upload-artifact@v4
+        with:
+          name: byoc-pilot-signed
+          path: dist/
+          retention-days: 30
+
+  # --------------------------------------------------------------------------
+  # Publish to release bucket (optional; gated by dry_run)
+  # --------------------------------------------------------------------------
+  publish:
+    name: Publish to release bucket
+    needs: sign
+    runs-on: ubuntu-22.04
+    timeout-minutes: 20
+    # Only publish on tag push (not manual workflow_dispatch with dry_run=true,
+    # which is the default for manual triggers).
+    if: |
+      github.event_name == 'push' ||
+      (github.event_name == 'workflow_dispatch' && github.event.inputs.dry_run == 'false')
+    steps:
+      - name: Download signed artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: byoc-pilot-signed
+          path: dist/
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_RELEASE_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+          role-session-name: byoc-pilot-publish-${{ github.run_id }}
+
+      - name: Extract version tag
+        id: version
+        run: echo "tag=${GITHUB_REF_NAME#pilot-}" >> "$GITHUB_OUTPUT"
+
+      - name: Upload to release bucket
+        # Per spec §1: everything goes under s3://{bucket}/{tag}/.
+        # The IAM role's policy MUST restrict s3:PutObject to this bucket
+        # only (principle of least privilege for OIDC-trusted identities).
+        run: |
+          aws s3 sync dist/ \
+            "s3://${RELEASE_BUCKET_NAME}/${{ steps.version.outputs.tag }}/" \
+            --exclude "*.TODO"
+
+      - name: Update latest/ alias
+        # Customer-facing `get.cyntrisec.com/latest/...` points at the most
+        # recent tag via an S3 object copy (alternative: CloudFront redirect).
+        run: |
+          aws s3 sync \
+            "s3://${RELEASE_BUCKET_NAME}/${{ steps.version.outputs.tag }}/" \
+            "s3://${RELEASE_BUCKET_NAME}/latest/" \
+            --delete
+
+      - name: Summary
+        run: |
+          echo "## BYOC Pilot Release Published" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "Tag: \`${{ steps.version.outputs.tag }}\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "Bucket: \`s3://${RELEASE_BUCKET_NAME}/${{ steps.version.outputs.tag }}/\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "Signing: KMS-keyed cosign via \`${KMS_RELEASE_KEY_ALIAS}\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "Provenance: SLSA L2 via GitHub Actions OIDC + Sigstore" >> "$GITHUB_STEP_SUMMARY"

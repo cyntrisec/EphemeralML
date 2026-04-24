@@ -23,15 +23,15 @@ AIR v1 receipts do **not** prove that input data, output data, or intermediate s
 
 ### L-2: Model Hash Proves Identity, Not Correctness
 
-AIR v1 includes a required `model_hash` claim — a SHA-256 of the model weights. This cryptographically binds the receipt to a specific model artifact.
+AIR v1 includes a required `model_hash` claim — a SHA-256 binding for the model artifact set, as defined by `model_hash_scheme`. This cryptographically binds the receipt to a specific model identity value.
 
-- `model_hash` proves **which** model weights were loaded. A verifier with a known-good hash can confirm exact model identity.
+- `model_hash` proves **which** model artifact set was claimed by the workload. A verifier with a known-good hash can confirm exact model identity.
 - `model_id` and `model_version` are operator-assigned opaque strings for human readability. They are NOT the cryptographic binding — `model_hash` is.
-- `model_hash` does **not** prove the model behaves correctly, is free of bias, or matches a reference specification. It proves byte-level identity of the weights file.
-- Attestation documents (Nitro COSE, TDX quotes) measure the workload code/runtime, not the model weights. `model_hash` fills this gap — without it, a compromised workload could load arbitrary weights.
+- `model_hash` does **not** prove the model behaves correctly, is free of bias, or matches a reference specification. It proves byte-level identity only relative to the declared hash scheme.
+- Attestation documents (Nitro COSE, TDX quotes) measure the workload code/runtime, not the model artifact set. `model_hash` fills this application-layer identity gap, but does not by itself prove hardware-attested loading or execution.
 - The optional `model_hash_scheme` claim (key -65549) declares how model_hash was computed. Defined values: `"sha256-single"`, `"sha256-concat"`, `"sha256-manifest"`. When absent, the hash is opaque. Implementations are RECOMMENDED to include this claim for reproducibility.
 
-**Correct claim:** "The receipt cryptographically identifies the exact model weights used via model_hash."
+**Correct claim:** "The receipt cryptographically identifies the model artifact set via model_hash."
 **Incorrect claim:** "The receipt proves the model is unbiased/correct/safe."
 
 ### L-3: Attestation Document NOT Verified by Receipt

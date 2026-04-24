@@ -1,7 +1,11 @@
 use crate::{current_timestamp, AttestationProvider, EnclaveError, EphemeralError, Result};
 pub use ephemeral_ml_common::{AttestationDocument, PcrMeasurements};
-use rand::rngs::OsRng;
-use rsa::{pkcs8::EncodePublicKey, Oaep, RsaPrivateKey};
+use openssl::{
+    encrypt::Decrypter,
+    hash::MessageDigest,
+    pkey::{PKey, Private},
+    rsa::{Padding, Rsa},
+};
 use sha2::{Digest, Sha256};
 
 use zeroize::ZeroizeOnDrop;
@@ -34,13 +38,12 @@ impl MockKeyPair {
 pub struct MockAttestationProvider {
     pub valid_attestation: bool,
     pub hpke_keypair: MockKeyPair,
-    pub kms_keypair: RsaPrivateKey,
+    pub kms_keypair: PKey<Private>,
 }
 
 impl MockAttestationProvider {
     pub fn new() -> Self {
-        let mut rng = OsRng;
-        let kms_keypair = RsaPrivateKey::new(&mut rng, 2048).expect("RSA keygen failed");
+        let kms_keypair = generate_kms_keypair();
 
         Self {
             valid_attestation: true,
@@ -50,8 +53,7 @@ impl MockAttestationProvider {
     }
 
     pub fn with_invalid_attestation() -> Self {
-        let mut rng = OsRng;
-        let kms_keypair = RsaPrivateKey::new(&mut rng, 2048).expect("RSA keygen failed");
+        let kms_keypair = generate_kms_keypair();
 
         Self {
             valid_attestation: false,
@@ -117,8 +119,10 @@ impl MockAttestationProvider {
         let pcr1_bytes = pcr0_bytes.clone();
         let pcr2_bytes = pcr0_bytes.clone();
 
-        let kms_pub_key = self.kms_keypair.to_public_key();
-        let kms_pub_der = kms_pub_key.to_public_key_der().expect("RSA export failed");
+        let kms_pub_der = self
+            .kms_keypair
+            .public_key_to_der()
+            .expect("RSA export failed");
 
         use ciborium::Value;
 
@@ -139,7 +143,7 @@ impl MockAttestationProvider {
             ),
             (
                 Value::Text("public_key".to_string()),
-                Value::Bytes(kms_pub_der.as_bytes().to_vec()),
+                Value::Bytes(kms_pub_der),
             ),
             (Value::Text("pcrs".to_string()), Value::Map(pcrs_map)),
         ];
@@ -252,12 +256,7 @@ impl AttestationProvider for MockAttestationProvider {
     }
 
     fn decrypt_kms(&self, ciphertext: &[u8]) -> Result<Vec<u8>> {
-        let padding = Oaep::new::<Sha256>();
-        let mut rng = OsRng;
-        match self
-            .kms_keypair
-            .decrypt_blinded(&mut rng, padding, ciphertext)
-        {
+        match decrypt_oaep_sha256(&self.kms_keypair, ciphertext) {
             Ok(pt) => Ok(pt),
             Err(_) => self.decrypt_hpke(ciphertext),
         }
@@ -266,4 +265,64 @@ impl AttestationProvider for MockAttestationProvider {
     fn attestation_source(&self) -> Option<&'static str> {
         Some("mock")
     }
+}
+
+fn generate_kms_keypair() -> PKey<Private> {
+    let rsa_key = Rsa::generate(2048).expect("RSA keygen failed");
+    PKey::from_rsa(rsa_key).expect("RSA PKey construction failed")
+}
+
+fn decrypt_oaep_sha256(key: &PKey<Private>, ciphertext: &[u8]) -> Result<Vec<u8>> {
+    let mut decrypter = Decrypter::new(key).map_err(|e| {
+        EnclaveError::Enclave(EphemeralError::DecryptionError(format!(
+            "KMS decryption setup failed: {}",
+            e
+        )))
+    })?;
+    configure_oaep_sha256_decrypter(&mut decrypter)?;
+    let mut plaintext = vec![
+        0u8;
+        decrypter.decrypt_len(ciphertext).map_err(|e| {
+            EnclaveError::Enclave(EphemeralError::DecryptionError(format!(
+                "KMS decryption size calculation failed: {}",
+                e
+            )))
+        })?
+    ];
+    let len = decrypter.decrypt(ciphertext, &mut plaintext).map_err(|e| {
+        EnclaveError::Enclave(EphemeralError::DecryptionError(format!(
+            "KMS decryption failed: {}",
+            e
+        )))
+    })?;
+    plaintext.truncate(len);
+    Ok(plaintext)
+}
+
+fn configure_oaep_sha256_decrypter(decrypter: &mut Decrypter<'_>) -> Result<()> {
+    decrypter
+        .set_rsa_padding(Padding::PKCS1_OAEP)
+        .map_err(|e| {
+            EnclaveError::Enclave(EphemeralError::DecryptionError(format!(
+                "KMS decryption padding setup failed: {}",
+                e
+            )))
+        })?;
+    decrypter
+        .set_rsa_oaep_md(MessageDigest::sha256())
+        .map_err(|e| {
+            EnclaveError::Enclave(EphemeralError::DecryptionError(format!(
+                "KMS decryption OAEP digest setup failed: {}",
+                e
+            )))
+        })?;
+    decrypter
+        .set_rsa_mgf1_md(MessageDigest::sha256())
+        .map_err(|e| {
+            EnclaveError::Enclave(EphemeralError::DecryptionError(format!(
+                "KMS decryption MGF1 digest setup failed: {}",
+                e
+            )))
+        })?;
+    Ok(())
 }

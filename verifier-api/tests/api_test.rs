@@ -644,6 +644,10 @@ async fn test_backward_compat_no_new_fields() {
 // ==========================================================================
 
 fn make_air_v1_receipt(key: &ReceiptSigningKey) -> Vec<u8> {
+    make_air_v1_receipt_with_security_mode(key, "production")
+}
+
+fn make_air_v1_receipt_with_security_mode(key: &ReceiptSigningKey, security_mode: &str) -> Vec<u8> {
     use ephemeral_ml_common::air_receipt::{build_air_v1, AirReceiptClaims};
     use ephemeral_ml_common::receipt_signing::EnclaveMeasurements;
 
@@ -666,7 +670,7 @@ fn make_air_v1_receipt(key: &ReceiptSigningKey) -> Vec<u8> {
         sequence_number: 1,
         execution_time_ms: 100,
         memory_peak_mb: 64,
-        security_mode: "GatewayOnly".to_string(),
+        security_mode: security_mode.to_string(),
         model_hash_scheme: None,
     };
     build_air_v1(&claims, key).unwrap()
@@ -752,8 +756,8 @@ async fn test_air_v1_json_base64() {
     let resp = client
         .post(format!("{}/api/v1/verify", base))
         .json(&serde_json::json!({
-            "receipt": receipt_b64,
-            "public_key": public_key_hex,
+            "receipt": receipt_b64.clone(),
+            "public_key": public_key_hex.clone(),
         }))
         .send()
         .await
@@ -763,6 +767,174 @@ async fn test_air_v1_json_base64() {
     let body: serde_json::Value = resp.json().await.unwrap();
     assert_eq!(body["verified"], true);
     assert_eq!(body["format"], "air_v1");
+    assert_eq!(body["assurance_level"], "air_local");
+    assert_eq!(body["tee_provenance_verified"], false);
+    assert_eq!(check_status(&body, "attestation_doc_hash"), "skip");
+    assert_eq!(check_status(&body, "signing_key_binding"), "skip");
+    assert_eq!(check_status(&body, "platform_attestation"), "skip");
+}
+
+#[tokio::test]
+async fn test_air_v1_json_expected_model_hash_enforced() {
+    let base = require_base!(start_server());
+    let key = ReceiptSigningKey::generate().unwrap();
+    let receipt_bytes = make_air_v1_receipt(&key);
+    let public_key_hex = hex::encode(key.public_key_bytes());
+    let receipt_b64 =
+        base64::Engine::encode(&base64::engine::general_purpose::STANDARD, &receipt_bytes);
+
+    let client = reqwest::Client::new();
+    let resp = client
+        .post(format!("{}/api/v1/verify", base))
+        .json(&serde_json::json!({
+            "receipt": receipt_b64,
+            "public_key": public_key_hex,
+            "expected_model_hash_hex": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+        }))
+        .send()
+        .await
+        .unwrap();
+
+    assert_eq!(resp.status(), 200);
+    let body: serde_json::Value = resp.json().await.unwrap();
+    assert_eq!(body["verified"], false);
+    assert_eq!(check_status(&body, "MHASH"), "fail");
+}
+
+#[tokio::test]
+async fn test_air_v1_json_expected_request_hash_enforced() {
+    let base = require_base!(start_server());
+    let key = ReceiptSigningKey::generate().unwrap();
+    let receipt_bytes = make_air_v1_receipt(&key);
+    let public_key_hex = hex::encode(key.public_key_bytes());
+    let receipt_b64 =
+        base64::Engine::encode(&base64::engine::general_purpose::STANDARD, &receipt_bytes);
+
+    let client = reqwest::Client::new();
+    let resp = client
+        .post(format!("{}/api/v1/verify", base))
+        .json(&serde_json::json!({
+            "receipt": receipt_b64,
+            "public_key": public_key_hex,
+            "expected_request_hash_hex": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+        }))
+        .send()
+        .await
+        .unwrap();
+
+    assert_eq!(resp.status(), 200);
+    let body: serde_json::Value = resp.json().await.unwrap();
+    assert_eq!(body["verified"], false);
+    assert_eq!(check_status(&body, "RHASH"), "fail");
+}
+
+#[tokio::test]
+async fn test_air_v1_evaluation_mode_rejected_by_production_verifier() {
+    let base = require_base!(start_server());
+    let key = ReceiptSigningKey::generate().unwrap();
+    let receipt_bytes = make_air_v1_receipt_with_security_mode(&key, "evaluation");
+    let public_key_hex = hex::encode(key.public_key_bytes());
+    let receipt_b64 =
+        base64::Engine::encode(&base64::engine::general_purpose::STANDARD, &receipt_bytes);
+
+    let client = reqwest::Client::new();
+    let resp = client
+        .post(format!("{}/api/v1/verify", base))
+        .json(&serde_json::json!({
+            "receipt": receipt_b64,
+            "public_key": public_key_hex,
+        }))
+        .send()
+        .await
+        .unwrap();
+
+    assert_eq!(resp.status(), 200);
+    let body: serde_json::Value = resp.json().await.unwrap();
+    assert_eq!(body["verified"], false);
+    assert_eq!(check_status(&body, "SECURITY_MODE_POLICY"), "fail");
+
+    let resp = client
+        .post(format!("{}/api/v1/verify", base))
+        .json(&serde_json::json!({
+            "receipt": receipt_b64,
+            "public_key": public_key_hex,
+            "expected_security_mode": "evaluation",
+        }))
+        .send()
+        .await
+        .unwrap();
+
+    assert_eq!(resp.status(), 400);
+    let body: serde_json::Value = resp.json().await.unwrap();
+    assert!(body["error"]
+        .as_str()
+        .unwrap()
+        .contains("evaluation verifier"));
+}
+
+#[tokio::test]
+async fn test_verify_rejects_unknown_json_fields() {
+    let base = require_base!(start_server());
+    let key = ReceiptSigningKey::generate().unwrap();
+    let receipt_bytes = make_air_v1_receipt(&key);
+    let public_key_hex = hex::encode(key.public_key_bytes());
+    let receipt_b64 =
+        base64::Engine::encode(&base64::engine::general_purpose::STANDARD, &receipt_bytes);
+
+    let client = reqwest::Client::new();
+    let resp = client
+        .post(format!("{}/api/v1/verify", base))
+        .json(&serde_json::json!({
+            "receipt": receipt_b64,
+            "public_key": public_key_hex,
+            "expected_model_hash": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+        }))
+        .send()
+        .await
+        .unwrap();
+
+    assert!(
+        resp.status() == 400 || resp.status() == 422,
+        "unexpected status: {}",
+        resp.status()
+    );
+}
+
+#[tokio::test]
+async fn test_air_v1_upload_attestation_mismatch_rejects_tee_provenance() {
+    let base = require_base!(start_server());
+    let key = ReceiptSigningKey::generate().unwrap();
+    let receipt_bytes = make_air_v1_receipt(&key);
+    let public_key_hex = hex::encode(key.public_key_bytes());
+
+    let client = reqwest::Client::new();
+    let form = reqwest::multipart::Form::new()
+        .part(
+            "receipt_file",
+            reqwest::multipart::Part::bytes(receipt_bytes).file_name("receipt.cbor"),
+        )
+        .text("public_key", public_key_hex)
+        .part(
+            "attestation_file",
+            reqwest::multipart::Part::bytes(vec![0xA0]).file_name("attestation.cbor"),
+        );
+
+    let resp = client
+        .post(format!("{}/api/v1/verify/upload", base))
+        .multipart(form)
+        .send()
+        .await
+        .unwrap();
+
+    assert_eq!(resp.status(), 200);
+    let body: serde_json::Value = resp.json().await.unwrap();
+    assert_eq!(body["verified"], false);
+    assert_eq!(body["format"], "air_v1");
+    assert_eq!(body["assurance_level"], "air_local");
+    assert_eq!(body["tee_provenance_verified"], false);
+    assert_eq!(check_status(&body, "attestation_doc_hash"), "fail");
+    assert_eq!(check_status(&body, "platform_attestation"), "fail");
+    assert_eq!(check_status(&body, "signing_key_binding"), "fail");
 }
 
 #[tokio::test]

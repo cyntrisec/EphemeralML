@@ -24,14 +24,13 @@ clap = { version = "4.6", features = ["derive", "env"] }
 # Enclave-specific dependencies
 aws-nitro-enclaves-nsm-api = { workspace = true, optional = true }
 tokio-vsock = { workspace = true, optional = true }
-openssl = { workspace = true, optional = true }
+openssl = { workspace = true }
 hex = "0.4"
 ciborium = "0.2"
 serde_bytes = "0.11"
 hpke = { workspace = true, features = ["std", "x25519"] }
 chacha20poly1305 = { workspace = true }
 x25519-dalek = { workspace = true }
-rsa = { workspace = true }
 zeroize = { workspace = true }
 rand = { workspace = true }
 ed25519-dalek = { workspace = true }
@@ -55,7 +54,7 @@ default = []
 # Transport-level mock (MockVerifier for accepting client attestations) is always available.
 mock = ["confidential-ml-pipeline/mock"]
 production = ["aws-nitro-enclaves-nsm-api", "aws-sdk-kms", "aws-config", "tokio-vsock", "confidential-ml-transport/vsock", "confidential-ml-transport/nitro", "confidential-ml-pipeline/vsock"]
-tdx = ["openssl", "confidential-ml-transport/tdx"]
+tdx = ["confidential-ml-transport/tdx"]
 gcp = ["tdx", "reqwest"]
 cuda = ["candle-core/cuda", "candle-nn/cuda", "candle-transformers/cuda"]
 

@@ -237,17 +237,15 @@ pub struct AttestationReceipt {
 /// Security mode for the inference execution
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub enum SecurityMode {
-    /// Layer 1 (Gateway) security only
+    /// Production gateway execution mode.
     GatewayOnly,
-    /// Layer 2 (Shield Mode) - reserved for v2
-    #[allow(dead_code)]
-    ShieldMode,
 }
 
 /// Enclave measurements for receipt binding.
 ///
 /// On Nitro, pcr0/pcr1/pcr2 are PCR registers. On TDX, pcr0 = MRTD,
-/// pcr1 = RTMR0, pcr2 = RTMR1. The `measurement_type` field disambiguates.
+/// pcr1 = RTMR0, pcr2 = RTMR1. Optional pcr3/pcr4 carry Nitro PCR3/PCR4
+/// or TDX RTMR2/RTMR3. The `measurement_type` field disambiguates.
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct EnclaveMeasurements {
     /// Enclave image measurement (PCR0 / MRTD)
@@ -259,6 +257,12 @@ pub struct EnclaveMeasurements {
     /// Application measurement (PCR2 / RTMR1)
     #[serde(with = "serde_bytes")]
     pub pcr2: Vec<u8>,
+    /// Optional additional measurement (PCR3 / RTMR2)
+    #[serde(with = "serde_bytes")]
+    pub pcr3: Option<Vec<u8>>,
+    /// Optional additional measurement (PCR4 / RTMR3)
+    #[serde(with = "serde_bytes")]
+    pub pcr4: Option<Vec<u8>>,
     /// Additional measurements (PCR8, Nitro only)
     #[serde(with = "serde_bytes")]
     pub pcr8: Option<Vec<u8>>,
@@ -279,6 +283,8 @@ impl EnclaveMeasurements {
             pcr0,
             pcr1,
             pcr2,
+            pcr3: None,
+            pcr4: None,
             pcr8: None,
             measurement_type: "nitro-pcr".to_string(),
         }
@@ -290,6 +296,8 @@ impl EnclaveMeasurements {
             pcr0: mrtd,
             pcr1: rtmr0,
             pcr2: rtmr1,
+            pcr3: None,
+            pcr4: None,
             pcr8: None,
             measurement_type: "tdx-mrtd-rtmr".to_string(),
         }
@@ -298,11 +306,19 @@ impl EnclaveMeasurements {
     /// Validate measurement lengths (must be 48 bytes each for SHA-384)
     pub fn is_valid(&self) -> bool {
         let base = self.pcr0.len() == 48 && self.pcr1.len() == 48 && self.pcr2.len() == 48;
+        let pcr3_ok = match &self.pcr3 {
+            Some(p) => p.len() == 48,
+            None => true,
+        };
+        let pcr4_ok = match &self.pcr4 {
+            Some(p) => p.len() == 48,
+            None => true,
+        };
         let pcr8_ok = match &self.pcr8 {
             Some(p) => p.len() == 48,
             None => true,
         };
-        base && pcr8_ok
+        base && pcr3_ok && pcr4_ok && pcr8_ok
     }
 }
 
@@ -658,6 +674,18 @@ mod tests {
         assert_eq!(receipt.security_mode, SecurityMode::GatewayOnly);
         assert_eq!(receipt.sequence_number, 42);
         assert!(receipt.signature.is_none());
+    }
+
+    #[test]
+    fn test_optional_measurements_validate_lengths() {
+        let mut valid = EnclaveMeasurements::new_tdx(vec![1u8; 48], vec![2u8; 48], vec![3u8; 48]);
+        valid.pcr3 = Some(vec![4u8; 48]);
+        valid.pcr4 = Some(vec![5u8; 48]);
+        assert!(valid.is_valid());
+
+        let mut invalid = valid.clone();
+        invalid.pcr3 = Some(vec![6u8; 32]);
+        assert!(!invalid.is_valid());
     }
 
     #[test]

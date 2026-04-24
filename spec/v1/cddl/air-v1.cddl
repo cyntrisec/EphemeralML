@@ -39,11 +39,9 @@ air-protected-header = {
 ; ============================================================
 ; Unprotected Header
 ; ============================================================
-; kid (4) is optional — signing key identifier
+; AIR v1 forbids unprotected headers. All protected semantics must be signed.
 
-air-unprotected-header = {
-  ? 4 => bstr,      ; kid: key identifier
-}
+air-unprotected-header = {}
 
 ; ============================================================
 ; CWT Payload — EAT + AIR Claims
@@ -60,7 +58,7 @@ air-claims = {
   ; --- AIR private claims ---
   -65537 => tstr,            ; model_id (operator-assigned, opaque)
   -65538 => tstr,            ; model_version (operator-assigned, opaque)
-  -65539 => sha256-hash,     ; model_hash (cryptographic model identity)
+  -65539 => sha256-hash,     ; model_hash (model artifact-set identity)
   -65540 => sha256-hash,     ; request_hash
   -65541 => sha256-hash,     ; response_hash
   -65542 => sha256-hash,     ; attestation_doc_hash
@@ -108,24 +106,28 @@ sha384-hash = bstr .size 48   ; SHA-384 digest (PCR/RTMR values)
 enclave-measurements = nitro-measurements / tdx-measurements
 
 ; --- AWS Nitro Enclaves ---
-; pcr0, pcr1, pcr2 required (SHA-384). pcr8 optional.
+; pcr0, pcr1, pcr2 required (SHA-384). pcr3, pcr4, pcr8 optional.
 
 nitro-measurements = {
   "pcr0"             => sha384-hash,
   "pcr1"             => sha384-hash,
   "pcr2"             => sha384-hash,
+  ? "pcr3"           => sha384-hash,
+  ? "pcr4"           => sha384-hash,
   ? "pcr8"           => sha384-hash,
   "measurement_type" => "nitro-pcr",
 }
 
 ; --- Intel TDX ---
-; MRTD, RTMR0, RTMR1 mapped to pcr0/pcr1/pcr2 field names
+; MRTD, RTMR0, RTMR1, RTMR2, RTMR3 mapped to pcr0..pcr4 field names
 ; for cross-platform verifier compatibility.
 
 tdx-measurements = {
   "pcr0"             => sha384-hash,   ; MRTD
   "pcr1"             => sha384-hash,   ; RTMR0
   "pcr2"             => sha384-hash,   ; RTMR1
+  ? "pcr3"           => sha384-hash,   ; RTMR2
+  ? "pcr4"           => sha384-hash,   ; RTMR3
   "measurement_type" => "tdx-mrtd-rtmr",
 }
 

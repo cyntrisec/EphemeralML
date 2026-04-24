@@ -73,7 +73,7 @@ hardware and cryptographic mechanisms; others are best-effort software measures.
 | CVM memory encryption key destruction | Intel TDX: VM termination destroys the hardware memory encryption key | Hardware guarantee — no software evidence possible |
 | CVM non-restart | `tee-restart-policy=Never` in instance metadata; CS Launcher enforces | Verifiable via instance metadata |
 | DEK zeroization | `Zeroizing<Vec<u8>>` wrapper on decrypted DEK bytes | Source: `enclave/src/model_loader.rs` |
-| Inference buffer zeroization | `zeroize()` on request input, output tensor, and response buffers | Source: `enclave/src/server.rs` |
+| Inference buffer cleanup | `zeroize()` on output tensors and response buffers; request bytes are hashed and processed in memory but are not currently independently zeroized as an owned buffer | Source: `enclave/src/server.rs` |
 
 #### Best-effort (software, not independently verifiable)
 
@@ -173,11 +173,11 @@ Each inference produces a signed receipt containing:
 
 | Field | Description |
 |-------|-------------|
-| `model_hash` | SHA-256 of the loaded model weights |
+| `model_hash` | SHA-256 binding for the model artifact set or opaque model identity value, as declared by `model_hash_scheme` |
 | `request_hash` | SHA-256 of the input request |
 | `response_hash` | SHA-256 of the inference output |
 | `attestation_hash` | SHA-256 of the boot TDX quote (chains to hardware attestation) |
-| `sequence_number` | Monotonically increasing counter (prevents replay) |
+| `sequence_number` | Operational sequencing hint; not a replay-protection mechanism by itself |
 | `timestamp` | Unix timestamp of the inference |
 | `signature` | Ed25519 signature over all above fields |
 | `signing_key` | Public key for verification (embedded in attestation user_data) |

@@ -120,6 +120,10 @@ fn explain_by_name(name: &str) -> Option<CheckExplanation> {
             why: "The model_hash_scheme value is not in the allowed set.",
             fix: "Allowed values: sha256-single, sha256-concat, sha256-manifest.",
         },
+        "SECURITY_MODE" => CheckExplanation {
+            why: "The security_mode value is not in the AIR v1 allowed set.",
+            fix: "Allowed values: production, evaluation.",
+        },
 
         // ── AIR v1 check names (Layer 4: Policy) ───────────────────
         "FRESH" => CheckExplanation {
@@ -130,9 +134,21 @@ fn explain_by_name(name: &str) -> Option<CheckExplanation> {
             why: "The model_hash in the receipt does not match the expected value.",
             fix: "This check is enforced via policy when an expected model hash is configured.",
         },
+        "RHASH" => CheckExplanation {
+            why: "The request_hash in the receipt does not match the expected value.",
+            fix: "Provide the SHA-256 hash of the exact request bytes that should be bound to the receipt.",
+        },
+        "OHASH" => CheckExplanation {
+            why: "The response_hash in the receipt does not match the expected value.",
+            fix: "Provide the SHA-256 hash of the exact response bytes that should be bound to the receipt.",
+        },
         "MODEL" => CheckExplanation {
             why: "The model_id in the receipt does not match the expected value.",
             fix: "CLI: check --expected-model. API: check expected_model in the request.",
+        },
+        "SECURITY_MODE_POLICY" => CheckExplanation {
+            why: "The receipt security_mode does not satisfy the verifier's deployment policy.",
+            fix: "Production verifiers must reject evaluation receipts unless explicitly configured for evaluation.",
         },
         "PLATFORM" => CheckExplanation {
             why: "The measurement_type does not match the expected platform.",
@@ -208,9 +224,13 @@ mod tests {
             "MEAS",
             "MTYPE",
             "MHASH_SCHEME",
+            "SECURITY_MODE",
             "FRESH",
             "MHASH",
+            "RHASH",
+            "OHASH",
             "MODEL",
+            "SECURITY_MODE_POLICY",
             "PLATFORM",
             "NONCE",
             "REPLAY",

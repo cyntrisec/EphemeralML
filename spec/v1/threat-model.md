@@ -50,7 +50,7 @@ AIR v1 assumes:
 | **T-3** | **Replay** — Attacker replays a legitimate receipt for a different request | **Partial mitigation.** cti (receipt_id, UUID v4) is unique and sequence_number is monotonic within session. However, UUID uniqueness alone does not prevent replay — the verifier MUST maintain seen-receipt state (cti deduplication) or the client MUST supply a challenge nonce via `eat_nonce` to bind the receipt to a specific request session. Without at least one of these, replay is possible. |
 | **T-4** | **Algorithm confusion** — Attacker substitutes a weaker signature algorithm | Protected header `alg` is signed. Verifier rejects non-Ed25519 algorithms. |
 | **T-5** | **Stale receipt** — Attacker presents an old receipt as current | Timestamp freshness check (FRESH) with configurable max_age. |
-| **T-6** | **Wrong model** — Receipt claims a different model was used | `model_hash` (SHA-256 of model weights) is a required signed claim. Verifier checks the hash against a known-good value (MHASH check). `model_id` and `model_version` provide human-readable context but are operator-assigned and not cryptographic — the binding is `model_hash`. |
+| **T-6** | **Wrong model** — Receipt claims a different model was used | `model_hash` is a required signed claim over the model artifact set as defined by `model_hash_scheme`. Verifier checks the hash against a known-good value (MHASH check). `model_id` and `model_version` provide human-readable context but are operator-assigned and not cryptographic — the binding is `model_hash`. |
 
 ### 3.2 Threats NOT Mitigated by AIR v1
 

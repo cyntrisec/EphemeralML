@@ -26,9 +26,10 @@ use std::path::PathBuf;
 #[command(
     name = "ephemeralml-verify",
     about = "Verify EphemeralML Attested Execution Receipts",
-    long_about = "Verify that an inference receipt was signed by a key bound to an \
-                  attested confidential workload. Supports receipts from both AWS Nitro \
-                  Enclaves (nitro-pcr) and GCP Confidential Space (tdx-mrtd-rtmr)."
+    long_about = "Verify an inference receipt signature and caller-supplied policy \
+                  bindings. Full TEE provenance additionally requires platform \
+                  attestation and signing-key binding checks. Supports AIR v1 and \
+                  legacy receipts."
 )]
 struct Args {
     /// Path to the receipt file (CBOR or JSON)
@@ -51,6 +52,22 @@ struct Args {
     /// Expected model ID (optional). Fails if receipt model_id doesn't match.
     #[arg(long)]
     expected_model: Option<String>,
+
+    /// Expected AIR model_hash as 64 hex chars (optional).
+    #[arg(long)]
+    expected_model_hash: Option<String>,
+
+    /// Expected AIR request_hash as 64 hex chars (optional).
+    #[arg(long)]
+    expected_request_hash: Option<String>,
+
+    /// Expected AIR response_hash as 64 hex chars (optional).
+    #[arg(long)]
+    expected_response_hash: Option<String>,
+
+    /// Expected AIR security_mode. This production verifier accepts only "production".
+    #[arg(long)]
+    expected_security_mode: Option<String>,
 
     /// Maximum receipt age in seconds (default: 1 hour). Set to 0 to skip.
     #[arg(long, default_value = "3600")]
@@ -213,11 +230,25 @@ fn verify_air_v1_path(
     args: &Args,
 ) -> Result<()> {
     validate_air_v1_cli_args(args)?;
+    let expected_model_hash =
+        parse_hash32_hex(args.expected_model_hash.as_deref(), "expected-model-hash")?;
+    let expected_request_hash = parse_hash32_hex(
+        args.expected_request_hash.as_deref(),
+        "expected-request-hash",
+    )?;
+    let expected_response_hash = parse_hash32_hex(
+        args.expected_response_hash.as_deref(),
+        "expected-response-hash",
+    )?;
 
     // Build policy from CLI args
     let policy = AirVerifyPolicy {
         max_age_secs: args.max_age,
+        expected_model_hash,
+        expected_request_hash,
+        expected_response_hash,
         expected_model_id: args.expected_model.clone(),
+        expected_security_mode: args.expected_security_mode.clone(),
         expected_platform: if args.measurement_type == "any" {
             None
         } else {
@@ -258,6 +289,17 @@ fn validate_air_v1_cli_args(args: &Args) -> Result<()> {
     if args.require_destroy_event {
         unsupported.push("--require-destroy-event");
     }
+    if matches!(args.expected_security_mode.as_deref(), Some("evaluation")) {
+        bail!(
+            "--expected-security-mode evaluation is not accepted by the production verifier; \
+             use an evaluation-specific verifier"
+        );
+    }
+    if let Some(mode) = args.expected_security_mode.as_deref() {
+        if mode != "production" {
+            bail!("--expected-security-mode must be 'production' for this verifier");
+        }
+    }
 
     if unsupported.is_empty() {
         return Ok(());
@@ -265,9 +307,21 @@ fn validate_air_v1_cli_args(args: &Args) -> Result<()> {
 
     bail!(
         "Unsupported for AIR v1 receipts: {}. Supported AIR checks are --expected-model, \
-         --measurement-type, and --max-age (plus key/attestation inputs).",
+         --expected-model-hash, --expected-request-hash, --expected-response-hash, \
+         --expected-security-mode, --measurement-type, and --max-age (plus key/attestation inputs).",
         unsupported.join(", ")
     )
+}
+
+fn parse_hash32_hex(value: Option<&str>, flag_name: &str) -> Result<Option<[u8; 32]>> {
+    let Some(value) = value.map(str::trim).filter(|v| !v.is_empty()) else {
+        return Ok(None);
+    };
+    let bytes = hex::decode(value).with_context(|| format!("--{flag_name} must be hex"))?;
+    let array: [u8; 32] = bytes
+        .try_into()
+        .map_err(|_| anyhow::anyhow!("--{flag_name} must decode to exactly 32 bytes"))?;
+    Ok(Some(array))
 }
 
 fn print_air_v1_text_report(ui: &mut Ui, result: &AirVerifyResult, verbose: bool) {

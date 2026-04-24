@@ -23,6 +23,19 @@ pub enum ReceiptFormat {
     Legacy,
 }
 
+/// Verification assurance level represented by the response.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AssuranceLevel {
+    /// Signature/claim/policy checks over the receipt only.
+    AirLocal,
+    /// Receipt-local checks plus attestation hash, signing-key binding, and
+    /// platform attestation authenticity checks supplied in the request.
+    TeeProvenance,
+    /// Legacy receipt verification path.
+    LegacyLocal,
+}
+
 /// Status of a single verification check.
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "snake_case")]
@@ -89,6 +102,12 @@ pub struct TrustCenterResponse {
     pub verified: bool,
     /// Receipt format that was detected and verified.
     pub format: ReceiptFormat,
+    /// Explicit assurance level. For AIR v1, `verified=true` can still be
+    /// AIR-local unless attestation evidence was supplied and checked.
+    pub assurance_level: AssuranceLevel,
+    /// True only when AIR local verification is paired with attestation hash,
+    /// signing-key binding, and platform attestation authenticity checks.
+    pub tee_provenance_verified: bool,
     /// API version.
     pub api_version: &'static str,
     /// Timestamp of this verification (Unix seconds).
@@ -136,6 +155,8 @@ impl TrustCenterResponse {
             },
             verified: result.verified,
             format: ReceiptFormat::Legacy,
+            assurance_level: AssuranceLevel::LegacyLocal,
+            tee_provenance_verified: false,
             api_version: "v1",
             verified_at: ephemeral_ml_common::current_timestamp().unwrap_or(0),
             receipt: ReceiptSummary {
@@ -241,12 +262,39 @@ impl TrustCenterResponse {
             },
             verified: result.verified,
             format: ReceiptFormat::AirV1,
+            assurance_level: AssuranceLevel::AirLocal,
+            tee_provenance_verified: false,
             api_version: "v1",
             verified_at: ephemeral_ml_common::current_timestamp().unwrap_or(0),
             receipt: summary,
             checks,
             errors,
             warnings: vec![],
+        }
+    }
+
+    pub fn add_check(&mut self, check: TrustCenterCheck) {
+        self.checks.push(check);
+        self.refresh_verdict_from_checks();
+    }
+
+    pub fn add_warning(&mut self, warning: impl Into<String>) {
+        self.warnings.push(warning.into());
+    }
+
+    pub fn set_tee_provenance_verified(&mut self) {
+        self.assurance_level = AssuranceLevel::TeeProvenance;
+        self.tee_provenance_verified = true;
+    }
+
+    pub fn refresh_verdict_from_checks(&mut self) {
+        if self
+            .checks
+            .iter()
+            .any(|c| matches!(c.status, CheckStatus::Fail))
+        {
+            self.verified = false;
+            self.verdict = Verdict::Invalid;
         }
     }
 }

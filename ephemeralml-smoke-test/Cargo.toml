@@ -1,0 +1,44 @@
+[package]
+name = "ephemeral-ml-smoke-test"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.75"
+license = "Apache-2.0"
+description = "Phase 1 BYOC end-to-end smoke test. Runs doctor preflight, launches the Cyntrisec enclave, runs a synthetic inference, verifies the AIR v1 receipt offline, writes the evidence bundle to S3."
+repository = "https://github.com/cyntrisec/EphemeralML"
+homepage = "https://ephemeralml.cyntrisec.com"
+
+[[bin]]
+name = "ephemeralml-smoke-test"
+path = "src/main.rs"
+
+[dependencies]
+clap = { version = "4.6", features = ["derive"] }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+tokio = { workspace = true }
+async-trait = { workspace = true }
+chrono = { version = "0.4", features = ["serde"] }
+sha2 = { workspace = true }
+uuid = { workspace = true }
+hex = "0.4"
+
+# In-process AIR v1 receipt verification library API (Stage 4). This is the
+# same verifier code path shipped to customers as `ephemeralml-verify`, so
+# the smoke-test exercises the exact trust chain a compliance auditor walks.
+ephemeral-ml-common = { path = "../common" }
+ciborium = { workspace = true }
+
+# Stage 2 enclave launch uses nitro-cli via subprocess; Stage 3 inference
+# uses VSock to the enclave. Real impl wires these; the skeleton only lists
+# the dependency graph.
+tokio-vsock = { workspace = true }
+
+# Stage 5 S3 upload for the evidence bundle.
+aws-config = "1.5"
+aws-sdk-s3 = "1.70"
+
+[dev-dependencies]
+assert_cmd = "2.0"
+predicates = "3.1"

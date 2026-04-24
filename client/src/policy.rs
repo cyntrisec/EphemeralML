@@ -107,8 +107,6 @@ pub struct PolicyConfig {
     pub max_concurrent_sessions: u32,
     /// Session timeout in seconds
     pub session_timeout: u64,
-    /// Enable Shield Mode (Layer 2 security)
-    pub enable_shield_mode: bool,
     /// Additional feature flags
     pub feature_flags: HashMap<String, bool>,
 }
@@ -270,7 +268,6 @@ impl PolicyManager {
             config: PolicyConfig {
                 max_concurrent_sessions: 100,
                 session_timeout: 15 * 60,
-                enable_shield_mode: false, // Disabled for v1
                 feature_flags: HashMap::new(),
             },
             signature: vec![], // Will be filled by signing process
@@ -1216,7 +1213,6 @@ mod tests {
             "config": {
                 "max_concurrent_sessions": 10,
                 "session_timeout": 900,
-                "enable_shield_mode": false,
                 "feature_flags": {}
             },
             "signature": []

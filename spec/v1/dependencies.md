@@ -85,7 +85,7 @@ Private claims use negative integer keys to avoid collision with IANA-registered
 |-------|-----|------|----------|-------------|
 | model_id | -65537 | tstr | Yes | Model identifier (operator-assigned, opaque) |
 | model_version | -65538 | tstr | Yes | Model version string (operator-assigned, opaque) |
-| model_hash | -65539 | bstr(32) | Yes | SHA-256 of model weights — cryptographic model identity |
+| model_hash | -65539 | bstr(32) | Yes | SHA-256 binding for the model artifact set, as defined by `model_hash_scheme` |
 | request_hash | -65540 | bstr(32) | Yes | SHA-256 of inference request |
 | response_hash | -65541 | bstr(32) | Yes | SHA-256 of inference response |
 | attestation_doc_hash | -65542 | bstr(32) | Yes | SHA-256 of attestation document |

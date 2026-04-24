@@ -2,6 +2,7 @@ use serde::{Deserialize, Serialize};
 
 /// JSON request body for `POST /api/v1/verify`.
 #[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct VerifyRequest {
     /// The receipt — either an inline JSON object or a base64-encoded CBOR blob.
     pub receipt: serde_json::Value,
@@ -10,6 +11,18 @@ pub struct VerifyRequest {
     /// Optional expected model ID.
     #[serde(default)]
     pub expected_model: Option<String>,
+    /// Optional expected model_hash as 64 lowercase/uppercase hex characters.
+    #[serde(default)]
+    pub expected_model_hash_hex: Option<String>,
+    /// Optional expected request_hash as 64 lowercase/uppercase hex characters.
+    #[serde(default)]
+    pub expected_request_hash_hex: Option<String>,
+    /// Optional expected response_hash as 64 lowercase/uppercase hex characters.
+    #[serde(default)]
+    pub expected_response_hash_hex: Option<String>,
+    /// Optional expected AIR security_mode.
+    #[serde(default)]
+    pub expected_security_mode: Option<String>,
     /// Maximum receipt age in seconds. Default 0 (skip).
     #[serde(default)]
     pub max_age_secs: u64,

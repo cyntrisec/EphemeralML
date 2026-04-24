@@ -24,6 +24,21 @@ use ephemeral_ml_enclave::attestation_bridge::AttestationBridge;
 #[cfg(feature = "production")]
 use ephemeral_ml_enclave::DefaultAttestationProvider;
 
+#[cfg(any(feature = "mock", feature = "gcp", feature = "production"))]
+fn host_control_plane_stage_config() -> StageConfig {
+    // The stage peer is the host/orchestrator control plane, not another TEE.
+    // This permits an unmeasured host peer by design. Do not use this channel
+    // as evidence of peer TEE identity; AIR TEE provenance is established by
+    // the receipt signing key's binding to platform attestation.
+    StageConfig {
+        session_config: confidential_ml_transport::session::SessionConfig::builder()
+            .allow_empty_measurements()
+            .build()
+            .expect("host-control-plane stage config must be valid"),
+        ..StageConfig::default()
+    }
+}
+
 /// MockProvider wrapper that injects fixed user_data (EphemeralUserData CBOR)
 /// into every attestation while preserving the MOCK_ATT_V1 wire format.
 #[cfg(feature = "mock")]
@@ -1372,7 +1387,7 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
 
             run_stage_tcp(
                 executor,
-                StageConfig::development(),
+                host_control_plane_stage_config(),
                 &gcp_control,
                 &gcp_data_in,
                 gcp_data_out.parse()?,
@@ -1537,7 +1552,7 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
 
             run_stage_tcp(
                 executor,
-                StageConfig::development(),
+                host_control_plane_stage_config(),
                 &args.control_addr,
                 &args.data_in_addr,
                 args.data_out_target.parse()?,
@@ -1796,7 +1811,7 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
 
         confidential_ml_pipeline::vsock::run_stage_with_listeners_vsock(
             executor,
-            StageConfig::development(),
+            host_control_plane_stage_config(),
             ctrl_listener,
             din_listener,
             HOST_CID,

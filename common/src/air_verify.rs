@@ -62,6 +62,8 @@ pub enum AirCheckCode {
     UnknownMeasurementType(String),
     /// Unknown `model_hash_scheme` value (if present)
     UnknownModelHashScheme(String),
+    /// Unknown `security_mode` value
+    UnknownSecurityMode(String),
 
     // Layer 4: policy
     /// `iat` is in the future (beyond clock_skew)
@@ -72,8 +74,16 @@ pub enum AirCheckCode {
     ClockError,
     /// `model_hash` does not match expected value
     ModelHashMismatch,
+    /// `request_hash` does not match expected value
+    RequestHashMismatch,
+    /// `response_hash` does not match expected value
+    ResponseHashMismatch,
     /// `model_id` does not match expected value
     ModelIdMismatch,
+    /// `security_mode` does not match expected value
+    SecurityModeMismatch,
+    /// `security_mode = "evaluation"` rejected by production policy
+    EvaluationModeRejected,
     /// `measurement_type` does not match expected platform
     PlatformMismatch,
     /// `eat_nonce` does not match expected challenge
@@ -105,11 +115,16 @@ impl std::fmt::Display for AirCheckCode {
             Self::BadMeasurementLength => write!(f, "BAD_MEASUREMENT_LENGTH"),
             Self::UnknownMeasurementType(t) => write!(f, "UNKNOWN_MTYPE:{t}"),
             Self::UnknownModelHashScheme(s) => write!(f, "UNKNOWN_MODEL_HASH_SCHEME:{s}"),
+            Self::UnknownSecurityMode(s) => write!(f, "UNKNOWN_SECURITY_MODE:{s}"),
             Self::TimestampFuture => write!(f, "TIMESTAMP_FUTURE"),
             Self::TimestampStale => write!(f, "TIMESTAMP_STALE"),
             Self::ClockError => write!(f, "CLOCK_ERROR"),
             Self::ModelHashMismatch => write!(f, "MODEL_HASH_MISMATCH"),
+            Self::RequestHashMismatch => write!(f, "REQUEST_HASH_MISMATCH"),
+            Self::ResponseHashMismatch => write!(f, "RESPONSE_HASH_MISMATCH"),
             Self::ModelIdMismatch => write!(f, "MODEL_ID_MISMATCH"),
+            Self::SecurityModeMismatch => write!(f, "SECURITY_MODE_MISMATCH"),
+            Self::EvaluationModeRejected => write!(f, "EVALUATION_MODE_REJECTED"),
             Self::PlatformMismatch => write!(f, "PLATFORM_MISMATCH"),
             Self::NonceMismatch => write!(f, "NONCE_MISMATCH"),
             Self::NonceMissing => write!(f, "NONCE_MISSING"),
@@ -209,8 +224,9 @@ pub type SeenCtiFn = Box<dyn Fn(&[u8; 16]) -> bool + Send + Sync>;
 
 /// Policy inputs for layer 4 (policy evaluation).
 ///
-/// All fields are optional. Absent fields cause the corresponding check
-/// to be skipped (not failed).
+/// Most fields are optional. Absent fields cause the corresponding policy
+/// check to be skipped, except security_mode: `evaluation` is rejected unless
+/// explicitly allowed.
 #[derive(Default)]
 pub struct AirVerifyPolicy {
     /// Maximum receipt age in seconds. 0 = skip freshness check.
@@ -219,8 +235,18 @@ pub struct AirVerifyPolicy {
     pub clock_skew_secs: u64,
     /// Expected `model_hash`. If set, MHASH check is enforced.
     pub expected_model_hash: Option<[u8; 32]>,
+    /// Expected `request_hash`. If set, RHASH check is enforced.
+    pub expected_request_hash: Option<[u8; 32]>,
+    /// Expected `response_hash`. If set, OHASH check is enforced.
+    pub expected_response_hash: Option<[u8; 32]>,
     /// Expected `model_id`. If set, MODEL check is enforced.
     pub expected_model_id: Option<String>,
+    /// Expected `security_mode`. If set, SECURITY_MODE_POLICY check is enforced.
+    pub expected_security_mode: Option<String>,
+    /// Permit `security_mode = "evaluation"` to satisfy this policy.
+    ///
+    /// Defaults to false so production-oriented verifiers fail closed.
+    pub allow_evaluation_mode: bool,
     /// Expected `measurement_type`. If set, MTYPE check is enforced.
     /// `"any"` skips the check.
     pub expected_platform: Option<String>,
@@ -525,6 +551,17 @@ fn layer3_claims(claims: &AirReceiptClaims, checks: &mut Vec<AirCheck>) {
             format!("unknown model_hash_scheme: {s}"),
         )),
     }
+
+    // security_mode allowlist (required, fail-closed if unknown)
+    if crate::air_receipt::is_known_security_mode(&claims.security_mode) {
+        checks.push(AirCheck::pass("SECURITY_MODE"));
+    } else {
+        checks.push(AirCheck::fail(
+            "SECURITY_MODE",
+            AirCheckCode::UnknownSecurityMode(claims.security_mode.clone()),
+            format!("unknown security_mode: {}", claims.security_mode),
+        ));
+    }
 }
 
 // ── Layer 4: Policy evaluation ──────────────────────────────────────
@@ -587,6 +624,46 @@ fn layer4_policy(claims: &AirReceiptClaims, policy: &AirVerifyPolicy, checks: &m
         None => checks.push(AirCheck::skip("MHASH")),
     }
 
+    // Request hash match
+    match &policy.expected_request_hash {
+        Some(expected) => {
+            if claims.request_hash == *expected {
+                checks.push(AirCheck::pass("RHASH"));
+            } else {
+                checks.push(AirCheck::fail(
+                    "RHASH",
+                    AirCheckCode::RequestHashMismatch,
+                    format!(
+                        "expected {}, got {}",
+                        hex::encode(expected),
+                        hex::encode(claims.request_hash)
+                    ),
+                ));
+            }
+        }
+        None => checks.push(AirCheck::skip("RHASH")),
+    }
+
+    // Response hash match
+    match &policy.expected_response_hash {
+        Some(expected) => {
+            if claims.response_hash == *expected {
+                checks.push(AirCheck::pass("OHASH"));
+            } else {
+                checks.push(AirCheck::fail(
+                    "OHASH",
+                    AirCheckCode::ResponseHashMismatch,
+                    format!(
+                        "expected {}, got {}",
+                        hex::encode(expected),
+                        hex::encode(claims.response_hash)
+                    ),
+                ));
+            }
+        }
+        None => checks.push(AirCheck::skip("OHASH")),
+    }
+
     // Model ID match
     match &policy.expected_model_id {
         Some(expected) => {
@@ -601,6 +678,30 @@ fn layer4_policy(claims: &AirReceiptClaims, policy: &AirVerifyPolicy, checks: &m
             }
         }
         None => checks.push(AirCheck::skip("MODEL")),
+    }
+
+    // Security mode policy. AIR-local validation checks the closed set in
+    // layer 3; layer 4 enforces deployment policy.
+    match &policy.expected_security_mode {
+        Some(expected) => {
+            if claims.security_mode == *expected {
+                checks.push(AirCheck::pass("SECURITY_MODE_POLICY"));
+            } else {
+                checks.push(AirCheck::fail(
+                    "SECURITY_MODE_POLICY",
+                    AirCheckCode::SecurityModeMismatch,
+                    format!("expected '{}', got '{}'", expected, claims.security_mode),
+                ));
+            }
+        }
+        None if claims.security_mode == "evaluation" && !policy.allow_evaluation_mode => {
+            checks.push(AirCheck::fail(
+                "SECURITY_MODE_POLICY",
+                AirCheckCode::EvaluationModeRejected,
+                "evaluation receipts are not accepted by default production policy",
+            ));
+        }
+        None => checks.push(AirCheck::pass("SECURITY_MODE_POLICY")),
     }
 
     // Platform match
@@ -706,7 +807,7 @@ mod tests {
             sequence_number: 42,
             execution_time_ms: 116,
             memory_peak_mb: 512,
-            security_mode: "GatewayOnly".to_string(),
+            security_mode: "production".to_string(),
             model_hash_scheme: None,
         }
     }
@@ -859,6 +960,36 @@ mod tests {
         assert!(result.verified, "failures: {:?}", result.failures());
     }
 
+    #[test]
+    fn test_request_hash_mismatch() {
+        let key = ReceiptSigningKey::generate().unwrap();
+        let claims = fixture_claims();
+        let bytes = build_receipt(&claims, &key);
+
+        let policy = AirVerifyPolicy {
+            expected_request_hash: Some([0xFF; 32]),
+            ..Default::default()
+        };
+        let result = verify_air_v1_receipt(&bytes, &key.public_key, &policy);
+        assert!(!result.verified);
+        assert!(result.has_failure(&AirCheckCode::RequestHashMismatch));
+    }
+
+    #[test]
+    fn test_response_hash_mismatch() {
+        let key = ReceiptSigningKey::generate().unwrap();
+        let claims = fixture_claims();
+        let bytes = build_receipt(&claims, &key);
+
+        let policy = AirVerifyPolicy {
+            expected_response_hash: Some([0xFF; 32]),
+            ..Default::default()
+        };
+        let result = verify_air_v1_receipt(&bytes, &key.public_key, &policy);
+        assert!(!result.verified);
+        assert!(result.has_failure(&AirCheckCode::ResponseHashMismatch));
+    }
+
     // ── Layer 4: model ID mismatch ──────────────────────────────────
 
     #[test]
@@ -874,6 +1005,48 @@ mod tests {
         let result = verify_air_v1_receipt(&bytes, &key.public_key, &policy);
         assert!(!result.verified);
         assert!(result.has_failure(&AirCheckCode::ModelIdMismatch));
+    }
+
+    #[test]
+    fn test_evaluation_mode_rejected_by_default_policy() {
+        let key = ReceiptSigningKey::generate().unwrap();
+        let mut claims = fixture_claims();
+        claims.security_mode = "evaluation".to_string();
+        let bytes = build_receipt(&claims, &key);
+
+        let result = verify_air_v1_receipt(&bytes, &key.public_key, &AirVerifyPolicy::default());
+        assert!(!result.verified);
+        assert!(result.has_failure(&AirCheckCode::EvaluationModeRejected));
+    }
+
+    #[test]
+    fn test_evaluation_mode_allowed_by_explicit_policy() {
+        let key = ReceiptSigningKey::generate().unwrap();
+        let mut claims = fixture_claims();
+        claims.security_mode = "evaluation".to_string();
+        let bytes = build_receipt(&claims, &key);
+
+        let policy = AirVerifyPolicy {
+            allow_evaluation_mode: true,
+            ..Default::default()
+        };
+        let result = verify_air_v1_receipt(&bytes, &key.public_key, &policy);
+        assert!(result.verified, "failures: {:?}", result.failures());
+    }
+
+    #[test]
+    fn test_security_mode_mismatch() {
+        let key = ReceiptSigningKey::generate().unwrap();
+        let claims = fixture_claims();
+        let bytes = build_receipt(&claims, &key);
+
+        let policy = AirVerifyPolicy {
+            expected_security_mode: Some("evaluation".to_string()),
+            ..Default::default()
+        };
+        let result = verify_air_v1_receipt(&bytes, &key.public_key, &policy);
+        assert!(!result.verified);
+        assert!(result.has_failure(&AirCheckCode::SecurityModeMismatch));
     }
 
     // ── Layer 4: platform mismatch ──────────────────────────────────
@@ -1060,6 +1233,30 @@ mod tests {
         assert!(result.has_failure(&AirCheckCode::PayloadNotMap));
     }
 
+    #[test]
+    fn test_unknown_security_mode_claim_fails() {
+        let key = ReceiptSigningKey::generate().unwrap();
+        let mut claims = fixture_claims();
+        claims.security_mode = "debug".to_string();
+
+        let payload = crate::air_receipt::encode_claims_exported(&claims).unwrap();
+        let protected = coset::HeaderBuilder::new()
+            .algorithm(coset::iana::Algorithm::EdDSA)
+            .content_format(coset::iana::CoapContentFormat::Cwt)
+            .build();
+        let sign1 = coset::CoseSign1Builder::new()
+            .protected(protected)
+            .payload(payload)
+            .try_create_signature(b"", |tbs| Ok::<_, String>(key.raw_sign(tbs)))
+            .unwrap()
+            .build();
+        let bytes = sign1.to_tagged_vec().unwrap();
+
+        let result = verify_air_v1_receipt(&bytes, &key.public_key, &AirVerifyPolicy::default());
+        assert!(!result.verified);
+        assert!(result.has_failure(&AirCheckCode::UnknownSecurityMode("debug".to_string())));
+    }
+
     // ── Multiple failures reported ──────────────────────────────────
 
     #[test]
@@ -1109,6 +1306,8 @@ mod tests {
             .collect();
         assert!(skipped.contains(&"FRESH"));
         assert!(skipped.contains(&"MHASH"));
+        assert!(skipped.contains(&"RHASH"));
+        assert!(skipped.contains(&"OHASH"));
         assert!(skipped.contains(&"MODEL"));
         assert!(skipped.contains(&"PLATFORM"));
         assert!(skipped.contains(&"NONCE"));
@@ -1124,16 +1323,16 @@ mod tests {
     // ══════════════════════════════════════════════════════════════
 
     /// Golden vector 1: Nitro, no nonce (RFC 8949 §4.2.1 key order)
-    const GOLDEN_V1_RECEIPT: &str = "d28446a2012703183da0590208b0016d63796e7472697365632e636f6d061a67bdec2007500102030405060708090a0b0c0d0e0f10190109782168747470733a2f2f737065632e63796e7472697365632e636f6d2f6169722f76313a000100006c6d696e696c6d2d6c362d76323a0001000165312e302e303a000100025820aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa3a000100035820bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb3a000100045820cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc3a000100055820dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd3a00010006a4647063723058300101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101016470637231583002020202020202020202020202020202020202020202020202020202020202020202020202020202020202020202020264706372325830030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303706d6561737572656d656e745f74797065696e6974726f2d7063723a000100076e706f6c6963792d323032362e30323a00010008182a3a0001000918743a0001000a1902003a0001000b6b476174657761794f6e6c795840238b192a3216548eae4cd923876e4c227ceb84841b788799f92734ec6d43c943b1e07151ce62a0f8159fb0338e1a79b36523349bf76237a40d370b20a1464a08";
+    const GOLDEN_V1_RECEIPT: &str = "d28446a2012703183da0590207b0016d63796e7472697365632e636f6d061a67bdec2007500102030405060708090a0b0c0d0e0f10190109782168747470733a2f2f737065632e63796e7472697365632e636f6d2f6169722f76313a000100006c6d696e696c6d2d6c362d76323a0001000165312e302e303a000100025820aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa3a000100035820bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb3a000100045820cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc3a000100055820dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd3a00010006a4647063723058300101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101016470637231583002020202020202020202020202020202020202020202020202020202020202020202020202020202020202020202020264706372325830030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303706d6561737572656d656e745f74797065696e6974726f2d7063723a000100076e706f6c6963792d323032362e30323a00010008182a3a0001000918743a0001000a1902003a0001000b6a70726f64756374696f6e584031161eb04d05ce9a2329a84f046a035a9453d968fbf5346eb31a88216735122c8abc059fee86f54fa8221a11989f0b2d1f08b8f2abf12410b2b42868e732aa01";
 
     /// Golden vector 1: payload only (RFC 8949 §4.2.1 key order)
-    const GOLDEN_V1_PAYLOAD: &str = "b0016d63796e7472697365632e636f6d061a67bdec2007500102030405060708090a0b0c0d0e0f10190109782168747470733a2f2f737065632e63796e7472697365632e636f6d2f6169722f76313a000100006c6d696e696c6d2d6c362d76323a0001000165312e302e303a000100025820aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa3a000100035820bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb3a000100045820cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc3a000100055820dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd3a00010006a4647063723058300101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101016470637231583002020202020202020202020202020202020202020202020202020202020202020202020202020202020202020202020264706372325830030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303706d6561737572656d656e745f74797065696e6974726f2d7063723a000100076e706f6c6963792d323032362e30323a00010008182a3a0001000918743a0001000a1902003a0001000b6b476174657761794f6e6c79";
+    const GOLDEN_V1_PAYLOAD: &str = "b0016d63796e7472697365632e636f6d061a67bdec2007500102030405060708090a0b0c0d0e0f10190109782168747470733a2f2f737065632e63796e7472697365632e636f6d2f6169722f76313a000100006c6d696e696c6d2d6c362d76323a0001000165312e302e303a000100025820aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa3a000100035820bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb3a000100045820cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc3a000100055820dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd3a00010006a4647063723058300101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101016470637231583002020202020202020202020202020202020202020202020202020202020202020202020202020202020202020202020264706372325830030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303706d6561737572656d656e745f74797065696e6974726f2d7063723a000100076e706f6c6963792d323032362e30323a00010008182a3a0001000918743a0001000a1902003a0001000b6a70726f64756374696f6e";
 
     /// Golden vector 2: TDX, with nonce (RFC 8949 §4.2.1 key order)
-    const GOLDEN_V2_RECEIPT: &str = "d28446a2012703183da0590211b1016d63796e7472697365632e636f6d061a67bdec8407501112131415161718191a1b1c1d1e1f200a48deadbeefcafebabe190109782168747470733a2f2f737065632e63796e7472697365632e636f6d2f6169722f76313a00010000686c6c616d612d37623a0001000165322e302e303a00010002582055555555555555555555555555555555555555555555555555555555555555553a00010003582066666666666666666666666666666666666666666666666666666666666666663a00010004582077777777777777777777777777777777777777777777777777777777777777773a00010005582088888888888888888888888888888888888888888888888888888888888888883a00010006a4647063723058301010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010106470637231583020202020202020202020202020202020202020202020202020202020202020202020202020202020202020202020202064706372325830303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030706d6561737572656d656e745f747970656d7464782d6d7274642d72746d723a000100076e706f6c6963792d323032362e30333a00010008013a000100091909c43a0001000a1920003a0001000b6a536869656c644d6f64655840e8e8ba37c0bfeebd87c55bd26366875fd4ec96b3cae66d83178c1179daf408b1e37af135ca468027e46b1a6d6a266a033ddd6c2f991cf1189f0d3d5a9a879901";
+    const GOLDEN_V2_RECEIPT: &str = "d28446a2012703183da0590211b1016d63796e7472697365632e636f6d061a67bdec8407501112131415161718191a1b1c1d1e1f200a48deadbeefcafebabe190109782168747470733a2f2f737065632e63796e7472697365632e636f6d2f6169722f76313a00010000686c6c616d612d37623a0001000165322e302e303a00010002582055555555555555555555555555555555555555555555555555555555555555553a00010003582066666666666666666666666666666666666666666666666666666666666666663a00010004582077777777777777777777777777777777777777777777777777777777777777773a00010005582088888888888888888888888888888888888888888888888888888888888888883a00010006a4647063723058301010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010106470637231583020202020202020202020202020202020202020202020202020202020202020202020202020202020202020202020202064706372325830303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030706d6561737572656d656e745f747970656d7464782d6d7274642d72746d723a000100076e706f6c6963792d323032362e30333a00010008013a000100091909c43a0001000a1920003a0001000b6a70726f64756374696f6e5840da9697770b22450d3a61234e84e330e3829e4c5a51bc6f897964a83de1c86cd2ae1049a050681ec37f33f7fc380a0463ca45bbb51b8beb75ea57f80b66442b03";
 
     /// Invalid vector: wrong alg (ES256) (RFC 8949 §4.2.1 key order)
-    const GOLDEN_WRONG_ALG_RECEIPT: &str = "d28446a2012603183da0590208b0016d63796e7472697365632e636f6d061a67bdec2007500102030405060708090a0b0c0d0e0f10190109782168747470733a2f2f737065632e63796e7472697365632e636f6d2f6169722f76313a000100006c6d696e696c6d2d6c362d76323a0001000165312e302e303a000100025820aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa3a000100035820bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb3a000100045820cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc3a000100055820dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd3a00010006a4647063723058300101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101016470637231583002020202020202020202020202020202020202020202020202020202020202020202020202020202020202020202020264706372325830030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303706d6561737572656d656e745f74797065696e6974726f2d7063723a000100076e706f6c6963792d323032362e30323a00010008182a3a0001000918743a0001000a1902003a0001000b6b476174657761794f6e6c795840bc3ae140ef72c1197f6353ff00767c42257038a12995f7d4c5a549bb32cdf22e9aca08d129fdf177a13be36780b8dcaaf88d59b253e5f8807c35bdec3fa62c04";
+    const GOLDEN_WRONG_ALG_RECEIPT: &str = "d28446a2012603183da0590207b0016d63796e7472697365632e636f6d061a67bdec2007500102030405060708090a0b0c0d0e0f10190109782168747470733a2f2f737065632e63796e7472697365632e636f6d2f6169722f76313a000100006c6d696e696c6d2d6c362d76323a0001000165312e302e303a000100025820aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa3a000100035820bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb3a000100045820cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc3a000100055820dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd3a00010006a4647063723058300101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101016470637231583002020202020202020202020202020202020202020202020202020202020202020202020202020202020202020202020264706372325830030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303706d6561737572656d656e745f74797065696e6974726f2d7063723a000100076e706f6c6963792d323032362e30323a00010008182a3a0001000918743a0001000a1902003a0001000b6a70726f64756374696f6e5840ffaa842b06bcded14302fd80d559cd418b7cf744f8f292bc821716b2333117aeaff399abad68f5296926d01f76e9b478ce2783c0fe366529da1b1bf6e0add607";
 
     /// Golden vector public key
     const GOLDEN_PUBKEY: &str = "197f6b23e16c8532c6abc838facd5ea789be0c76b2920334039bfa8b3d368d61";
@@ -1210,7 +1409,7 @@ mod tests {
         assert_eq!(claims.sequence_number, 42);
         assert_eq!(claims.execution_time_ms, 116);
         assert_eq!(claims.memory_peak_mb, 512);
-        assert_eq!(claims.security_mode, "GatewayOnly");
+        assert_eq!(claims.security_mode, "production");
     }
 
     // ── GV-3: full 4-layer verify on golden vector 2 (TDX + nonce)
@@ -1242,7 +1441,7 @@ mod tests {
             claims.enclave_measurements.measurement_type,
             "tdx-mrtd-rtmr"
         );
-        assert_eq!(claims.security_mode, "ShieldMode");
+        assert_eq!(claims.security_mode, "production");
         assert_eq!(claims.execution_time_ms, 2500);
         assert_eq!(claims.memory_peak_mb, 8192);
     }

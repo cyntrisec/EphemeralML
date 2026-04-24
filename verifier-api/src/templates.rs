@@ -4,9 +4,9 @@ pub const LANDING_HTML: &str = r##"<!DOCTYPE html>
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>Cyntrisec Trust Center</title>
-  <meta name="description" content="Verify AIR v1 and legacy receipts from confidential AI inference. Checks signed claims, hash bindings, and attestation-linked execution evidence."/>
+  <meta name="description" content="Verify AIR v1 and legacy receipts from confidential AI inference. Checks signatures, receipt structure, and optional caller-supplied policy bindings."/>
   <meta property="og:title" content="Cyntrisec Trust Center"/>
-  <meta property="og:description" content="Verify AIR v1 and legacy receipts from confidential AI inference. Checks signed claims, hash bindings, and attestation-linked execution evidence."/>
+  <meta property="og:description" content="Verify AIR v1 and legacy receipts from confidential AI inference. Checks signatures, receipt structure, and optional caller-supplied policy bindings."/>
   <meta property="og:type" content="website"/>
   <meta name="theme-color" content="#000000"/>
   <link rel="icon" href="https://cyntrisec.com/logo-mark-64.png" type="image/png"/>
@@ -599,7 +599,7 @@ pub const LANDING_HTML: &str = r##"<!DOCTYPE html>
       <div>
         <div class="eyebrow">RECEIPT VERIFICATION</div>
         <h1>VERIFY<br><span class="stroke">WITHOUT</span><br><span class="accent">TRUSTING US.</span></h1>
-        <p>Check AIR v1 and legacy receipts from confidential AI inference. The trust center validates signatures, hash bindings, and attestation-linked execution evidence, then returns a structured JSON verdict.</p>
+        <p>Check AIR v1 and legacy receipts from confidential AI inference. The paste flow validates receipt signatures and structure; API callers can add model, hash, freshness, and platform policy inputs for stricter verdicts.</p>
       </div>
       <div class="hero-meta" aria-label="verification surface">
         <div class="hero-meta-row"><span>Formats</span><strong>AIR_V1 · LEGACY</strong></div>
@@ -813,7 +813,7 @@ function showResult(data) {
   const isAir = data.format === 'air_v1';
   const fmt = isAir ? 'AIR v1' : 'Legacy';
   const fmtNote = isAir
-    ? 'Standards-based receipt (COSE/CWT/EAT) with signed claims and attestation linkage'
+    ? 'Standards-based receipt (COSE/CWT/EAT) with signed claims and attestation reference'
     : 'Product-specific receipt format for compatibility';
   const vb = document.getElementById('verdictBanner');
   vb.className = 'verdict ' + (isOk ? 'pass' : 'fail');
@@ -832,6 +832,8 @@ function showResult(data) {
   add('Sequence', r.sequence_number != null ? '#' + r.sequence_number : null);
   add('Issued', r.issued_at ? new Date(r.issued_at*1000).toISOString() : null);
   add('Format', fmt);
+  add('Assurance', data.assurance_level ? data.assurance_level.replaceAll('_', ' ') : null);
+  add('TEE provenance', data.tee_provenance_verified === true ? 'verified' : 'not verified');
   if (r.model_hash_scheme) {
     add('Hash scheme', r.model_hash_scheme);
     const isManifest = r.model_hash_scheme === 'sha256-manifest';
@@ -849,7 +851,7 @@ function showResult(data) {
     const s = (c.status||'skip').toLowerCase();
     const cls = s === 'pass' ? 'tag-pass' : s === 'fail' ? 'tag-fail' : 'tag-skip';
     const layer = c.layer ? `<span class="ck-layer">${esc(c.layer)}</span>` : '';
-    const detail = c.detail && s === 'fail' ? `<span class="ck-detail">${esc(c.detail)}</span>` : '';
+    const detail = c.detail && (s === 'fail' || s === 'skip') ? `<span class="ck-detail">${esc(c.detail)}</span>` : '';
     ch += `<div class="ck"><div class="ck-info">${layer}<span class="ck-name">${esc(c.label||c.id)}</span>${detail}</div><span class="tag ${cls}">${s}</span></div>`;
   });
   checksEl.innerHTML = ch || '<div style="color:var(--ink-faint);font-size:12px">No checks returned.</div>';

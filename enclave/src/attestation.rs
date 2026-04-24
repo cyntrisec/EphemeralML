@@ -12,15 +12,14 @@ use aws_nitro_enclaves_nsm_api as nsm;
 #[cfg(feature = "production")]
 use hpke::{aead::ChaCha20Poly1305, kem::X25519HkdfSha256, Deserializable, OpModeR};
 #[cfg(feature = "production")]
-use rand::rngs::OsRng;
-#[cfg(feature = "production")]
-use rsa::pkcs8::EncodePublicKey;
-#[cfg(feature = "production")]
-use rsa::{Oaep, RsaPrivateKey};
+use openssl::{
+    encrypt::Decrypter,
+    hash::MessageDigest,
+    pkey::{PKey, Private},
+    rsa::{Padding, Rsa},
+};
 #[cfg(feature = "production")]
 use serde_bytes::ByteBuf;
-#[cfg(feature = "production")]
-use sha2::Sha256;
 
 /// Attestation document user data structure for key binding
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -144,15 +143,20 @@ pub trait AttestationProvider: Send + Sync {
 #[derive(Clone)]
 pub struct NSMAttestationProvider {
     hpke_keypair: EphemeralKeyPair,
-    kms_keypair: RsaPrivateKey,
+    kms_keypair: PKey<Private>,
 }
 
 #[cfg(feature = "production")]
 impl NSMAttestationProvider {
     /// Create a new NSM attestation provider with ephemeral keys
     pub fn new() -> Result<Self> {
-        let mut rng = OsRng;
-        let kms_keypair = RsaPrivateKey::new(&mut rng, 2048).map_err(|e| {
+        let rsa_key = Rsa::generate(2048).map_err(|e| {
+            EnclaveError::Enclave(EphemeralError::Internal(format!(
+                "RSA keygen failed: {}",
+                e
+            )))
+        })?;
+        let kms_keypair = PKey::from_rsa(rsa_key).map_err(|e| {
             EnclaveError::Enclave(EphemeralError::Internal(format!(
                 "RSA keygen failed: {}",
                 e
@@ -191,14 +195,13 @@ impl NSMAttestationProvider {
             override_key.to_vec()
         } else {
             // Default: RSA public key for KMS key release
-            let kms_pub_key = self.kms_keypair.to_public_key();
-            let kms_pub_der = kms_pub_key.to_public_key_der().map_err(|e| {
+            let kms_pub_der = self.kms_keypair.public_key_to_der().map_err(|e| {
                 EnclaveError::Enclave(EphemeralError::Internal(format!(
                     "RSA export failed: {}",
                     e
                 )))
             })?;
-            kms_pub_der.as_bytes().to_vec()
+            kms_pub_der
         };
 
         let request = nsm::api::Request::Attestation {
@@ -412,16 +415,53 @@ impl AttestationProvider for NSMAttestationProvider {
     }
 
     fn decrypt_kms(&self, ciphertext: &[u8]) -> Result<Vec<u8>> {
-        let padding = Oaep::new::<Sha256>();
-        let mut rng = OsRng;
-        self.kms_keypair
-            .decrypt_blinded(&mut rng, padding, ciphertext)
+        let mut decrypter = Decrypter::new(&self.kms_keypair).map_err(|e| {
+            EnclaveError::Enclave(EphemeralError::DecryptionError(format!(
+                "KMS decryption setup failed: {}",
+                e
+            )))
+        })?;
+        decrypter
+            .set_rsa_padding(Padding::PKCS1_OAEP)
             .map_err(|e| {
                 EnclaveError::Enclave(EphemeralError::DecryptionError(format!(
-                    "KMS decryption failed: {}",
+                    "KMS decryption padding setup failed: {}",
                     e
                 )))
-            })
+            })?;
+        decrypter
+            .set_rsa_oaep_md(MessageDigest::sha256())
+            .map_err(|e| {
+                EnclaveError::Enclave(EphemeralError::DecryptionError(format!(
+                    "KMS decryption OAEP digest setup failed: {}",
+                    e
+                )))
+            })?;
+        decrypter
+            .set_rsa_mgf1_md(MessageDigest::sha256())
+            .map_err(|e| {
+                EnclaveError::Enclave(EphemeralError::DecryptionError(format!(
+                    "KMS decryption MGF1 digest setup failed: {}",
+                    e
+                )))
+            })?;
+        let mut plaintext = vec![
+            0u8;
+            decrypter.decrypt_len(ciphertext).map_err(|e| {
+                EnclaveError::Enclave(EphemeralError::DecryptionError(format!(
+                    "KMS decryption size calculation failed: {}",
+                    e
+                )))
+            })?
+        ];
+        let len = decrypter.decrypt(ciphertext, &mut plaintext).map_err(|e| {
+            EnclaveError::Enclave(EphemeralError::DecryptionError(format!(
+                "KMS decryption failed: {}",
+                e
+            )))
+        })?;
+        plaintext.truncate(len);
+        Ok(plaintext)
     }
 
     fn attestation_source(&self) -> Option<&'static str> {

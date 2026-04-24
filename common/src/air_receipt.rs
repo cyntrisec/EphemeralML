@@ -51,8 +51,16 @@ pub const MAX_RECEIPT_BYTES: usize = 65_536;
 const MODEL_HASH_SCHEME_SHA256_SINGLE: &str = "sha256-single";
 const MODEL_HASH_SCHEME_SHA256_CONCAT: &str = "sha256-concat";
 const MODEL_HASH_SCHEME_SHA256_MANIFEST: &str = "sha256-manifest";
-const KNOWN_SECURITY_MODES: &[&str] = &["GatewayOnly", "ShieldMode"];
-const KNOWN_MEASUREMENT_KEYS: &[&str] = &["measurement_type", "pcr0", "pcr1", "pcr2", "pcr8"];
+const KNOWN_SECURITY_MODES: &[&str] = &["production", "evaluation"];
+const KNOWN_MEASUREMENT_KEYS: &[&str] = &[
+    "measurement_type",
+    "pcr0",
+    "pcr1",
+    "pcr2",
+    "pcr3",
+    "pcr4",
+    "pcr8",
+];
 
 pub(crate) fn is_known_model_hash_scheme(s: &str) -> bool {
     matches!(
@@ -61,6 +69,10 @@ pub(crate) fn is_known_model_hash_scheme(s: &str) -> bool {
             | MODEL_HASH_SCHEME_SHA256_CONCAT
             | MODEL_HASH_SCHEME_SHA256_MANIFEST
     )
+}
+
+pub(crate) fn is_known_security_mode(s: &str) -> bool {
+    KNOWN_SECURITY_MODES.contains(&s)
 }
 
 /// Typed claim set for an AIR v1 receipt.
@@ -77,7 +89,7 @@ pub struct AirReceiptClaims {
     // AIR private claims
     pub model_id: String,
     pub model_version: String,
-    /// SHA-256 of model weights — required.
+    /// SHA-256 binding for the model artifact set, as defined by model_hash_scheme.
     pub model_hash: [u8; 32],
     pub request_hash: [u8; 32],
     pub response_hash: [u8; 32],
@@ -189,8 +201,7 @@ impl AirReceiptClaims {
         let cti = *uuid.as_bytes();
 
         let security_mode = match receipt.security_mode {
-            crate::receipt_signing::SecurityMode::GatewayOnly => "GatewayOnly".to_string(),
-            crate::receipt_signing::SecurityMode::ShieldMode => "ShieldMode".to_string(),
+            crate::receipt_signing::SecurityMode::GatewayOnly => "production".to_string(),
         };
 
         Ok(Self {
@@ -348,6 +359,12 @@ fn encode_measurements(m: &EnclaveMeasurements) -> Value {
     ];
     if let Some(ref pcr8) = m.pcr8 {
         entries.push((Value::Text("pcr8".to_string()), Value::Bytes(pcr8.clone())));
+    }
+    if let Some(ref pcr3) = m.pcr3 {
+        entries.push((Value::Text("pcr3".to_string()), Value::Bytes(pcr3.clone())));
+    }
+    if let Some(ref pcr4) = m.pcr4 {
+        entries.push((Value::Text("pcr4".to_string()), Value::Bytes(pcr4.clone())));
     }
     // Sort text keys lexicographically for determinism
     entries.sort_by(|(k1, _), (k2, _)| crate::cbor::cmp_cbor_keys(k1, k2));
@@ -700,6 +717,8 @@ fn decode_measurements(entries: &[(Value, Value)]) -> Result<EnclaveMeasurements
     let pcr0 = get_text_bstr(meas_entries, "pcr0")?;
     let pcr1 = get_text_bstr(meas_entries, "pcr1")?;
     let pcr2 = get_text_bstr(meas_entries, "pcr2")?;
+    let pcr3 = get_text_bstr_opt(meas_entries, "pcr3")?;
+    let pcr4 = get_text_bstr_opt(meas_entries, "pcr4")?;
     let pcr8 = get_text_bstr_opt(meas_entries, "pcr8")?;
 
     // Fix 6: pcr8 is not allowed for TDX measurements (CDDL `tdx-measurements` omits it)
@@ -713,6 +732,8 @@ fn decode_measurements(entries: &[(Value, Value)]) -> Result<EnclaveMeasurements
         pcr0,
         pcr1,
         pcr2,
+        pcr3,
+        pcr4,
         pcr8,
         measurement_type,
     })
@@ -906,7 +927,7 @@ pub(crate) mod golden {
             sequence_number: 42,
             execution_time_ms: 116,
             memory_peak_mb: 512,
-            security_mode: "GatewayOnly".to_string(),
+            security_mode: "production".to_string(),
             model_hash_scheme: None,
         }
     }
@@ -936,7 +957,7 @@ pub(crate) mod golden {
             sequence_number: 1,
             execution_time_ms: 2500,
             memory_peak_mb: 8192,
-            security_mode: "ShieldMode".to_string(),
+            security_mode: "production".to_string(),
             model_hash_scheme: None,
         }
     }
@@ -968,7 +989,7 @@ mod tests {
             sequence_number: 42,
             execution_time_ms: 116,
             memory_peak_mb: 512,
-            security_mode: "GatewayOnly".to_string(),
+            security_mode: "production".to_string(),
             model_hash_scheme: None,
         }
     }
@@ -1203,6 +1224,37 @@ mod tests {
     }
 
     #[test]
+    fn test_tdx_optional_measurements_roundtrip() {
+        let key = ReceiptSigningKey::generate().unwrap();
+        let mut claims = fixture_claims();
+        claims.enclave_measurements =
+            EnclaveMeasurements::new_tdx(vec![10u8; 48], vec![20u8; 48], vec![30u8; 48]);
+        claims.enclave_measurements.pcr3 = Some(vec![40u8; 48]);
+        claims.enclave_measurements.pcr4 = Some(vec![50u8; 48]);
+        let bytes = build_air_v1(&claims, &key).unwrap();
+        let parsed = parse_air_v1(&bytes).unwrap();
+        assert_eq!(
+            parsed.claims.enclave_measurements.pcr3,
+            Some(vec![40u8; 48])
+        );
+        assert_eq!(
+            parsed.claims.enclave_measurements.pcr4,
+            Some(vec![50u8; 48])
+        );
+    }
+
+    #[test]
+    fn test_optional_measurement_wrong_length_rejected_on_build() {
+        let key = ReceiptSigningKey::generate().unwrap();
+        let mut claims = fixture_claims();
+        claims.enclave_measurements.pcr3 = Some(vec![3u8; 32]);
+        let err = build_air_v1(&claims, &key).unwrap_err();
+        assert!(err
+            .to_string()
+            .contains("enclave measurements must be 48 bytes each"));
+    }
+
+    #[test]
     fn test_nitro_pcr8_roundtrip() {
         let key = ReceiptSigningKey::generate().unwrap();
         let mut claims = fixture_claims();
@@ -1412,7 +1464,7 @@ mod tests {
 
         assert_eq!(air_claims.model_id, "test-model");
         assert_eq!(air_claims.model_hash, model_hash);
-        assert_eq!(air_claims.security_mode, "GatewayOnly");
+        assert_eq!(air_claims.security_mode, "production");
 
         // cti should be the raw UUID bytes
         let expected_uuid = uuid::Uuid::parse_str(&receipt_id).unwrap();

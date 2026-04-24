@@ -32,7 +32,7 @@
       "description": "Must be 1 for v0.1 receipts"
     },
     "security_mode": {
-      "enum": ["GatewayOnly", "ShieldMode"],
+      "enum": ["GatewayOnly"],
       "description": "Security mode of execution"
     },
     "enclave_measurements": {

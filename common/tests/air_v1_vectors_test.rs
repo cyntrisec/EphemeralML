@@ -54,8 +54,9 @@ fn golden_key() -> ReceiptSigningKey {
 
 /// Build an `AirVerifyPolicy` from the JSON `verify_policy` field (if present).
 ///
-/// Supports: `expected_nonce_hex`, `expected_model_hash_hex`, `expected_platform`,
-/// `max_age_secs`.
+/// Supports: `expected_nonce_hex`, `expected_model_hash_hex`,
+/// `expected_request_hash_hex`, `expected_response_hash_hex`,
+/// `expected_platform`, `max_age_secs`.
 /// If no `verify_policy` field exists, returns default policy.
 fn policy_from_json(v: &Value) -> AirVerifyPolicy {
     let vp = match v.get("verify_policy") {
@@ -78,6 +79,26 @@ fn policy_from_json(v: &Value) -> AirVerifyPolicy {
             arr
         });
 
+    let expected_request_hash = vp
+        .get("expected_request_hash_hex")
+        .and_then(|n| n.as_str())
+        .map(|h| {
+            let bytes = hex::decode(h).unwrap();
+            let mut arr = [0u8; 32];
+            arr.copy_from_slice(&bytes);
+            arr
+        });
+
+    let expected_response_hash = vp
+        .get("expected_response_hash_hex")
+        .and_then(|n| n.as_str())
+        .map(|h| {
+            let bytes = hex::decode(h).unwrap();
+            let mut arr = [0u8; 32];
+            arr.copy_from_slice(&bytes);
+            arr
+        });
+
     let expected_platform = vp
         .get("expected_platform")
         .and_then(|n| n.as_str())
@@ -88,6 +109,8 @@ fn policy_from_json(v: &Value) -> AirVerifyPolicy {
     AirVerifyPolicy {
         expected_nonce,
         expected_model_hash,
+        expected_request_hash,
+        expected_response_hash,
         expected_platform,
         max_age_secs,
         ..Default::default()
@@ -115,7 +138,7 @@ fn golden_claims_v1() -> AirReceiptClaims {
         sequence_number: 42,
         execution_time_ms: 116,
         memory_peak_mb: 512,
-        security_mode: "GatewayOnly".to_string(),
+        security_mode: "production".to_string(),
         model_hash_scheme: None,
     }
 }
@@ -145,7 +168,7 @@ fn golden_claims_v2() -> AirReceiptClaims {
         sequence_number: 1,
         execution_time_ms: 2500,
         memory_peak_mb: 8192,
-        security_mode: "ShieldMode".to_string(),
+        security_mode: "production".to_string(),
         model_hash_scheme: None,
     }
 }
@@ -273,7 +296,7 @@ fn cv_v2_tdx_verifier_pass_with_nonce() {
         claims.enclave_measurements.measurement_type,
         "tdx-mrtd-rtmr"
     );
-    assert_eq!(claims.security_mode, "ShieldMode");
+    assert_eq!(claims.security_mode, "production");
 }
 
 // ═══════════════════════════════════════════════════════════════════

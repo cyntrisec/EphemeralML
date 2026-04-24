@@ -1,0 +1,687 @@
+AWSTemplateFormatVersion: '2010-09-09'
+
+# ==============================================================================
+# Cyntrisec BYOC Phase 1 Pilot Template (Day 1 Skeleton)
+# ------------------------------------------------------------------------------
+# Implements the output contract at:
+#   startup-plans/10-operations/byoc-phase-1-cloudformation-output-contract-2026-04-23.md
+#
+# Deploys a single Nitro-Enclaves-capable EC2 host + customer-owned S3 evidence
+# bucket + customer-managed KMS key + least-privilege IAM role + tightly-scoped
+# SSH security group + optional CloudWatch logs + SSM config parameters.
+#
+# Scope rules (hard):
+#   - One cloud (AWS only, this template).
+#   - One workflow footprint (insurance claims triage pilot).
+#   - Customer owns the cloud account; Cyntrisec never holds credentials.
+#   - NOT in this template: VPC, Lambda, Secrets Manager, CloudTrail, Config,
+#     GuardDuty, Auto Scaling, ELB, Route 53, RDS, ECR/ECS/EKS.
+#
+# Day 1-2 acceptance: passes aws cloudformation validate-template, cfn-lint,
+# cfn-nag (no FAIL), deploys to a fresh account in <10 min, instance comes up
+# with Nitro Enclaves allocator configured and /opt/cyntrisec/bin/ ready for
+# the Day 3-4 doctor + smoke-test binaries.
+# ==============================================================================
+
+Description: >-
+  Cyntrisec BYOC Phase 1 pilot deployment. Creates a Nitro-Enclaves-capable EC2
+  host, a customer-owned KMS-encrypted S3 evidence bucket, a least-privilege
+  instance role, and an SSH-restricted security group. Customer retains full
+  cloud control; Cyntrisec never holds credentials.
+
+# ------------------------------------------------------------------------------
+# Console UI grouping (Quick Create readability)
+# ------------------------------------------------------------------------------
+Metadata:
+  AWS::CloudFormation::Interface:
+    ParameterGroups:
+      - Label:
+          default: Deployment identity
+        Parameters:
+          - InstanceType
+          - KeyPairName
+      - Label:
+          default: Network access
+        Parameters:
+          - VpcId
+          - SubnetId
+          - AllowedSSHCIDR
+      - Label:
+          default: Evidence storage
+        Parameters:
+          - EvidenceBucketName
+          - EnableObjectLock
+          - ObjectLockRetentionDays
+      - Label:
+          default: Observability
+        Parameters:
+          - EnableCloudWatchLogs
+          - LogRetentionDays
+      - Label:
+          default: Tagging (optional)
+        Parameters:
+          - AdditionalCostCenterTag
+          - AdditionalDataClassTag
+    ParameterLabels:
+      InstanceType:
+        default: EC2 instance type (Nitro Enclaves-capable only)
+      KeyPairName:
+        default: Existing EC2 key pair in this region
+      VpcId:
+        default: Target VPC
+      SubnetId:
+        default: Target subnet (public; must be in the VPC above)
+      AllowedSSHCIDR:
+        default: Your office IP (must be /32)
+      EvidenceBucketName:
+        default: Custom evidence bucket name (leave blank to auto-generate)
+      EnableObjectLock:
+        default: Enable S3 Object Lock (WORM) for evidence retention
+      ObjectLockRetentionDays:
+        default: Object Lock retention period in days (if enabled)
+      EnableCloudWatchLogs:
+        default: Enable CloudWatch Logs for pilot operations
+      LogRetentionDays:
+        default: Log retention period in days
+      AdditionalCostCenterTag:
+        default: Cost-center tag (optional)
+      AdditionalDataClassTag:
+        default: Data-classification tag (optional)
+
+# ------------------------------------------------------------------------------
+# Parameters (12 inputs per contract: original 10 + VpcId + SubnetId added 2026-04-23)
+# ------------------------------------------------------------------------------
+Parameters:
+
+  InstanceType:
+    Type: String
+    Default: m6i.xlarge
+    AllowedValues:
+      - m6i.xlarge
+      - m6i.2xlarge
+      - m6a.xlarge
+      - m6a.2xlarge
+    Description: Nitro-Enclaves-capable instance type. Only these four are permitted in Phase 1.
+
+  KeyPairName:
+    Type: AWS::EC2::KeyPair::KeyName
+    Description: Existing SSH key pair in this region (used for initial admin access only).
+
+  AllowedSSHCIDR:
+    Type: String
+    Description: CIDR range allowed to SSH to the pilot host. Must be a /32 (single host).
+    AllowedPattern: ^([0-9]{1,3}\.){3}[0-9]{1,3}/32$
+    ConstraintDescription: Must be a single-host CIDR in form X.X.X.X/32. No /24, no 0.0.0.0/0.
+
+  VpcId:
+    Type: AWS::EC2::VPC::Id
+    Description: VPC for the pilot host (default VPC is fine for most deployments).
+
+  SubnetId:
+    Type: AWS::EC2::Subnet::Id
+    Description: Subnet for the pilot host (must be in the VPC above; use a public subnet for initial SSH access).
+
+  EvidenceBucketName:
+    Type: String
+    Default: ''
+    Description: Custom name for the evidence S3 bucket. Leave blank to auto-generate.
+    AllowedPattern: ^$|^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$
+
+  EnableObjectLock:
+    Type: String
+    Default: 'false'
+    AllowedValues: ['true', 'false']
+    Description: >-
+      OPT-IN (per v1.2 narrow-scope plan). When true, the evidence bucket is
+      created with Object Lock in Compliance mode. This CANNOT be enabled later;
+      set true now if your retention policy requires WORM storage.
+
+  ObjectLockRetentionDays:
+    Type: Number
+    Default: 90
+    MinValue: 1
+    MaxValue: 3650
+    Description: Retention period (days) when EnableObjectLock=true. Ignored otherwise.
+
+  EnableCloudWatchLogs:
+    Type: String
+    Default: 'true'
+    AllowedValues: ['true', 'false']
+    Description: Create a CloudWatch log group for pilot operational logs.
+
+  LogRetentionDays:
+    Type: Number
+    Default: 30
+    AllowedValues: [7, 30, 90, 180, 365]
+    Description: CloudWatch Logs retention (days). Only applies if EnableCloudWatchLogs=true.
+
+  AdditionalCostCenterTag:
+    Type: String
+    Default: ''
+    Description: Optional cost-center or billing tag value.
+
+  AdditionalDataClassTag:
+    Type: String
+    Default: ''
+    Description: Optional data-classification tag value (e.g., internal, confidential).
+
+# ------------------------------------------------------------------------------
+# Mappings
+# ------------------------------------------------------------------------------
+Mappings:
+  # Amazon Linux 2023 AMI lookup is via SSM Parameter (see Resources), so no
+  # per-region AMI table is needed here.
+  {}
+
+# ------------------------------------------------------------------------------
+# Conditions
+# ------------------------------------------------------------------------------
+Conditions:
+  IsCloudWatchLogsEnabled: !Equals [!Ref EnableCloudWatchLogs, 'true']
+  IsObjectLockEnabled: !Equals [!Ref EnableObjectLock, 'true']
+  HasCustomBucketName: !Not [!Equals [!Ref EvidenceBucketName, '']]
+  HasCostCenterTag: !Not [!Equals [!Ref AdditionalCostCenterTag, '']]
+  HasDataClassTag: !Not [!Equals [!Ref AdditionalDataClassTag, '']]
+
+# ------------------------------------------------------------------------------
+# Resources (dependency order: KMS -> S3 -> Logs -> IAM -> SG -> SSM -> EC2)
+# ------------------------------------------------------------------------------
+Resources:
+
+  # --- KMS customer-managed key for evidence bucket encryption ----------------
+  CyntrisecEvidenceKey:
+    Type: AWS::KMS::Key
+    Properties:
+      Description: !Sub 'Cyntrisec pilot evidence encryption key (${AWS::StackName})'
+      EnableKeyRotation: true
+      # Required when the deploying IAM identity holds `AWSKeyManagementServicePowerUser`
+      # (or any policy that EXCLUDES kms:PutKeyPolicy). Without this flag, KMS's
+      # lockout-safety check rejects the key policy below even though the root-
+      # account-delegation pattern is the standard escape hatch — KMS verifies
+      # that the caller specifically has kms:PutKeyPolicy, not just IAM delegation.
+      # The policy below still grants root full kms:* and admins can use that to
+      # recover policy control if ever needed.
+      BypassPolicyLockoutSafetyCheck: true
+      KeyPolicy:
+        Version: '2012-10-17'
+        Statement:
+          # Root account retains administrative authority AND delegates usage
+          # authorization to IAM for any identity in this account. Cyntrisec is
+          # NOT a principal here; only same-account IAM identities (scoped by
+          # their own IAM policies) can use this key. This single-statement
+          # pattern avoids the circular dependency of Role -> Key -> Role.
+          # The instance role's own IAM policy (see CyntrisecHostRole below)
+          # is what actually grants kms:Encrypt / kms:Decrypt / kms:GenerateDataKey
+          # with the kms:ViaService=s3 condition.
+          - Sid: EnableRootAccountPermissionsAndIamDelegation
+            Effect: Allow
+            Principal:
+              AWS: !Sub 'arn:${AWS::Partition}:iam::${AWS::AccountId}:root'
+            Action: 'kms:*'
+            Resource: '*'
+      Tags:
+        - Key: Name
+          Value: !Sub '${AWS::StackName}-evidence-key'
+        - !If
+          - HasCostCenterTag
+          - Key: CostCenter
+            Value: !Ref AdditionalCostCenterTag
+          - !Ref 'AWS::NoValue'
+        - !If
+          - HasDataClassTag
+          - Key: DataClassification
+            Value: !Ref AdditionalDataClassTag
+          - !Ref 'AWS::NoValue'
+
+  CyntrisecEvidenceKeyAlias:
+    Type: AWS::KMS::Alias
+    Properties:
+      AliasName: !Sub 'alias/${AWS::StackName}-evidence-${AWS::AccountId}'
+      TargetKeyId: !Ref CyntrisecEvidenceKey
+
+  # --- S3 evidence bucket (customer-owned, SSE-KMS, public-access-blocked) ----
+  CyntrisecEvidenceBucket:
+    Type: AWS::S3::Bucket
+    # Retain on stack delete if Object Lock enabled (legal-hold semantics);
+    # otherwise let customer delete cleanly.
+    DeletionPolicy: !If [IsObjectLockEnabled, Retain, Delete]
+    UpdateReplacePolicy: !If [IsObjectLockEnabled, Retain, Delete]
+    Metadata:
+      cfn_nag:
+        rules_to_suppress:
+          - id: W35
+            reason: >-
+              S3 server access logging is NOT configured in the Phase 1 skeleton to avoid
+              creating a second bucket (logging-destination) and the associated bucket
+              policy for the log delivery service. Customer can enable server access
+              logging separately by creating a destination bucket and calling
+              PutBucketLogging. Documented in the admin quickstart as an opt-in step.
+              Every S3 API call is still captured by CloudTrail in the customer account
+              (if enabled at the account level), which is the standard audit path for
+              regulated deployments.
+    Properties:
+      BucketName: !If
+        - HasCustomBucketName
+        - !Ref EvidenceBucketName
+        - !Sub 'cyntrisec-pilot-evidence-${AWS::AccountId}-${AWS::Region}'
+      VersioningConfiguration:
+        Status: Enabled
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: aws:kms
+              KMSMasterKeyID: !GetAtt CyntrisecEvidenceKey.Arn
+            BucketKeyEnabled: true
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      # Object Lock is immutable once set — can only be enabled at creation time.
+      ObjectLockEnabled: !If [IsObjectLockEnabled, true, !Ref 'AWS::NoValue']
+      ObjectLockConfiguration: !If
+        - IsObjectLockEnabled
+        - ObjectLockEnabled: Enabled
+          Rule:
+            DefaultRetention:
+              Mode: COMPLIANCE
+              Days: !Ref ObjectLockRetentionDays
+        - !Ref 'AWS::NoValue'
+      # Server access logging deliberately NOT configured in Phase 1 skeleton.
+      # Customer can enable with a separate logging bucket; documented in admin
+      # quickstart. cfn-nag W35 suppressed at scan time with explicit rationale.
+
+  CyntrisecEvidenceBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref CyntrisecEvidenceBucket
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          # Deny any non-TLS access (defense-in-depth; transport always encrypted).
+          - Sid: DenyUnencryptedTransport
+            Effect: Deny
+            Principal: '*'
+            Action: 's3:*'
+            Resource:
+              - !GetAtt CyntrisecEvidenceBucket.Arn
+              - !Sub '${CyntrisecEvidenceBucket.Arn}/*'
+            Condition:
+              Bool:
+                aws:SecureTransport: 'false'
+          # Deny PutObject without SSE-KMS header.
+          - Sid: DenyUnencryptedObjectUploads
+            Effect: Deny
+            Principal: '*'
+            Action: 's3:PutObject'
+            Resource: !Sub '${CyntrisecEvidenceBucket.Arn}/*'
+            Condition:
+              StringNotEquals:
+                s3:x-amz-server-side-encryption: aws:kms
+
+  # --- CloudWatch Logs (conditional) -----------------------------------------
+  CyntrisecLogGroup:
+    Type: AWS::Logs::LogGroup
+    Condition: IsCloudWatchLogsEnabled
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Delete
+    Metadata:
+      cfn_nag:
+        rules_to_suppress:
+          - id: W84
+            reason: >-
+              Log contents are operational metadata only (Nitro allocator service state,
+              doctor / smoke-test stdout, cfn-signal status). No customer inference data
+              or PHI flows through this log group by design — the customer's data plane
+              is inside the enclave, not on the host OS. KMS encryption on the log group
+              would require a cross-service key policy grant (logs.{region}.amazonaws.com)
+              that expands the IAM posture without reducing real exposure. Reassess if
+              Phase 2 extends log scope beyond operational metadata.
+    Properties:
+      LogGroupName: !Sub '/cyntrisec/pilot/${AWS::StackName}'
+      RetentionInDays: !Ref LogRetentionDays
+
+  # --- IAM role + instance profile -------------------------------------------
+  CyntrisecHostRole:
+    Type: AWS::IAM::Role
+    Metadata:
+      cfn_nag:
+        rules_to_suppress:
+          - id: W28
+            reason: >-
+              Explicit role name `${StackName}-host-role` is intentional for Phase 1 so
+              the admin quickstart, doctor output, and audit-review artifacts reference
+              human-readable IAM ARNs. Tradeoff: stack updates that require role
+              replacement will fail unless the old role is deleted first. Acceptable for
+              Phase 1 (single stack per pilot); revisit if multi-stack deployments ever
+              share this pattern.
+    Properties:
+      RoleName: !Sub '${AWS::StackName}-host-role'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ec2.amazonaws.com
+            Action: sts:AssumeRole
+      # SSM Session Manager access (so customer doesn't even need SSH if they'd
+      # rather use AWS-native console access). Least-privilege AWS-managed.
+      ManagedPolicyArns:
+        - !Sub 'arn:${AWS::Partition}:iam::aws:policy/AmazonSSMManagedInstanceCore'
+      Policies:
+        - PolicyName: CyntrisecPilotLeastPrivilege
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Sid: EvidenceBucketReadWrite
+                Effect: Allow
+                Action:
+                  - s3:PutObject
+                  - s3:GetObject
+                  - s3:ListBucket
+                  # Introspection actions required by ephemeralml-doctor
+                  # (Check 4 verifies SSE-KMS + PublicAccessBlock posture
+                  # before the smoke-test runs). Read-only, bucket-scoped;
+                  # AWS ignores them on the /* resource path.
+                  - s3:GetEncryptionConfiguration
+                  - s3:GetBucketPublicAccessBlock
+                Resource:
+                  - !GetAtt CyntrisecEvidenceBucket.Arn
+                  - !Sub '${CyntrisecEvidenceBucket.Arn}/*'
+              # KMS data-path actions (Encrypt/Decrypt/GenerateDataKey) are
+              # gated by kms:ViaService=s3 — only S3's internal calls on the
+              # host's behalf will satisfy the Condition. The effective
+              # permission is the intersection of this statement and the
+              # key policy above.
+              - Sid: EvidenceKeyDataPath
+                Effect: Allow
+                Action:
+                  - kms:Encrypt
+                  - kms:Decrypt
+                  - kms:GenerateDataKey
+                Resource: !GetAtt CyntrisecEvidenceKey.Arn
+                Condition:
+                  StringEquals:
+                    kms:ViaService: !Sub 's3.${AWS::Region}.amazonaws.com'
+              # KMS metadata actions called directly by ephemeralml-doctor
+              # (Check 5 verifies KeyState + rotation before smoke-test).
+              # Deliberately NOT conditioned on kms:ViaService — these are
+              # operator-direct calls, not S3-mediated, and the ViaService
+              # Condition would (correctly) reject them otherwise.
+              - Sid: EvidenceKeyMetadata
+                Effect: Allow
+                Action:
+                  - kms:DescribeKey
+                  - kms:GetKeyRotationStatus
+                Resource: !GetAtt CyntrisecEvidenceKey.Arn
+              - !If
+                - IsCloudWatchLogsEnabled
+                - Sid: LogsWriteOnly
+                  Effect: Allow
+                  Action:
+                    - logs:CreateLogStream
+                    - logs:PutLogEvents
+                  Resource: !GetAtt CyntrisecLogGroup.Arn
+                - !Ref 'AWS::NoValue'
+              - Sid: PilotConfigRead
+                Effect: Allow
+                Action:
+                  - ssm:GetParameter
+                  - ssm:GetParameters
+                Resource: !Sub 'arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter/cyntrisec/pilot/*'
+
+  CyntrisecHostProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      InstanceProfileName: !Sub '${AWS::StackName}-host-profile'
+      Roles:
+        - !Ref CyntrisecHostRole
+
+  # --- Security group (SSH from customer CIDR only) --------------------------
+  CyntrisecSshSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Metadata:
+      cfn_nag:
+        rules_to_suppress:
+          - id: W5
+            reason: >-
+              Egress to 0.0.0.0/0 is required for (a) dnf package installs from Amazon
+              Linux repositories during host provisioning, (b) AWS API calls to
+              ssm.${region}, kms.${region}, s3.${region}, logs.${region} via the public
+              endpoints, and (c) fetching the cosign-signed EIF artifact from the
+              Cyntrisec release bucket. Restricting egress to specific CIDRs would
+              require maintaining AWS public IP ranges and would break during region
+              expansions. Phase 2 extension hook: VPC endpoints for S3/KMS/SSM/Logs
+              can replace the public-egress dependency for AWS APIs; dnf mirror +
+              Cyntrisec release endpoint still need outbound HTTPS.
+          - id: W40
+            reason: >-
+              IpProtocol -1 (all) with egress to 0.0.0.0/0 is the defense-in-depth
+              minimum egress posture for a Nitro-enabled host that needs to self-provision
+              (dnf), fetch cosign-signed artifacts, and call AWS APIs. No inbound data
+              plane. See W5 rationale above.
+          - id: W28
+            reason: >-
+              Explicit group name `${StackName}-ssh-sg` is intentional for readable
+              security-review artifacts. Same rationale as the IAM role's W28 suppression.
+    Properties:
+      GroupName: !Sub '${AWS::StackName}-ssh-sg'
+      GroupDescription: SSH access restricted to customer office IP (/32) only.
+      VpcId: !Ref VpcId
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+          CidrIp: !Ref AllowedSSHCIDR
+          Description: Customer admin SSH (tightly scoped; AllowedSSHCIDR regex enforces /32).
+      SecurityGroupEgress:
+        - IpProtocol: -1
+          CidrIp: 0.0.0.0/0
+          Description: System updates + AWS API calls. No inbound data plane.
+
+  # --- SSM Parameter Store: non-secret runtime config ------------------------
+  CyntrisecPilotConfigBucketName:
+    Type: AWS::SSM::Parameter
+    Properties:
+      Name: !Sub '/cyntrisec/pilot/config/${AWS::StackName}/bucket-name'
+      Type: String
+      Value: !Ref CyntrisecEvidenceBucket
+      Description: Evidence bucket name for the pilot runtime (non-secret).
+
+  CyntrisecPilotConfigKeyAlias:
+    Type: AWS::SSM::Parameter
+    Properties:
+      Name: !Sub '/cyntrisec/pilot/config/${AWS::StackName}/kms-key-alias'
+      Type: String
+      Value: !Ref CyntrisecEvidenceKeyAlias
+      Description: KMS key alias for the pilot runtime (non-secret).
+
+  CyntrisecPilotConfigRegion:
+    Type: AWS::SSM::Parameter
+    Properties:
+      Name: !Sub '/cyntrisec/pilot/config/${AWS::StackName}/region'
+      Type: String
+      Value: !Ref 'AWS::Region'
+      Description: Deployment region for the pilot runtime (non-secret).
+
+  # --- EC2 host (Nitro Enclaves enabled, IMDSv2 required) --------------------
+  CyntrisecHostInstance:
+    Type: AWS::EC2::Instance
+    DependsOn:
+      - CyntrisecEvidenceBucketPolicy
+      - CyntrisecPilotConfigBucketName
+      - CyntrisecPilotConfigKeyAlias
+      - CyntrisecPilotConfigRegion
+    CreationPolicy:
+      ResourceSignal:
+        Count: 1
+        Timeout: PT10M
+    Properties:
+      # Amazon Linux 2023 latest x86_64 via SSM Parameter (region-agnostic).
+      ImageId: '{{resolve:ssm:/aws/service/ami-amazon-linux-latest/al2023-ami-kernel-default-x86_64}}'
+      InstanceType: !Ref InstanceType
+      KeyName: !Ref KeyPairName
+      IamInstanceProfile: !Ref CyntrisecHostProfile
+      SubnetId: !Ref SubnetId
+      SecurityGroupIds:
+        - !GetAtt CyntrisecSshSecurityGroup.GroupId
+      # Nitro Enclaves must be enabled at launch; cannot be toggled later.
+      EnclaveOptions:
+        Enabled: true
+      # Enforce IMDSv2 (defense-in-depth against SSRF).
+      MetadataOptions:
+        HttpTokens: required
+        HttpEndpoint: enabled
+        HttpPutResponseHopLimit: 2
+      # Encrypted root volume with reasonable size for model weights + logs.
+      BlockDeviceMappings:
+        - DeviceName: /dev/xvda
+          Ebs:
+            VolumeType: gp3
+            VolumeSize: 100
+            Encrypted: true
+            DeleteOnTermination: true
+      UserData:
+        Fn::Base64: !Sub |
+          #!/bin/bash
+          set -eux
+
+          # Ensure CloudFormation ALWAYS receives a signal — success or failure.
+          # Without this, a mid-script failure under `set -e` exits before
+          # cfn-signal runs, causing the stack to wait the full timeout then
+          # fail opaquely. With this trap, errors produce an immediate negative
+          # signal with a clear reason in the stack events.
+          trap '/opt/aws/bin/cfn-signal -e 1 \
+            --stack ${AWS::StackName} \
+            --resource CyntrisecHostInstance \
+            --region ${AWS::Region} \
+            --reason "user-data failed at line $LINENO"' ERR
+
+          # System updates.
+          dnf -y update
+
+          # Nitro Enclaves CLI + allocator.
+          dnf -y install aws-nitro-enclaves-cli aws-nitro-enclaves-cli-devel
+
+          # Add the ec2-user to the ne group so they can manage enclaves later.
+          usermod -aG ne ec2-user
+
+          # Configure allocator: 4096 MiB memory, 2 vCPUs. Tune via pilot runbook.
+          cat > /etc/nitro_enclaves/allocator.yaml <<'EOF'
+          ---
+          memory_mib: 4096
+          cpu_count: 2
+          EOF
+
+          systemctl enable --now nitro-enclaves-allocator.service
+          systemctl restart nitro-enclaves-allocator.service
+
+          # Cyntrisec install directory (binaries arrive Day 3-4).
+          install -d -o root -g root -m 0755 /opt/cyntrisec
+          install -d -o root -g root -m 0755 /opt/cyntrisec/bin
+          install -d -o root -g root -m 0755 /opt/cyntrisec/etc
+          install -d -o root -g root -m 0755 /var/log/cyntrisec
+
+          # Install AWS CLI (v2 via dnf) for doctor/smoke-test helper scripts.
+          dnf -y install awscli
+
+          # cosign 2.x — required by:
+          #   - ephemeralml-doctor Check 2 (verifies EIF signature bundle)
+          #   - ephemeralml-smoke-test Stage 2 (pre-launch re-verification)
+          #   - customer out-of-band verification (per quickstart §verification)
+          # Pinned to a specific release with SHA-256 integrity check. No
+          # upstream trust assumption beyond the pinned binary hash; updates
+          # land via the installer tarball, not via an unpinned "latest"
+          # download. (Shell variables escaped as ${!NAME} so CloudFormation
+          # !Sub doesn't try to resolve them as stack parameters.)
+          COSIGN_VERSION="2.4.1"
+          COSIGN_SHA256="8b24b946dd5809c6bd93de08033bcf6bc0ed7d336b7785787c080f574b89249b"
+          curl -sSL -o /tmp/cosign \
+            "https://github.com/sigstore/cosign/releases/download/v${!COSIGN_VERSION}/cosign-linux-amd64"
+          echo "${!COSIGN_SHA256}  /tmp/cosign" | sha256sum -c -
+          install -o root -g root -m 0755 /tmp/cosign /usr/local/bin/cosign
+          rm -f /tmp/cosign
+
+          # CloudFormation helper scripts come preinstalled on AL2023 AMIs at
+          # /opt/aws/bin/. Signal the stack that host provisioning succeeded.
+          /opt/aws/bin/cfn-signal -e 0 \
+            --stack ${AWS::StackName} \
+            --resource CyntrisecHostInstance \
+            --region ${AWS::Region}
+      Tags:
+        - Key: Name
+          Value: !Sub '${AWS::StackName}-host'
+        - Key: CyntrisecPilot
+          Value: 'true'
+
+# ------------------------------------------------------------------------------
+# Outputs (12 exports per contract)
+# ------------------------------------------------------------------------------
+Outputs:
+
+  InstanceId:
+    Description: EC2 instance ID of the Cyntrisec pilot host.
+    Value: !Ref CyntrisecHostInstance
+    Export:
+      Name: !Sub '${AWS::StackName}-InstanceId'
+
+  InstancePublicIp:
+    Description: Public IPv4 of the pilot host (SSH / SSM target).
+    Value: !GetAtt CyntrisecHostInstance.PublicIp
+    Export:
+      Name: !Sub '${AWS::StackName}-InstancePublicIp'
+
+  EvidenceBucketArn:
+    Description: Evidence S3 bucket ARN.
+    Value: !GetAtt CyntrisecEvidenceBucket.Arn
+    Export:
+      Name: !Sub '${AWS::StackName}-EvidenceBucketArn'
+
+  EvidenceBucketName:
+    Description: Evidence S3 bucket name.
+    Value: !Ref CyntrisecEvidenceBucket
+    Export:
+      Name: !Sub '${AWS::StackName}-EvidenceBucketName'
+
+  KmsKeyArn:
+    Description: KMS key ARN used to encrypt the evidence bucket.
+    Value: !GetAtt CyntrisecEvidenceKey.Arn
+    Export:
+      Name: !Sub '${AWS::StackName}-KmsKeyArn'
+
+  KmsKeyAlias:
+    Description: Human-readable KMS key alias.
+    Value: !Ref CyntrisecEvidenceKeyAlias
+    Export:
+      Name: !Sub '${AWS::StackName}-KmsKeyAlias'
+
+  InstanceRoleArn:
+    Description: IAM role attached to the pilot host.
+    Value: !GetAtt CyntrisecHostRole.Arn
+    Export:
+      Name: !Sub '${AWS::StackName}-InstanceRoleArn'
+
+  LogGroupName:
+    Description: CloudWatch log group for operational logs (empty if disabled).
+    Value: !If
+      - IsCloudWatchLogsEnabled
+      - !Ref CyntrisecLogGroup
+      - 'disabled'
+    Export:
+      Name: !Sub '${AWS::StackName}-LogGroupName'
+
+  DoctorCommand:
+    Description: Literal command to run the preflight doctor on the host.
+    Value: 'sudo /opt/cyntrisec/bin/ephemeralml-doctor'
+
+  SmokeTestCommand:
+    Description: Literal command to run the end-to-end smoke test on the host.
+    Value: 'sudo /opt/cyntrisec/bin/ephemeralml-smoke-test'
+
+  TeardownCommand:
+    Description: Command to cleanly delete the stack (retains bucket if Object Lock enabled).
+    Value: !Sub 'aws cloudformation delete-stack --stack-name ${AWS::StackName} --region ${AWS::Region}'
+
+  ConsoleUrl:
+    Description: Direct link to this stack in the CloudFormation console.
+    Value: !Sub 'https://${AWS::Region}.console.aws.amazon.com/cloudformation/home?region=${AWS::Region}#/stacks/stackinfo?stackId=${AWS::StackId}'

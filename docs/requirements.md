@@ -2,7 +2,7 @@
 
 ## Introduction
 
-EphemeralML is a defense-in-depth confidential inference system that protects model weights and sensitive user inputs through a two-layer security architecture. Layer 1 (Gateway) provides TEE isolation with attestation-gated key release and end-to-end encrypted sessions where the host acts as a blind relay. Layer 2 (Shield Mode) adds optional leakage-resilient inference through structured weight obfuscation to make captured weights not directly usable under defined partial-compromise scenarios.
+EphemeralML is a defense-in-depth confidential inference system that protects model weights and sensitive user inputs through TEE isolation, attestation-gated key release, end-to-end encrypted sessions where the host acts as a blind relay, and signed execution receipts. V1 does not define a separate model-obfuscation layer.
 
 ## Out of Scope (v1)
 
@@ -32,7 +32,6 @@ EphemeralML is a defense-in-depth confidential inference system that protects mo
 - **Host**: The untrusted EC2 instance that acts as a ciphertext-only relay
 - **Enclave**: The AWS Nitro Enclave providing isolated, attested execution environment
 - **Gateway**: Layer 1 security providing TEE isolation and attestation-bound sessions
-- **Shield_Mode**: Layer 2 security providing leakage-resilient inference through obfuscation
 - **Attestation_Document**: Cryptographically signed proof of enclave identity and measurements
 - **AER**: Attested Execution Receipt providing audit evidence for each inference
 - **E2E_Session**: End-to-end encrypted communication channel bound to enclave attestation
@@ -40,7 +39,6 @@ EphemeralML is a defense-in-depth confidential inference system that protects mo
 - **Enclave_Measurements**: Nitro Enclave PCRs or TDX MRTD/RTMRs (as reported in the attestation document) proving code integrity
 - **Measurement_Allowlist**: Client-maintained list of approved enclave measurements for key release (PCR0 on Nitro, MRTD on TDX)
 - **Model_DEK**: Per-model data encryption key (wrapped by KMS)
-- **LRCI**: Leakage-Resilient Confidential Inference (Shield Mode implementation)
 - **TDX**: Intel Trust Domain Extensions — hardware TEE providing VM-level isolation
 - **MRTD**: Measurement Register of Trust Domain — TDX equivalent of PCR0, derived from CVM firmware/kernel
 - **RTMR**: Runtime Measurement Register — TDX application-level measurements (RTMR0-RTMR3)
@@ -154,22 +152,19 @@ EphemeralML is a defense-in-depth confidential inference system that protects mo
 14. Receipt verification requires binding the receipt public key to attestation user-data
 15. Timestamp is informational only and not relied on for security
 
-### Requirement 7: Shield Mode (LRCI) - Leakage-Resilient Inference
+### Requirement 7: Receipt Trust-State Classification
 
-**User Story:** As a security engineer, I want additional protection against partial boundary failures, so that captured memory dumps cannot yield directly usable model weights.
+**User Story:** As a verifier or operator, I want AIR receipts to carry a generic trust-state classification, so that evaluation environments cannot be confused with production ones.
 
 #### Acceptance Criteria
 
-1. WHEN Shield Mode is enabled, THE System SHALL apply structured obfuscation to model weights using per-session masking factors
-2. WHEN obfuscation is applied, THE System SHALL ensure masked weights are not directly usable without session-specific secrets
-3. THE System SHALL generate unique masking factors for each inference session that remain within the enclave boundary
-4. WHEN Shield Mode operates, THE System SHALL maintain performance within acceptable bounds and provide performance gating controls
-5. IF masking secrets are compromised, THEN THE System SHALL gracefully degrade to Layer 1 (Gateway) protection only
-6. THE System SHALL clearly document the specific attacker model that Shield Mode targets (memory scraping, partial compromise)
-7. WHEN generating receipts, THE System SHALL include the security mode (Gateway-only vs Shield Mode) in receipt metadata
-8. Shield Mode v1 SHALL implement keyed permutation+scaling masking for in-memory weights and tensors. The primitive SHALL define: key derivation, rotation frequency, and what attacker observations it is intended to resist
-9. Shield Mode v1 SHALL NOT claim to preserve model confidentiality under full compromise of the enclave runtime (keys exposed); it targets partial compromise of Host/GPU artifacts and observational leakage
-10. Shield Mode MUST NOT change model outputs beyond tolerance: token-level exact match rate ≥ 99% on a fixed evaluation set (eval/v1_prompts.jsonl)
+1. WHEN generating AIR receipts, THE System SHALL include a generic trust-state classification in receipt metadata
+2. THE trust-state classification SHALL use interoperable values rather than product-specific mode names
+3. V1 SHALL support at least `production` and `evaluation`
+4. IF a receipt is marked `evaluation`, THEN it SHALL NOT be accepted for production trust decisions
+5. Vendor-specific submodes MAY exist internally, but they SHALL be mapped into the generic AIR value space before receipt emission
+6. The receipt trust-state classification SHALL be documented as application-layer evidence, not as proof of hardware-attested loading or execution by itself
+7. Receipt verification SHALL reject unknown trust-state values in fail-closed mode
 
 ### Requirement 8: Ephemeral Session Management
 
@@ -178,7 +173,7 @@ EphemeralML is a defense-in-depth confidential inference system that protects mo
 #### Acceptance Criteria
 
 1. WHEN sessions are created, THE System SHALL implement time-bounded sessions with automatic expiration
-2. WHEN sessions terminate, THE System SHALL securely destroy all session keys, masking factors, and sensitive material (see Requirement 5.7 for zeroization requirements)
+2. WHEN sessions terminate, THE System SHALL securely destroy all session keys and sensitive material (see Requirement 5.7 for zeroization requirements)
 3. THE System SHALL ensure session isolation so that no sensitive data leaks between different inference sessions
 4. WHEN multiple sessions run concurrently, THE System SHALL maintain strict separation of cryptographic material and model data
 5. THE System SHALL implement session lifecycle management with proper cleanup on both normal and error termination
@@ -222,7 +217,7 @@ EphemeralML is a defense-in-depth confidential inference system that protects mo
 #### Acceptance Criteria
 
 1. THE System SHALL provide a benchmark suite and report overhead; no fixed SLA target is claimed for v1
-2. WHEN Shield Mode is enabled, THE System SHALL maintain performance within configurable bounds and provide performance gating
+2. THE System SHALL maintain performance within configurable bounds while preserving the baseline Gateway security properties
 3. THE System SHALL support concurrent inference sessions while maintaining security isolation and performance characteristics
 4. WHEN scaling inference load, THE System SHALL handle multiple requests efficiently within enclave resource constraints
 5. THE System SHALL optimize cryptographic operations to minimize latency impact on inference response times
@@ -291,4 +286,4 @@ EphemeralML is a defense-in-depth confidential inference system that protects mo
 
 - **NFR-S1 Supply-chain**: Reproducible enclave build; measurement derivation documented
 - **NFR-S2 Crypto agility**: Crypto agility is a v2 requirement; v1 uses fixed HPKE suite and fixed AEAD
-- **NFR-S3 Secure defaults**: Deny-by-default allowlist; Shield Mode off by default unless enabled
+- **NFR-S3 Secure defaults**: Deny-by-default allowlist; production-safe defaults unless a deployment is explicitly marked evaluation

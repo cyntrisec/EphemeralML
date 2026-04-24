@@ -20,7 +20,7 @@ pub struct EphemeralStageExecutor<A: AttestationProvider> {
     model_id: String,
     /// Mutable connection state behind a mutex for receipt sequence tracking.
     state: Mutex<ConnectionState>,
-    /// SHA-256 of model weights for AIR v1 receipt generation.
+    /// SHA-256 binding for the model artifact set used in AIR v1 receipts.
     model_hash: Option<[u8; 32]>,
     /// Declares how model_hash was computed when authoritative.
     model_hash_scheme: Option<String>,
