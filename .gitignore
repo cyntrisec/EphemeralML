@@ -42,6 +42,7 @@ pids
 
 # AWS Nitro Enclaves
 *.eif
+!ephemeralml-doctor/tests/fixtures/eif/ephemeralml-pilot.eif
 enclave.dockerfile
 
 # Terraform

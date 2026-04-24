@@ -117,7 +117,7 @@ fn render_text(ctx: &Context, results: &[StageResult], verbose: bool) {
     }
 }
 
-fn render_json(ctx: &Context, results: &[StageResult], verbose: bool) {
+fn render_json(ctx: &Context, results: &[StageResult], _verbose: bool) {
     let failed_stage = results
         .iter()
         .find(|r| matches!(r.status, StageStatus::Fail))
@@ -139,11 +139,7 @@ fn render_json(ctx: &Context, results: &[StageResult], verbose: bool) {
                 StageStatus::Skipped => "skipped",
             },
             duration_ms: r.duration_ms,
-            details: if verbose {
-                r.details.clone()
-            } else {
-                r.details.clone()
-            },
+            details: r.details.clone(),
             check_code: r.check_code.as_deref(),
             error: r.error.as_deref(),
             reason: r.reason.as_deref(),

@@ -207,21 +207,24 @@ jobs:
           # Tracking: https://github.com/RustCrypto/RSA/issues/19
           # TODO(security): Re-evaluate on 2026-05-21 or when rsa 0.10 ships.
           #
-          # RUSTSEC-2026-0098 / RUSTSEC-2026-0099: rustls-webpki name-constraint
-          # validation bugs. The direct reqwest/rustls 0.23 path is updated in
-          # Cargo.lock to rustls-webpki 0.103.12. The remaining vulnerable
-          # rustls-webpki 0.101.7 instance is still pulled by the current AWS
-          # smithy runtime via aws-smithy-runtime tls-rustls ->
+          # RUSTSEC-2026-0098 / RUSTSEC-2026-0099 / RUSTSEC-2026-0104:
+          # rustls-webpki name-constraint and CRL parsing bugs. The direct
+          # reqwest/rustls 0.23 path is updated in Cargo.lock to
+          # rustls-webpki 0.103.13. The remaining vulnerable rustls-webpki
+          # 0.101.7 instance is still pulled by the current AWS smithy runtime
+          # via aws-smithy-runtime tls-rustls ->
           # aws-smithy-http-client legacy-rustls-ring -> hyper-rustls 0.24.
           # This path is upstream-managed and not removed by a normal workspace
           # dependency refresh.
           #
-          # Risk note: both advisories require successful chain validation and a
-          # misissued certificate with exploitable name constraints.
+          # Risk note: 0098/0099 require successful chain validation and a
+          # misissued certificate with exploitable name constraints. 0104
+          # requires certificate revocation list parsing; this product does not
+          # enable CRL processing in the AWS SDK path.
           # TODO(security): Remove these ignores once the AWS SDK drops the
           # legacy hyper 0.14 rustls path; re-evaluate by 2026-05-15 even if
           # upstream has not moved yet.
-          ignore: RUSTSEC-2023-0071,RUSTSEC-2026-0098,RUSTSEC-2026-0099
+          ignore: RUSTSEC-2023-0071,RUSTSEC-2026-0098,RUSTSEC-2026-0099,RUSTSEC-2026-0104
 
   shell-lint:
     name: Shell Lint

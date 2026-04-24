@@ -209,7 +209,7 @@ pub async fn verify_upload(
     let public_key = if let Some(key_hex) = public_key_hex {
         parse_hex_public_key(&key_hex)?
     } else if let Some(attestation) = attestation_bytes.as_deref() {
-        parse_attestation_public_key(&attestation)?
+        parse_attestation_public_key(attestation)?
     } else {
         return Err(bad_request(
             "Missing verification material: provide public_key, public_key_file, or attestation_file",

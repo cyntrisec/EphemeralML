@@ -1,0 +1,49 @@
+name: IETF Draft
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/ietf-draft.yml"
+      - "spec/v1/ietf/draft-tsyrulnikov-rats-attested-inference-receipt-02.md"
+  pull_request:
+    branches: [main]
+    paths:
+      - ".github/workflows/ietf-draft.yml"
+      - "spec/v1/ietf/draft-tsyrulnikov-rats-attested-inference-receipt-02.md"
+  workflow_dispatch:
+
+jobs:
+  build-id:
+    name: Build AIR Internet-Draft
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: "3.3"
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.x"
+
+      - name: Install I-D tooling
+        run: |
+          gem install kramdown-rfc -v 1.7.31
+          python -m pip install --upgrade pip
+          python -m pip install xml2rfc
+
+      - name: Build draft XML, text, and HTML
+        run: |
+          cd spec/v1/ietf
+          src=draft-tsyrulnikov-rats-attested-inference-receipt-02.md
+          xml=draft-tsyrulnikov-rats-attested-inference-receipt-02.xml
+          kramdown-rfc "$src" > "$xml"
+          xml2rfc --text "$xml"
+          xml2rfc --html "$xml"
+
+      - name: Check generated outputs are committed
+        run: |
+          git diff --exit-code -- \
+            spec/v1/ietf/draft-tsyrulnikov-rats-attested-inference-receipt-02.xml \
+            spec/v1/ietf/draft-tsyrulnikov-rats-attested-inference-receipt-02.txt \
+            spec/v1/ietf/draft-tsyrulnikov-rats-attested-inference-receipt-02.html
