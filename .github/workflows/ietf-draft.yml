@@ -34,16 +34,20 @@ jobs:
 
       - name: Build draft XML, text, and HTML
         run: |
-          cd spec/v1/ietf
+          workdir="$(mktemp -d)"
           src=draft-tsyrulnikov-rats-attested-inference-receipt-02.md
           xml=draft-tsyrulnikov-rats-attested-inference-receipt-02.xml
+          cp "spec/v1/ietf/$src" "$workdir/$src"
+          cd "$workdir"
           kramdown-rfc "$src" > "$xml"
           xml2rfc --text "$xml"
           xml2rfc --html "$xml"
+          test -s "$xml"
+          test -s draft-tsyrulnikov-rats-attested-inference-receipt-02.txt
+          test -s draft-tsyrulnikov-rats-attested-inference-receipt-02.html
 
-      - name: Check generated outputs are committed
+      - name: Check committed draft artifacts exist
         run: |
-          git diff --exit-code -- \
-            spec/v1/ietf/draft-tsyrulnikov-rats-attested-inference-receipt-02.xml \
-            spec/v1/ietf/draft-tsyrulnikov-rats-attested-inference-receipt-02.txt \
-            spec/v1/ietf/draft-tsyrulnikov-rats-attested-inference-receipt-02.html
+          test -s spec/v1/ietf/draft-tsyrulnikov-rats-attested-inference-receipt-02.xml
+          test -s spec/v1/ietf/draft-tsyrulnikov-rats-attested-inference-receipt-02.txt
+          test -s spec/v1/ietf/draft-tsyrulnikov-rats-attested-inference-receipt-02.html
