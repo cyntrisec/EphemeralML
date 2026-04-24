@@ -36,7 +36,7 @@ zeroize = { workspace = true }
 rand = { workspace = true }
 ed25519-dalek = { workspace = true }
 aws-sdk-kms = { version = "1.103.0", optional = true }
-aws-config = { version = "1.8.15", optional = true }
+aws-config = { version = "1.8.16", optional = true }
 reqwest = { version = "0.13", features = ["json", "form"], optional = true }
 base64 = "0.22"
 # Enclave always needs transport mock (to accept non-TEE client attestations) and tcp.
