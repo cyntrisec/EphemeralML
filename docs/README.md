@@ -20,6 +20,7 @@ This repository serves multiple audiences: developers integrating the product, r
 
 ## Security and Trust
 
+- [`AIR_PROOF_BOUNDARY.md`](AIR_PROOF_BOUNDARY.md) — customer-facing explanation of what AIR proves and what remains outside the receipt boundary
 - [`SECURITY_MODEL.md`](SECURITY_MODEL.md) — security assumptions and trust boundaries
 - [`security-demo.md`](security-demo.md) — host-blindness walkthrough
 - [`OPEN_SOURCE_BOUNDARY.md`](OPEN_SOURCE_BOUNDARY.md) — what stays public vs private
