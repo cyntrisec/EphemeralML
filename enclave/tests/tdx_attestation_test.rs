@@ -22,8 +22,9 @@ mod tests {
         let receipt_key = [0x42; 32];
 
         // Generate attestation
+        let handshake_pk = [0xEF; 32];
         let doc = provider
-            .generate_attestation(&nonce, receipt_key, None)
+            .generate_transport_attestation(&nonce, &handshake_pk, receipt_key, None)
             .unwrap();
         assert_eq!(doc.module_id, "tdx-cvm");
 
@@ -67,13 +68,14 @@ mod tests {
     }
 
     #[test]
-    fn reportdata_binds_hpke_key_and_nonce() {
+    fn reportdata_binds_envelope_values() {
         let provider = TeeAttestationProvider::synthetic();
         let nonce = [0xAB; 32];
         let receipt_key = [0xCD; 32];
+        let handshake_pk = [0xEF; 32];
 
         let doc = provider
-            .generate_attestation(&nonce, receipt_key, None)
+            .generate_transport_attestation(&nonce, &handshake_pk, receipt_key, None)
             .unwrap();
         let envelope = TeeAttestationEnvelope::from_cbor(&doc.signature).unwrap();
 
@@ -81,10 +83,16 @@ mod tests {
         let raw_quote = &envelope.tdx_wire[16..];
         let rd = TeeAttestationProvider::parse_reportdata(raw_quote).unwrap();
 
-        // REPORTDATA[0..32] = HPKE public key
-        assert_eq!(&rd[..32], &provider.get_hpke_public_key());
-        // REPORTDATA[32..64] = nonce
-        assert_eq!(&rd[32..64], &nonce);
+        let expected = ephemeral_ml_common::tdx_reportdata_binding(
+            "tdx",
+            1,
+            &handshake_pk,
+            &receipt_key,
+            &nonce,
+            None,
+        )
+        .unwrap();
+        assert_eq!(rd, expected);
     }
 
     #[test]
@@ -141,7 +149,6 @@ mod tests {
         assert!(verified.measurements.contains_key(&1)); // RTMR0
         assert!(verified.measurements.contains_key(&2)); // RTMR1
 
-        // Public key should be extracted from REPORTDATA
         assert!(verified.public_key.is_some());
         assert_eq!(
             verified.public_key.unwrap(),

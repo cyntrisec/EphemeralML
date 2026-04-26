@@ -7,6 +7,122 @@
 use crate::error::{EphemeralError, Result};
 use crate::receipt_signing::ReceiptSigningKey;
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256, Sha512};
+
+/// Domain separator for Confidential Space transport-attestation challenges.
+pub const CS_ATTESTATION_CHALLENGE_DOMAIN: &[u8] = b"cyntrisec-cs-tdx-transport-v1";
+
+/// Domain separator for raw TDX REPORTDATA transport-attestation bindings.
+pub const TDX_REPORTDATA_BINDING_DOMAIN: &[u8] = b"cyntrisec-tdx-envelope-v2";
+
+fn push_len_prefixed(out: &mut Vec<u8>, bytes: &[u8]) {
+    out.extend_from_slice(&(bytes.len() as u32).to_be_bytes());
+    out.extend_from_slice(bytes);
+}
+
+fn validate_binding_inputs(
+    handshake_public_key: &[u8],
+    receipt_signing_key: &[u8],
+    nonce: &[u8],
+) -> Result<()> {
+    if handshake_public_key.len() != 32 {
+        return Err(EphemeralError::AttestationError(format!(
+            "handshake_public_key must be 32 bytes, got {}",
+            handshake_public_key.len()
+        )));
+    }
+    if receipt_signing_key.len() != 32 {
+        return Err(EphemeralError::AttestationError(format!(
+            "receipt_signing_key must be 32 bytes, got {}",
+            receipt_signing_key.len()
+        )));
+    }
+    if nonce.len() != 32 {
+        return Err(EphemeralError::AttestationError(format!(
+            "nonce must be 32 bytes, got {}",
+            nonce.len()
+        )));
+    }
+    Ok(())
+}
+
+fn attestation_binding_input(
+    domain: &[u8],
+    platform: &str,
+    protocol_version: u32,
+    handshake_public_key: &[u8],
+    receipt_signing_key: &[u8],
+    nonce: &[u8],
+    platform_evidence_hash: Option<[u8; 32]>,
+) -> Result<Vec<u8>> {
+    validate_binding_inputs(handshake_public_key, receipt_signing_key, nonce)?;
+
+    let mut input = Vec::with_capacity(160);
+    push_len_prefixed(&mut input, domain);
+    push_len_prefixed(&mut input, platform.as_bytes());
+    input.extend_from_slice(&protocol_version.to_be_bytes());
+    push_len_prefixed(&mut input, handshake_public_key);
+    push_len_prefixed(&mut input, receipt_signing_key);
+    push_len_prefixed(&mut input, nonce);
+    match platform_evidence_hash {
+        Some(hash) => {
+            input.push(1);
+            input.extend_from_slice(&hash);
+        }
+        None => input.push(0),
+    }
+    Ok(input)
+}
+
+/// Compute the Confidential Space `eat_nonce` challenge for transport attestation.
+///
+/// The resulting 64-character hex string is sent to the Launcher token endpoint.
+/// It binds the signed JWT to the SecureChannel X25519 key, the handshake nonce,
+/// the AIR receipt signing key, and the platform evidence bundle hash when present.
+pub fn cs_attestation_challenge(
+    platform: &str,
+    protocol_version: u32,
+    handshake_public_key: &[u8],
+    receipt_signing_key: &[u8],
+    nonce: &[u8],
+    platform_evidence_hash: Option<[u8; 32]>,
+) -> Result<String> {
+    let input = attestation_binding_input(
+        CS_ATTESTATION_CHALLENGE_DOMAIN,
+        platform,
+        protocol_version,
+        handshake_public_key,
+        receipt_signing_key,
+        nonce,
+        platform_evidence_hash,
+    )?;
+    Ok(hex::encode(Sha256::digest(input)))
+}
+
+/// Compute the raw TDX REPORTDATA value for transport attestation.
+///
+/// Intel TDX REPORTDATA is exactly 64 bytes; using SHA-512 over the same
+/// domain-separated binding input allows the quote to cover all session-critical
+/// values instead of only two 32-byte fields.
+pub fn tdx_reportdata_binding(
+    platform: &str,
+    protocol_version: u32,
+    handshake_public_key: &[u8],
+    receipt_signing_key: &[u8],
+    nonce: &[u8],
+    platform_evidence_hash: Option<[u8; 32]>,
+) -> Result<[u8; 64]> {
+    let input = attestation_binding_input(
+        TDX_REPORTDATA_BINDING_DOMAIN,
+        platform,
+        protocol_version,
+        handshake_public_key,
+        receipt_signing_key,
+        nonce,
+        platform_evidence_hash,
+    )?;
+    Ok(Sha512::digest(input).into())
+}
 
 /// Application-level user data embedded in attestation documents.
 ///
@@ -117,7 +233,7 @@ pub struct CsTransportAttestation {
     #[serde(with = "serde_bytes")]
     pub handshake_public_key: Vec<u8>,
 
-    /// Nonce from the handshake protocol (binds attestation to session).
+    /// Nonce from the handshake protocol (32 bytes; binds attestation to session).
     #[serde(with = "serde_bytes")]
     pub nonce: Vec<u8>,
 
@@ -236,10 +352,17 @@ impl CsTransportAttestation {
                 self.handshake_public_key.len()
             )));
         }
-        if self.nonce.is_empty() {
-            return Err(EphemeralError::AttestationError(
-                "nonce is empty".to_string(),
-            ));
+        if self.protocol_version != 1 {
+            return Err(EphemeralError::AttestationError(format!(
+                "unsupported protocol_version: {}",
+                self.protocol_version
+            )));
+        }
+        if self.nonce.len() != 32 {
+            return Err(EphemeralError::AttestationError(format!(
+                "nonce must be 32 bytes, got {}",
+                self.nonce.len()
+            )));
         }
         Ok(())
     }
@@ -436,7 +559,7 @@ mod tests {
             make_test_jwt(),
             [0xAA; 32],
             vec![0xBB; 32],
-            vec![0xCC; 16],
+            vec![0xCC; 32],
         );
         let cbor = att.to_cbor_deterministic().unwrap();
         let decoded = CsTransportAttestation::from_cbor(&cbor).unwrap();
@@ -449,7 +572,7 @@ mod tests {
             make_test_jwt(),
             [0xAA; 32],
             vec![0xBB; 32],
-            vec![0xCC; 16],
+            vec![0xCC; 32],
         )
         .with_platform_evidence_hash([0xEF; 32]);
         let cbor = att.to_cbor_deterministic().unwrap();
@@ -459,8 +582,12 @@ mod tests {
 
     #[test]
     fn test_cs_transport_attestation_deterministic_encoding() {
-        let att =
-            CsTransportAttestation::new(make_test_jwt(), [0x11; 32], vec![0x22; 32], vec![0x33; 8]);
+        let att = CsTransportAttestation::new(
+            make_test_jwt(),
+            [0x11; 32],
+            vec![0x22; 32],
+            vec![0x33; 32],
+        );
         // Encode twice — must produce identical bytes
         let cbor1 = att.to_cbor_deterministic().unwrap();
         let cbor2 = att.to_cbor_deterministic().unwrap();
@@ -481,7 +608,7 @@ mod tests {
             make_test_jwt(),
             [0xAA; 32],
             vec![0xBB; 32],
-            vec![0xCC; 16],
+            vec![0xCC; 32],
         );
         valid.validate_structure().unwrap();
 
@@ -522,13 +649,13 @@ mod tests {
             make_test_jwt(),
             [0xAA; 32],
             vec![0xBB; 32],
-            vec![0xCC; 16],
+            vec![0xCC; 32],
         );
         let att2 = CsTransportAttestation::new(
             make_test_jwt(),
             [0xAA; 32],
             vec![0xBB; 32],
-            vec![0xDD; 16], // different nonce
+            vec![0xDD; 32], // different nonce
         );
         assert_ne!(att1.document_hash().unwrap(), att2.document_hash().unwrap());
     }
@@ -561,7 +688,7 @@ mod tests {
             "header.payload".to_string(),
             [0xAA; 32],
             vec![0xBB; 32],
-            vec![0xCC; 16],
+            vec![0xCC; 32],
         );
         assert!(att.validate_structure().is_err());
     }
@@ -573,7 +700,7 @@ mod tests {
             "a.b.c.d".to_string(),
             [0xAA; 32],
             vec![0xBB; 32],
-            vec![0xCC; 16],
+            vec![0xCC; 32],
         );
         assert!(att.validate_structure().is_err());
     }

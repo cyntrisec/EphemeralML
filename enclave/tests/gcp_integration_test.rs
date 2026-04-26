@@ -244,9 +244,7 @@ mod tests {
         let rd1 = TeeAttestationProvider::parse_reportdata(raw1).unwrap();
         let rd2 = TeeAttestationProvider::parse_reportdata(raw2).unwrap();
 
-        // Nonce portion of REPORTDATA must differ
-        assert_ne!(&rd1[32..64], &rd2[32..64]);
-        // HPKE key portion is the same (same provider)
-        assert_eq!(&rd1[..32], &rd2[..32]);
+        // REPORTDATA binding digest must differ when the nonce changes.
+        assert_ne!(rd1, rd2);
     }
 }

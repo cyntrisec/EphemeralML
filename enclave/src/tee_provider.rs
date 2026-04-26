@@ -6,22 +6,26 @@
 //!
 //! # Wire format
 //!
-//! Because TDX quotes only carry 64 bytes of REPORTDATA (used for `pk || nonce`),
-//! there is no in-quote user_data field like AWS Nitro's COSE_Sign1 payload.
-//! We wrap the attestation in a CBOR envelope so the receipt signing key can travel
-//! alongside the hardware quote:
+//! Because TDX quotes only carry 64 bytes of REPORTDATA, there is no in-quote
+//! user_data field like AWS Nitro's COSE_Sign1 payload. We wrap the attestation
+//! in a CBOR envelope. For transport-level attestations, the envelope is bound
+//! to the hardware quote by placing a SHA-512 domain-separated binding digest in
+//! REPORTDATA.
 //!
 //! ```cbor
 //! {
 //!   "platform": "tdx",
 //!   "tdx_wire": <bytes>,     // TDX_V1 marker + raw quote (cml-transport format)
 //!   "user_data": <bytes>,    // CBOR-encoded EphemeralUserData
+//!   "protocol_version": 1,
+//!   "handshake_public_key": <32 bytes>,
+//!   "nonce": <32 bytes>,
 //! }
 //! ```
 
 use crate::attestation::{AttestationProvider, AttestationUserData, EphemeralKeyPair};
 use crate::Result;
-use ephemeral_ml_common::{AttestationDocument, PcrMeasurements};
+use ephemeral_ml_common::{tdx_reportdata_binding, AttestationDocument, PcrMeasurements};
 
 use hpke::{aead::ChaCha20Poly1305, kem::X25519HkdfSha256, Deserializable, OpModeR};
 use serde::{Deserialize, Serialize};
@@ -50,6 +54,11 @@ pub struct TeeAttestationEnvelope {
     pub tdx_wire: Vec<u8>,
     #[serde(with = "serde_bytes")]
     pub user_data: Vec<u8>,
+    pub protocol_version: u32,
+    #[serde(with = "serde_bytes")]
+    pub handshake_public_key: Vec<u8>,
+    #[serde(with = "serde_bytes")]
+    pub nonce: Vec<u8>,
 }
 
 impl TeeAttestationEnvelope {
@@ -253,24 +262,12 @@ impl AttestationProvider for TeeAttestationProvider {
         receipt_public_key: [u8; 32],
         platform_evidence_hash: Option<[u8; 32]>,
     ) -> Result<AttestationDocument> {
-        // Build REPORTDATA: pk[0..32] || nonce[32..64]
         // Nonce must be exactly 32 bytes for canonical session binding.
         if nonce.len() != 32 {
             return Err(EnclaveError::Enclave(EphemeralError::ValidationError(
                 format!("TDX nonce must be exactly 32 bytes, got {}", nonce.len()),
             )));
         }
-        let mut report_data = [0u8; 64];
-        report_data[..32].copy_from_slice(&self.hpke_keypair.public_key);
-        report_data[32..64].copy_from_slice(nonce);
-
-        // Generate TDX quote
-        let raw_quote = self.generate_quote(&report_data)?;
-        let measurements = Self::parse_measurements(&raw_quote)?;
-
-        // Encode as cml-transport wire format
-        let tdx_wire = Self::encode_tdx_wire(&raw_quote);
-
         // Build EphemeralUserData (same structure as Nitro, for portability)
         let user_data = AttestationUserData {
             hpke_public_key: self.hpke_keypair.public_key,
@@ -283,11 +280,29 @@ impl AttestationProvider for TeeAttestationProvider {
             EnclaveError::Enclave(EphemeralError::SerializationError(e.to_string()))
         })?;
 
+        // Generic attestation is also used for Google Cloud KMS challenge
+        // verification, where the challenge-derived nonce must be visible in
+        // REPORTDATA. Transport attestation uses generate_transport_attestation()
+        // below, which binds the whole envelope with a SHA-512 digest.
+        let mut report_data = [0u8; 64];
+        report_data[..32].copy_from_slice(&self.hpke_keypair.public_key);
+        report_data[32..64].copy_from_slice(nonce);
+
+        // Generate TDX quote
+        let raw_quote = self.generate_quote(&report_data)?;
+        let measurements = Self::parse_measurements(&raw_quote)?;
+
+        // Encode as cml-transport wire format
+        let tdx_wire = Self::encode_tdx_wire(&raw_quote);
+
         // Wrap in CBOR envelope (TDX wire + user_data)
         let envelope = TeeAttestationEnvelope {
             platform: "tdx".to_string(),
             tdx_wire,
             user_data: user_data_bytes,
+            protocol_version: 1,
+            handshake_public_key: self.hpke_keypair.public_key.to_vec(),
+            nonce: nonce.to_vec(),
         };
         let envelope_bytes = envelope.to_cbor().map_err(|e| {
             EnclaveError::Enclave(EphemeralError::SerializationError(e.to_string()))
@@ -397,10 +412,10 @@ impl AttestationProvider for TeeAttestationProvider {
 impl TeeAttestationProvider {
     /// Generate a transport-level attestation binding a handshake DH public key.
     ///
-    /// Unlike `generate_attestation()` which puts the HPKE key in REPORTDATA[0..32],
-    /// this puts the caller-supplied `handshake_pk` there. This is what
-    /// cml-transport's handshake expects: the attestation must bind the same DH
-    /// public key that was sent in the Hello message.
+    /// Unlike `generate_attestation()` which binds the provider HPKE key,
+    /// this binds the caller-supplied `handshake_pk`. The quote REPORTDATA is a
+    /// SHA-512 digest over the handshake key, nonce, receipt key, protocol
+    /// version, and platform evidence hash.
     ///
     /// The HPKE key is still included in the `user_data` envelope for the
     /// application layer to use.
@@ -416,14 +431,6 @@ impl TeeAttestationProvider {
                 format!("TDX nonce must be exactly 32 bytes, got {}", nonce.len()),
             )));
         }
-        let mut report_data = [0u8; 64];
-        report_data[..32].copy_from_slice(handshake_pk);
-        report_data[32..64].copy_from_slice(nonce);
-
-        let raw_quote = self.generate_quote(&report_data)?;
-        let measurements = Self::parse_measurements(&raw_quote)?;
-        let tdx_wire = Self::encode_tdx_wire(&raw_quote);
-
         let user_data = AttestationUserData {
             hpke_public_key: self.hpke_keypair.public_key,
             receipt_signing_key: receipt_public_key,
@@ -435,10 +442,27 @@ impl TeeAttestationProvider {
             EnclaveError::Enclave(EphemeralError::SerializationError(e.to_string()))
         })?;
 
+        let report_data = tdx_reportdata_binding(
+            "tdx",
+            1,
+            handshake_pk,
+            &receipt_public_key,
+            nonce,
+            platform_evidence_hash,
+        )
+        .map_err(|e| EnclaveError::Enclave(EphemeralError::AttestationError(e.to_string())))?;
+
+        let raw_quote = self.generate_quote(&report_data)?;
+        let measurements = Self::parse_measurements(&raw_quote)?;
+        let tdx_wire = Self::encode_tdx_wire(&raw_quote);
+
         let envelope = TeeAttestationEnvelope {
             platform: "tdx".to_string(),
             tdx_wire,
             user_data: user_data_bytes,
+            protocol_version: 1,
+            handshake_public_key: handshake_pk.to_vec(),
+            nonce: nonce.to_vec(),
         };
         let envelope_bytes = envelope.to_cbor().map_err(|e| {
             EnclaveError::Enclave(EphemeralError::SerializationError(e.to_string()))
@@ -499,14 +523,20 @@ impl confidential_ml_transport::AttestationProvider for TeeAttestationBridge {
     > {
         let nonce_bytes = nonce.unwrap_or(&[]);
 
-        // The handshake passes the DH public key as `public_key`. We must bind
-        // it in REPORTDATA[0..32] so the peer's verifier can confirm the
+        // The handshake passes the DH public key as `public_key`. Bind it into
+        // the REPORTDATA digest so the peer's verifier can confirm that the
         // attestation matches the Hello message's DH key.
         let doc = if let Some(pk) = public_key {
             let mut handshake_pk = [0u8; 32];
-            if pk.len() == 32 {
-                handshake_pk.copy_from_slice(pk);
+            if pk.len() != 32 {
+                return Err(
+                    confidential_ml_transport::error::AttestError::GenerationFailed(format!(
+                        "TDX handshake public key must be exactly 32 bytes, got {}",
+                        pk.len()
+                    )),
+                );
             }
+            handshake_pk.copy_from_slice(pk);
             self.inner
                 .generate_transport_attestation(
                     nonce_bytes,
@@ -555,8 +585,8 @@ pub fn print_tdx_measurements(quote: &[u8]) -> Result<()> {
     println!("  RTMR0 (pcr1): {}", hex::encode(&measurements.pcr1[..24]));
     println!("  RTMR1 (pcr2): {}", hex::encode(&measurements.pcr2[..24]));
     println!("  REPORTDATA:");
-    println!("    pk[0..32]:    {}", hex::encode(&reportdata[..32]));
-    println!("    nonce[32..64]:{}", hex::encode(&reportdata[32..64]));
+    println!("    binding[0..32]: {}", hex::encode(&reportdata[..32]));
+    println!("    binding[32..64]:{}", hex::encode(&reportdata[32..64]));
     println!("  Quote size:     {} bytes", quote.len());
     println!("========================================");
 
@@ -580,6 +610,9 @@ mod tests {
             platform: "tdx".to_string(),
             tdx_wire: vec![1, 2, 3, 4],
             user_data: vec![5, 6, 7, 8],
+            protocol_version: 1,
+            handshake_public_key: vec![9; 32],
+            nonce: vec![10; 32],
         };
 
         let cbor = envelope.to_cbor().unwrap();
@@ -588,6 +621,9 @@ mod tests {
         assert_eq!(decoded.platform, "tdx");
         assert_eq!(decoded.tdx_wire, vec![1, 2, 3, 4]);
         assert_eq!(decoded.user_data, vec![5, 6, 7, 8]);
+        assert_eq!(decoded.protocol_version, 1);
+        assert_eq!(decoded.handshake_public_key, vec![9; 32]);
+        assert_eq!(decoded.nonce, vec![10; 32]);
     }
 
     #[cfg(feature = "tdx")]
@@ -654,9 +690,7 @@ mod tests {
         let raw_quote = &envelope.tdx_wire[16..];
         let reportdata = TeeAttestationProvider::parse_reportdata(raw_quote).unwrap();
 
-        // REPORTDATA[0..32] should be HPKE public key
         assert_eq!(&reportdata[..32], &provider.hpke_keypair.public_key);
-        // REPORTDATA[32..64] should be nonce
         assert_eq!(&reportdata[32..64], &nonce);
     }
 

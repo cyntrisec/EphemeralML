@@ -52,6 +52,7 @@ pub struct EnclaveIdentity {
     pub attestation_hash: [u8; 32],
     pub platform_evidence_hash: Option<[u8; 32]>,
     pub kms_public_key: Option<Vec<u8>>, // RSA SPKI DER
+    pub nonce: Option<Vec<u8>>,
 }
 
 /// Attestation user data structure for key extraction
@@ -172,6 +173,7 @@ impl AttestationVerifier {
                 attestation_hash,
                 platform_evidence_hash,
                 kms_public_key,
+                nonce: None,
             });
         }
 
@@ -279,15 +281,21 @@ impl AttestationVerifier {
             ))
         })?;
 
-        // 4. Validate nonce (skipped when expected_nonce is None — bridge mode)
+        // 4. Extract and validate nonce (comparison skipped when expected_nonce
+        // is None — bridge mode, where cml-transport validates it).
+        let doc_nonce = get_bytes_field(payload_map, "nonce").ok();
         if let Some(expected) = expected_nonce {
-            let doc_nonce = get_bytes_field(payload_map, "nonce")?;
-            if doc_nonce != expected {
+            let actual = doc_nonce.as_ref().ok_or_else(|| {
+                ClientError::Client(crate::EphemeralError::AttestationError(
+                    "Attestation payload missing nonce".to_string(),
+                ))
+            })?;
+            if actual != expected {
                 return Err(ClientError::Client(
                     crate::EphemeralError::AttestationError(format!(
                         "Nonce mismatch: expected {}, got {}",
                         hex::encode(expected),
-                        hex::encode(&doc_nonce)
+                        hex::encode(actual)
                     )),
                 ));
             }
@@ -343,6 +351,7 @@ impl AttestationVerifier {
             attestation_hash,
             platform_evidence_hash: user_data.platform_evidence_hash,
             kms_public_key,
+            nonce: doc_nonce,
         })
     }
 

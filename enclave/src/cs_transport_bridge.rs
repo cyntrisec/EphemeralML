@@ -12,7 +12,7 @@
 //! Requires feature: `gcp`
 
 use crate::cs_token_client::CsTokenClient;
-use ephemeral_ml_common::CsTransportAttestation;
+use ephemeral_ml_common::{cs_attestation_challenge, CsTransportAttestation, CS_TDX_PLATFORM};
 
 /// Bridge from CS Launcher JWT attestation to cml-transport's `AttestationProvider`.
 ///
@@ -77,14 +77,40 @@ impl confidential_ml_transport::AttestationProvider for CsTransportAttestationBr
         let nonce_bytes = nonce.unwrap_or(&[]);
         let handshake_pk = public_key.unwrap_or(&[]);
 
-        // Build eat_nonce: hex-encode the handshake nonce for the Launcher.
-        // The nonce binds this JWT to the specific SecureChannel handshake session.
-        let nonce_hex = hex::encode(nonce_bytes);
-        let nonces = if nonce_hex.is_empty() {
-            vec![]
-        } else {
-            vec![nonce_hex]
-        };
+        if nonce_bytes.len() != 32 {
+            return Err(
+                confidential_ml_transport::error::AttestError::GenerationFailed(format!(
+                    "CS transport nonce must be exactly 32 bytes, got {}",
+                    nonce_bytes.len()
+                )),
+            );
+        }
+        if handshake_pk.len() != 32 {
+            return Err(
+                confidential_ml_transport::error::AttestError::GenerationFailed(format!(
+                    "CS transport handshake public key must be exactly 32 bytes, got {}",
+                    handshake_pk.len()
+                )),
+            );
+        }
+
+        // Build eat_nonce as a domain-separated challenge that binds the JWT to
+        // all transport-critical values, not just the nonce.
+        let challenge = cs_attestation_challenge(
+            CS_TDX_PLATFORM,
+            1,
+            handshake_pk,
+            &self.receipt_public_key,
+            nonce_bytes,
+            self.platform_evidence_hash,
+        )
+        .map_err(|e| {
+            confidential_ml_transport::error::AttestError::GenerationFailed(format!(
+                "CS transport challenge construction failed: {}",
+                e
+            ))
+        })?;
+        let nonces = vec![challenge];
 
         // Fetch a fresh Launcher JWT with the handshake nonce bound.
         let jwt = self
@@ -192,8 +218,17 @@ mod tests {
         let socket_str = socket_path.to_str().unwrap();
 
         let test_nonce = b"test-handshake-nonce-32bytes!!!!";
-        let nonce_hex = hex::encode(test_nonce);
-        let jwt = make_test_jwt(&[&nonce_hex]);
+        let handshake_pk = [0xBB; 32];
+        let challenge = cs_attestation_challenge(
+            CS_TDX_PLATFORM,
+            1,
+            &handshake_pk,
+            &[0xAA; 32],
+            test_nonce,
+            Some([0xCC; 32]),
+        )
+        .unwrap();
+        let jwt = make_test_jwt(&[&challenge]);
 
         let _server = start_mock_launcher(socket_str, &jwt).await;
         tokio::time::sleep(std::time::Duration::from_millis(50)).await;
@@ -205,7 +240,6 @@ mod tests {
         )
         .with_platform_evidence_hash([0xCC; 32]);
 
-        let handshake_pk = [0xBB; 32];
         let doc = bridge
             .attest(None, Some(test_nonce), Some(&handshake_pk))
             .await

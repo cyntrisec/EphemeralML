@@ -46,7 +46,8 @@ pub use receipt_signing::{
 };
 
 pub use transport_types::{
-    ConnectionState, CsTransportAttestation, EphemeralUserData, CS_TDX_PLATFORM,
+    cs_attestation_challenge, tdx_reportdata_binding, ConnectionState, CsTransportAttestation,
+    EphemeralUserData, CS_TDX_PLATFORM,
 };
 
 pub use validation::{InputValidator, ValidationError, ValidationLimits};

@@ -19,6 +19,8 @@ use ephemeral_ml_common::transport_types::EphemeralUserData;
 #[cfg(feature = "gcp")]
 use ephemeral_ml_common::EphemeralError;
 use ephemeral_ml_common::PcrMeasurements;
+#[cfg(feature = "gcp")]
+use ephemeral_ml_common::{cs_attestation_challenge, tdx_reportdata_binding, CS_TDX_PLATFORM};
 use std::collections::BTreeMap;
 #[cfg(feature = "gcp")]
 use std::collections::HashMap;
@@ -65,7 +67,7 @@ impl CoseVerifierBridge {
             document_hash: identity.attestation_hash,
             public_key: Some(identity.hpke_public_key.to_vec()),
             user_data: ud_cbor,
-            nonce: None, // nonce checked by cml-transport handshake
+            nonce: identity.nonce.clone(),
             measurements,
         }
     }
@@ -202,6 +204,9 @@ pub struct TdxEnvelopeVerifierBridge {
     jwks_cache: RwLock<JwksCache>,
     /// HTTP client for fetching OIDC discovery and JWKS.
     http_client: reqwest::Client,
+    /// Raw TDX quote verification currently has no Intel DCAP collateral path in
+    /// this bridge. Keep it fail-closed unless explicitly enabled for development.
+    allow_raw_tdx_without_collateral: bool,
 }
 
 #[cfg(feature = "gcp")]
@@ -247,6 +252,10 @@ impl TdxEnvelopeVerifierBridge {
         }
 
         let cs_policy = CsPolicy::from_env();
+        let allow_raw_tdx_without_collateral =
+            std::env::var("EPHEMERALML_ALLOW_RAW_TDX_NO_COLLATERAL")
+                .map(|v| v == "I_UNDERSTAND")
+                .unwrap_or(false);
 
         // Audience pinning: fail-closed by default in GCP mode.
         // Opt out for development by setting EPHEMERALML_ALLOW_UNPINNED_AUDIENCE=true.
@@ -304,6 +313,7 @@ impl TdxEnvelopeVerifierBridge {
             cs_policy,
             jwks_cache: RwLock::new(JwksCache::new()),
             http_client: reqwest::Client::new(),
+            allow_raw_tdx_without_collateral,
         })
     }
 
@@ -509,7 +519,7 @@ impl TdxEnvelopeVerifierBridge {
     /// 1. Envelope structure (platform, key sizes, nonce non-empty)
     /// 2. JWT RS256 signature via JWKS
     /// 3. JWT claims: issuer, expiry
-    /// 4. Nonce binding (eat_nonce matches envelope nonce)
+    /// 4. Challenge binding (`eat_nonce` matches the transport binding challenge)
     async fn verify_cs_envelope(
         &self,
         envelope: &ephemeral_ml_common::CsTransportAttestation,
@@ -524,18 +534,34 @@ impl TdxEnvelopeVerifierBridge {
         // jsonwebtoken validates issuer and expiry during decode.
         let claims = self.verify_jwt_signature(&envelope.launcher_jwt).await?;
 
-        // 3. Validate nonce binding (eat_nonce must contain the envelope nonce hex)
-        let expected_nonce_hex = hex::encode(&envelope.nonce);
-        if !expected_nonce_hex.is_empty() && !claims.eat_nonce.contains(&expected_nonce_hex) {
+        // 3. Validate challenge binding. The Launcher JWT must carry the same
+        // domain-separated challenge that the enclave requested: this binds the
+        // signed JWT to the handshake key, nonce, receipt key, protocol version,
+        // and platform evidence hash.
+        let expected_challenge = cs_attestation_challenge(
+            CS_TDX_PLATFORM,
+            envelope.protocol_version,
+            &envelope.handshake_public_key,
+            &envelope.receipt_signing_key,
+            &envelope.nonce,
+            envelope.platform_evidence_hash,
+        )
+        .map_err(|e| {
+            AttestError::VerificationFailed(format!(
+                "CS transport challenge construction failed: {}",
+                e
+            ))
+        })?;
+        if !claims.eat_nonce.contains(&expected_challenge) {
             return Err(AttestError::VerificationFailed(format!(
-                "CS JWT eat_nonce does not contain expected handshake nonce. \
+                "CS JWT eat_nonce does not contain expected transport challenge. \
                  Expected: {}, Got: {:?}",
-                expected_nonce_hex, claims.eat_nonce
+                expected_challenge, claims.eat_nonce
             )));
         }
 
         // 4a. Validate swname — must be "CONFIDENTIAL_SPACE" for legitimate CS tokens.
-        if !claims.swname.is_empty() && claims.swname != "CONFIDENTIAL_SPACE" {
+        if claims.swname != "CONFIDENTIAL_SPACE" {
             return Err(AttestError::VerificationFailed(format!(
                 "CS JWT swname mismatch: expected 'CONFIDENTIAL_SPACE', got '{}'",
                 claims.swname
@@ -681,19 +707,89 @@ impl CmlAttestationVerifier for TdxEnvelopeVerifierBridge {
             }
         }
 
-        // No "platform" key: genuine plain TDX wire format
+        // No "platform" key: genuine plain TDX wire format.
+        self.ensure_raw_tdx_allowed()?;
         self.inner.verify(doc).await
     }
 }
 
 #[cfg(feature = "gcp")]
 impl TdxEnvelopeVerifierBridge {
+    fn extract_tdx_reportdata(tdx_wire: &[u8]) -> std::result::Result<[u8; 64], AttestError> {
+        const TDX_MARKER: &[u8; 12] = b"TDX_V1\0\0\0\0\0\0";
+        const TDX_HEADER_SIZE: usize = 48;
+        const TDX_BODY_SIZE_V4: usize = 584;
+        const TDX_REPORTDATA_OFFSET: usize = 520;
+        const TDX_REPORTDATA_SIZE: usize = 64;
+
+        if tdx_wire.len() < 16 || &tdx_wire[..12] != TDX_MARKER {
+            return Err(AttestError::VerificationFailed(
+                "TDX envelope tdx_wire is not a TDX_V1 document".to_string(),
+            ));
+        }
+        let quote_size =
+            u32::from_le_bytes([tdx_wire[12], tdx_wire[13], tdx_wire[14], tdx_wire[15]]) as usize;
+        if tdx_wire.len() < 16 + quote_size {
+            return Err(AttestError::VerificationFailed(
+                "TDX envelope tdx_wire is truncated".to_string(),
+            ));
+        }
+        let quote = &tdx_wire[16..16 + quote_size];
+        let min_len = TDX_HEADER_SIZE + TDX_BODY_SIZE_V4;
+        if quote.len() < min_len {
+            return Err(AttestError::VerificationFailed(format!(
+                "TDX quote too short for REPORTDATA: need at least {}, got {}",
+                min_len,
+                quote.len()
+            )));
+        }
+
+        let body = &quote[TDX_HEADER_SIZE..];
+        let mut reportdata = [0u8; TDX_REPORTDATA_SIZE];
+        reportdata.copy_from_slice(
+            &body[TDX_REPORTDATA_OFFSET..TDX_REPORTDATA_OFFSET + TDX_REPORTDATA_SIZE],
+        );
+        Ok(reportdata)
+    }
+
+    fn ensure_raw_tdx_allowed(&self) -> std::result::Result<(), AttestError> {
+        if self.allow_raw_tdx_without_collateral {
+            return Ok(());
+        }
+        Err(AttestError::VerificationFailed(
+            "Raw TDX verification without Intel DCAP collateral is disabled by default. \
+             Use the Confidential Space JWT path for production, or set \
+             EPHEMERALML_ALLOW_RAW_TDX_NO_COLLATERAL=I_UNDERSTAND for development."
+                .to_string(),
+        ))
+    }
+
     /// Verify a TDX envelope (platform: "tdx").
     async fn verify_tdx_envelope(
         &self,
         envelope: &TdxEnvelopeHelper,
         raw_bytes: &[u8],
     ) -> std::result::Result<VerifiedAttestation, AttestError> {
+        if envelope.handshake_public_key.len() != 32 {
+            return Err(AttestError::VerificationFailed(format!(
+                "TDX envelope handshake_public_key must be 32 bytes, got {}",
+                envelope.handshake_public_key.len()
+            )));
+        }
+        if envelope.nonce.len() != 32 {
+            return Err(AttestError::VerificationFailed(format!(
+                "TDX envelope nonce must be 32 bytes, got {}",
+                envelope.nonce.len()
+            )));
+        }
+        if envelope.protocol_version != 1 {
+            return Err(AttestError::VerificationFailed(format!(
+                "TDX envelope unsupported protocol_version: {}",
+                envelope.protocol_version
+            )));
+        }
+        self.ensure_raw_tdx_allowed()?;
+
         let tdx_doc = CmlAttestationDocument::new(envelope.tdx_wire.clone());
         let mut verified = self.inner.verify(&tdx_doc).await?;
 
@@ -713,12 +809,36 @@ impl TdxEnvelopeVerifierBridge {
         let ud = serde_json::from_slice::<EphemeralUserData>(&envelope.user_data).map_err(|e| {
             AttestError::VerificationFailed(format!("TDX envelope user_data parse failed: {}", e))
         })?;
+        let expected_reportdata = tdx_reportdata_binding(
+            &envelope.platform,
+            envelope.protocol_version,
+            &envelope.handshake_public_key,
+            &ud.receipt_signing_key,
+            &envelope.nonce,
+            ud.platform_evidence_hash,
+        )
+        .map_err(|e| {
+            AttestError::VerificationFailed(format!(
+                "TDX REPORTDATA binding construction failed: {}",
+                e
+            ))
+        })?;
+        let actual_reportdata = Self::extract_tdx_reportdata(&envelope.tdx_wire)?;
+        if actual_reportdata != expected_reportdata {
+            return Err(AttestError::VerificationFailed(
+                "TDX REPORTDATA does not bind envelope handshake key, nonce, receipt key, and platform evidence hash"
+                    .to_string(),
+            ));
+        }
+
         let cbor = ud.to_cbor().map_err(|e| {
             AttestError::VerificationFailed(format!(
                 "TDX envelope user_data CBOR encode failed: {}",
                 e
             ))
         })?;
+        verified.public_key = Some(envelope.handshake_public_key.clone());
+        verified.nonce = Some(envelope.nonce.clone());
         verified.user_data = Some(cbor);
 
         Ok(verified)
@@ -830,6 +950,12 @@ struct TdxEnvelopeHelper {
     tdx_wire: Vec<u8>,
     #[serde(with = "serde_bytes")]
     user_data: Vec<u8>,
+    #[serde(default)]
+    protocol_version: u32,
+    #[serde(default, with = "serde_bytes")]
+    handshake_public_key: Vec<u8>,
+    #[serde(default, with = "serde_bytes")]
+    nonce: Vec<u8>,
 }
 
 /// Mock verifier bridge that wraps cml-transport's MockVerifier.
@@ -878,12 +1004,13 @@ mod tests {
     use std::sync::{Mutex, OnceLock};
 
     const TEST_KID: &str = "test-key-1";
-    const STRICT_ENV_VARS: [&str; 5] = [
+    const STRICT_ENV_VARS: [&str; 6] = [
         "EPHEMERALML_ALLOW_UNPINNED_AUDIENCE",
         "EPHEMERALML_REQUIRE_MRTD",
         "EPHEMERALML_EXPECTED_AUDIENCE",
         "EPHEMERALML_EXPECTED_MRTD",
         "EPHEMERALML_INSECURE_ALLOW_UNPINNED",
+        "EPHEMERALML_ALLOW_RAW_TDX_NO_COLLATERAL",
     ];
 
     fn env_test_lock() -> &'static Mutex<()> {
@@ -982,6 +1109,7 @@ mod tests {
             "exp": exp,
             "eat_nonce": nonce_value,
             "aud": "test",
+            "swname": "CONFIDENTIAL_SPACE",
             "submods": {
                 "container": { "image_digest": image_digest },
                 "gce": { "project_id": project_id, "zone": zone }
@@ -995,29 +1123,149 @@ mod tests {
         CsTransportAttestation::new(jwt.to_string(), [0xAA; 32], vec![0xBB; 32], nonce.to_vec())
     }
 
+    fn challenge_for(nonce: &[u8], platform_hash: Option<[u8; 32]>) -> String {
+        cs_attestation_challenge(
+            CS_TDX_PLATFORM,
+            1,
+            &[0xBB; 32],
+            &[0xAA; 32],
+            nonce,
+            platform_hash,
+        )
+        .unwrap()
+    }
+
+    fn nonce32(byte: u8) -> [u8; 32] {
+        [byte; 32]
+    }
+
+    #[derive(serde::Serialize)]
+    struct TestTdxEnvelope {
+        platform: String,
+        #[serde(with = "serde_bytes")]
+        tdx_wire: Vec<u8>,
+        #[serde(with = "serde_bytes")]
+        user_data: Vec<u8>,
+        protocol_version: u32,
+        #[serde(with = "serde_bytes")]
+        handshake_public_key: Vec<u8>,
+        #[serde(with = "serde_bytes")]
+        nonce: Vec<u8>,
+    }
+
+    fn make_tdx_envelope_cbor(
+        handshake_pk: [u8; 32],
+        nonce: [u8; 32],
+        receipt_key: [u8; 32],
+        reportdata_nonce: [u8; 32],
+    ) -> Vec<u8> {
+        let user_data = EphemeralUserData::new(receipt_key, 1, vec!["gateway".to_string()]);
+        let user_data = serde_json::to_vec(&user_data).unwrap();
+        let reportdata = tdx_reportdata_binding(
+            "tdx",
+            1,
+            &handshake_pk,
+            &receipt_key,
+            &reportdata_nonce,
+            None,
+        )
+        .unwrap();
+        let raw_quote = confidential_ml_transport::attestation::tdx::build_synthetic_tdx_quote(
+            reportdata,
+            [0xAA; 48],
+            [[0xBB; 48], [0xCC; 48], [0xDD; 48], [0xEE; 48]],
+        );
+        let tdx_wire = confidential_ml_transport::attestation::tdx::encode_tdx_document(&raw_quote);
+        let envelope = TestTdxEnvelope {
+            platform: "tdx".to_string(),
+            tdx_wire,
+            user_data,
+            protocol_version: 1,
+            handshake_public_key: handshake_pk.to_vec(),
+            nonce: nonce.to_vec(),
+        };
+        ephemeral_ml_common::cbor::to_vec(&envelope).unwrap()
+    }
+
     fn make_verifier(decoding_key: jsonwebtoken::DecodingKey) -> TdxEnvelopeVerifierBridge {
         let _env_lock = lock_env_vars();
         std::env::set_var("EPHEMERALML_REQUIRE_MRTD", "false");
         std::env::set_var("EPHEMERALML_ALLOW_UNPINNED_AUDIENCE", "true");
         // F10: both bypasses active requires explicit insecure override.
         std::env::set_var("EPHEMERALML_INSECURE_ALLOW_UNPINNED", "I_UNDERSTAND");
+        std::env::set_var("EPHEMERALML_ALLOW_RAW_TDX_NO_COLLATERAL", "I_UNDERSTAND");
         TdxEnvelopeVerifierBridge::new(None)
             .unwrap()
             .with_jwks_cache(test_jwks_cache(decoding_key))
     }
 
     #[tokio::test]
+    async fn test_tdx_envelope_reportdata_binding_valid() {
+        let (_enc_key, dec_key) = test_rsa_keys();
+        let handshake_pk = [0x31; 32];
+        let nonce = [0x32; 32];
+        let receipt_key = [0x33; 32];
+        let cbor = make_tdx_envelope_cbor(handshake_pk, nonce, receipt_key, nonce);
+        let verifier = make_verifier(dec_key);
+
+        let doc = CmlAttestationDocument::new(cbor);
+        let verified = verifier.verify(&doc).await.unwrap();
+
+        assert_eq!(verified.public_key, Some(handshake_pk.to_vec()));
+        assert_eq!(verified.nonce, Some(nonce.to_vec()));
+        let user_data = EphemeralUserData::from_cbor(verified.user_data.as_ref().unwrap()).unwrap();
+        assert_eq!(user_data.receipt_signing_key, receipt_key);
+    }
+
+    #[tokio::test]
+    async fn test_tdx_envelope_rejects_reportdata_binding_mismatch() {
+        let (_enc_key, dec_key) = test_rsa_keys();
+        let handshake_pk = [0x41; 32];
+        let nonce = [0x42; 32];
+        let receipt_key = [0x43; 32];
+        let cbor = make_tdx_envelope_cbor(handshake_pk, nonce, receipt_key, [0x44; 32]);
+        let verifier = make_verifier(dec_key);
+
+        let doc = CmlAttestationDocument::new(cbor);
+        let result = verifier.verify(&doc).await;
+        assert!(result.is_err());
+        let err = format!("{:?}", result.unwrap_err());
+        assert!(err.contains("REPORTDATA"), "Error: {}", err);
+    }
+
+    #[tokio::test]
+    async fn test_tdx_envelope_requires_explicit_no_collateral_override() {
+        let _env_guard = StrictEnvGuard::acquire();
+        std::env::set_var("EPHEMERALML_REQUIRE_MRTD", "false");
+        std::env::set_var("EPHEMERALML_ALLOW_UNPINNED_AUDIENCE", "true");
+        std::env::set_var("EPHEMERALML_INSECURE_ALLOW_UNPINNED", "I_UNDERSTAND");
+        std::env::remove_var("EPHEMERALML_ALLOW_RAW_TDX_NO_COLLATERAL");
+
+        let (_enc_key, dec_key) = test_rsa_keys();
+        let cbor = make_tdx_envelope_cbor([0x51; 32], [0x52; 32], [0x53; 32], [0x52; 32]);
+        let verifier = TdxEnvelopeVerifierBridge::new(None)
+            .unwrap()
+            .with_jwks_cache(test_jwks_cache(dec_key));
+
+        let doc = CmlAttestationDocument::new(cbor);
+        let result = verifier.verify(&doc).await;
+        assert!(result.is_err());
+        let err = format!("{:?}", result.unwrap_err());
+        assert!(err.contains("DCAP collateral"), "Error: {}", err);
+    }
+
+    #[tokio::test]
     async fn test_cs_envelope_verify_valid() {
         let (enc_key, dec_key) = test_rsa_keys();
-        let nonce = b"test-nonce-value";
-        let nonce_hex = hex::encode(nonce);
+        let nonce = nonce32(0x10);
+        let nonce_hex = challenge_for(&nonce, None);
         let jwt = make_test_jwt(
             &enc_key,
             "https://confidentialcomputing.googleapis.com",
             9999999999,
             &[&nonce_hex],
         );
-        let envelope = make_cs_envelope(&jwt, nonce);
+        let envelope = make_cs_envelope(&jwt, &nonce);
         let cbor = envelope.to_cbor_deterministic().unwrap();
 
         let verifier = make_verifier(dec_key);
@@ -1036,15 +1284,15 @@ mod tests {
     #[tokio::test]
     async fn test_cs_envelope_preserves_platform_evidence_hash() {
         let (enc_key, dec_key) = test_rsa_keys();
-        let nonce = b"test-nonce-value";
-        let nonce_hex = hex::encode(nonce);
+        let nonce = nonce32(0x11);
+        let nonce_hex = challenge_for(&nonce, Some([0x5A; 32]));
         let jwt = make_test_jwt(
             &enc_key,
             "https://confidentialcomputing.googleapis.com",
             9999999999,
             &[&nonce_hex],
         );
-        let envelope = make_cs_envelope(&jwt, nonce).with_platform_evidence_hash([0x5A; 32]);
+        let envelope = make_cs_envelope(&jwt, &nonce).with_platform_evidence_hash([0x5A; 32]);
         let cbor = envelope.to_cbor_deterministic().unwrap();
 
         let verifier = make_verifier(dec_key);
@@ -1057,15 +1305,15 @@ mod tests {
     #[tokio::test]
     async fn test_cs_envelope_reject_wrong_issuer() {
         let (enc_key, dec_key) = test_rsa_keys();
-        let nonce = b"nonce";
-        let nonce_hex = hex::encode(nonce);
+        let nonce = nonce32(0x12);
+        let nonce_hex = challenge_for(&nonce, None);
         let jwt = make_test_jwt(
             &enc_key,
             "https://evil.example.com",
             9999999999,
             &[&nonce_hex],
         );
-        let envelope = make_cs_envelope(&jwt, nonce);
+        let envelope = make_cs_envelope(&jwt, &nonce);
         let cbor = envelope.to_cbor_deterministic().unwrap();
 
         let verifier = make_verifier(dec_key);
@@ -1084,15 +1332,15 @@ mod tests {
     #[tokio::test]
     async fn test_cs_envelope_reject_expired() {
         let (enc_key, dec_key) = test_rsa_keys();
-        let nonce = b"nonce";
-        let nonce_hex = hex::encode(nonce);
+        let nonce = nonce32(0x13);
+        let nonce_hex = challenge_for(&nonce, None);
         let jwt = make_test_jwt(
             &enc_key,
             "https://confidentialcomputing.googleapis.com",
             1577836800,
             &[&nonce_hex],
         );
-        let envelope = make_cs_envelope(&jwt, nonce);
+        let envelope = make_cs_envelope(&jwt, &nonce);
         let cbor = envelope.to_cbor_deterministic().unwrap();
 
         let verifier = make_verifier(dec_key);
@@ -1111,14 +1359,14 @@ mod tests {
     #[tokio::test]
     async fn test_cs_envelope_reject_nonce_mismatch() {
         let (enc_key, dec_key) = test_rsa_keys();
-        let nonce = b"correct-nonce";
+        let nonce = nonce32(0x14);
         let jwt = make_test_jwt(
             &enc_key,
             "https://confidentialcomputing.googleapis.com",
             9999999999,
             &["wrong-nonce-hex"],
         );
-        let envelope = make_cs_envelope(&jwt, nonce);
+        let envelope = make_cs_envelope(&jwt, &nonce);
         let cbor = envelope.to_cbor_deterministic().unwrap();
 
         let verifier = make_verifier(dec_key);
@@ -1133,15 +1381,15 @@ mod tests {
     #[tokio::test]
     async fn test_cs_envelope_reject_unknown_platform() {
         let (enc_key, dec_key) = test_rsa_keys();
-        let nonce = b"nonce";
-        let nonce_hex = hex::encode(nonce);
+        let nonce = nonce32(0x15);
+        let nonce_hex = challenge_for(&nonce, None);
         let jwt = make_test_jwt(
             &enc_key,
             "https://confidentialcomputing.googleapis.com",
             9999999999,
             &[&nonce_hex],
         );
-        let mut envelope = make_cs_envelope(&jwt, nonce);
+        let mut envelope = make_cs_envelope(&jwt, &nonce);
         envelope.platform = "unknown-platform".to_string();
         let cbor = envelope.to_cbor_deterministic().unwrap();
 
@@ -1161,8 +1409,8 @@ mod tests {
     #[tokio::test]
     async fn test_cs_policy_pin_image_digest_match() {
         let (enc_key, dec_key) = test_rsa_keys();
-        let nonce = b"nonce";
-        let nonce_hex = hex::encode(nonce);
+        let nonce = nonce32(0x16);
+        let nonce_hex = challenge_for(&nonce, None);
         let jwt = make_test_jwt_with_submods(
             &enc_key,
             "https://confidentialcomputing.googleapis.com",
@@ -1172,7 +1420,7 @@ mod tests {
             "my-project",
             "us-central1-a",
         );
-        let envelope = make_cs_envelope(&jwt, nonce);
+        let envelope = make_cs_envelope(&jwt, &nonce);
         let cbor = envelope.to_cbor_deterministic().unwrap();
 
         let policy = CsPolicy {
@@ -1191,8 +1439,8 @@ mod tests {
     #[tokio::test]
     async fn test_cs_policy_pin_image_digest_mismatch() {
         let (enc_key, dec_key) = test_rsa_keys();
-        let nonce = b"nonce";
-        let nonce_hex = hex::encode(nonce);
+        let nonce = nonce32(0x17);
+        let nonce_hex = challenge_for(&nonce, None);
         let jwt = make_test_jwt_with_submods(
             &enc_key,
             "https://confidentialcomputing.googleapis.com",
@@ -1202,7 +1450,7 @@ mod tests {
             "my-project",
             "us-central1-a",
         );
-        let envelope = make_cs_envelope(&jwt, nonce);
+        let envelope = make_cs_envelope(&jwt, &nonce);
         let cbor = envelope.to_cbor_deterministic().unwrap();
 
         let policy = CsPolicy {
@@ -1221,8 +1469,8 @@ mod tests {
     #[tokio::test]
     async fn test_cs_policy_pin_project_mismatch() {
         let (enc_key, dec_key) = test_rsa_keys();
-        let nonce = b"nonce";
-        let nonce_hex = hex::encode(nonce);
+        let nonce = nonce32(0x18);
+        let nonce_hex = challenge_for(&nonce, None);
         let jwt = make_test_jwt_with_submods(
             &enc_key,
             "https://confidentialcomputing.googleapis.com",
@@ -1232,7 +1480,7 @@ mod tests {
             "wrong-project",
             "us-central1-a",
         );
-        let envelope = make_cs_envelope(&jwt, nonce);
+        let envelope = make_cs_envelope(&jwt, &nonce);
         let cbor = envelope.to_cbor_deterministic().unwrap();
 
         let policy = CsPolicy {
@@ -1251,8 +1499,8 @@ mod tests {
     #[tokio::test]
     async fn test_cs_policy_pin_zone_mismatch() {
         let (enc_key, dec_key) = test_rsa_keys();
-        let nonce = b"nonce";
-        let nonce_hex = hex::encode(nonce);
+        let nonce = nonce32(0x19);
+        let nonce_hex = challenge_for(&nonce, None);
         let jwt = make_test_jwt_with_submods(
             &enc_key,
             "https://confidentialcomputing.googleapis.com",
@@ -1262,7 +1510,7 @@ mod tests {
             "",
             "europe-west1-b",
         );
-        let envelope = make_cs_envelope(&jwt, nonce);
+        let envelope = make_cs_envelope(&jwt, &nonce);
         let cbor = envelope.to_cbor_deterministic().unwrap();
 
         let policy = CsPolicy {
@@ -1312,15 +1560,15 @@ mod tests {
     #[tokio::test]
     async fn test_cs_envelope_reject_truncated_cbor() {
         let (enc_key, dec_key) = test_rsa_keys();
-        let nonce = b"nonce";
-        let nonce_hex = hex::encode(nonce);
+        let nonce = nonce32(0x1A);
+        let nonce_hex = challenge_for(&nonce, None);
         let jwt = make_test_jwt(
             &enc_key,
             "https://confidentialcomputing.googleapis.com",
             9999999999,
             &[&nonce_hex],
         );
-        let envelope = make_cs_envelope(&jwt, nonce);
+        let envelope = make_cs_envelope(&jwt, &nonce);
         let cbor = envelope.to_cbor_deterministic().unwrap();
 
         let truncated = cbor[..cbor.len() / 2].to_vec();
@@ -1335,7 +1583,7 @@ mod tests {
     #[tokio::test]
     async fn test_cs_envelope_reject_jwt_missing_eat_nonce() {
         let (enc_key, dec_key) = test_rsa_keys();
-        let nonce = b"nonce";
+        let nonce = nonce32(0x1B);
 
         // JWT with no eat_nonce field
         let mut header = Header::new(Algorithm::RS256);
@@ -1343,10 +1591,11 @@ mod tests {
         let claims = serde_json::json!({
             "iss": "https://confidentialcomputing.googleapis.com",
             "exp": 9999999999u64,
+            "swname": "CONFIDENTIAL_SPACE",
         });
         let jwt = jsonwebtoken::encode(&header, &claims, &enc_key).unwrap();
 
-        let envelope = make_cs_envelope(&jwt, nonce);
+        let envelope = make_cs_envelope(&jwt, &nonce);
         let cbor = envelope.to_cbor_deterministic().unwrap();
 
         let verifier = make_verifier(dec_key);
@@ -1365,18 +1614,19 @@ mod tests {
     #[tokio::test]
     async fn test_cs_envelope_reject_jwt_empty_nonce_array() {
         let (enc_key, dec_key) = test_rsa_keys();
-        let nonce = b"nonce";
+        let nonce = nonce32(0x1C);
 
         let mut header = Header::new(Algorithm::RS256);
         header.kid = Some(TEST_KID.to_string());
         let claims = serde_json::json!({
             "iss": "https://confidentialcomputing.googleapis.com",
             "exp": 9999999999u64,
+            "swname": "CONFIDENTIAL_SPACE",
             "eat_nonce": [],
         });
         let jwt = jsonwebtoken::encode(&header, &claims, &enc_key).unwrap();
 
-        let envelope = make_cs_envelope(&jwt, nonce);
+        let envelope = make_cs_envelope(&jwt, &nonce);
         let cbor = envelope.to_cbor_deterministic().unwrap();
 
         let verifier = make_verifier(dec_key);
@@ -1395,8 +1645,8 @@ mod tests {
     #[tokio::test]
     async fn test_cs_policy_all_three_pins_mismatch_reports_first() {
         let (enc_key, dec_key) = test_rsa_keys();
-        let nonce = b"nonce";
-        let nonce_hex = hex::encode(nonce);
+        let nonce = nonce32(0x1D);
+        let nonce_hex = challenge_for(&nonce, None);
         let jwt = make_test_jwt_with_submods(
             &enc_key,
             "https://confidentialcomputing.googleapis.com",
@@ -1406,7 +1656,7 @@ mod tests {
             "wrong-project",
             "wrong-zone",
         );
-        let envelope = make_cs_envelope(&jwt, nonce);
+        let envelope = make_cs_envelope(&jwt, &nonce);
         let cbor = envelope.to_cbor_deterministic().unwrap();
 
         let policy = CsPolicy {
@@ -1431,8 +1681,8 @@ mod tests {
     #[tokio::test]
     async fn test_cs_policy_no_pins_accepts_any() {
         let (enc_key, dec_key) = test_rsa_keys();
-        let nonce = b"nonce";
-        let nonce_hex = hex::encode(nonce);
+        let nonce = nonce32(0x1E);
+        let nonce_hex = challenge_for(&nonce, None);
         let jwt = make_test_jwt_with_submods(
             &enc_key,
             "https://confidentialcomputing.googleapis.com",
@@ -1442,7 +1692,7 @@ mod tests {
             "any-project",
             "any-zone",
         );
-        let envelope = make_cs_envelope(&jwt, nonce);
+        let envelope = make_cs_envelope(&jwt, &nonce);
         let cbor = envelope.to_cbor_deterministic().unwrap();
 
         let verifier = make_verifier(dec_key).with_cs_policy(CsPolicy::default());
@@ -1457,8 +1707,8 @@ mod tests {
     #[tokio::test]
     async fn test_cs_envelope_reject_invalid_signature() {
         let (enc_key, dec_key) = test_rsa_keys();
-        let nonce = b"nonce";
-        let nonce_hex = hex::encode(nonce);
+        let nonce = nonce32(0x1F);
+        let nonce_hex = challenge_for(&nonce, None);
         let jwt = make_test_jwt(
             &enc_key,
             "https://confidentialcomputing.googleapis.com",
@@ -1479,7 +1729,7 @@ mod tests {
             parts[2]
         );
 
-        let envelope = make_cs_envelope(&tampered_jwt, nonce);
+        let envelope = make_cs_envelope(&tampered_jwt, &nonce);
         let cbor = envelope.to_cbor_deterministic().unwrap();
 
         let verifier = make_verifier(dec_key);
@@ -1499,8 +1749,8 @@ mod tests {
     async fn test_cs_envelope_reject_wrong_signing_key() {
         let (enc_key, _dec_key) = test_rsa_keys();
         let (_wrong_enc_key, wrong_dec_key) = test_rsa_keys();
-        let nonce = b"nonce";
-        let nonce_hex = hex::encode(nonce);
+        let nonce = nonce32(0x20);
+        let nonce_hex = challenge_for(&nonce, None);
 
         // Sign with enc_key, but verifier has wrong_dec_key
         let jwt = make_test_jwt(
@@ -1509,7 +1759,7 @@ mod tests {
             9999999999,
             &[&nonce_hex],
         );
-        let envelope = make_cs_envelope(&jwt, nonce);
+        let envelope = make_cs_envelope(&jwt, &nonce);
         let cbor = envelope.to_cbor_deterministic().unwrap();
 
         // Use the wrong decoding key in the verifier
@@ -1529,8 +1779,8 @@ mod tests {
     #[tokio::test]
     async fn test_cs_envelope_reject_missing_kid() {
         let (enc_key, dec_key) = test_rsa_keys();
-        let nonce = b"nonce";
-        let nonce_hex = hex::encode(nonce);
+        let nonce = nonce32(0x21);
+        let nonce_hex = challenge_for(&nonce, None);
 
         // Create JWT without kid in header
         let mut header = Header::new(Algorithm::RS256);
@@ -1538,11 +1788,12 @@ mod tests {
         let claims = serde_json::json!({
             "iss": "https://confidentialcomputing.googleapis.com",
             "exp": 9999999999u64,
+            "swname": "CONFIDENTIAL_SPACE",
             "eat_nonce": nonce_hex,
         });
         let jwt = jsonwebtoken::encode(&header, &claims, &enc_key).unwrap();
 
-        let envelope = make_cs_envelope(&jwt, nonce);
+        let envelope = make_cs_envelope(&jwt, &nonce);
         let cbor = envelope.to_cbor_deterministic().unwrap();
 
         let verifier = make_verifier(dec_key);
@@ -1561,8 +1812,8 @@ mod tests {
     #[tokio::test]
     async fn test_cs_envelope_reject_unknown_kid() {
         let (enc_key, dec_key) = test_rsa_keys();
-        let nonce = b"nonce";
-        let nonce_hex = hex::encode(nonce);
+        let nonce = nonce32(0x22);
+        let nonce_hex = challenge_for(&nonce, None);
 
         // Create JWT with a kid that's NOT in the cache
         let mut header = Header::new(Algorithm::RS256);
@@ -1570,11 +1821,12 @@ mod tests {
         let claims = serde_json::json!({
             "iss": "https://confidentialcomputing.googleapis.com",
             "exp": 9999999999u64,
+            "swname": "CONFIDENTIAL_SPACE",
             "eat_nonce": nonce_hex,
         });
         let jwt = jsonwebtoken::encode(&header, &claims, &enc_key).unwrap();
 
-        let envelope = make_cs_envelope(&jwt, nonce);
+        let envelope = make_cs_envelope(&jwt, &nonce);
         let cbor = envelope.to_cbor_deterministic().unwrap();
 
         // Pre-populate cache with the correct key under TEST_KID,
@@ -1598,15 +1850,15 @@ mod tests {
     #[tokio::test]
     async fn test_cs_envelope_audience_match() {
         let (enc_key, dec_key) = test_rsa_keys();
-        let nonce = b"nonce";
-        let nonce_hex = hex::encode(nonce);
+        let nonce = nonce32(0x23);
+        let nonce_hex = challenge_for(&nonce, None);
         let jwt = make_test_jwt(
             &enc_key,
             "https://confidentialcomputing.googleapis.com",
             9999999999,
             &[&nonce_hex],
         );
-        let envelope = make_cs_envelope(&jwt, nonce);
+        let envelope = make_cs_envelope(&jwt, &nonce);
         let cbor = envelope.to_cbor_deterministic().unwrap();
 
         let policy = CsPolicy {
@@ -1623,8 +1875,8 @@ mod tests {
     #[tokio::test]
     async fn test_cs_envelope_audience_mismatch() {
         let (enc_key, dec_key) = test_rsa_keys();
-        let nonce = b"nonce";
-        let nonce_hex = hex::encode(nonce);
+        let nonce = nonce32(0x24);
+        let nonce_hex = challenge_for(&nonce, None);
         // JWT audience is "test" (set by make_test_jwt)
         let jwt = make_test_jwt(
             &enc_key,
@@ -1632,7 +1884,7 @@ mod tests {
             9999999999,
             &[&nonce_hex],
         );
-        let envelope = make_cs_envelope(&jwt, nonce);
+        let envelope = make_cs_envelope(&jwt, &nonce);
         let cbor = envelope.to_cbor_deterministic().unwrap();
 
         let policy = CsPolicy {
@@ -1761,8 +2013,8 @@ mod tests {
     #[tokio::test]
     async fn test_cs_envelope_reject_wrong_swname() {
         let (enc_key, dec_key) = test_rsa_keys();
-        let nonce = b"nonce";
-        let nonce_hex = hex::encode(nonce);
+        let nonce = nonce32(0x25);
+        let nonce_hex = challenge_for(&nonce, None);
 
         let mut header = Header::new(Algorithm::RS256);
         header.kid = Some(TEST_KID.to_string());
@@ -1779,7 +2031,42 @@ mod tests {
         });
         let jwt = jsonwebtoken::encode(&header, &claims, &enc_key).unwrap();
 
-        let envelope = make_cs_envelope(&jwt, nonce);
+        let envelope = make_cs_envelope(&jwt, &nonce);
+        let cbor = envelope.to_cbor_deterministic().unwrap();
+        let verifier = make_verifier(dec_key);
+
+        let doc = CmlAttestationDocument::new(cbor);
+        let result = verifier.verify(&doc).await;
+        assert!(result.is_err());
+        let err = format!("{:?}", result.unwrap_err());
+        assert!(
+            err.contains("swname mismatch"),
+            "Expected swname mismatch error, got: {}",
+            err
+        );
+    }
+
+    #[tokio::test]
+    async fn test_cs_envelope_reject_missing_swname() {
+        let (enc_key, dec_key) = test_rsa_keys();
+        let nonce = nonce32(0x2F);
+        let nonce_hex = challenge_for(&nonce, None);
+
+        let mut header = Header::new(Algorithm::RS256);
+        header.kid = Some(TEST_KID.to_string());
+        let claims = serde_json::json!({
+            "iss": "https://confidentialcomputing.googleapis.com",
+            "exp": 9999999999u64,
+            "iat": std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_secs(),
+            "eat_nonce": nonce_hex,
+            "submods": { "container": { "image_digest": "" }, "gce": { "project_id": "", "zone": "" } }
+        });
+        let jwt = jsonwebtoken::encode(&header, &claims, &enc_key).unwrap();
+
+        let envelope = make_cs_envelope(&jwt, &nonce);
         let cbor = envelope.to_cbor_deterministic().unwrap();
         let verifier = make_verifier(dec_key);
 
@@ -1797,8 +2084,8 @@ mod tests {
     #[tokio::test]
     async fn test_cs_envelope_accepts_swversion_array_shape() {
         let (enc_key, dec_key) = test_rsa_keys();
-        let nonce = b"nonce";
-        let nonce_hex = hex::encode(nonce);
+        let nonce = nonce32(0x26);
+        let nonce_hex = challenge_for(&nonce, None);
 
         let mut header = Header::new(Algorithm::RS256);
         header.kid = Some(TEST_KID.to_string());
@@ -1819,7 +2106,7 @@ mod tests {
         });
         let jwt = jsonwebtoken::encode(&header, &claims, &enc_key).unwrap();
 
-        let envelope = make_cs_envelope(&jwt, nonce);
+        let envelope = make_cs_envelope(&jwt, &nonce);
         let cbor = envelope.to_cbor_deterministic().unwrap();
         let verifier = make_verifier(dec_key);
 
@@ -1831,8 +2118,8 @@ mod tests {
     #[tokio::test]
     async fn test_cs_envelope_reject_stale_iat() {
         let (enc_key, dec_key) = test_rsa_keys();
-        let nonce = b"nonce";
-        let nonce_hex = hex::encode(nonce);
+        let nonce = nonce32(0x27);
+        let nonce_hex = challenge_for(&nonce, None);
 
         let mut header = Header::new(Algorithm::RS256);
         header.kid = Some(TEST_KID.to_string());
@@ -1847,11 +2134,12 @@ mod tests {
             "exp": 9999999999u64,
             "iat": stale_iat,
             "eat_nonce": nonce_hex,
+            "swname": "CONFIDENTIAL_SPACE",
             "submods": { "container": { "image_digest": "" }, "gce": { "project_id": "", "zone": "" } }
         });
         let jwt = jsonwebtoken::encode(&header, &claims, &enc_key).unwrap();
 
-        let envelope = make_cs_envelope(&jwt, nonce);
+        let envelope = make_cs_envelope(&jwt, &nonce);
         let cbor = envelope.to_cbor_deterministic().unwrap();
         let verifier = make_verifier(dec_key);
 
@@ -1869,8 +2157,8 @@ mod tests {
     #[tokio::test]
     async fn test_cs_envelope_reject_future_iat() {
         let (enc_key, dec_key) = test_rsa_keys();
-        let nonce = b"nonce";
-        let nonce_hex = hex::encode(nonce);
+        let nonce = nonce32(0x28);
+        let nonce_hex = challenge_for(&nonce, None);
 
         let mut header = Header::new(Algorithm::RS256);
         header.kid = Some(TEST_KID.to_string());
@@ -1885,11 +2173,12 @@ mod tests {
             "exp": 9999999999u64,
             "iat": future_iat,
             "eat_nonce": nonce_hex,
+            "swname": "CONFIDENTIAL_SPACE",
             "submods": { "container": { "image_digest": "" }, "gce": { "project_id": "", "zone": "" } }
         });
         let jwt = jsonwebtoken::encode(&header, &claims, &enc_key).unwrap();
 
-        let envelope = make_cs_envelope(&jwt, nonce);
+        let envelope = make_cs_envelope(&jwt, &nonce);
         let cbor = envelope.to_cbor_deterministic().unwrap();
         let verifier = make_verifier(dec_key);
 
