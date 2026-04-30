@@ -58,6 +58,39 @@ That script uploads encrypted `model.safetensors` to S3, stages
 `manifest.json` and `wrapped_dek.bin` under `docker-stage/model/`, and prints
 the `MODEL_SIGNING_PUBKEY` build argument for the AWS PoC Dockerfile.
 
+## Repeatable AWS-native PoC run
+
+After the CloudFormation stack is created, the model is packaged, the EIF is
+built, and the stack's `EnclaveImageSha384` parameter is updated to the final
+EIF measurement, use the wrapper script:
+
+```bash
+scripts/aws/run_native_poc.sh \
+  --stack-name <stack-name> \
+  --region us-east-1 \
+  --repetitions 3 \
+  --expected-model-hash <sha256-model-artifact-set>
+```
+
+The script operates through SSM, uploads the current release smoke-test binary
+to the host, runs the five-stage smoke test, deletes the temporary upload, and
+stops only a host that it started itself unless `--stop-after-run` is set.
+
+Summarize benchmark packets with:
+
+```bash
+scripts/aws/summarize_benchmarks.py artifacts/benchmarks/aws-native-poc-20260430
+```
+
+Create a redacted shareable packet from a private evidence bundle with:
+
+```bash
+scripts/aws/redact_evidence_bundle.py /tmp/private-bundle artifacts/benchmarks/aws-native-poc-YYYYMMDD
+```
+
+See `docs/AWS_NATIVE_POC_RUNBOOK.md` for the full operator flow and
+customer-safe claim language.
+
 ## Exit codes
 
 | Exit | Meaning |

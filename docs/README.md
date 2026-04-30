@@ -12,6 +12,7 @@ This repository serves multiple audiences: developers integrating the product, r
 ## Product and Deployment
 
 - [`build-matrix.md`](build-matrix.md) — feature flags, deployment modes, and build commands
+- [`AWS_NATIVE_POC_RUNBOOK.md`](AWS_NATIVE_POC_RUNBOOK.md) — repeatable AWS-native Nitro PoC, benchmark, and redacted evidence workflow
 - [`verifier-api.md`](verifier-api.md) — verifier service surface
 - [`cli-ux.md`](cli-ux.md) — operator and developer CLI ergonomics
 - [`infra.md`](infra.md) — infrastructure notes and Nitro deployment loop
