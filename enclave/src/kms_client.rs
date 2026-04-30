@@ -1,7 +1,10 @@
 use crate::kms_proxy_client::KmsProxyClient;
 use crate::{EnclaveError, EphemeralError, Result};
-use ephemeral_ml_common::{KmsProxyErrorCode, KmsRequest, KmsResponse};
+use ephemeral_ml_common::{
+    KmsProxyErrorCode, KmsRecipientAttestationEvidence, KmsReleaseEvidence, KmsRequest, KmsResponse,
+};
 use rand::RngCore;
+use sha2::{Digest, Sha256};
 use std::collections::HashMap;
 
 /// KMS Stub Client for Enclave
@@ -51,6 +54,18 @@ impl<A: crate::attestation::AttestationProvider> KmsClient<A> {
         ciphertext: &[u8],
         encryption_context: Option<HashMap<String, String>>,
     ) -> Result<Vec<u8>> {
+        self.decrypt_with_evidence(ciphertext, encryption_context)
+            .await
+            .map(|(plaintext, _)| plaintext)
+    }
+
+    /// Request decryption and return a non-secret evidence record describing
+    /// the recipient-bound KMS release.
+    pub async fn decrypt_with_evidence(
+        &self,
+        ciphertext: &[u8],
+        encryption_context: Option<HashMap<String, String>>,
+    ) -> Result<(Vec<u8>, KmsReleaseEvidence)> {
         // 1. Generate attestation document with random nonce and receipt signing key binding
         let mut nonce = [0u8; 32];
         rand::rngs::OsRng.fill_bytes(&mut nonce);
@@ -61,12 +76,13 @@ impl<A: crate::attestation::AttestationProvider> KmsClient<A> {
         )?;
 
         let recipient_bytes = attestation_doc.signature; // In our impl, signature holds the CBOR bytes
+        let recipient_attestation_sha256 = hex::encode(Sha256::digest(&recipient_bytes));
 
         // 2. Construct request
         let request = KmsRequest::Decrypt {
             ciphertext_blob: ciphertext.to_vec(),
             key_id: None,
-            encryption_context,
+            encryption_context: encryption_context.clone(),
             grant_tokens: None,
             recipient: Some(recipient_bytes),
         };
@@ -79,11 +95,30 @@ impl<A: crate::attestation::AttestationProvider> KmsClient<A> {
             KmsResponse::Decrypt {
                 ciphertext_for_recipient,
                 plaintext,
-                ..
+                key_id,
             } => {
                 if let Some(enc_key) = ciphertext_for_recipient {
+                    let ciphertext_for_recipient_sha256 = hex::encode(Sha256::digest(&enc_key));
+                    let evidence = KmsReleaseEvidence {
+                        status: "allowed".to_string(),
+                        operation: "Decrypt".to_string(),
+                        kms_key_arn: key_id.clone(),
+                        model_kms_key_arn: key_id,
+                        aws_request_id: response
+                            .kms_request_id
+                            .filter(|v| !v.trim().is_empty())
+                            .unwrap_or_else(|| "unavailable".to_string()),
+                        recipient_attestation: KmsRecipientAttestationEvidence {
+                            image_sha384: None,
+                            attestation_doc_sha256: recipient_attestation_sha256,
+                        },
+                        ciphertext_for_recipient_sha256,
+                        encryption_context,
+                    };
                     // Decrypt using our RSA private key (RecipientInfo flow)
-                    self.attestation_provider.decrypt_kms(&enc_key)
+                    self.attestation_provider
+                        .decrypt_kms(&enc_key)
+                        .map(|plaintext| (plaintext, evidence))
                 } else if plaintext.is_some() {
                     // Fail-closed: if we asked for Recipient-bound decrypt, plaintext must never be returned.
                     Err(EnclaveError::Enclave(EphemeralError::KmsError(

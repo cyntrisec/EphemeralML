@@ -132,6 +132,10 @@ impl Check for Eif {
         // 2. Bundle file alongside EIF.
         let bundle_path = self.bundle_path();
         if !matches!(tokio::fs::try_exists(&bundle_path).await, Ok(true)) {
+            if allow_unsigned_internal_poc() {
+                return pass_unsigned_internal_poc(start, &self.eif_path, size_bytes, &bundle_path)
+                    .await;
+            }
             return fail(
                 start,
                 "EIF_BUNDLE_MISSING",
@@ -215,6 +219,43 @@ impl Check for Eif {
 }
 
 // --- probes ----------------------------------------------------------------
+
+fn allow_unsigned_internal_poc() -> bool {
+    std::env::var("CYNTRISEC_DOCTOR_ALLOW_UNSIGNED_EIF_FOR_POC")
+        .map(|value| matches!(value.as_str(), "1" | "true" | "TRUE" | "yes" | "YES"))
+        .unwrap_or(false)
+}
+
+async fn pass_unsigned_internal_poc(
+    start: Instant,
+    eif_path: &std::path::Path,
+    size_bytes: u64,
+    bundle_path: &std::path::Path,
+) -> CheckResult {
+    let pcr0 = extract_pcr0(eif_path).await.ok();
+    CheckResult {
+        name: "eif".to_string(),
+        status: CheckStatus::Ok,
+        duration_ms: start.elapsed().as_millis() as u64,
+        summary: match pcr0.as_deref() {
+            Some(p) => format!(
+                "EIF image present; cosign bundle skipped for internal PoC only (PCR0: {})",
+                truncate_hex(p, 16)
+            ),
+            None => "EIF image present; cosign bundle skipped for internal PoC only".to_string(),
+        },
+        details: json!({
+            "eif_path": eif_path.display().to_string(),
+            "size_bytes": size_bytes,
+            "bundle_path": bundle_path.display().to_string(),
+            "cosign_verified": false,
+            "unsigned_internal_poc": true,
+            "pcr0": pcr0,
+        }),
+        check_code: None,
+        remediation: None,
+    }
+}
 
 async fn write_embedded_pubkey() -> std::io::Result<PathBuf> {
     let path = std::env::temp_dir().join(format!(

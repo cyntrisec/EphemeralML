@@ -2,10 +2,9 @@
 //
 // Contract: see startup-plans/10-operations/byoc-phase-1-ephemeralml-smoke-test-spec-2026-04-23.md
 //
-// Skeleton status: CLI + output + stage registry + evidence bundle types + error
-// routing are real. Individual stage implementations return
-// `check_code: "SKELETON_UNIMPLEMENTED"` (fail status) until the Phase 1
-// real-AWS deploy + doctor real-probe implementations are done.
+// The runner is intentionally fail-closed: every stage gates the next, and
+// evidence upload is refused unless the local AIR verification and required
+// evidence files are present.
 
 use std::process::ExitCode;
 
@@ -48,7 +47,11 @@ async fn run(args: Args) -> Result<ExitCode, SmokeTestError> {
     let registry = stages::Registry::default();
     let results = registry.run(&ctx, &args).await;
 
-    let overall_pass = results.iter().all(|r| r.is_pass());
+    cleanup_enclave_if_needed(&ctx, &args, &results).await;
+
+    let overall_pass = results
+        .iter()
+        .all(|r| r.is_pass() || matches!(r.status, stages::StageStatus::Skipped));
 
     let format = if args.json {
         Format::Json {
@@ -66,4 +69,55 @@ async fn run(args: Args) -> Result<ExitCode, SmokeTestError> {
     } else {
         ExitCode::from(1)
     })
+}
+
+async fn cleanup_enclave_if_needed(
+    ctx: &context::Context,
+    args: &Args,
+    results: &[stages::StageResult],
+) {
+    if ctx.retain_enclave {
+        return;
+    }
+    let Some(enclave_id) = launched_enclave_id(results) else {
+        return;
+    };
+
+    let output = tokio::process::Command::new(&args.nitro_cli)
+        .arg("terminate-enclave")
+        .arg("--enclave-id")
+        .arg(&enclave_id)
+        .output()
+        .await;
+
+    match output {
+        Ok(out) if out.status.success() => {
+            eprintln!("[cleanup] terminated Nitro enclave {}", enclave_id);
+        }
+        Ok(out) => {
+            eprintln!(
+                "[cleanup] failed to terminate Nitro enclave {}: {}{}",
+                enclave_id,
+                String::from_utf8_lossy(&out.stdout),
+                String::from_utf8_lossy(&out.stderr)
+            );
+        }
+        Err(e) => {
+            eprintln!(
+                "[cleanup] failed to execute '{} terminate-enclave': {}",
+                args.nitro_cli, e
+            );
+        }
+    }
+}
+
+fn launched_enclave_id(results: &[stages::StageResult]) -> Option<String> {
+    results
+        .iter()
+        .find(|r| r.stage_name() == "enclave_launch" && r.is_pass())
+        .and_then(|r| r.details.get("launch"))
+        .and_then(|launch| launch.get("EnclaveID").or_else(|| launch.get("enclave_id")))
+        .and_then(serde_json::Value::as_str)
+        .filter(|s| !s.trim().is_empty())
+        .map(ToString::to_string)
 }

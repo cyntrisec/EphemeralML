@@ -3,7 +3,7 @@ use crate::kms_client::KmsClient;
 use crate::{EnclaveError, EphemeralError, Result};
 use chacha20poly1305::aead::Aead;
 use chacha20poly1305::{ChaCha20Poly1305, Key, KeyInit, Nonce};
-use ephemeral_ml_common::ModelManifest;
+use ephemeral_ml_common::{KmsReleaseEvidence, ModelManifest};
 use safetensors::SafeTensors;
 use sha2::{Digest, Sha256};
 use zeroize::Zeroize;
@@ -32,6 +32,18 @@ impl<A: AttestationProvider> ModelLoader<A> {
         manifest: &ModelManifest,
         wrapped_dek: &[u8],
     ) -> Result<Vec<u8>> {
+        self.load_model_with_evidence(manifest, wrapped_dek)
+            .await
+            .map(|(plaintext, _)| plaintext)
+    }
+
+    /// Load and verify a model and return the attestation-bound KMS release
+    /// evidence produced while unwrapping the model DEK.
+    pub async fn load_model_with_evidence(
+        &self,
+        manifest: &ModelManifest,
+        wrapped_dek: &[u8],
+    ) -> Result<(Vec<u8>, KmsReleaseEvidence)> {
         // 1. Verify Manifest Signature
         manifest.verify(&self.trusted_signing_key).map_err(|e| {
             EnclaveError::Enclave(EphemeralError::Validation(
@@ -54,9 +66,9 @@ impl<A: AttestationProvider> ModelLoader<A> {
             ("model_id".to_string(), manifest.model_id.clone()),
             ("version".to_string(), manifest.version.clone()),
         ]));
-        let mut dek_bytes = self
+        let (mut dek_bytes, kms_release_evidence) = self
             .kms_client
-            .decrypt(wrapped_dek, encryption_context)
+            .decrypt_with_evidence(wrapped_dek, encryption_context)
             .await?;
 
         if dek_bytes.len() != 32 {
@@ -124,17 +136,20 @@ impl<A: AttestationProvider> ModelLoader<A> {
         // 6. Enforce dtype constraints (Task 18.2)
         Self::validate_model_format(&st)?;
 
-        Ok(plaintext)
+        Ok((plaintext, kms_release_evidence))
     }
 
     fn validate_model_format(st: &SafeTensors) -> Result<()> {
         for (name, view) in st.tensors() {
             let dtype = view.dtype();
-            // We only support F32, F16, and BF16 for v1
+            // Model weights must stay in the supported floating-point set, but
+            // HuggingFace safetensors commonly include non-trainable integer
+            // buffers such as `embeddings.position_ids`.
             match dtype {
-                safetensors::Dtype::F32 | safetensors::Dtype::F16 | safetensors::Dtype::BF16 => {
-                    // Allowed
-                }
+                safetensors::Dtype::F32
+                | safetensors::Dtype::F16
+                | safetensors::Dtype::BF16
+                | safetensors::Dtype::I64 => {}
                 _ => {
                     return Err(EnclaveError::Enclave(EphemeralError::ValidationError(
                         format!("Unsupported dtype {:?} for tensor {}", dtype, name),
@@ -160,6 +175,46 @@ mod tests {
     use rand::RngCore;
     use serde::Serialize;
     use tokio::net::TcpListener;
+
+    fn safetensors_with_dtype(
+        dtype: &str,
+        element_count: usize,
+        byte_len: usize,
+    ) -> SafeTensors<'static> {
+        let json_header = format!(
+            r#"{{"embeddings.position_ids": {{"dtype":"{}", "shape":[{}], "data_offsets":[0, {}]}}}}"#,
+            dtype, element_count, byte_len
+        );
+        let json_bytes = json_header.as_bytes();
+        let n: u64 = json_bytes.len() as u64;
+        let mut bytes = Vec::new();
+        bytes.extend_from_slice(&n.to_le_bytes());
+        bytes.extend_from_slice(json_bytes);
+        bytes.extend(std::iter::repeat(0u8).take(byte_len));
+        let leaked: &'static [u8] = Box::leak(bytes.into_boxed_slice());
+        SafeTensors::deserialize(leaked).unwrap()
+    }
+
+    #[test]
+    fn model_format_accepts_i64_constant_buffers() {
+        let st = safetensors_with_dtype("I64", 1, 8);
+
+        ModelLoader::<DefaultAttestationProvider>::validate_model_format(&st).unwrap();
+    }
+
+    #[test]
+    fn model_format_rejects_unsupported_u8_tensors() {
+        let st = safetensors_with_dtype("U8", 1, 1);
+
+        let err = ModelLoader::<DefaultAttestationProvider>::validate_model_format(&st)
+            .expect_err("U8 tensors should remain unsupported by the enclave loader");
+
+        assert!(
+            err.to_string().contains("Unsupported dtype U8"),
+            "unexpected error: {}",
+            err
+        );
+    }
 
     #[tokio::test]
     async fn test_load_model_mock() {

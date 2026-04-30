@@ -107,6 +107,7 @@ fn verify_air(
         expected_model_hash: policy.expected_model_hash,
         expected_request_hash: policy.expected_request_hash,
         expected_response_hash: policy.expected_response_hash,
+        expected_attestation_doc_hash: None,
         expected_model_id: policy.expected_model.clone(),
         expected_security_mode: policy.expected_security_mode.clone(),
         allow_evaluation_mode: false,

@@ -31,7 +31,7 @@ pub use types::{
 
 pub use kms_proxy::{
     kms_hpke_info, KmsProxyErrorCode, KmsProxyRequestEnvelope, KmsProxyResponseEnvelope,
-    KmsRequest, KmsResponse,
+    KmsRecipientAttestationEvidence, KmsReleaseEvidence, KmsRequest, KmsResponse,
 };
 pub use model_manifest::ModelManifest;
 pub use platform_evidence::{

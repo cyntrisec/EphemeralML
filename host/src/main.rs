@@ -65,6 +65,22 @@ fn save_attestation_raw(
     Ok(())
 }
 
+/// Save raw KMS release evidence JSON to disk. Returns Ok(()) if path is None.
+#[cfg(any(feature = "production", test))]
+fn save_kms_release_raw(
+    kms_release_bytes: &[u8],
+    path: Option<&str>,
+) -> Result<(), std::io::Error> {
+    let Some(path) = path else { return Ok(()) };
+    std::fs::write(path, kms_release_bytes)?;
+    println!(
+        "  KMS release evidence ({} bytes) saved to {}",
+        kms_release_bytes.len(),
+        path
+    );
+    Ok(())
+}
+
 fn print_receipt(receipt: &AttestationReceipt) {
     println!();
     println!("========================================================");
@@ -237,6 +253,10 @@ struct ProdArgs {
     /// Save the boot attestation document (COSE_Sign1 CBOR bytes) to this path.
     #[arg(long, env = "EPHEMERALML_ATTESTATION_OUTPUT")]
     attestation_output: Option<String>,
+
+    /// Save the KMS RecipientInfo release evidence JSON to this path.
+    #[arg(long, env = "EPHEMERALML_KMS_RELEASE_OUTPUT")]
+    kms_release_output: Option<String>,
 }
 
 #[tokio::main]
@@ -591,6 +611,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         error!(error = %e, "Failed to save boot attestation");
                     } else if args.attestation_output.is_some() {
                         info!(size = t.data.len(), "Boot attestation saved");
+                    }
+                } else if t.name == "__kms_release__" {
+                    if let Err(e) =
+                        save_kms_release_raw(&t.data, args.kms_release_output.as_deref())
+                    {
+                        error!(error = %e, "Failed to save KMS release evidence");
+                    } else if args.kms_release_output.is_some() {
+                        info!(size = t.data.len(), "KMS release evidence saved");
                     }
                 } else {
                     print_embeddings(&t.data, &t.shape);

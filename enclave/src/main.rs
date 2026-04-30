@@ -90,12 +90,29 @@ struct Args {
     #[arg(long)]
     gcp: bool,
 
-    /// Model source for GCP mode (required when --gcp is set).
+    /// Model source. Required for GCP remote sources; optional in Nitro.
     ///   local:   read from --model-dir (bundled in container, no KMS)
     ///   gcs:     fetch plaintext from GCS (requires --expected-model-hash)
     ///   gcs-kms: fetch encrypted model from GCS, decrypt via attestation-bound Cloud KMS (requires --expected-model-hash)
+    ///   aws-s3-kms: fetch encrypted model from S3 via VSock proxy and unwrap DEK via AWS KMS RecipientInfo
     #[arg(long, env = "EPHEMERALML_MODEL_SOURCE")]
     model_source: Option<String>,
+
+    /// Local signed model manifest path for Nitro aws-s3-kms mode.
+    #[arg(
+        long,
+        env = "EPHEMERALML_AWS_MODEL_MANIFEST_PATH",
+        default_value = "/app/test_assets/minilm/manifest.json"
+    )]
+    aws_model_manifest_path: PathBuf,
+
+    /// Local KMS-wrapped DEK path for Nitro aws-s3-kms mode.
+    #[arg(
+        long,
+        env = "EPHEMERALML_AWS_WRAPPED_DEK_PATH",
+        default_value = "/app/test_assets/minilm/wrapped_dek.bin"
+    )]
+    aws_wrapped_dek_path: PathBuf,
 
     /// GCS bucket for model weights (GCP mode, gcs/gcs-kms).
     #[arg(
@@ -197,6 +214,7 @@ fn classify_exit_code(err: &str) -> i32 {
         || e.contains("model signing key must be")
         || e.contains("ephemeralml_model_signing_pubkey")
         || e.contains("unknown --model-format")
+        || e.contains("aws-s3-kms currently supports")
     {
         return 10;
     }
@@ -1583,80 +1601,229 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
         let receipt_key = ReceiptSigningKey::generate()?;
         let receipt_pk = receipt_key.public_key_bytes();
 
-        // Load model from --model-dir (required for production).
-        // Full KMS/S3 model loading is available via the GCP path; this path
-        // supports local model files bundled in the enclave Docker image.
+        // Load model from the selected production source.
+        // `local` keeps the historical bundled-model behavior. `aws-s3-kms`
+        // exercises the AWS-native high-confidence path: encrypted weights are
+        // fetched through the host VSock proxy and the DEK is released through
+        // AWS KMS RecipientInfo bound to a Nitro attestation document.
         let model_format = args.model_format.as_str();
         if !args.model_dir.exists() {
             return Err(format!(
                 "Model directory does not exist: {}. \
-                 Bundle model files in the enclave Docker image or mount via --model-dir.",
+                 Bundle model metadata in the enclave Docker image or mount via --model-dir.",
                 args.model_dir.display()
             )
             .into());
         }
 
         let load_start = std::time::Instant::now();
-        info!(
-            step = "model_load",
-            source = "local",
-            format = model_format,
-            path = %args.model_dir.display(),
-            "Loading model from local directory"
-        );
+        let model_source = args.model_source.as_deref().unwrap_or("local");
+        #[allow(unused_assignments)]
+        let mut model_hash: Option<[u8; 32]> = None;
+        let mut model_hash_scheme: Option<String> = None;
+        let mut kms_release_evidence: Option<Vec<u8>> = None;
 
-        let tokenizer_bytes = std::fs::read(args.model_dir.join("tokenizer.json"))
-            .map_err(|e| format!("Failed to read tokenizer.json: {}", e))?;
+        match model_source {
+            "local" => {
+                info!(
+                    step = "model_load",
+                    source = "local",
+                    format = model_format,
+                    path = %args.model_dir.display(),
+                    "Loading model from local directory"
+                );
 
-        let model_hash: Option<[u8; 32]>;
+                let tokenizer_bytes = std::fs::read(args.model_dir.join("tokenizer.json"))
+                    .map_err(|e| format!("Failed to read tokenizer.json: {}", e))?;
 
-        if model_format == "gguf" {
-            let gguf_bytes = std::fs::read(args.model_dir.join("model.gguf"))
-                .map_err(|e| format!("Failed to read model.gguf: {}", e))?;
+                if model_format == "gguf" {
+                    let gguf_bytes = std::fs::read(args.model_dir.join("model.gguf"))
+                        .map_err(|e| format!("Failed to read model.gguf: {}", e))?;
 
-            info!(
-                step = "model_load",
-                size_mb = gguf_bytes.len() as f64 / (1024.0 * 1024.0),
-                "GGUF model file loaded into memory"
-            );
+                    info!(
+                        step = "model_load",
+                        size_mb = gguf_bytes.len() as f64 / (1024.0 * 1024.0),
+                        "GGUF model file loaded into memory"
+                    );
 
-            // Compute model hash for AIR v1 receipts
-            {
-                use sha2::{Digest, Sha256};
-                model_hash = Some(Sha256::digest(&gguf_bytes).into());
+                    {
+                        use sha2::{Digest, Sha256};
+                        model_hash = Some(Sha256::digest(&gguf_bytes).into());
+                    }
+
+                    engine.register_model_gguf(&args.model_id, &gguf_bytes, &tokenizer_bytes)?;
+                } else if model_format == "safetensors" {
+                    let config_bytes = std::fs::read(args.model_dir.join("config.json"))
+                        .map_err(|e| format!("Failed to read config.json: {}", e))?;
+                    let weights_bytes = std::fs::read(args.model_dir.join("model.safetensors"))
+                        .map_err(|e| format!("Failed to read model.safetensors: {}", e))?;
+
+                    info!(
+                        step = "model_load",
+                        size_mb = weights_bytes.len() as f64 / (1024.0 * 1024.0),
+                        "Safetensors model files loaded into memory"
+                    );
+
+                    {
+                        use sha2::{Digest, Sha256};
+                        model_hash = Some(Sha256::digest(&weights_bytes).into());
+                    }
+
+                    engine.register_model(
+                        &args.model_id,
+                        &config_bytes,
+                        &weights_bytes,
+                        &tokenizer_bytes,
+                    )?;
+                } else {
+                    return Err(format!(
+                        "Unknown --model-format '{}'. Valid: safetensors, gguf",
+                        model_format
+                    )
+                    .into());
+                }
             }
+            "aws-s3-kms" => {
+                if model_format != "safetensors" {
+                    return Err("--model-source=aws-s3-kms currently supports --model-format=safetensors only"
+                        .into());
+                }
 
-            engine.register_model_gguf(&args.model_id, &gguf_bytes, &tokenizer_bytes)?;
-        } else if model_format == "safetensors" {
-            let config_bytes = std::fs::read(args.model_dir.join("config.json"))
-                .map_err(|e| format!("Failed to read config.json: {}", e))?;
-            let weights_bytes = std::fs::read(args.model_dir.join("model.safetensors"))
-                .map_err(|e| format!("Failed to read model.safetensors: {}", e))?;
-
-            info!(
-                step = "model_load",
-                size_mb = weights_bytes.len() as f64 / (1024.0 * 1024.0),
-                "Safetensors model files loaded into memory"
-            );
-
-            // Compute model hash for AIR v1 receipts
-            {
+                use ephemeral_ml_enclave::kms_client::KmsClient;
+                use ephemeral_ml_enclave::model_loader::ModelLoader;
                 use sha2::{Digest, Sha256};
-                model_hash = Some(Sha256::digest(&weights_bytes).into());
-            }
 
-            engine.register_model(
-                &args.model_id,
-                &config_bytes,
-                &weights_bytes,
-                &tokenizer_bytes,
-            )?;
-        } else {
-            return Err(format!(
-                "Unknown --model-format '{}'. Valid: safetensors, gguf",
-                model_format
-            )
-            .into());
+                let pk_hex = std::env::var("EPHEMERALML_MODEL_SIGNING_PUBKEY")
+                    .map(|v| v.trim().to_string())
+                    .map_err(|_| {
+                        "--model-source=aws-s3-kms requires EPHEMERALML_MODEL_SIGNING_PUBKEY"
+                    })?;
+                let pk_bytes = hex::decode(&pk_hex)
+                    .map_err(|e| format!("EPHEMERALML_MODEL_SIGNING_PUBKEY: invalid hex: {}", e))?;
+                if pk_bytes.len() != 32 {
+                    return Err(format!(
+                        "EPHEMERALML_MODEL_SIGNING_PUBKEY must be 64 hex chars (32 bytes), got {}",
+                        pk_bytes.len()
+                    )
+                    .into());
+                }
+                let mut trusted_signing_key = [0u8; 32];
+                trusted_signing_key.copy_from_slice(&pk_bytes);
+
+                info!(
+                    step = "model_load",
+                    source = "aws-s3-kms",
+                    format = model_format,
+                    manifest = %args.aws_model_manifest_path.display(),
+                    wrapped_dek = %args.aws_wrapped_dek_path.display(),
+                    "Loading encrypted model via AWS KMS RecipientInfo"
+                );
+
+                let config_bytes = std::fs::read(args.model_dir.join("config.json"))
+                    .map_err(|e| format!("Failed to read config.json: {}", e))?;
+                let tokenizer_bytes = std::fs::read(args.model_dir.join("tokenizer.json"))
+                    .map_err(|e| format!("Failed to read tokenizer.json: {}", e))?;
+                let manifest_bytes = std::fs::read(&args.aws_model_manifest_path).map_err(|e| {
+                    format!(
+                        "Failed to read {}: {}",
+                        args.aws_model_manifest_path.display(),
+                        e
+                    )
+                })?;
+                let wrapped_dek = std::fs::read(&args.aws_wrapped_dek_path).map_err(|e| {
+                    format!(
+                        "Failed to read {}: {}",
+                        args.aws_wrapped_dek_path.display(),
+                        e
+                    )
+                })?;
+                let manifest = ephemeral_ml_common::ModelManifest::from_json(&manifest_bytes)
+                    .map_err(|e| format!("manifest.json parse failed: {}", e))?;
+
+                let kms_client = KmsClient::new(attestation_provider.clone(), receipt_pk);
+                let loader = ModelLoader::new(kms_client, trusted_signing_key);
+                let (weights_bytes, mut release_evidence) = loader
+                    .load_model_with_evidence(&manifest, &wrapped_dek)
+                    .await
+                    .map_err(|e| format!("AWS KMS model load failed: {}", e))?;
+
+                let actual_model_hash: [u8; 32] = Sha256::digest(&weights_bytes).into();
+                manifest
+                    .validate_hash(&actual_model_hash)
+                    .map_err(|e| format!("Manifest weight hash validation failed: {}", e))?;
+
+                let tokenizer_hash: [u8; 32] = Sha256::digest(&tokenizer_bytes).into();
+                manifest
+                    .validate_tokenizer_hash(&tokenizer_hash)
+                    .map_err(|e| format!("Manifest tokenizer hash validation failed: {}", e))?;
+                let config_hash: [u8; 32] = Sha256::digest(&config_bytes).into();
+                manifest
+                    .validate_config_hash(&config_hash)
+                    .map_err(|e| format!("Manifest config hash validation failed: {}", e))?;
+
+                let effective_model_id = manifest.model_id.as_str();
+                engine.register_model(
+                    effective_model_id,
+                    &config_bytes,
+                    &weights_bytes,
+                    &tokenizer_bytes,
+                )?;
+                if effective_model_id != args.model_id {
+                    engine.add_alias(&args.model_id, effective_model_id)?;
+                    info!(
+                        step = "model_alias",
+                        alias = %args.model_id,
+                        target = %effective_model_id,
+                        "Registered model alias"
+                    );
+                }
+
+                if release_evidence.kms_key_arn.is_none() {
+                    release_evidence.kms_key_arn = Some(manifest.key_id.clone());
+                }
+                if release_evidence.model_kms_key_arn.is_none() {
+                    release_evidence.model_kms_key_arn = Some(manifest.key_id.clone());
+                }
+                if release_evidence
+                    .recipient_attestation
+                    .image_sha384
+                    .is_none()
+                {
+                    if let Ok(image_sha384) = std::env::var("CYNTRISEC_APPROVED_EIF_SHA384")
+                        .or_else(|_| std::env::var("EPHEMERALML_EIF_IMAGE_SHA384"))
+                    {
+                        let trimmed = image_sha384.trim();
+                        if trimmed.len() == 96 && trimmed.chars().all(|c| c.is_ascii_hexdigit()) {
+                            release_evidence.recipient_attestation.image_sha384 =
+                                Some(trimmed.to_ascii_lowercase());
+                        }
+                    }
+                }
+
+                kms_release_evidence =
+                    Some(serde_json::to_vec_pretty(&release_evidence).map_err(|e| {
+                        format!("KMS release evidence serialization failed: {}", e)
+                    })?);
+                model_hash = Some(actual_model_hash);
+                model_hash_scheme = Some("sha256-manifest".to_string());
+
+                info!(
+                    step = "model_load",
+                    source = "aws-s3-kms",
+                    model_id = %effective_model_id,
+                    kms_key = %manifest.key_id,
+                    elapsed_ms = load_start.elapsed().as_secs_f64() * 1000.0,
+                    size_mb = weights_bytes.len() as f64 / (1024.0 * 1024.0),
+                    "Model loaded through attestation-bound AWS KMS"
+                );
+            }
+            other => {
+                return Err(format!(
+                    "Unknown --model-source '{}'. Valid in Nitro production: local, aws-s3-kms",
+                    other
+                )
+                .into());
+            }
         }
 
         info!(
@@ -1747,7 +1914,7 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
         };
 
         // Build stage executor and attestation bridge (with AIR v1 receipt support)
-        let executor = EphemeralStageExecutor::with_air_v1(
+        let mut executor = EphemeralStageExecutor::with_air_v1(
             engine,
             attestation_provider.clone(),
             receipt_key,
@@ -1755,9 +1922,12 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
             Some(platform_evidence_hash),
             Some(boot_attestation_bytes),
             model_hash,
-            None,
+            model_hash_scheme,
             args.receipt_issuer.clone(),
         );
+        if let Some(kms_release_evidence) = kms_release_evidence {
+            executor = executor.with_kms_release_evidence(kms_release_evidence);
+        }
         let bridge = AttestationBridge::new(attestation_provider, receipt_pk)
             .with_platform_evidence_hash(platform_evidence_hash);
 

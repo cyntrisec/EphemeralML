@@ -93,7 +93,10 @@ impl Check for Role {
             }
         };
 
-        let expected_profile = format!("{}-host-profile", ctx.stack_name);
+        let expected_profile = std::env::var("CYNTRISEC_EXPECTED_HOST_PROFILE")
+            .ok()
+            .filter(|value| !value.trim().is_empty())
+            .unwrap_or_else(|| format!("{}-host-profile", ctx.stack_name));
         if profile_name != expected_profile {
             return fail(
                 start,

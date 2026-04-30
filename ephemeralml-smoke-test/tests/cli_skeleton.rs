@@ -1,4 +1,4 @@
-//! Skeleton-level integration tests for ephemeralml-smoke-test.
+//! CLI/output integration tests for ephemeralml-smoke-test.
 //!
 //! Same shape as doctor's: verifies CLI + exit codes + JSON shape that real
 //! stage probes must preserve when they land.
@@ -21,7 +21,13 @@ fn help_exits_zero() {
         .stdout(predicate::str::contains("--no-upload"))
         .stdout(predicate::str::contains("--verbose"))
         .stdout(predicate::str::contains("--stack-name"))
-        .stdout(predicate::str::contains("--retain-enclave"));
+        .stdout(predicate::str::contains("--retain-enclave"))
+        .stdout(predicate::str::contains("--doctor-bin"))
+        .stdout(predicate::str::contains("--doctor-timeout-secs"))
+        .stdout(predicate::str::contains("--eif-path"))
+        .stdout(predicate::str::contains("--host-bin"))
+        .stdout(predicate::str::contains("--verifier-bin"))
+        .stdout(predicate::str::contains("--expected-security-mode"));
 }
 
 #[test]
@@ -40,12 +46,12 @@ fn json_flag_emits_five_stages_always() {
     assert_eq!(
         output.status.code(),
         Some(1),
-        "skeleton should exit 1 because stage 1 fails SKELETON_UNIMPLEMENTED"
+        "smoke-test should exit 1 until the deployed doctor preflight passes"
     );
 
     let stdout = String::from_utf8(output.stdout).expect("utf-8");
     let parsed: serde_json::Value = serde_json::from_str(&stdout)
-        .unwrap_or_else(|e| panic!("skeleton --json stdout did not parse: {}\n{}", e, stdout));
+        .unwrap_or_else(|e| panic!("--json stdout did not parse: {}\n{}", e, stdout));
 
     assert_eq!(
         parsed.get("overall_status"),

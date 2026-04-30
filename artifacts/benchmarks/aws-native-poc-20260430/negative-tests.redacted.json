@@ -1,0 +1,214 @@
+[
+  {
+    "exit_code": 1,
+    "expected": "reject",
+    "name": "tampered_receipt",
+    "passed": true,
+    "verifier": {
+      "checks": [
+        {
+          "name": "COSE_DECODE",
+          "status": "Pass"
+        },
+        {
+          "name": "ALG",
+          "status": "Pass"
+        },
+        {
+          "name": "CONTENT_TYPE",
+          "status": "Pass"
+        },
+        {
+          "name": "PAYLOAD",
+          "status": "Pass"
+        },
+        {
+          "name": "EAT_PROFILE",
+          "status": "Pass"
+        },
+        {
+          "code": "SignatureFailed",
+          "detail": "Ed25519 verify_strict failed",
+          "name": "SIG",
+          "status": "Fail"
+        },
+        {
+          "name": "CTI",
+          "status": "Pass"
+        },
+        {
+          "name": "MHASH_PRESENT",
+          "status": "Pass"
+        },
+        {
+          "name": "MEAS",
+          "status": "Pass"
+        },
+        {
+          "name": "MTYPE",
+          "status": "Pass"
+        },
+        {
+          "name": "MHASH_SCHEME",
+          "status": "Pass"
+        },
+        {
+          "name": "SECURITY_MODE",
+          "status": "Pass"
+        },
+        {
+          "name": "FRESH",
+          "status": "Pass"
+        },
+        {
+          "name": "MHASH",
+          "status": "Pass"
+        },
+        {
+          "name": "RHASH",
+          "status": "Skip"
+        },
+        {
+          "name": "OHASH",
+          "status": "Skip"
+        },
+        {
+          "name": "ADHASH",
+          "status": "Pass"
+        },
+        {
+          "name": "MODEL",
+          "status": "Pass"
+        },
+        {
+          "name": "SECURITY_MODE_POLICY",
+          "status": "Pass"
+        },
+        {
+          "name": "PLATFORM",
+          "status": "Pass"
+        },
+        {
+          "name": "NONCE",
+          "status": "Skip"
+        },
+        {
+          "name": "REPLAY",
+          "status": "Skip"
+        }
+      ],
+      "verified": false
+    }
+  },
+  {
+    "exit_code": 1,
+    "expected": "reject",
+    "name": "wrong_attestation_sidecar",
+    "passed": true,
+    "verifier": {
+      "stderr_excerpt": "Error: Attestation COSE signature or certificate chain verification failed. The attestation document is not authentic.\n\nCaused by:\n    0: Client error: Attestation verification failed: COSE signature verification failed\n    1: Attestation verification failed: COSE signature verification failed\n",
+      "stdout_excerpt": ""
+    }
+  },
+  {
+    "exit_code": 1,
+    "expected": "reject",
+    "name": "wrong_model_hash",
+    "passed": true,
+    "verifier": {
+      "checks": [
+        {
+          "name": "COSE_DECODE",
+          "status": "Pass"
+        },
+        {
+          "name": "ALG",
+          "status": "Pass"
+        },
+        {
+          "name": "CONTENT_TYPE",
+          "status": "Pass"
+        },
+        {
+          "name": "PAYLOAD",
+          "status": "Pass"
+        },
+        {
+          "name": "EAT_PROFILE",
+          "status": "Pass"
+        },
+        {
+          "name": "SIG",
+          "status": "Pass"
+        },
+        {
+          "name": "CTI",
+          "status": "Pass"
+        },
+        {
+          "name": "MHASH_PRESENT",
+          "status": "Pass"
+        },
+        {
+          "name": "MEAS",
+          "status": "Pass"
+        },
+        {
+          "name": "MTYPE",
+          "status": "Pass"
+        },
+        {
+          "name": "MHASH_SCHEME",
+          "status": "Pass"
+        },
+        {
+          "name": "SECURITY_MODE",
+          "status": "Pass"
+        },
+        {
+          "name": "FRESH",
+          "status": "Pass"
+        },
+        {
+          "code": "ModelHashMismatch",
+          "detail": "expected 0000000000000000000000000000000000000000000000000000000000000000, got 53aa51172d142c89d9012cce15ae4d6cc0ca6895895114379cacb4fab128d9db",
+          "name": "MHASH",
+          "status": "Fail"
+        },
+        {
+          "name": "RHASH",
+          "status": "Skip"
+        },
+        {
+          "name": "OHASH",
+          "status": "Skip"
+        },
+        {
+          "name": "ADHASH",
+          "status": "Pass"
+        },
+        {
+          "name": "MODEL",
+          "status": "Pass"
+        },
+        {
+          "name": "SECURITY_MODE_POLICY",
+          "status": "Pass"
+        },
+        {
+          "name": "PLATFORM",
+          "status": "Pass"
+        },
+        {
+          "name": "NONCE",
+          "status": "Skip"
+        },
+        {
+          "name": "REPLAY",
+          "status": "Skip"
+        }
+      ],
+      "verified": false
+    }
+  }
+]

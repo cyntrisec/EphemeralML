@@ -18,6 +18,7 @@ use ephemeral_ml_common::air_verify::{AirCheckStatus, AirVerifyPolicy, AirVerify
 use ephemeral_ml_common::receipt_verify::{VerifyOptions, VerifyResult};
 use ephemeral_ml_common::ui::{air_check_meta, legacy_check_meta, GhostState, Ui, UiConfig};
 use ephemeral_ml_common::AttestationReceipt;
+use sha2::{Digest, Sha256};
 use std::fs;
 use std::io::IsTerminal;
 use std::path::PathBuf;
@@ -240,6 +241,14 @@ fn verify_air_v1_path(
         args.expected_response_hash.as_deref(),
         "expected-response-hash",
     )?;
+    let expected_attestation_doc_hash = match args.attestation.as_ref() {
+        Some(path) => {
+            let attestation =
+                fs::read(path).context("Failed to read attestation file for hash binding")?;
+            Some(Sha256::digest(attestation).into())
+        }
+        None => None,
+    };
 
     // Build policy from CLI args
     let policy = AirVerifyPolicy {
@@ -247,6 +256,7 @@ fn verify_air_v1_path(
         expected_model_hash,
         expected_request_hash,
         expected_response_hash,
+        expected_attestation_doc_hash,
         expected_model_id: args.expected_model.clone(),
         expected_security_mode: args.expected_security_mode.clone(),
         expected_platform: if args.measurement_type == "any" {

@@ -10,12 +10,17 @@ use ephemeral_ml_host::aws_proxy::AWSApiProxy;
 #[cfg(feature = "production")]
 use ephemeral_ml_host::storage::S3WeightStorage;
 use ephemeral_ml_host::storage::WeightStorage;
+use std::time::Instant;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use tokio::time::{timeout, Duration};
 use tracing::{error, info, warn};
 use tracing_subscriber::{fmt, EnvFilter};
 
 #[cfg(feature = "production")]
 use tokio_vsock::{VsockAddr, VsockListener, VMADDR_CID_ANY};
+
+const STORAGE_CHUNK_SIZE: usize = 16 * 1024 * 1024;
+const DEFAULT_AWS_KMS_TIMEOUT_SECS: u64 = 30;
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -180,7 +185,13 @@ async fn handle_connection<S: AsyncStream + 'static>(
                     "processing KMS request"
                 );
 
-                let kms_result = match req_env.request {
+                let kms_timeout = std::env::var("EPHEMERALML_KMS_PROXY_AWS_TIMEOUT_SECS")
+                    .ok()
+                    .and_then(|v| v.parse::<u64>().ok())
+                    .unwrap_or(DEFAULT_AWS_KMS_TIMEOUT_SECS);
+                let kms_started = Instant::now();
+
+                let timed_kms_result = match req_env.request {
                     ephemeral_ml_common::KmsRequest::Decrypt {
                         ciphertext_blob,
                         key_id,
@@ -188,15 +199,18 @@ async fn handle_connection<S: AsyncStream + 'static>(
                         grant_tokens,
                         recipient,
                     } => {
-                        proxy
-                            .decrypt(
+                        maybe_dump_recipient(&req_env.request_id, recipient.as_deref());
+                        timeout(
+                            Duration::from_secs(kms_timeout),
+                            proxy.decrypt(
                                 ciphertext_blob,
                                 key_id,
                                 encryption_context,
                                 grant_tokens,
                                 recipient,
-                            )
-                            .await
+                            ),
+                        )
+                        .await
                     }
                     ephemeral_ml_common::KmsRequest::GenerateDataKey {
                         key_id,
@@ -204,17 +218,43 @@ async fn handle_connection<S: AsyncStream + 'static>(
                         encryption_context,
                         recipient,
                     } => {
-                        proxy
-                            .generate_data_key(
+                        maybe_dump_recipient(&req_env.request_id, recipient.as_deref());
+                        timeout(
+                            Duration::from_secs(kms_timeout),
+                            proxy.generate_data_key(
                                 key_id,
                                 key_spec,
                                 encryption_context,
                                 None,
                                 recipient,
-                            )
-                            .await
+                            ),
+                        )
+                        .await
                     }
                 };
+                let kms_result = match timed_kms_result {
+                    Ok(result) => result,
+                    Err(_) => {
+                        warn!(
+                            event = "kms_timeout",
+                            request_id = %req_env.request_id,
+                            timeout_secs = kms_timeout,
+                            elapsed_ms = kms_started.elapsed().as_millis() as u64,
+                            "KMS operation timed out"
+                        );
+                        Err(ephemeral_ml_host::HostError::Host(
+                            ephemeral_ml_common::EphemeralError::KmsError(
+                                "KMS operation timed out".to_string(),
+                            ),
+                        ))
+                    }
+                };
+                info!(
+                    event = "kms_request_complete",
+                    request_id = %req_env.request_id,
+                    elapsed_ms = kms_started.elapsed().as_millis() as u64,
+                    success = kms_result.is_ok()
+                );
 
                 let response_env = match kms_result {
                     Ok((resp, aws_req_id)) => KmsProxyResponseEnvelope {
@@ -252,21 +292,58 @@ async fn handle_connection<S: AsyncStream + 'static>(
                     })?;
                 info!(event = "storage_request", model_id = %req.model_id, "fetching model data");
 
-                let resp = match storage.retrieve(&req.model_id).await {
-                    Ok(data) => StorageResponse::Data {
-                        payload: data,
-                        is_last: true,
-                    },
-                    Err(e) => {
-                        let err_msg: String = e.to_string();
-                        StorageResponse::Error { message: err_msg }
+                match storage.retrieve(&req.model_id).await {
+                    Ok(data) => {
+                        let total_len = data.len();
+                        let mut part_count = 0usize;
+                        if data.is_empty() {
+                            let resp = StorageResponse::Data {
+                                payload: Vec::new(),
+                                is_last: true,
+                            };
+                            let resp_payload = ephemeral_ml_common::cbor::to_vec(&resp)?;
+                            simple_frame::write_frame(&mut stream, TAG_STORAGE, &resp_payload)
+                                .await
+                                .map_err(|e| anyhow::anyhow!("write_frame error: {}", e))?;
+                        } else {
+                            for (idx, chunk) in data.chunks(STORAGE_CHUNK_SIZE).enumerate() {
+                                let is_last = (idx + 1) * STORAGE_CHUNK_SIZE >= total_len;
+                                let resp = StorageResponse::Data {
+                                    payload: chunk.to_vec(),
+                                    is_last,
+                                };
+                                let resp_payload = ephemeral_ml_common::cbor::to_vec(&resp)?;
+                                info!(
+                                    event = "storage_response_chunk",
+                                    model_id = %req.model_id,
+                                    part_index = idx,
+                                    payload_len = chunk.len(),
+                                    total_len = total_len,
+                                    is_last = is_last
+                                );
+                                simple_frame::write_frame(&mut stream, TAG_STORAGE, &resp_payload)
+                                    .await
+                                    .map_err(|e| anyhow::anyhow!("write_frame error: {}", e))?;
+                                part_count += 1;
+                            }
+                        }
+                        info!(
+                            event = "storage_response_complete",
+                            model_id = %req.model_id,
+                            total_len = total_len,
+                            part_count = part_count
+                        );
                     }
-                };
-
-                let resp_payload = ephemeral_ml_common::cbor::to_vec(&resp)?;
-                simple_frame::write_frame(&mut stream, TAG_STORAGE, &resp_payload)
-                    .await
-                    .map_err(|e| anyhow::anyhow!("write_frame error: {}", e))?;
+                    Err(e) => {
+                        let resp = StorageResponse::Error {
+                            message: e.to_string(),
+                        };
+                        let resp_payload = ephemeral_ml_common::cbor::to_vec(&resp)?;
+                        simple_frame::write_frame(&mut stream, TAG_STORAGE, &resp_payload)
+                            .await
+                            .map_err(|e| anyhow::anyhow!("write_frame error: {}", e))?;
+                    }
+                }
             }
             TAG_AUDIT => {
                 info!(event = "audit_request_raw", payload_len = payload.len());
@@ -374,4 +451,29 @@ async fn handle_connection<S: AsyncStream + 'static>(
     }
 
     Ok(())
+}
+
+fn maybe_dump_recipient(request_id: &str, recipient: Option<&[u8]>) {
+    let Some(recipient) = recipient else {
+        return;
+    };
+    let Ok(dir) = std::env::var("EPHEMERALML_KMS_PROXY_DUMP_DIR") else {
+        return;
+    };
+    if dir.trim().is_empty() {
+        return;
+    }
+    if let Err(e) = std::fs::create_dir_all(&dir) {
+        warn!(event = "kms_recipient_dump_failed", error = %e, "failed to create dump dir");
+        return;
+    }
+    let safe_request_id: String = request_id
+        .chars()
+        .filter(|c| c.is_ascii_alphanumeric() || *c == '-')
+        .collect();
+    let path = std::path::Path::new(&dir).join(format!("recipient-{safe_request_id}.cbor"));
+    match std::fs::write(&path, recipient) {
+        Ok(()) => info!(event = "kms_recipient_dumped", path = %path.display()),
+        Err(e) => warn!(event = "kms_recipient_dump_failed", error = %e),
+    }
 }

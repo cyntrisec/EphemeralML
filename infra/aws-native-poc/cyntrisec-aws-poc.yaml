@@ -1,0 +1,330 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >
+  Cyntrisec AWS-native PoC: Nitro Enclave host, customer-owned evidence bucket,
+  evidence KMS key, attestation-gated model KMS key, and SSM output contract.
+
+Parameters:
+  ProjectName:
+    Type: String
+    Default: cyntrisec-poc
+    AllowedPattern: "^[a-z0-9-]{3,32}$"
+    Description: Lowercase name prefix for AWS resources.
+  InstanceType:
+    Type: String
+    Default: m6i.xlarge
+    Description: Nitro Enclaves-capable instance type.
+  VpcId:
+    Type: AWS::EC2::VPC::Id
+    Description: VPC for the PoC host security group.
+  SubnetId:
+    Type: AWS::EC2::Subnet::Id
+    Description: Subnet for the PoC host.
+  KeyName:
+    Type: String
+    Default: ""
+    Description: Optional EC2 key pair for SSH. Leave empty for SSM-only access.
+  AllowedSshCidr:
+    Type: String
+    Default: ""
+    Description: Optional CIDR allowed to SSH to the host. Leave empty for SSM-only access.
+  EnclaveImageSha384:
+    Type: String
+    AllowedPattern: "^[0-9a-fA-F]{96}$"
+    Description: Approved Nitro EIF image SHA-384 for KMS RecipientAttestation.
+  LatestAmiId:
+    Type: AWS::SSM::Parameter::Value<AWS::EC2::Image::Id>
+    Default: /aws/service/ami-amazon-linux-latest/al2023-ami-kernel-default-x86_64
+
+Conditions:
+  HasKeyName: !Not [!Equals [!Ref KeyName, ""]]
+  EnableSshIngress: !Not [!Equals [!Ref AllowedSshCidr, ""]]
+
+Resources:
+  EvidenceKey:
+    Type: AWS::KMS::Key
+    Properties:
+      Description: !Sub "${ProjectName} evidence bucket key"
+      EnableKeyRotation: true
+      PendingWindowInDays: 7
+      KeyPolicy:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: EnableRootAdministration
+            Effect: Allow
+            Principal:
+              AWS: !Sub "arn:${AWS::Partition}:iam::${AWS::AccountId}:root"
+            Action: "kms:*"
+            Resource: "*"
+
+  EvidenceKeyAlias:
+    Type: AWS::KMS::Alias
+    Properties:
+      AliasName: !Sub "alias/${ProjectName}-evidence"
+      TargetKeyId: !Ref EvidenceKey
+
+  ModelKey:
+    Type: AWS::KMS::Key
+    Properties:
+      Description: !Sub "${ProjectName} attestation-gated model key"
+      EnableKeyRotation: true
+      PendingWindowInDays: 7
+      KeyPolicy:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: EnableRootAdministration
+            Effect: Allow
+            Principal:
+              AWS: !Sub "arn:${AWS::Partition}:iam::${AWS::AccountId}:root"
+            Action: "kms:*"
+            Resource: "*"
+
+  ModelKeyAlias:
+    Type: AWS::KMS::Alias
+    Properties:
+      AliasName: !Sub "alias/${ProjectName}-model"
+      TargetKeyId: !Ref ModelKey
+
+  EvidenceBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: aws:kms
+              KMSMasterKeyID: !GetAtt EvidenceKey.Arn
+            BucketKeyEnabled: true
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      VersioningConfiguration:
+        Status: Enabled
+
+  EvidenceBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref EvidenceBucket
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: DenyInsecureTransport
+            Effect: Deny
+            Principal: "*"
+            Action: "s3:*"
+            Resource:
+              - !GetAtt EvidenceBucket.Arn
+              - !Sub "${EvidenceBucket.Arn}/*"
+            Condition:
+              Bool:
+                aws:SecureTransport: false
+          - Sid: DenyUnencryptedObjectUploads
+            Effect: Deny
+            Principal: "*"
+            Action: "s3:PutObject"
+            Resource: !Sub "${EvidenceBucket.Arn}/*"
+            Condition:
+              StringNotEquals:
+                s3:x-amz-server-side-encryption: aws:kms
+
+  HostSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: !Sub "${ProjectName} Nitro host access"
+      VpcId: !Ref VpcId
+      SecurityGroupIngress: !If
+        - EnableSshIngress
+        - - IpProtocol: tcp
+            FromPort: 22
+            ToPort: 22
+            CidrIp: !Ref AllowedSshCidr
+        - []
+      SecurityGroupEgress:
+        - IpProtocol: -1
+          CidrIp: 0.0.0.0/0
+
+  HostRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "${ProjectName}-host-role-${AWS::Region}"
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ec2.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore
+      Policies:
+        - PolicyName: PilotConfigRead
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - ssm:GetParameter
+                  - ssm:GetParameters
+                  - ssm:GetParametersByPath
+                Resource: !Sub "arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter/cyntrisec/pilot/config/${AWS::StackName}/*"
+        - PolicyName: PilotEvidenceBucketAccess
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:GetBucketEncryption
+                  - s3:GetEncryptionConfiguration
+                  - s3:GetBucketPublicAccessBlock
+                  - s3:HeadBucket
+                  - s3:ListBucket
+                Resource: !GetAtt EvidenceBucket.Arn
+              - Effect: Allow
+                Action:
+                  - s3:GetObject
+                  - s3:PutObject
+                Resource: !Sub "${EvidenceBucket.Arn}/*"
+        - PolicyName: PilotKmsAccess
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - kms:DescribeKey
+                  - kms:GetKeyRotationStatus
+                Resource: !GetAtt EvidenceKey.Arn
+              - Effect: Allow
+                Action:
+                  - kms:GenerateDataKey
+                  - kms:Decrypt
+                Resource: !GetAtt EvidenceKey.Arn
+                Condition:
+                  StringEquals:
+                    kms:ViaService: !Sub "s3.${AWS::Region}.amazonaws.com"
+              - Effect: Allow
+                Action:
+                  - kms:DescribeKey
+                  - kms:GenerateDataKey
+                Resource: !GetAtt ModelKey.Arn
+                Condition:
+                  StringLike:
+                    kms:EncryptionContext:model_id: "*"
+                    kms:EncryptionContext:version: "*"
+              - Effect: Allow
+                Action:
+                  - kms:DescribeKey
+                  - kms:Decrypt
+                Resource: !GetAtt ModelKey.Arn
+                Condition:
+                  StringEqualsIgnoreCase:
+                    kms:RecipientAttestation:ImageSha384: !Ref EnclaveImageSha384
+
+  HostInstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      InstanceProfileName: !Sub "${ProjectName}-host-profile-${AWS::Region}"
+      Roles:
+        - !Ref HostRole
+
+  HostInstance:
+    Type: AWS::EC2::Instance
+    Properties:
+      ImageId: !Ref LatestAmiId
+      InstanceType: !Ref InstanceType
+      IamInstanceProfile: !Ref HostInstanceProfile
+      KeyName: !If [HasKeyName, !Ref KeyName, !Ref "AWS::NoValue"]
+      SubnetId: !Ref SubnetId
+      SecurityGroupIds:
+        - !Ref HostSecurityGroup
+      EnclaveOptions:
+        Enabled: true
+      MetadataOptions:
+        HttpEndpoint: enabled
+        HttpTokens: required
+      BlockDeviceMappings:
+        - DeviceName: /dev/xvda
+          Ebs:
+            VolumeSize: 40
+            VolumeType: gp3
+            Encrypted: true
+      UserData:
+        Fn::Base64: !Sub |
+          #!/bin/bash
+          set -euxo pipefail
+          dnf update -y
+          dnf install -y aws-nitro-enclaves-cli aws-nitro-enclaves-cli-devel docker jq git
+          systemctl enable --now docker
+          usermod -aG docker,ne ec2-user || true
+          /opt/aws/aws-nitro-enclaves-cli/bin/nitro-cli --version || true
+          printf -- '---\nmemory_mib: 4096\ncpu_count: 2\n' >/etc/nitro_enclaves/allocator.yaml
+          systemctl enable --now nitro-enclaves-allocator.service
+          mkdir -p /opt/cyntrisec/bin /opt/cyntrisec/eif
+          {
+            printf 'export CYNTRISEC_STACK_NAME=%s\n' '${AWS::StackName}'
+            printf 'export CYNTRISEC_EVIDENCE_BUCKET=%s\n' '${EvidenceBucket}'
+            printf 'export CYNTRISEC_EVIDENCE_KMS_KEY_ARN=%s\n' '${EvidenceKey.Arn}'
+            printf 'export CYNTRISEC_MODEL_KMS_KEY_ARN=%s\n' '${ModelKey.Arn}'
+            printf 'export CYNTRISEC_MODEL_KMS_ALIAS=%s\n' 'alias/${ProjectName}-model'
+            printf 'export CYNTRISEC_APPROVED_EIF_SHA384=%s\n' '${EnclaveImageSha384}'
+            printf 'export CYNTRISEC_EXPECTED_HOST_PROFILE=%s\n' '${ProjectName}-host-profile-${AWS::Region}'
+          } >/etc/cyntrisec-poc.env
+      Tags:
+        - Key: Name
+          Value: !Sub "${ProjectName}-nitro-host"
+        - Key: cyntrisec:poc
+          Value: aws-native
+
+  BucketNameParameter:
+    Type: AWS::SSM::Parameter
+    Properties:
+      Name: !Sub "/cyntrisec/pilot/config/${AWS::StackName}/bucket-name"
+      Type: String
+      Value: !Ref EvidenceBucket
+
+  EvidenceKmsAliasParameter:
+    Type: AWS::SSM::Parameter
+    Properties:
+      Name: !Sub "/cyntrisec/pilot/config/${AWS::StackName}/kms-key-alias"
+      Type: String
+      Value: !Sub "alias/${ProjectName}-evidence"
+
+  EvidenceKmsArnParameter:
+    Type: AWS::SSM::Parameter
+    Properties:
+      Name: !Sub "/cyntrisec/pilot/config/${AWS::StackName}/evidence-kms-key-arn"
+      Type: String
+      Value: !GetAtt EvidenceKey.Arn
+
+  ModelKmsArnParameter:
+    Type: AWS::SSM::Parameter
+    Properties:
+      Name: !Sub "/cyntrisec/pilot/config/${AWS::StackName}/model-kms-key-arn"
+      Type: String
+      Value: !GetAtt ModelKey.Arn
+
+  ApprovedEifSha384Parameter:
+    Type: AWS::SSM::Parameter
+    Properties:
+      Name: !Sub "/cyntrisec/pilot/config/${AWS::StackName}/approved-eif-sha384"
+      Type: String
+      Value: !Ref EnclaveImageSha384
+
+Outputs:
+  HostInstanceId:
+    Description: Nitro host instance ID.
+    Value: !Ref HostInstance
+  EvidenceBucketName:
+    Description: Customer-owned evidence bucket.
+    Value: !Ref EvidenceBucket
+  EvidenceKmsKeyArn:
+    Description: KMS key used for evidence bucket encryption.
+    Value: !GetAtt EvidenceKey.Arn
+  ModelKmsKeyArn:
+    Description: KMS key gated by Nitro RecipientAttestation for model release.
+    Value: !GetAtt ModelKey.Arn
+  ModelKmsAlias:
+    Description: Alias for the attestation-gated model key.
+    Value: !Sub "alias/${ProjectName}-model"
+  StackConfigPrefix:
+    Description: SSM parameter prefix consumed by doctor and smoke-test.
+    Value: !Sub "/cyntrisec/pilot/config/${AWS::StackName}/"

@@ -40,6 +40,34 @@ pub struct KmsProxyResponseEnvelope {
     pub response: KmsResponse,
 }
 
+/// Evidence that an attestation-bound AWS KMS release occurred.
+///
+/// This intentionally contains only non-secret metadata and hashes of opaque
+/// ciphertexts. It is suitable for inclusion in customer evidence bundles.
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct KmsReleaseEvidence {
+    pub status: String,
+    pub operation: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub kms_key_arn: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub model_kms_key_arn: Option<String>,
+    pub aws_request_id: String,
+    pub recipient_attestation: KmsRecipientAttestationEvidence,
+    pub ciphertext_for_recipient_sha256: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub encryption_context: Option<HashMap<String, String>>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct KmsRecipientAttestationEvidence {
+    /// Filled by the runtime when the EIF PCR0/ImageSha384 is known.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub image_sha384: Option<String>,
+    /// SHA-256 of the raw Nitro attestation document sent as KMS RecipientInfo.
+    pub attestation_doc_sha256: String,
+}
+
 #[derive(Debug, Serialize, Deserialize, Clone, Copy, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum KmsProxyErrorCode {

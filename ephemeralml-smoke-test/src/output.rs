@@ -10,6 +10,7 @@ use crate::context::Context;
 use crate::stages::{StageResult, StageStatus};
 use serde::Serialize;
 use serde_json::json;
+use sha2::{Digest, Sha256};
 
 pub enum Format {
     Text { verbose: bool },
@@ -128,6 +129,9 @@ fn render_json(ctx: &Context, results: &[StageResult], _verbose: bool) {
         "pass"
     };
     let total_duration_ms: u64 = results.iter().map(|r| r.duration_ms).sum();
+    let evidence_s3_uri = evidence_s3_uri(results);
+    let receipt_sha256 = file_sha256_hex(ctx.bundle_dir.join("receipt.cbor"));
+    let on_host_bundle_path = ctx.bundle_dir.to_string_lossy().to_string();
 
     let stages: Vec<JsonStage> = results
         .iter()
@@ -157,9 +161,9 @@ fn render_json(ctx: &Context, results: &[StageResult], _verbose: bool) {
         failed_stage,
         total_duration_ms,
         stages,
-        evidence_s3_uri: None,
-        receipt_sha256: None,
-        on_host_bundle_path: None,
+        evidence_s3_uri: evidence_s3_uri.as_deref(),
+        receipt_sha256: receipt_sha256.as_deref(),
+        on_host_bundle_path: Some(&on_host_bundle_path),
     };
 
     match serde_json::to_string(&report) {
@@ -174,6 +178,26 @@ fn render_json(ctx: &Context, results: &[StageResult], _verbose: bool) {
             );
         }
     }
+}
+
+fn evidence_s3_uri(results: &[StageResult]) -> Option<String> {
+    let s3 = results
+        .iter()
+        .find(|r| r.stage_name() == "s3_write" && matches!(r.status, StageStatus::Pass))?;
+    let bucket = s3
+        .details
+        .get("bucket")
+        .and_then(serde_json::Value::as_str)?;
+    let prefix = s3
+        .details
+        .get("prefix")
+        .and_then(serde_json::Value::as_str)?;
+    Some(format!("s3://{}/{}", bucket, prefix))
+}
+
+fn file_sha256_hex(path: impl AsRef<std::path::Path>) -> Option<String> {
+    let bytes = std::fs::read(path).ok()?;
+    Some(hex::encode(Sha256::digest(bytes)))
 }
 
 fn format_duration(ms: u64) -> String {

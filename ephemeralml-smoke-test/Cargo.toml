@@ -31,13 +31,13 @@ ephemeral-ml-common = { path = "../common" }
 ciborium = { workspace = true }
 
 # Stage 2 enclave launch uses nitro-cli via subprocess; Stage 3 inference
-# uses VSock to the enclave. Real impl wires these; the skeleton only lists
-# the dependency graph.
+# uses the production host orchestrator to talk to the enclave.
 tokio-vsock = { workspace = true }
 
 # Stage 5 S3 upload for the evidence bundle.
 aws-config = "1.5"
 aws-sdk-s3 = "1.70"
+aws-sdk-ssm = "1.55"
 
 [dev-dependencies]
 assert_cmd = "2.0"

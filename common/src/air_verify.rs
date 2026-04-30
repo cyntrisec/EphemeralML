@@ -78,6 +78,8 @@ pub enum AirCheckCode {
     RequestHashMismatch,
     /// `response_hash` does not match expected value
     ResponseHashMismatch,
+    /// `attestation_doc_hash` does not match expected attestation document hash
+    AttestationDocHashMismatch,
     /// `model_id` does not match expected value
     ModelIdMismatch,
     /// `security_mode` does not match expected value
@@ -122,6 +124,7 @@ impl std::fmt::Display for AirCheckCode {
             Self::ModelHashMismatch => write!(f, "MODEL_HASH_MISMATCH"),
             Self::RequestHashMismatch => write!(f, "REQUEST_HASH_MISMATCH"),
             Self::ResponseHashMismatch => write!(f, "RESPONSE_HASH_MISMATCH"),
+            Self::AttestationDocHashMismatch => write!(f, "ATTESTATION_DOC_HASH_MISMATCH"),
             Self::ModelIdMismatch => write!(f, "MODEL_ID_MISMATCH"),
             Self::SecurityModeMismatch => write!(f, "SECURITY_MODE_MISMATCH"),
             Self::EvaluationModeRejected => write!(f, "EVALUATION_MODE_REJECTED"),
@@ -239,6 +242,8 @@ pub struct AirVerifyPolicy {
     pub expected_request_hash: Option<[u8; 32]>,
     /// Expected `response_hash`. If set, OHASH check is enforced.
     pub expected_response_hash: Option<[u8; 32]>,
+    /// Expected `attestation_doc_hash`. If set, ADHASH check is enforced.
+    pub expected_attestation_doc_hash: Option<[u8; 32]>,
     /// Expected `model_id`. If set, MODEL check is enforced.
     pub expected_model_id: Option<String>,
     /// Expected `security_mode`. If set, SECURITY_MODE_POLICY check is enforced.
@@ -664,6 +669,28 @@ fn layer4_policy(claims: &AirReceiptClaims, policy: &AirVerifyPolicy, checks: &m
         None => checks.push(AirCheck::skip("OHASH")),
     }
 
+    // Attestation document hash match. This binds a supplied platform
+    // attestation document to the AIR receipt, rather than only using that
+    // document as a convenient place to extract the AIR signing key.
+    match &policy.expected_attestation_doc_hash {
+        Some(expected) => {
+            if claims.attestation_doc_hash == *expected {
+                checks.push(AirCheck::pass("ADHASH"));
+            } else {
+                checks.push(AirCheck::fail(
+                    "ADHASH",
+                    AirCheckCode::AttestationDocHashMismatch,
+                    format!(
+                        "expected {}, got {}",
+                        hex::encode(expected),
+                        hex::encode(claims.attestation_doc_hash)
+                    ),
+                ));
+            }
+        }
+        None => checks.push(AirCheck::skip("ADHASH")),
+    }
+
     // Model ID match
     match &policy.expected_model_id {
         Some(expected) => {
@@ -988,6 +1015,35 @@ mod tests {
         let result = verify_air_v1_receipt(&bytes, &key.public_key, &policy);
         assert!(!result.verified);
         assert!(result.has_failure(&AirCheckCode::ResponseHashMismatch));
+    }
+
+    #[test]
+    fn test_attestation_doc_hash_match() {
+        let key = ReceiptSigningKey::generate().unwrap();
+        let claims = fixture_claims();
+        let bytes = build_receipt(&claims, &key);
+
+        let policy = AirVerifyPolicy {
+            expected_attestation_doc_hash: Some([0xDD; 32]),
+            ..Default::default()
+        };
+        let result = verify_air_v1_receipt(&bytes, &key.public_key, &policy);
+        assert!(result.verified, "failures: {:?}", result.failures());
+    }
+
+    #[test]
+    fn test_attestation_doc_hash_mismatch() {
+        let key = ReceiptSigningKey::generate().unwrap();
+        let claims = fixture_claims();
+        let bytes = build_receipt(&claims, &key);
+
+        let policy = AirVerifyPolicy {
+            expected_attestation_doc_hash: Some([0xFF; 32]),
+            ..Default::default()
+        };
+        let result = verify_air_v1_receipt(&bytes, &key.public_key, &policy);
+        assert!(!result.verified);
+        assert!(result.has_failure(&AirCheckCode::AttestationDocHashMismatch));
     }
 
     // ── Layer 4: model ID mismatch ──────────────────────────────────

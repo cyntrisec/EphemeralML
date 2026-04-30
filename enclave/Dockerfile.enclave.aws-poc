@@ -1,0 +1,31 @@
+# EphemeralML AWS-native PoC enclave image.
+#
+# This image intentionally does NOT copy plaintext model weights into the EIF.
+# It contains only public model metadata plus the signed manifest and KMS-wrapped
+# DEK. Encrypted weights are fetched from S3 by kms_proxy_host and the DEK is
+# released by AWS KMS only when RecipientAttestation matches the approved EIF.
+
+FROM ubuntu:22.04
+
+RUN apt-get update && apt-get install -y \
+    libssl3 \
+    ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+COPY docker-stage/ephemeral-ml-enclave /app/enclave_app
+
+COPY docker-stage/model/config.json /app/test_assets/minilm/config.json
+COPY docker-stage/model/tokenizer.json /app/test_assets/minilm/tokenizer.json
+COPY docker-stage/model/manifest.json /app/test_assets/minilm/manifest.json
+COPY docker-stage/model/wrapped_dek.bin /app/test_assets/minilm/wrapped_dek.bin
+
+ARG MODEL_SIGNING_PUBKEY=""
+ENV EPHEMERALML_MODEL_SOURCE="aws-s3-kms" \
+    EPHEMERALML_MODEL_FORMAT="safetensors" \
+    EPHEMERALML_MODEL_SIGNING_PUBKEY="${MODEL_SIGNING_PUBKEY}" \
+    EPHEMERALML_AWS_MODEL_MANIFEST_PATH="/app/test_assets/minilm/manifest.json" \
+    EPHEMERALML_AWS_WRAPPED_DEK_PATH="/app/test_assets/minilm/wrapped_dek.bin"
+
+ENTRYPOINT ["/app/enclave_app", "--model-dir", "/app/test_assets/minilm", "--control-addr", "127.0.0.1:5000", "--data-in-addr", "127.0.0.1:5001", "--data-out-target", "127.0.0.1:5002"]

@@ -12,7 +12,7 @@
 use crate::cli::Args;
 use crate::context::Context;
 use async_trait::async_trait;
-use serde_json::Value;
+use serde_json::{json, Value};
 use std::time::Instant;
 
 mod doctor;
@@ -21,7 +21,6 @@ mod inference;
 mod receipt_verify;
 mod s3_write;
 
-#[allow(dead_code)] // Pass is not constructed by the skeleton; real stages will build Pass results.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum StageStatus {
     Pass,
@@ -63,17 +62,31 @@ impl StageResult {
         }
     }
 
-    pub fn skeleton_unimplemented(name: &'static str) -> Self {
+    pub fn pass(name: &'static str, details: Value) -> Self {
+        Self {
+            name,
+            status: StageStatus::Pass,
+            duration_ms: 0,
+            details,
+            check_code: None,
+            error: None,
+            reason: None,
+        }
+    }
+
+    pub fn fail(
+        name: &'static str,
+        check_code: impl Into<String>,
+        error: impl Into<String>,
+        details: Value,
+    ) -> Self {
         Self {
             name,
             status: StageStatus::Fail,
             duration_ms: 0,
-            details: Value::Null,
-            check_code: Some("SKELETON_UNIMPLEMENTED".into()),
-            error: Some(format!(
-                "{} stage not yet implemented in skeleton build",
-                name
-            )),
+            details,
+            check_code: Some(check_code.into()),
+            error: Some(error.into()),
             reason: None,
         }
     }
@@ -129,11 +142,13 @@ impl Registry {
             // Stage 5 skipped when --no-upload is set, but only if prior stages passed.
             if s.name() == "s3_write" && args.no_upload && !gate_failed {
                 out.push(StageResult::skipped("s3_write", "--no-upload flag set"));
+                write_stage_results_snapshot(ctx, &out);
                 continue;
             }
 
             if gate_failed {
                 out.push(StageResult::skipped(s.name(), "prior stage failed"));
+                write_stage_results_snapshot(ctx, &out);
                 continue;
             }
 
@@ -144,9 +159,46 @@ impl Registry {
                 gate_failed = true;
             }
             out.push(result);
+            write_stage_results_snapshot(ctx, &out);
         }
+        cleanup_kms_proxy(ctx);
         out
     }
+}
+
+fn write_stage_results_snapshot(ctx: &Context, results: &[StageResult]) {
+    let stages: Vec<Value> = results
+        .iter()
+        .map(|r| {
+            json!({
+                "stage": r.stage_name(),
+                "status": match r.status {
+                    StageStatus::Pass => "pass",
+                    StageStatus::Fail => "fail",
+                    StageStatus::Skipped => "skipped",
+                },
+                "duration_ms": r.duration_ms,
+                "check_code": r.check_code.as_deref(),
+                "reason": r.reason.as_deref(),
+            })
+        })
+        .collect();
+    let payload = json!({ "stages": stages });
+    if let Ok(bytes) = serde_json::to_vec_pretty(&payload) {
+        let _ = std::fs::write(ctx.bundle_dir.join("_stage-results.json"), bytes);
+    }
+}
+
+fn cleanup_kms_proxy(ctx: &Context) {
+    let pid_path = ctx.bundle_dir.join("kms_proxy_host.pid");
+    let Ok(pid) = std::fs::read_to_string(pid_path) else {
+        return;
+    };
+    let pid = pid.trim();
+    if pid.is_empty() || !pid.chars().all(|c| c.is_ascii_digit()) {
+        return;
+    }
+    let _ = std::process::Command::new("kill").arg(pid).status();
 }
 
 #[cfg(test)]
@@ -161,7 +213,8 @@ mod tests {
             account_id: "000000000000".into(),
             region: "us-east-1".into(),
             retain_enclave: false,
-            no_upload: false,
+            bundle_dir: std::env::temp_dir()
+                .join(format!("cyntrisec-smoke-test-{}", uuid::Uuid::new_v4())),
         }
     }
 
@@ -172,6 +225,29 @@ mod tests {
             verbose: false,
             stack_name: None,
             retain_enclave: false,
+            doctor_bin: "ephemeralml-doctor".into(),
+            doctor_timeout_secs: 60,
+            bundle_dir: None,
+            eif_path: "/opt/cyntrisec/eif/ephemeralml-pilot.eif".into(),
+            nitro_cli: "nitro-cli".into(),
+            kms_proxy_bin: "kms_proxy_host".into(),
+            terminate_existing: false,
+            debug_enclave: false,
+            enclave_cid: 16,
+            enclave_memory_mib: 4096,
+            enclave_cpu_count: 2,
+            enclave_boot_wait_secs: 15,
+            host_bin: "ephemeral-ml-host".into(),
+            inference_timeout_secs: 180,
+            input_text: crate::context::CANONICAL_INPUT.to_string(),
+            verifier_bin: "ephemeralml-verify".into(),
+            expected_model: "stage-0".into(),
+            expected_model_hash: None,
+            expected_security_mode: "production".into(),
+            measurement_type: "nitro-pcr".into(),
+            max_age_secs: 3600,
+            evidence_bucket: None,
+            model_bucket: None,
         }
     }
 
@@ -207,7 +283,8 @@ mod tests {
     async fn early_fail_marks_later_stages_skipped() {
         let reg = Registry::default();
         let results = reg.run(&ctx(), &args()).await;
-        // Skeleton fails at stage 1 (doctor). Stages 2..5 must be Skipped.
+        // Without a configured doctor binary in unit tests, Stage 1 fails and
+        // Stages 2..5 must be Skipped.
         assert!(matches!(results[0].status, StageStatus::Fail));
         for later in &results[1..] {
             assert!(
@@ -223,23 +300,44 @@ mod tests {
     #[tokio::test]
     async fn no_upload_skips_stage_5_with_specific_reason() {
         // Use a custom registry that passes the first 4 stages so we can
-        // observe the --no-upload branch on stage 5. Since the real skeleton
-        // fails stage 1, this test covers the gating logic via the direct
-        // Skipped constructor path.
+        // observe the --no-upload branch on stage 5. In local unit tests the
+        // doctor usually fails first, so this accepts either skip reason.
         let args = Args {
             json: false,
             no_upload: true,
             verbose: false,
             stack_name: None,
             retain_enclave: false,
+            doctor_bin: "ephemeralml-doctor".into(),
+            doctor_timeout_secs: 60,
+            bundle_dir: None,
+            eif_path: "/opt/cyntrisec/eif/ephemeralml-pilot.eif".into(),
+            nitro_cli: "nitro-cli".into(),
+            kms_proxy_bin: "kms_proxy_host".into(),
+            terminate_existing: false,
+            debug_enclave: false,
+            enclave_cid: 16,
+            enclave_memory_mib: 4096,
+            enclave_cpu_count: 2,
+            enclave_boot_wait_secs: 15,
+            host_bin: "ephemeral-ml-host".into(),
+            inference_timeout_secs: 180,
+            input_text: crate::context::CANONICAL_INPUT.to_string(),
+            verifier_bin: "ephemeralml-verify".into(),
+            expected_model: "stage-0".into(),
+            expected_model_hash: None,
+            expected_security_mode: "production".into(),
+            measurement_type: "nitro-pcr".into(),
+            max_age_secs: 3600,
+            evidence_bucket: None,
+            model_bucket: None,
         };
         let reg = Registry::default();
         let results = reg.run(&ctx(), &args).await;
         let s3 = results.last().expect("s3_write entry");
-        // Either Skipped with "--no-upload flag set" (if prior stages somehow
-        // passed in a future real-probe build) OR Skipped with "prior stage
-        // failed" (current skeleton behavior). Both are valid and the test
-        // verifies the framework handles both without errors.
+        // Either Skipped with "--no-upload flag set" (if prior stages pass) or
+        // Skipped with "prior stage failed" (local test environment). Both are
+        // valid and the test verifies the framework handles both without error.
         assert!(matches!(s3.status, StageStatus::Skipped));
     }
 }

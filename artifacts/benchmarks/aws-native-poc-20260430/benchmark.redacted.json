@@ -1,0 +1,76 @@
+{
+  "schema_version": "1",
+  "run_id": "20260430T175711Z",
+  "timestamp_utc": "2026-04-30T17:57:11Z",
+  "git_commit": null,
+  "release_bundle_sha256": null,
+  "eif_sha384": "184b2a72e7bbe6d84dfddc586d3ce7ecc49085c044f31594e67042b6a5ff4e010f7a2052e430190b6bb54762059c4b21",
+  "environment": {
+    "region": "us-east-1",
+    "availability_zone": "us-east-1a",
+    "instance_type": "m7i.xlarge",
+    "ami_id": "ami-098e39bafa7e7303d",
+    "kernel": "6.1.166-197.305.amzn2023.x86_64",
+    "nitro_cli_version": "Nitro CLI 1.4.4",
+    "enclave_cid": 16,
+    "enclave_cpu_count": 2,
+    "enclave_memory_mib": 4096
+  },
+  "timings_ms": {
+    "cloudformation_stack_create_ms": null,
+    "host_bootstrap_ms": null,
+    "release_bundle_install_ms": null,
+    "doctor_total_ms": 1383,
+    "doctor_allocator_ms": 44,
+    "doctor_eif_ms": 898,
+    "doctor_role_ms": 112,
+    "doctor_bucket_ms": 149,
+    "doctor_kms_ms": 87,
+    "doctor_clock_ms": 6,
+    "kms_model_decrypt_ms": 35,
+    "enclave_launch_ms": 19228,
+    "attestation_collect_ms": null,
+    "model_load_ms": null,
+    "synthetic_inference_ms": 67,
+    "air_sign_ms": null,
+    "receipt_verify_ms": 38,
+    "s3_upload_ms": 517,
+    "total_smoke_test_ms": 21900
+  },
+  "evidence_sizes": {
+    "receipt_bytes": 605,
+    "attestation_document_bytes": 5118,
+    "verification_json_bytes": 1396,
+    "full_bundle_bytes": 56378
+  },
+  "negative_tests": [
+    {
+      "name": "tampered_receipt",
+      "expected_failure_code": "reject",
+      "actual_failure_code": "SignatureFailed",
+      "duration_ms": null,
+      "passed": true
+    },
+    {
+      "name": "wrong_attestation_sidecar",
+      "expected_failure_code": "reject",
+      "actual_failure_code": "VerifierRejected",
+      "duration_ms": null,
+      "passed": true
+    },
+    {
+      "name": "wrong_model_hash",
+      "expected_failure_code": "reject",
+      "actual_failure_code": "ModelHashMismatch",
+      "duration_ms": null,
+      "passed": true
+    }
+  ],
+  "cost": {
+    "instance_runtime_minutes": null,
+    "ec2_estimated_usd": null,
+    "kms_api_calls": null,
+    "s3_api_calls": null,
+    "total_estimated_usd": null
+  }
+}

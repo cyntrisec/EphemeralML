@@ -15,8 +15,21 @@ pub struct KmsProxyClientTimeouts {
 
 impl Default for KmsProxyClientTimeouts {
     fn default() -> Self {
-        // v1 defaults aligned with DoD/SLO:
-        // hard deadline 800ms for end-to-end (enclave→proxy→KMS→proxy→enclave).
+        #[cfg(feature = "production")]
+        {
+            // Live AWS KMS RecipientAttestation calls can take multiple seconds
+            // under cold-start, IMDS, or network jitter. Keep a hard deadline,
+            // but do not use the local/mock latency SLO for production Nitro.
+            return Self {
+                connect: Duration::from_secs(2),
+                io: Duration::from_secs(15),
+                overall: Duration::from_secs(30),
+            };
+        }
+
+        #[cfg(not(feature = "production"))]
+        // Local/mock defaults aligned with the original DoD/SLO:
+        // hard deadline 800ms for end-to-end (enclave->proxy->KMS->proxy->enclave).
         Self {
             connect: Duration::from_millis(200),
             io: Duration::from_millis(300),
@@ -197,17 +210,108 @@ impl KmsProxyClient {
             EnclaveError::Enclave(EphemeralError::SerializationError(e.to_string()))
         })?;
 
-        let response_payload = self.send_tagged(TAG_STORAGE, &payload).await?;
+        let storage_timeouts = KmsProxyClientTimeouts {
+            connect: Duration::from_secs(2),
+            io: Duration::from_secs(180),
+            overall: Duration::from_secs(300),
+        };
+        let started = Instant::now();
+        let remaining = |overall: Duration| -> Duration {
+            overall
+                .checked_sub(started.elapsed())
+                .unwrap_or_else(|| Duration::from_secs(0))
+        };
 
-        let response: StorageResponse = ephemeral_ml_common::cbor::from_slice(&response_payload)
-            .map_err(|e| {
-                EnclaveError::Enclave(EphemeralError::SerializationError(e.to_string()))
-            })?;
+        #[cfg(not(feature = "production"))]
+        let mut stream = tokio::time::timeout(
+            storage_timeouts
+                .connect
+                .min(remaining(storage_timeouts.overall)),
+            tokio::net::TcpStream::connect(&self.host_addr),
+        )
+        .await
+        .map_err(|_| {
+            EnclaveError::Enclave(EphemeralError::Timeout(
+                "Storage proxy connect timeout".to_string(),
+            ))
+        })?
+        .map_err(|e| {
+            EnclaveError::Enclave(EphemeralError::NetworkError(format!(
+                "Failed to connect to host storage proxy (TCP): {}",
+                e
+            )))
+        })?;
 
-        match response {
-            StorageResponse::Data { payload, .. } => Ok(payload),
-            StorageResponse::Error { message } => {
-                Err(EnclaveError::Enclave(EphemeralError::StorageError(message)))
+        #[cfg(feature = "production")]
+        let mut stream = tokio::time::timeout(
+            storage_timeouts
+                .connect
+                .min(remaining(storage_timeouts.overall)),
+            tokio_vsock::VsockStream::connect(tokio_vsock::VsockAddr::new(self.cid, self.port)),
+        )
+        .await
+        .map_err(|_| {
+            EnclaveError::Enclave(EphemeralError::Timeout(
+                "Storage proxy connect timeout".to_string(),
+            ))
+        })?
+        .map_err(|e| {
+            EnclaveError::Enclave(EphemeralError::NetworkError(format!(
+                "Failed to connect to host storage proxy (VSock): {}",
+                e
+            )))
+        })?;
+
+        tokio::time::timeout(
+            storage_timeouts.io.min(remaining(storage_timeouts.overall)),
+            simple_frame::write_frame(&mut stream, TAG_STORAGE, &payload),
+        )
+        .await
+        .map_err(|_| {
+            EnclaveError::Enclave(EphemeralError::Timeout(
+                "Storage proxy write timeout".to_string(),
+            ))
+        })?
+        .map_err(EnclaveError::Enclave)?;
+
+        let mut model = Vec::new();
+        loop {
+            let (resp_tag, response_payload) = tokio::time::timeout(
+                storage_timeouts.io.min(remaining(storage_timeouts.overall)),
+                simple_frame::read_frame(&mut stream),
+            )
+            .await
+            .map_err(|_| {
+                EnclaveError::Enclave(EphemeralError::Timeout(
+                    "Storage proxy read timeout".to_string(),
+                ))
+            })?
+            .map_err(EnclaveError::Enclave)?;
+
+            if resp_tag != TAG_STORAGE {
+                return Err(EnclaveError::Enclave(EphemeralError::ProtocolError(
+                    format!(
+                        "Expected storage tag 0x{:02x}, got 0x{:02x}",
+                        TAG_STORAGE, resp_tag
+                    ),
+                )));
+            }
+
+            let response: StorageResponse =
+                ephemeral_ml_common::cbor::from_slice(&response_payload).map_err(|e| {
+                    EnclaveError::Enclave(EphemeralError::SerializationError(e.to_string()))
+                })?;
+
+            match response {
+                StorageResponse::Data { payload, is_last } => {
+                    model.extend_from_slice(&payload);
+                    if is_last {
+                        return Ok(model);
+                    }
+                }
+                StorageResponse::Error { message } => {
+                    return Err(EnclaveError::Enclave(EphemeralError::StorageError(message)));
+                }
             }
         }
     }

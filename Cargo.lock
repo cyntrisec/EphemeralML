@@ -2026,6 +2026,7 @@ dependencies = [
  "async-trait",
  "aws-config",
  "aws-sdk-s3",
+ "aws-sdk-ssm",
  "chrono",
  "ciborium",
  "clap",

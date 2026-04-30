@@ -28,6 +28,8 @@ pub struct EphemeralStageExecutor<A: AttestationProvider> {
     receipt_issuer: String,
     /// Optional boot-time attestation artifact to emit alongside receipts.
     boot_attestation_bytes: Option<bytes::Bytes>,
+    /// Optional KMS RecipientInfo release evidence to emit alongside receipts.
+    kms_release_bytes: Option<bytes::Bytes>,
 }
 
 impl<A: AttestationProvider> EphemeralStageExecutor<A> {
@@ -96,7 +98,13 @@ impl<A: AttestationProvider> EphemeralStageExecutor<A> {
             model_hash_scheme,
             receipt_issuer,
             boot_attestation_bytes: boot_attestation_bytes.map(bytes::Bytes::from),
+            kms_release_bytes: None,
         }
+    }
+
+    pub fn with_kms_release_evidence(mut self, kms_release_bytes: Vec<u8>) -> Self {
+        self.kms_release_bytes = Some(bytes::Bytes::from(kms_release_bytes));
+        self
     }
 }
 
@@ -110,6 +118,10 @@ fn is_aux_receipt_name(name: &str) -> bool {
 
 fn is_attestation_sidecar_name(name: &str) -> bool {
     name == "__attestation__"
+}
+
+fn is_kms_release_sidecar_name(name: &str) -> bool {
+    name == "__kms_release__"
 }
 
 #[async_trait]
@@ -139,7 +151,9 @@ impl<A: AttestationProvider + Send + Sync> StageExecutor for EphemeralStageExecu
         for tensor in &inputs {
             if is_legacy_chain_receipt_name(&tensor.name) {
                 prev_receipt_tensors.push(tensor.clone());
-            } else if is_aux_receipt_name(&tensor.name) || is_attestation_sidecar_name(&tensor.name)
+            } else if is_aux_receipt_name(&tensor.name)
+                || is_attestation_sidecar_name(&tensor.name)
+                || is_kms_release_sidecar_name(&tensor.name)
             {
                 // AIR v1 tensors are metadata sidecars and must not be chained into the
                 // legacy previous_receipt_hash. Attestation sidecars are proof artifacts,
@@ -386,6 +400,15 @@ impl<A: AttestationProvider + Send + Sync> StageExecutor for EphemeralStageExecu
                 dtype: confidential_ml_transport::DType::U8,
                 shape: vec![attestation_bytes.len() as u32],
                 data: attestation_bytes.clone(),
+            });
+        }
+
+        if let Some(kms_release_bytes) = &self.kms_release_bytes {
+            out_tensors.push(OwnedTensor {
+                name: "__kms_release__".to_string(),
+                dtype: confidential_ml_transport::DType::U8,
+                shape: vec![kms_release_bytes.len() as u32],
+                data: kms_release_bytes.clone(),
             });
         }
 
