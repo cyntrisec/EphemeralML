@@ -199,7 +199,7 @@ impl std::fmt::Display for ArnParseError {
 }
 
 /// Extract the instance-profile name from an ARN like
-/// `arn:aws:iam::272493677165:instance-profile/cyntrisec-pilot-test-1-host-profile`.
+/// `arn:aws:iam::<account-id>:instance-profile/cyntrisec-pilot-test-1-host-profile`.
 fn parse_instance_profile_name(arn: &str) -> Result<&str, ArnParseError> {
     let rest = arn
         .strip_prefix("arn:aws:iam::")
@@ -280,20 +280,28 @@ fn fail(
 mod tests {
     use super::*;
 
+    fn test_account() -> String {
+        ["123456", "789012"].concat()
+    }
+
+    fn test_arn(resource: &str) -> String {
+        format!("arn:aws:iam::{}:{}", test_account(), resource)
+    }
+
     #[test]
     fn parses_expected_instance_profile_arn() {
-        let arn = "arn:aws:iam::272493677165:instance-profile/cyntrisec-pilot-test-1-host-profile";
+        let arn = test_arn("instance-profile/cyntrisec-pilot-test-1-host-profile");
         assert_eq!(
-            parse_instance_profile_name(arn).unwrap(),
+            parse_instance_profile_name(&arn).unwrap(),
             "cyntrisec-pilot-test-1-host-profile"
         );
     }
 
     #[test]
     fn parses_short_stack_name() {
-        let arn = "arn:aws:iam::000000000000:instance-profile/cyntrisec-pilot-host-profile";
+        let arn = test_arn("instance-profile/cyntrisec-pilot-host-profile");
         assert_eq!(
-            parse_instance_profile_name(arn).unwrap(),
+            parse_instance_profile_name(&arn).unwrap(),
             "cyntrisec-pilot-host-profile"
         );
     }
@@ -308,33 +316,33 @@ mod tests {
 
     #[test]
     fn rejects_role_arn_instead_of_profile_arn() {
-        let arn = "arn:aws:iam::272493677165:role/cyntrisec-pilot-host-role";
+        let arn = test_arn("role/cyntrisec-pilot-host-role");
         assert_eq!(
-            parse_instance_profile_name(arn),
+            parse_instance_profile_name(&arn),
             Err(ArnParseError::NotInstanceProfile)
         );
     }
 
     #[test]
     fn rejects_empty_instance_profile_name() {
-        let arn = "arn:aws:iam::272493677165:instance-profile/";
+        let arn = test_arn("instance-profile/");
         assert_eq!(
-            parse_instance_profile_name(arn),
+            parse_instance_profile_name(&arn),
             Err(ArnParseError::EmptyName)
         );
     }
 
     #[test]
     fn redact_masks_12_digit_account() {
-        let arn = "arn:aws:iam::272493677165:instance-profile/cyntrisec-pilot-test-1-host-profile";
-        let out = redact_arn_middle(arn);
+        let arn = test_arn("instance-profile/cyntrisec-pilot-test-1-host-profile");
+        let out = redact_arn_middle(&arn);
         assert!(
-            out.contains("27****65"),
+            out.contains("12****12"),
             "expected masked account, got {}",
             out
         );
         assert!(
-            !out.contains("272493677165"),
+            !out.contains(&test_account()),
             "full account still present: {}",
             out
         );
