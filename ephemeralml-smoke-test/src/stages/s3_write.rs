@@ -82,7 +82,7 @@ impl Stage for S3Write {
 
         let manifest = match build_manifest(ctx) {
             Ok(manifest) => manifest,
-            Err(result) => return result,
+            Err(result) => return *result,
         };
         let manifest_path = ctx.bundle_dir.join("manifest.json");
         let manifest_bytes = serde_json::to_vec_pretty(&manifest).unwrap_or_default();
@@ -148,7 +148,7 @@ impl Stage for S3Write {
         }
         let manifest = match build_manifest(ctx) {
             Ok(manifest) => manifest,
-            Err(result) => return result,
+            Err(result) => return *result,
         };
         let manifest_bytes = serde_json::to_vec_pretty(&manifest).unwrap_or_default();
         if let Err(e) = std::fs::write(&manifest_path, manifest_bytes) {
@@ -206,17 +206,13 @@ fn write_benchmark(ctx: &Context, args: &Args, s3_upload_ms: Option<u64>) -> Res
             .and_then(Value::as_str)
             .map(ToString::to_string)
     });
-    let total_smoke_test_ms = if let Some(s3_upload_ms) = s3_upload_ms {
-        Some(
-            stage_duration(&stage_results, "doctor").unwrap_or_default()
-                + stage_duration(&stage_results, "enclave_launch").unwrap_or_default()
-                + stage_duration(&stage_results, "inference").unwrap_or_default()
-                + stage_duration(&stage_results, "receipt_verify").unwrap_or_default()
-                + s3_upload_ms,
-        )
-    } else {
-        None
-    };
+    let total_smoke_test_ms = s3_upload_ms.map(|s3_upload_ms| {
+        stage_duration(&stage_results, "doctor").unwrap_or_default()
+            + stage_duration(&stage_results, "enclave_launch").unwrap_or_default()
+            + stage_duration(&stage_results, "inference").unwrap_or_default()
+            + stage_duration(&stage_results, "receipt_verify").unwrap_or_default()
+            + s3_upload_ms
+    });
     let report = BenchmarkReport {
         schema_version: BENCHMARK_SCHEMA_VERSION.to_string(),
         run_id: ctx.timestamp.format("%Y%m%dT%H%M%SZ").to_string(),
@@ -234,7 +230,6 @@ fn write_benchmark(ctx: &Context, args: &Args, s3_upload_ms: Option<u64>) -> Res
             enclave_cid: Some(args.enclave_cid),
             enclave_cpu_count: Some(args.enclave_cpu_count),
             enclave_memory_mib: Some(args.enclave_memory_mib),
-            ..Default::default()
         },
         timings_ms: BenchmarkTimings {
             doctor_total_ms: stage_duration(&stage_results, "doctor"),
@@ -373,17 +368,17 @@ fn require_str_any<'a>(value: &'a serde_json::Value, keys: &[&str]) -> Option<&'
     keys.iter().find_map(|key| require_str(value, key))
 }
 
-fn build_manifest(ctx: &Context) -> Result<crate::bundle::Manifest, StageResult> {
+fn build_manifest(ctx: &Context) -> Result<crate::bundle::Manifest, Box<StageResult>> {
     let mut files = Vec::new();
     for name in BUNDLE_FILE_NAMES {
         let path = ctx.bundle_dir.join(name);
         let bytes = std::fs::read(&path).map_err(|e| {
-            StageResult::fail(
+            Box::new(StageResult::fail(
                 "s3_write",
                 "BUNDLE_FILE_READ_FAILED",
                 format!("failed to read {}: {}", path.display(), e),
                 json!({ "path": &path }),
-            )
+            ))
         })?;
         files.push(crate::bundle::FileEntry {
             name: (*name).to_string(),
@@ -547,14 +542,14 @@ fn parse_kms_proxy_elapsed_ms(ctx: &Context) -> Option<u64> {
     let text = std::fs::read_to_string(ctx.bundle_dir.join("kms_proxy_host.stdout")).ok()?;
     text.lines()
         .find(|line| line.contains("kms_request_complete"))
-        .and_then(|line| parse_elapsed_ms_field(line))
+        .and_then(parse_elapsed_ms_field)
 }
 
 fn parse_host_inference_elapsed_ms(ctx: &Context) -> Option<u64> {
     let text = std::fs::read_to_string(ctx.bundle_dir.join("host_output.log")).ok()?;
     text.lines()
         .find(|line| line.contains("Inference complete"))
-        .and_then(|line| parse_elapsed_ms_field(line))
+        .and_then(parse_elapsed_ms_field)
 }
 
 fn parse_elapsed_ms_field(line: &str) -> Option<u64> {
