@@ -4,15 +4,16 @@ Date: 2026-04-30
 
 This packet is a redacted summary of the first clean benchmark rerun for the
 Cyntrisec AWS-native PoC. Raw attestation documents, raw receipts, KMS release
-JSON, and host logs are intentionally not included here. The full evidence
-bundle remains in the PoC S3 bucket.
+JSON, host logs, cloud account identifiers, and exact resource identifiers are
+intentionally not included here. The full evidence bundle remains in the
+private PoC S3 bucket.
 
 ## Evidence Location
 
-- Stack: `cyntrisec-aws-poc-20260428`
+- Stack: AWS-native PoC stack in a private AWS account
 - Region: `us-east-1`
-- Evidence prefix: `s3://cyntrisec-aws-poc-20260428-evidencebucket-rzyf7sfo9ouk/smoke-tests/20260430T175711Z/`
-- Local bundle path on host: `/tmp/cyntrisec-aws-poc-run7/bundle`
+- Evidence prefix: private S3 evidence bucket, `smoke-tests/20260430T175711Z/`
+- Local bundle path on host: redacted
 - Receipt SHA-256: `473355582743d03d61846fc13aa7670a91653b2d1d59d688317e9e5b1d52cfca`
 
 ## Platform
@@ -87,5 +88,5 @@ After the run:
 - Nitro enclave cleanup command returned no running enclaves.
 - `kms_proxy_host` was killed if present.
 - Temporary SSH ingress from the Codex IP was revoked.
-- EC2 instance `i-0701d3534b5a443ab` was stopped and has no public IP.
+- The EC2 host was stopped and had no public IP.
 - Temporary S3 object `_codex/ephemeralml-smoke-test-20260430` was deleted.

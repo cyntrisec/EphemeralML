@@ -9,7 +9,7 @@
     "region": "us-east-1",
     "availability_zone": "us-east-1a",
     "instance_type": "m7i.xlarge",
-    "ami_id": "ami-098e39bafa7e7303d",
+    "ami_id": null,
     "kernel": "6.1.166-197.305.amzn2023.x86_64",
     "nitro_cli_version": "Nitro CLI 1.4.4",
     "enclave_cid": 16,
