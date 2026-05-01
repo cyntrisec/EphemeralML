@@ -379,7 +379,7 @@ jobs:
           done
 
       - name: Attest SLSA L2 build provenance per artifact
-        uses: actions/attest-build-provenance@v1
+        uses: actions/attest-build-provenance@v4
         with:
           subject-path: |
             dist/ephemeralml-doctor
