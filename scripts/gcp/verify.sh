@@ -175,16 +175,17 @@ fi
 INFERENCE_START=$(date +%s%N)
 # When both MRTD and audience are unpinned (post-deploy smoke test),
 # the insecure override is required by F10 hardening.
-INSECURE_FLAG=""
+CLIENT_ENV=(
+    "EPHEMERALML_ENCLAVE_ADDR=${IP}:${DATA_PORT}"
+    "EPHEMERALML_REQUIRE_MRTD=false"
+    "EPHEMERALML_GCP_VERIFY_MODEL_ID=${VERIFY_MODEL_ID}"
+    "EPHEMERALML_ACCEPT_RECEIPT_MODEL_ID=${VERIFY_RECEIPT_MODEL_ID}"
+)
 if [[ "${EPHEMERALML_ALLOW_UNPINNED_AUDIENCE:-}" == "true" ]]; then
-    INSECURE_FLAG="EPHEMERALML_INSECURE_ALLOW_UNPINNED=I_UNDERSTAND"
+    CLIENT_ENV+=("EPHEMERALML_INSECURE_ALLOW_UNPINNED=I_UNDERSTAND")
 fi
 
-EPHEMERALML_ENCLAVE_ADDR="${IP}:${DATA_PORT}" \
-    EPHEMERALML_REQUIRE_MRTD=false \
-    ${INSECURE_FLAG} \
-    EPHEMERALML_GCP_VERIFY_MODEL_ID="${VERIFY_MODEL_ID}" \
-    EPHEMERALML_ACCEPT_RECEIPT_MODEL_ID="${VERIFY_RECEIPT_MODEL_ID}" \
+env "${CLIENT_ENV[@]}" \
     cargo run --release --no-default-features --features gcp \
     -p ephemeral-ml-client --bin ephemeral-ml-client 2>&1 | tee "${VERIFY_OUTPUT}"
 
