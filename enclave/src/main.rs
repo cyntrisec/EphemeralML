@@ -62,6 +62,115 @@ impl confidential_ml_transport::AttestationProvider for MockProviderWithUserData
     }
 }
 
+/// Verifier for host/control-plane peers in one-way attestation deployments.
+///
+/// The host/orchestrator is outside the enclave and cannot produce TEE evidence.
+/// This verifier accepts the transport's minimal host attestation envelope only
+/// to bind the session transcript, while AIR TEE provenance is established by
+/// the enclave's own platform attestation and receipt signing key.
+#[cfg(any(feature = "gcp", feature = "production"))]
+struct OneWayHostVerifier;
+
+#[cfg(any(feature = "gcp", feature = "production"))]
+impl OneWayHostVerifier {
+    fn new() -> Self {
+        Self
+    }
+}
+
+#[cfg(any(feature = "gcp", feature = "production"))]
+#[async_trait::async_trait]
+impl confidential_ml_transport::AttestationVerifier for OneWayHostVerifier {
+    async fn verify(
+        &self,
+        doc: &confidential_ml_transport::attestation::types::AttestationDocument,
+    ) -> Result<
+        confidential_ml_transport::attestation::types::VerifiedAttestation,
+        confidential_ml_transport::error::AttestError,
+    > {
+        use confidential_ml_transport::error::AttestError;
+        use sha2::{Digest, Sha256};
+        use std::collections::BTreeMap;
+
+        let raw = &doc.raw;
+        if !raw.starts_with(b"MOCK_ATT_V1\0") {
+            return Err(AttestError::VerificationFailed(
+                "host control-plane attestation envelope has unexpected format".to_string(),
+            ));
+        }
+
+        let mut offset = 12;
+        let mut fields = Vec::with_capacity(3);
+        for _ in 0..3 {
+            if offset + 4 > raw.len() {
+                return Err(AttestError::VerificationFailed(
+                    "truncated host control-plane attestation envelope".to_string(),
+                ));
+            }
+            let len = u32::from_le_bytes([
+                raw[offset],
+                raw[offset + 1],
+                raw[offset + 2],
+                raw[offset + 3],
+            ]) as usize;
+            offset += 4;
+            if len == 0 {
+                fields.push(None);
+            } else {
+                if offset + len > raw.len() {
+                    return Err(AttestError::VerificationFailed(
+                        "truncated host control-plane attestation field".to_string(),
+                    ));
+                }
+                fields.push(Some(raw[offset..offset + len].to_vec()));
+                offset += len;
+            }
+        }
+
+        Ok(
+            confidential_ml_transport::attestation::types::VerifiedAttestation {
+                document_hash: Sha256::digest(raw).into(),
+                user_data: fields[0].clone(),
+                nonce: fields[1].clone(),
+                public_key: fields[2].clone(),
+                measurements: BTreeMap::new(),
+            },
+        )
+    }
+}
+
+#[cfg(feature = "gcp")]
+fn allow_unsigned_models_for_poc() -> bool {
+    std::env::var("EPHEMERALML_ALLOW_UNSIGNED_MODELS")
+        .map(|v| v == "I_UNDERSTAND")
+        .unwrap_or(false)
+}
+
+#[cfg(feature = "gcp")]
+fn model_signing_pubkey_bytes() -> Result<Option<[u8; 32]>, Box<dyn std::error::Error>> {
+    let Some(pk_hex) = std::env::var("EPHEMERALML_MODEL_SIGNING_PUBKEY")
+        .ok()
+        .map(|v| v.trim().to_string())
+        .filter(|v| !v.is_empty())
+    else {
+        return Ok(None);
+    };
+
+    let pk_bytes = hex::decode(&pk_hex)
+        .map_err(|e| format!("EPHEMERALML_MODEL_SIGNING_PUBKEY: invalid hex: {e}"))?;
+    if pk_bytes.len() != 32 {
+        return Err(format!(
+            "EPHEMERALML_MODEL_SIGNING_PUBKEY must be 64 hex chars (32 bytes), got {}",
+            pk_bytes.len()
+        )
+        .into());
+    }
+
+    let mut key = [0u8; 32];
+    key.copy_from_slice(&pk_bytes);
+    Ok(Some(key))
+}
+
 #[derive(Parser, Debug)]
 #[command(
     name = "ephemeral-ml-enclave",
@@ -264,6 +373,7 @@ fn classify_exit_code(err: &str) -> i32 {
 /// Clients can fetch the same bytes in-band via the direct-mode
 /// `get_platform_evidence` request; this file export is kept as a fallback
 /// for operator-driven retrieval (scp, `ephemeralml gcp verify`, etc.).
+#[cfg(any(feature = "gcp", feature = "production"))]
 pub const PLATFORM_EVIDENCE_EXPORT_PATH: &str = "/tmp/ephemeralml-platform-evidence.cbor";
 
 /// Write the already-encoded platform-evidence CBOR to
@@ -271,7 +381,7 @@ pub const PLATFORM_EVIDENCE_EXPORT_PATH: &str = "/tmp/ephemeralml-platform-evide
 /// logged but non-fatal: the attested hash is already committed in
 /// `user_data`; losing the export file only degrades operator
 /// observability, it does not weaken the attestation.
-#[allow(dead_code)]
+#[cfg(any(feature = "gcp", feature = "production"))]
 fn export_platform_evidence_bytes(bytes: &[u8], hash: &[u8; 32]) {
     match std::fs::write(PLATFORM_EVIDENCE_EXPORT_PATH, bytes) {
         Ok(()) => info!(
@@ -667,13 +777,14 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
                     let encrypted_weights = weights_enc_art?.bytes;
                     let wrapped_dek = dek_art?.bytes;
 
-                    // Determine if manifest verification is required (pubkey configured).
-                    // Empty strings from env vars are treated as unset.
-                    let require_manifest = std::env::var("EPHEMERALML_MODEL_SIGNING_PUBKEY")
-                        .map(|v| !v.is_empty())
-                        .unwrap_or(false);
+                    // Model approval is fail-closed by default. Unsigned model
+                    // artifacts are allowed only under an explicit PoC override.
+                    let allow_unsigned_models = allow_unsigned_models_for_poc();
+                    let signing_pubkey = model_signing_pubkey_bytes()?;
+                    let require_manifest = !allow_unsigned_models;
 
-                    // Parse manifest — fail-closed if pubkey is set
+                    // Parse manifest — fail-closed unless the unsigned-model
+                    // PoC override is explicitly acknowledged.
                     let manifest = match manifest_art {
                         Ok(art) => {
                             match ephemeral_ml_common::ModelManifest::from_json(&art.bytes) {
@@ -687,10 +798,12 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
                                 Err(e) => {
                                     if require_manifest {
                                         return Err(format!(
-                                            "manifest.json parse failed and EPHEMERALML_MODEL_SIGNING_PUBKEY is set: {}", e
+                                            "manifest.json parse failed; signed model manifest verification is required by default. \
+                                             Set EPHEMERALML_MODEL_SIGNING_PUBKEY for production or \
+                                             EPHEMERALML_ALLOW_UNSIGNED_MODELS=I_UNDERSTAND for internal PoC only: {}", e
                                         ).into());
                                     }
-                                    warn!(step = "manifest", error = %e, "manifest.json parse failed");
+                                    warn!(step = "manifest", error = %e, "manifest.json parse failed under unsigned-model PoC override");
                                     None
                                 }
                             }
@@ -698,40 +811,40 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
                         Err(e) => {
                             if require_manifest {
                                 return Err(format!(
-                                    "manifest.json missing from GCS but EPHEMERALML_MODEL_SIGNING_PUBKEY is set \
-                                     (manifest is required when signing pubkey is configured): {}", e
+                                    "manifest.json missing from GCS; signed model manifest verification is required by default. \
+                                     Set EPHEMERALML_MODEL_SIGNING_PUBKEY for production or \
+                                     EPHEMERALML_ALLOW_UNSIGNED_MODELS=I_UNDERSTAND for internal PoC only: {}", e
                                 ).into());
                             }
-                            info!(
+                            warn!(
                                 step = "manifest",
-                                "No manifest.json in GCS (backwards-compatible mode)"
+                                "No manifest.json in GCS; continuing only because EPHEMERALML_ALLOW_UNSIGNED_MODELS=I_UNDERSTAND"
                             );
                             None
                         }
                     };
 
                     // Verify manifest signature (fail-closed).
-                    // Empty env var is treated as unset (Dockerfile defaults set it to "").
                     let mut manifest_authoritative = false;
                     if let Some(ref m) = manifest {
-                        if let Some(pk_hex) = std::env::var("EPHEMERALML_MODEL_SIGNING_PUBKEY")
-                            .ok()
-                            .filter(|v| !v.is_empty())
-                        {
-                            let pk_bytes = hex::decode(&pk_hex).map_err(|e| {
-                                format!("EPHEMERALML_MODEL_SIGNING_PUBKEY: invalid hex: {}", e)
-                            })?;
-                            if pk_bytes.len() != 32 {
-                                return Err(format!(
-                                    "EPHEMERALML_MODEL_SIGNING_PUBKEY must be 64 hex chars (32 bytes), got {}",
-                                    pk_bytes.len()
-                                ).into());
-                            }
+                        if let Some(pk_bytes) = signing_pubkey {
                             m.verify(&pk_bytes).map_err(|e| {
                                 format!("Manifest signature verification failed: {}", e)
                             })?;
                             manifest_authoritative = true;
                             info!(step = "manifest", "Manifest signature verified");
+                        } else if require_manifest {
+                            return Err(
+                                "manifest.json found but EPHEMERALML_MODEL_SIGNING_PUBKEY is not set. \
+                                 Signed model manifest verification is required by default; configure the public key \
+                                 or set EPHEMERALML_ALLOW_UNSIGNED_MODELS=I_UNDERSTAND for internal PoC only."
+                                    .into(),
+                            );
+                        } else {
+                            warn!(
+                                step = "manifest",
+                                "manifest.json was not signature-verified because unsigned-model PoC override is enabled"
+                            );
                         }
                     }
 
@@ -944,13 +1057,14 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
                     };
                     let tokenizer_bytes = tokenizer_art?.bytes;
 
-                    // Determine if manifest verification is required (pubkey configured).
-                    // Empty strings from env vars are treated as unset.
-                    let require_manifest = std::env::var("EPHEMERALML_MODEL_SIGNING_PUBKEY")
-                        .map(|v| !v.is_empty())
-                        .unwrap_or(false);
+                    // Model approval is fail-closed by default. Unsigned model
+                    // artifacts are allowed only under an explicit PoC override.
+                    let allow_unsigned_models = allow_unsigned_models_for_poc();
+                    let signing_pubkey = model_signing_pubkey_bytes()?;
+                    let require_manifest = !allow_unsigned_models;
 
-                    // Parse manifest — fail-closed if pubkey is set
+                    // Parse manifest — fail-closed unless the unsigned-model
+                    // PoC override is explicitly acknowledged.
                     let manifest = match manifest_art {
                         Ok(art) => {
                             match ephemeral_ml_common::ModelManifest::from_json(&art.bytes) {
@@ -964,10 +1078,12 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
                                 Err(e) => {
                                     if require_manifest {
                                         return Err(format!(
-                                            "manifest.json parse failed and EPHEMERALML_MODEL_SIGNING_PUBKEY is set: {}", e
+                                            "manifest.json parse failed; signed model manifest verification is required by default. \
+                                             Set EPHEMERALML_MODEL_SIGNING_PUBKEY for production or \
+                                             EPHEMERALML_ALLOW_UNSIGNED_MODELS=I_UNDERSTAND for internal PoC only: {}", e
                                         ).into());
                                     }
-                                    warn!(step = "manifest", error = %e, "manifest.json parse failed");
+                                    warn!(step = "manifest", error = %e, "manifest.json parse failed under unsigned-model PoC override");
                                     None
                                 }
                             }
@@ -975,40 +1091,40 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
                         Err(e) => {
                             if require_manifest {
                                 return Err(format!(
-                                    "manifest.json missing from GCS but EPHEMERALML_MODEL_SIGNING_PUBKEY is set \
-                                     (manifest is required when signing pubkey is configured): {}", e
+                                    "manifest.json missing from GCS; signed model manifest verification is required by default. \
+                                     Set EPHEMERALML_MODEL_SIGNING_PUBKEY for production or \
+                                     EPHEMERALML_ALLOW_UNSIGNED_MODELS=I_UNDERSTAND for internal PoC only: {}", e
                                 ).into());
                             }
-                            info!(
+                            warn!(
                                 step = "manifest",
-                                "No manifest.json in GCS (backwards-compatible mode)"
+                                "No manifest.json in GCS; continuing only because EPHEMERALML_ALLOW_UNSIGNED_MODELS=I_UNDERSTAND"
                             );
                             None
                         }
                     };
 
                     // Verify manifest signature (fail-closed).
-                    // Empty env var is treated as unset (Dockerfile defaults set it to "").
                     let mut manifest_authoritative = false;
                     if let Some(ref m) = manifest {
-                        if let Some(pk_hex) = std::env::var("EPHEMERALML_MODEL_SIGNING_PUBKEY")
-                            .ok()
-                            .filter(|v| !v.is_empty())
-                        {
-                            let pk_bytes = hex::decode(&pk_hex).map_err(|e| {
-                                format!("EPHEMERALML_MODEL_SIGNING_PUBKEY: invalid hex: {}", e)
-                            })?;
-                            if pk_bytes.len() != 32 {
-                                return Err(format!(
-                                    "EPHEMERALML_MODEL_SIGNING_PUBKEY must be 64 hex chars (32 bytes), got {}",
-                                    pk_bytes.len()
-                                ).into());
-                            }
+                        if let Some(pk_bytes) = signing_pubkey {
                             m.verify(&pk_bytes).map_err(|e| {
                                 format!("Manifest signature verification failed: {}", e)
                             })?;
                             manifest_authoritative = true;
                             info!(step = "manifest", "Manifest signature verified");
+                        } else if require_manifest {
+                            return Err(
+                                "manifest.json found but EPHEMERALML_MODEL_SIGNING_PUBKEY is not set. \
+                                 Signed model manifest verification is required by default; configure the public key \
+                                 or set EPHEMERALML_ALLOW_UNSIGNED_MODELS=I_UNDERSTAND for internal PoC only."
+                                    .into(),
+                            );
+                        } else {
+                            warn!(
+                                step = "manifest",
+                                "manifest.json was not signature-verified because unsigned-model PoC override is enabled"
+                            );
                         }
                     }
 
@@ -1330,9 +1446,9 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
             let verifier = confidential_ml_transport::attestation::tdx::TdxVerifier::new(peer_mrtd);
 
             // Direct mode: single-port SecureChannel server, no pipeline orchestrator.
-            // Clients are external (not in TEEs), so use MockVerifier to accept
-            // their mock attestation. The server still presents its TDX attestation
-            // via the bridge — one-way attestation model.
+            // Clients are external (not in TEEs), so use a one-way host verifier
+            // for their control-plane envelope. The server still presents its TDX
+            // attestation via the bridge.
             if args.direct {
                 info!(
                     step = "boot_evidence",
@@ -1341,7 +1457,7 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
                     synthetic = args.synthetic,
                     "Direct mode: accepting client connections on 0.0.0.0:9000"
                 );
-                let client_verifier = confidential_ml_transport::MockVerifier::new();
+                let client_verifier = OneWayHostVerifier::new();
                 let manifest_arc = captured_manifest_json.map(std::sync::Arc::new);
                 run_direct_tcp(
                     engine,
@@ -1931,16 +2047,16 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
         let bridge = AttestationBridge::new(attestation_provider, receipt_pk)
             .with_platform_evidence_hash(platform_evidence_hash);
 
-        // Use MockVerifier for host connections: the host orchestrator is NOT inside a
-        // TEE and cannot produce Nitro attestation. This is a one-way attestation model —
-        // the enclave attests to the host (via NSM COSE_Sign1), but the host is accepted
-        // without attestation verification (it's on the same EC2 instance).
+        // Use explicit one-way host verification for host connections: the host
+        // orchestrator is NOT inside a TEE and cannot produce Nitro attestation.
+        // The enclave attests to the host (via NSM COSE_Sign1), while the host
+        // control-plane peer is accepted as unmeasured same-instance infrastructure.
         // For multi-enclave pipelines, switch to NitroVerifier with PCR pinning.
-        let verifier = confidential_ml_transport::MockVerifier::new();
+        let verifier = OneWayHostVerifier::new();
         info!(
             step = "verifier",
-            mode = "mock",
-            "Using MockVerifier for host connections (one-way attestation model)"
+            mode = "one_way_host",
+            "Using one-way host verifier for host control-plane connections"
         );
 
         // Parse VSock ports from CLI args (format: "CID:PORT" or just "PORT").

@@ -1,6 +1,6 @@
 # Security Risk Register (Public Summary)
 
-Last updated: 2026-04-24
+Last updated: 2026-05-03
 
 This public summary tracks known third-party advisories relevant to the repository. Internal ownership, review cadence, and operational follow-up are maintained outside the public repo.
 
@@ -21,7 +21,7 @@ This public summary tracks known third-party advisories relevant to the reposito
 
 - **Affected path:** AWS SDK runtime → `aws-smithy-http-client` → Rustls 0.21 → `rustls-webpki 0.101.7`
 - **Issue:** Certificate validation and CRL parsing advisories in older `rustls-webpki`.
-- **Current mitigation:** Updated the independent Rustls 0.23 path to `rustls-webpki 0.103.13`. The remaining 0.101.7 copy is retained by the current AWS SDK HTTP client stack and needs upstream AWS SDK/Rustls migration or a future transport-feature change.
+- **Current mitigation:** Updated the independent Rustls 0.23 path to `rustls-webpki 0.103.13`. The remaining 0.101.7 copy is retained by the current AWS SDK HTTP client stack. Current `aws-smithy-http-client 1.1.12` still enables the legacy Rustls 0.21 / hyper 0.14 path alongside the Rustls 0.23 path, so closure requires upstream AWS SDK migration or replacing the generated SDK default HTTP connector with a non-legacy connector.
 - **Public status:** Active upstream/transitive dependency risk.
 
 ## Informational / Unmaintained Dependencies

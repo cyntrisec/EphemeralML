@@ -40,7 +40,7 @@ rand = "0.8"
 dashmap = "6"
 
 [features]
-default = ["mock"]
+default = []
 mock = ["ephemeral-ml-client/mock"]
 gcp = ["ephemeral-ml-client/gcp"]
 production = ["ephemeral-ml-client/production"]

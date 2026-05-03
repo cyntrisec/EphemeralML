@@ -294,7 +294,7 @@ not cryptographic proof of deletion and is not part of frozen AIR v1.
 | `EPHEMERALML_GCP_KMS_KEY` | gcs-kms | Cloud KMS key resource name |
 | `EPHEMERALML_GCP_WIP_AUDIENCE` | gcs-kms | WIP audience for STS exchange |
 | `EPHEMERALML_EXPECTED_MODEL_HASH` | gcs/gcs-kms | SHA-256 of plaintext weights |
-| `EPHEMERALML_MODEL_SIGNING_PUBKEY` | Optional | Ed25519 public key (hex, 64 chars) for manifest signature verification |
+| `EPHEMERALML_MODEL_SIGNING_PUBKEY` | Yes for `gcs`/`gcs-kms` | Ed25519 public key (hex, 64 chars) for signed manifest verification. Unsigned models require `EPHEMERALML_ALLOW_UNSIGNED_MODELS=I_UNDERSTAND` and are PoC-only. |
 | `EPHEMERALML_LOG_FORMAT` | Optional | Set to `json` for structured JSON logs |
 | `EPHEMERALML_MODEL_FORMAT` | GPU only | `gguf` for GGUF models (default: `safetensors`) |
 | `EPHEMERALML_DIRECT` | Optional | `true` for single-server mode |

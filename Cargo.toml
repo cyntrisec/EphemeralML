@@ -73,3 +73,6 @@ async-trait = "0.1"
 
 # Testing
 proptest = "1.10"
+
+[profile.release]
+panic = "abort"

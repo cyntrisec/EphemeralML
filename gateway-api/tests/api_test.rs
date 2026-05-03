@@ -1174,12 +1174,14 @@ async fn missing_content_type_returns_openai_error() {
 
 /// Spawn a TCP listener that accepts connections but never sends data,
 /// causing the handshake to hang indefinitely. Returns the bound address.
+#[cfg(feature = "mock")]
 async fn stalling_listener() -> std::io::Result<(tokio::net::TcpListener, String)> {
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await?;
     let addr = listener.local_addr().unwrap().to_string();
     Ok((listener, addr))
 }
 
+#[cfg(feature = "mock")]
 #[tokio::test]
 async fn ensure_connected_times_out_on_hanging_backend() {
     let (listener, addr) = match stalling_listener().await {
@@ -1245,6 +1247,7 @@ async fn ensure_connected_times_out_on_hanging_backend() {
     );
 }
 
+#[cfg(feature = "mock")]
 #[tokio::test]
 async fn ensure_embedding_connected_times_out_on_hanging_backend() {
     let (listener, addr) = match stalling_listener().await {

@@ -2002,9 +2002,8 @@ mod tests {
         std::env::remove_var("EPHEMERALML_EXPECTED_AUDIENCE");
         std::env::remove_var("EPHEMERALML_EXPECTED_MRTD");
 
-        match TdxEnvelopeVerifierBridge::new(None) {
-            Ok(_) => panic!("dual bypass with wrong override value should fail"),
-            Err(_) => {} // expected
+        if TdxEnvelopeVerifierBridge::new(None).is_ok() {
+            panic!("dual bypass with wrong override value should fail");
         }
     }
 

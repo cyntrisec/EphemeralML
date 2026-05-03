@@ -300,15 +300,45 @@ pub fn verify_air_v1_receipt(
     // Layer 4: Policy evaluation
     layer4_policy(&parsed.claims, policy, &mut checks);
 
-    let verified = checks
-        .iter()
-        .all(|c| matches!(c.status, AirCheckStatus::Pass | AirCheckStatus::Skip));
+    let verified = verified_from_checks(&checks);
 
     AirVerifyResult {
         verified,
         checks,
         claims: Some(claims),
     }
+}
+
+fn verified_from_checks(checks: &[AirCheck]) -> bool {
+    let critical_skip = checks.iter().any(|check| {
+        matches!(check.status, AirCheckStatus::Skip) && is_critical_check_name(check.name)
+    });
+
+    !critical_skip
+        && checks
+            .iter()
+            .all(|c| matches!(c.status, AirCheckStatus::Pass | AirCheckStatus::Skip))
+}
+
+fn is_critical_check_name(name: &str) -> bool {
+    matches!(
+        name,
+        "SIZE"
+            | "COSE_DECODE"
+            | "UNPROTECTED"
+            | "ALG"
+            | "CONTENT_TYPE"
+            | "PAYLOAD"
+            | "CLAIMS_DECODE"
+            | "EAT_PROFILE"
+            | "SIG"
+            | "CTI"
+            | "MHASH_PRESENT"
+            | "MEAS"
+            | "MTYPE"
+            | "MHASH_SCHEME"
+            | "SECURITY_MODE"
+    )
 }
 
 // ── Layer 1: Parse ──────────────────────────────────────────────────
@@ -1368,6 +1398,15 @@ mod tests {
         assert!(skipped.contains(&"PLATFORM"));
         assert!(skipped.contains(&"NONCE"));
         assert!(skipped.contains(&"REPLAY"));
+    }
+
+    #[test]
+    fn critical_skip_never_counts_as_verified() {
+        let checks = vec![AirCheck::pass("COSE_DECODE"), AirCheck::skip("SIG")];
+        assert!(!verified_from_checks(&checks));
+
+        let checks = vec![AirCheck::pass("SIG"), AirCheck::skip("FRESH")];
+        assert!(verified_from_checks(&checks));
     }
 
     // ══════════════════════════════════════════════════════════════

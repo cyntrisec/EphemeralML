@@ -328,7 +328,7 @@ impl SecureEnclaveClient {
 
     /// Inject session state for tests that need to exercise
     /// `verify_platform_evidence` without setting up a full handshake.
-    #[cfg(test)]
+    #[cfg(all(test, feature = "mock"))]
     pub(crate) fn set_session_state_for_test(
         &mut self,
         attestation_hash: [u8; 32],

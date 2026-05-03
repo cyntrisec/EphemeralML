@@ -205,6 +205,7 @@ fn main() -> Result<()> {
     Ok(())
 }
 
+#[allow(clippy::too_many_arguments)]
 fn build_passport(
     args: &Args,
     doctor: Option<&Value>,
@@ -370,7 +371,41 @@ fn passport_limitations(
             message: "Doctor EIF verification passed under CYNTRISEC_DOCTOR_ALLOW_UNSIGNED_EIF_FOR_POC because the host lacks an adjacent cosign bundle. This is acceptable only for internal PoC evidence and must be closed before production buyer evidence.".to_string(),
         });
     }
+    if env_flag_is_false("EPHEMERALML_REQUIRE_MRTD") {
+        limitations.push(Limitation {
+            code: "dev_override_mrtd_unpinned".to_string(),
+            message: "EPHEMERALML_REQUIRE_MRTD=false was active while generating this passport. TDX peer measurements were not pinned; do not use this as production buyer evidence.".to_string(),
+        });
+    }
+    if env_flag_is_true("EPHEMERALML_ALLOW_UNPINNED_AUDIENCE") {
+        limitations.push(Limitation {
+            code: "dev_override_audience_unpinned".to_string(),
+            message: "EPHEMERALML_ALLOW_UNPINNED_AUDIENCE=true was active while generating this passport. Confidential Space audience was not pinned; do not use this as production buyer evidence.".to_string(),
+        });
+    }
+    if env_equals("EPHEMERALML_INSECURE_ALLOW_UNPINNED", "I_UNDERSTAND") {
+        limitations.push(Limitation {
+            code: "dev_override_dual_attestation_bypass".to_string(),
+            message: "EPHEMERALML_INSECURE_ALLOW_UNPINNED=I_UNDERSTAND was active. Both MRTD and audience pinning may have been bypassed; this evidence is development-only.".to_string(),
+        });
+    }
     limitations
+}
+
+fn env_flag_is_false(name: &str) -> bool {
+    std::env::var(name)
+        .map(|v| v == "0" || v.eq_ignore_ascii_case("false"))
+        .unwrap_or(false)
+}
+
+fn env_flag_is_true(name: &str) -> bool {
+    std::env::var(name)
+        .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
+        .unwrap_or(false)
+}
+
+fn env_equals(name: &str, expected: &str) -> bool {
+    std::env::var(name).map(|v| v == expected).unwrap_or(false)
 }
 
 fn component_from_doctor(doctor: Option<&Value>, benchmark: Option<&Value>) -> ComponentResult {
@@ -1326,6 +1361,10 @@ fn prominent_limitations(limitations: &[Limitation]) -> Vec<&Limitation> {
         .filter(|limitation| {
             limitation.code.starts_with("unsigned_")
                 || limitation.code.starts_with("runtime_passport_unsigned_")
+                || limitation.code.starts_with("dev_override_")
+                || limitation
+                    .code
+                    .starts_with("runtime_passport_dev_override_")
         })
         .collect()
 }
@@ -1421,6 +1460,27 @@ mod tests {
             checks[0].detail.as_deref(),
             Some("unsigned_internal_poc=true; cosign_verified=false")
         );
+    }
+
+    #[test]
+    fn passport_limitations_include_dev_overrides_from_env() {
+        std::env::set_var("EPHEMERALML_REQUIRE_MRTD", "false");
+        std::env::set_var("EPHEMERALML_ALLOW_UNPINNED_AUDIENCE", "true");
+        std::env::set_var("EPHEMERALML_INSECURE_ALLOW_UNPINNED", "I_UNDERSTAND");
+
+        let limitations = passport_limitations(None, None, None, "gcp-tdx");
+        let codes: Vec<_> = limitations
+            .iter()
+            .map(|limitation| limitation.code.as_str())
+            .collect();
+
+        std::env::remove_var("EPHEMERALML_REQUIRE_MRTD");
+        std::env::remove_var("EPHEMERALML_ALLOW_UNPINNED_AUDIENCE");
+        std::env::remove_var("EPHEMERALML_INSECURE_ALLOW_UNPINNED");
+
+        assert!(codes.contains(&"dev_override_mrtd_unpinned"));
+        assert!(codes.contains(&"dev_override_audience_unpinned"));
+        assert!(codes.contains(&"dev_override_dual_attestation_bypass"));
     }
 
     #[test]

@@ -1,6 +1,7 @@
 # Mock/Synthetic Mode Hardening Audit
 
 **Date:** 2026-02-19
+**Status note:** Updated 2026-05-03 for the later enclave one-way-host-verifier cleanup.
 **Scope:** 3 repos — EphemeralML-cyntrisec, confidential-ml-transport, confidential-ml-pipeline
 **Build target:** `CARGO_TARGET_DIR=/tmp/eml-target`
 
@@ -52,7 +53,7 @@ default = []        # or ["tcp"] for pipeline
 
 ### B.2: Separate transport-level mock from application-level mock
 
-**Key insight:** The client is never inside a TEE, so it always needs `MockProvider` from the transport layer to complete handshakes. The enclave always needs `MockVerifier` to accept non-TEE client attestations. This is distinct from application-level mock behavior (bypass attestation, skip encryption, etc.).
+**Key insight:** The client is never inside a TEE, so it always needs `MockProvider` from the transport layer to complete handshakes. The production/GCP enclave no longer enables transport `mock`; it uses an explicit one-way host verifier for non-TEE control-plane peers. This is distinct from application-level mock behavior (bypass attestation, skip encryption, etc.).
 
 **Solution:** Make transport mock a base dependency, application mock a feature flag.
 
@@ -66,12 +67,12 @@ mock = []  # Only controls --allow-mock, MockSecureClient, etc.
 ```
 
 ```toml
-# enclave/Cargo.toml — same pattern
-confidential-ml-transport = { workspace = true, features = ["mock", "tcp"] }
+# enclave/Cargo.toml — transport mock only under app-level mock
+confidential-ml-transport = { workspace = true, features = ["tcp"] }
 confidential-ml-pipeline = { workspace = true, features = ["tcp"] }
 
 [features]
-mock = ["confidential-ml-pipeline/mock"]  # Only controls app-level mock
+mock = ["confidential-ml-pipeline/mock", "confidential-ml-transport/mock"]
 ```
 
 ```toml

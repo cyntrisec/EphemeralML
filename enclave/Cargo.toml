@@ -38,8 +38,9 @@ aws-sdk-kms = { version = "1.103.0", optional = true }
 aws-config = { version = "1.8.15", optional = true }
 reqwest = { version = "0.13", features = ["json", "form"], optional = true }
 base64 = "0.22"
-# Enclave always needs transport mock (to accept non-TEE client attestations) and tcp.
-confidential-ml-transport = { workspace = true, features = ["mock", "tcp"] }
+# Enclave production uses an explicit one-way host verifier for non-TEE
+# control-plane peers; the transport mock feature is development-only.
+confidential-ml-transport = { workspace = true, features = ["tcp"] }
 confidential-ml-pipeline = { workspace = true, features = ["tcp"] }
 bytes = { workspace = true }
 async-trait = { workspace = true }
@@ -51,8 +52,7 @@ tracing-subscriber = { version = "0.3", features = ["json", "env-filter"] }
 [features]
 default = []
 # Application-level mock: mock attestation, mock server mode.
-# Transport-level mock (MockVerifier for accepting client attestations) is always available.
-mock = ["confidential-ml-pipeline/mock"]
+mock = ["confidential-ml-pipeline/mock", "confidential-ml-transport/mock"]
 production = ["aws-nitro-enclaves-nsm-api", "aws-sdk-kms", "aws-config", "tokio-vsock", "confidential-ml-transport/vsock", "confidential-ml-transport/nitro", "confidential-ml-pipeline/vsock"]
 tdx = ["confidential-ml-transport/tdx"]
 gcp = ["tdx", "reqwest"]
@@ -61,3 +61,4 @@ cuda = ["candle-core/cuda", "candle-nn/cuda", "candle-transformers/cuda"]
 [[bin]]
 name = "ephemeralml-orchestrator"
 path = "src/bin/orchestrator.rs"
+required-features = ["mock"]

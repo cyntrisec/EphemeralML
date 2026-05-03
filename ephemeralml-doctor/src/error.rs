@@ -9,9 +9,6 @@
 
 use thiserror::Error;
 
-// Skeleton: both variants are expected to be constructed by real `Context::bootstrap`
-// and check probes when they land. Suppress the skeleton-build dead-code warning.
-#[allow(dead_code)]
 #[derive(Debug, Error)]
 pub enum DoctorError {
     /// IMDSv2 unreachable, AWS APIs unreachable, `/dev/nitro_enclaves` absent

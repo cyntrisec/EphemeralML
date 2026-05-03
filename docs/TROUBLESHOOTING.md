@@ -151,11 +151,13 @@ sudo docker logs $(sudo docker ps -aq | head -1)
    The enclave needs `EPHEMERALML_MODEL_SIGNING_PUBKEY` (public key, 64 hex chars).
 2. Key mismatch between packaging and enclave
 3. Manifest was modified after signing
-4. Manifest missing from GCS when `EPHEMERALML_MODEL_SIGNING_PUBKEY` is set
+4. Manifest missing from GCS. Signed manifest verification is required by default for GCS model loading.
 
 **Fix**: Ensure the enclave has `EPHEMERALML_MODEL_SIGNING_PUBKEY` set to the **public key** hex
 (printed by `package_model.sh` as `EPHEMERALML_MODEL_SIGNING_PUBKEY: <hex>`).
 The private key (`EPHEMERALML_MODEL_SIGNING_KEY`) is only used by `package_model.sh`.
+For internal PoC-only unsigned model runs, set `EPHEMERALML_ALLOW_UNSIGNED_MODELS=I_UNDERSTAND`;
+do not use that override for buyer or production evidence.
 
 ## Structured Logging
 

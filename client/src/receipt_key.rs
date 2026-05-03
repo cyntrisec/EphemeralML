@@ -13,22 +13,14 @@ pub fn extract_key_from_attestation(att_bytes: &[u8], allow_mock: bool) -> Resul
 
     let map_entries = match &doc {
         Value::Array(arr) if arr.len() == 4 => {
-            let att_doc = ephemeral_ml_common::AttestationDocument {
-                module_id: String::new(),
-                digest: vec![],
-                timestamp: 0,
-                pcrs: ephemeral_ml_common::PcrMeasurements::new(vec![], vec![], vec![]),
-                certificate: vec![],
-                signature: att_bytes.to_vec(),
-                nonce: None,
-            };
-
             let policy = crate::PolicyManager::new();
             let mut verifier = crate::attestation_verifier::AttestationVerifier::new(policy);
-            let identity = verifier.verify_attestation_skip_nonce(&att_doc).context(
-                "Attestation COSE signature or certificate chain verification failed. \
+            let identity = verifier
+                .verify_attestation_bytes_skip_nonce(att_bytes)
+                .context(
+                    "Attestation COSE signature or certificate chain verification failed. \
                  The attestation document is not authentic.",
-            )?;
+                )?;
 
             return VerifyingKey::from_bytes(&identity.receipt_signing_key)
                 .context("Invalid receipt signing key from verified attestation");

@@ -190,7 +190,7 @@ mod tests {
         let mut bytes = Vec::new();
         bytes.extend_from_slice(&n.to_le_bytes());
         bytes.extend_from_slice(json_bytes);
-        bytes.extend(std::iter::repeat(0u8).take(byte_len));
+        bytes.resize(bytes.len() + byte_len, 0u8);
         let leaked: &'static [u8] = Box::leak(bytes.into_boxed_slice());
         SafeTensors::deserialize(leaked).unwrap()
     }

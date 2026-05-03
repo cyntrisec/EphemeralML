@@ -1340,18 +1340,18 @@ mod tests {
         eprintln!("payload_hex: {}", hex::encode(&payload1));
         eprintln!("public_key_hex: {}", hex::encode(key.public_key.as_bytes()));
         eprintln!("receipt_len: {}", bytes1.len());
-        eprintln!("");
+        eprintln!();
         eprintln!("=== GOLDEN VECTOR 2 (TDX, with nonce) ===");
         eprintln!("receipt_hex: {}", hex::encode(&bytes2));
         eprintln!("payload_hex: {}", hex::encode(&payload2));
         eprintln!("receipt_len: {}", bytes2.len());
-        eprintln!("");
+        eprintln!();
         eprintln!("=== WRONG KEY ===");
         eprintln!(
             "wrong_public_key_hex: {}",
             hex::encode(wrong_public.as_bytes())
         );
-        eprintln!("");
+        eprintln!();
         eprintln!("=== WRONG ALG ===");
         eprintln!("wrong_alg_receipt_hex: {}", hex::encode(&wrong_alg_bytes));
         eprintln!("wrong_alg_receipt_len: {}", wrong_alg_bytes.len());

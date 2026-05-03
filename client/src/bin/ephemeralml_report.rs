@@ -172,6 +172,7 @@ fn main() -> Result<()> {
             attestation_path,
         ));
     }
+    merge_dev_override_limitations(&mut report);
     report.finalize_report_sha256()?;
 
     let json_path = args.output_dir.join("verification-report.json");
@@ -772,6 +773,57 @@ fn merge_runtime_passport_limitations(
     }
 }
 
+fn merge_dev_override_limitations(report: &mut VerificationReportV1) {
+    let mut add = |code: &str, message: &str| {
+        if report
+            .limitations
+            .iter()
+            .any(|existing| existing.code == code)
+        {
+            return;
+        }
+        report.limitations.push(Limitation {
+            code: code.to_string(),
+            message: message.to_string(),
+        });
+    };
+
+    if env_flag_is_false("EPHEMERALML_REQUIRE_MRTD") {
+        add(
+            "dev_override_mrtd_unpinned",
+            "EPHEMERALML_REQUIRE_MRTD=false was active while generating this report. TDX peer measurements were not pinned; do not use this as production buyer evidence.",
+        );
+    }
+    if env_flag_is_true("EPHEMERALML_ALLOW_UNPINNED_AUDIENCE") {
+        add(
+            "dev_override_audience_unpinned",
+            "EPHEMERALML_ALLOW_UNPINNED_AUDIENCE=true was active while generating this report. Confidential Space audience was not pinned; do not use this as production buyer evidence.",
+        );
+    }
+    if env_equals("EPHEMERALML_INSECURE_ALLOW_UNPINNED", "I_UNDERSTAND") {
+        add(
+            "dev_override_dual_attestation_bypass",
+            "EPHEMERALML_INSECURE_ALLOW_UNPINNED=I_UNDERSTAND was active. Both MRTD and audience pinning may have been bypassed; this evidence is development-only.",
+        );
+    }
+}
+
+fn env_flag_is_false(name: &str) -> bool {
+    std::env::var(name)
+        .map(|v| v == "0" || v.eq_ignore_ascii_case("false"))
+        .unwrap_or(false)
+}
+
+fn env_flag_is_true(name: &str) -> bool {
+    std::env::var(name)
+        .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
+        .unwrap_or(false)
+}
+
+fn env_equals(name: &str, expected: &str) -> bool {
+    std::env::var(name).map(|v| v == expected).unwrap_or(false)
+}
+
 fn attestation_provenance_check(bundle_dir: Option<&Path>, attestation_path: &Path) -> ReportCheck {
     let provenance = attestation_provenance(bundle_dir, attestation_path);
     let evidence_ref = if provenance == "bundle" {
@@ -946,6 +998,10 @@ fn prominent_limitations(limitations: &[Limitation]) -> Vec<&Limitation> {
         .filter(|limitation| {
             limitation.code.starts_with("unsigned_")
                 || limitation.code.starts_with("runtime_passport_unsigned_")
+                || limitation.code.starts_with("dev_override_")
+                || limitation
+                    .code
+                    .starts_with("runtime_passport_dev_override_")
         })
         .collect()
 }

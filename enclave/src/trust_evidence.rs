@@ -89,7 +89,9 @@ impl TrustEvidenceBundle {
             println!("  Receipt Hash:       {}", hex::encode(receipt_hash));
         }
         if let Some(ref key_id) = self.kms_key_id {
-            println!("  KMS Key ID:         {}", key_id);
+            use sha2::{Digest, Sha256};
+            let key_id_hash = hex::encode(Sha256::digest(key_id.as_bytes()));
+            println!("  KMS Key ID Hash:    sha256:{}", &key_id_hash[..16]);
         }
         println!("========================================");
     }

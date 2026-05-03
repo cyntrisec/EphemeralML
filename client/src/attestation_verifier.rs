@@ -213,7 +213,20 @@ impl AttestationVerifier {
         self.validate_certificate_chain(&cert_chain)?;
 
         // 3. Parse payload — skip nonce, skip PCR policy
-        self.parse_payload_core(payload, None, doc, false)
+        let attestation_hash = self.calculate_attestation_hash(doc)?;
+        self.parse_payload_core(payload, None, attestation_hash, false)
+    }
+
+    /// Verify raw Nitro attestation COSE bytes without constructing a partial
+    /// `AttestationDocument` wrapper.
+    pub fn verify_attestation_bytes_skip_nonce(
+        &mut self,
+        attestation_bytes: &[u8],
+    ) -> Result<EnclaveIdentity> {
+        let (payload, cert_chain) = self.verify_cose_signature(attestation_bytes)?;
+        self.validate_certificate_chain(&cert_chain)?;
+        let attestation_hash = self.calculate_attestation_hash_bytes(attestation_bytes);
+        self.parse_payload_core(payload, None, attestation_hash, false)
     }
 
     /// Verify attestation document without enforcing PCR policy.
@@ -256,14 +269,20 @@ impl AttestationVerifier {
         doc: &AttestationDocument,
         enforce_pcr_policy: bool,
     ) -> Result<EnclaveIdentity> {
-        self.parse_payload_core(payload, Some(expected_nonce), doc, enforce_pcr_policy)
+        let attestation_hash = self.calculate_attestation_hash(doc)?;
+        self.parse_payload_core(
+            payload,
+            Some(expected_nonce),
+            attestation_hash,
+            enforce_pcr_policy,
+        )
     }
 
     fn parse_payload_core(
         &mut self,
         payload: Vec<u8>,
         expected_nonce: Option<&[u8]>,
-        doc: &AttestationDocument,
+        attestation_hash: [u8; 32],
         enforce_pcr_policy: bool,
     ) -> Result<EnclaveIdentity> {
         // 3. Parse attestation payload (CBOR)
@@ -337,9 +356,6 @@ impl AttestationVerifier {
 
         // 9. Extract optional KMS public key
         let kms_public_key = get_bytes_field(payload_map, "public_key").ok();
-
-        // 10. Calculate attestation hash for binding
-        let attestation_hash = self.calculate_attestation_hash(doc)?;
 
         Ok(EnclaveIdentity {
             module_id,
@@ -719,8 +735,12 @@ impl AttestationVerifier {
     /// either COSE_Sign1 (production) or CBOR map (mock). This ensures both server
     /// and client compute the same hash from the same wire bytes.
     fn calculate_attestation_hash(&self, doc: &AttestationDocument) -> Result<[u8; 32]> {
+        Ok(self.calculate_attestation_hash_bytes(&doc.signature))
+    }
+
+    fn calculate_attestation_hash_bytes(&self, attestation_bytes: &[u8]) -> [u8; 32] {
         use sha2::{Digest, Sha256};
-        Ok(Sha256::digest(&doc.signature).into())
+        Sha256::digest(attestation_bytes).into()
     }
 }
 

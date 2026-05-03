@@ -767,4 +767,19 @@ mod tests {
 
         std::fs::remove_dir_all(&dir).ok();
     }
+
+    #[test]
+    fn save_kms_release_raw_writes_bytes() {
+        let dir = std::env::temp_dir().join("ephemeralml-test-kms-release");
+        let path = dir.join("kms-release.json");
+        std::fs::create_dir_all(&dir).unwrap();
+
+        let evidence = br#"{"status":"allowed"}"#;
+        save_kms_release_raw(evidence, Some(path.to_str().unwrap())).unwrap();
+
+        let contents = std::fs::read(&path).unwrap();
+        assert_eq!(contents, evidence);
+
+        std::fs::remove_dir_all(&dir).ok();
+    }
 }

@@ -7,9 +7,12 @@
 
 use thiserror::Error;
 
-#[allow(dead_code)] // Real Context::bootstrap + stage errors will construct these.
 #[derive(Debug, Error)]
 pub enum SmokeTestError {
+    #[expect(
+        dead_code,
+        reason = "reserved for the exit-3 infrastructure-unreachable contract; stage-level infra failures are currently represented as StageResult failures"
+    )]
     #[error("infrastructure unreachable: {0}")]
     InfrastructureUnreachable(String),
 
