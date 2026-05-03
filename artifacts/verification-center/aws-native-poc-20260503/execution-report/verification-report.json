@@ -1,0 +1,310 @@
+{
+  "schema_version": "1",
+  "report_id": "vrpt_b7420760-a297-40de-9403-b263480e9fbf",
+  "report_type": "execution_report",
+  "created_at": 1777822104,
+  "verified_at": 1777822104,
+  "expires_at": 1785598104,
+  "verifier": {
+    "name": "ephemeralml-report",
+    "version": "0.2.9"
+  },
+  "policy": {
+    "policy_id": "production-default",
+    "policy_version": "1",
+    "expected_security_mode": "production",
+    "max_age_secs": 3600,
+    "expected_model_id": "stage-0",
+    "expected_model_hash": "53aa51172d142c89d9012cce15ae4d6cc0ca6895895114379cacb4fab128d9db",
+    "require_tee_provenance": true,
+    "require_runtime_passport": true,
+    "require_cloud_correlation": true
+  },
+  "overall_status": "pass",
+  "assurance_level": "tee_provenance",
+  "receipt": {
+    "receipt_id": "18d1ec19-0e27-497c-b187-fc44a148249c",
+    "receipt_sha256": "c1bfd0b9f805945a3305ea57866a97bcaaf99c80a34eed91280b5353fbed7603",
+    "model_id": "stage-0",
+    "model_version": "1.0",
+    "model_hash": "53aa51172d142c89d9012cce15ae4d6cc0ca6895895114379cacb4fab128d9db",
+    "model_hash_scheme": "sha256-manifest",
+    "request_hash": "cb9bd6d9524999c1967462dfe15c1f812bbbabc666abfbd3e0d63be09dab0824",
+    "response_hash": "c112afcd446500251adbea9e72c5b9ed937ae9f9b3cae97327fd54e5f3832cf9",
+    "attestation_doc_hash": "16da86e81ad656d88600571a00b22ede4bc408db8e1911db2eda4a5ee01c1d76",
+    "issued_at": 1777818507,
+    "security_mode": "production",
+    "platform": "nitro-pcr"
+  },
+  "runtime_passport_ref": {
+    "passport_id": "rpass_4bd27e1d-605d-4908-a1b1-4d69d6325e36",
+    "passport_sha256": "20b69eec5fec2b905878c865c613ed31005fcb2835d22a91c5564394a99b55f9",
+    "uri": "repo://artifacts/verification-center/aws-native-poc-20260503/runtime-passport.json"
+  },
+  "evidence_bundle": {
+    "bundle_type": "cyntrisec-phase-1-smoke-test",
+    "bundle_format_version": "3",
+    "uri": "s3://redacted-customer-evidence-bucket/smoke-tests/20260503T142806Z/",
+    "manifest_sha256": "c773693ed22e827921a3fc0d3e3687357c3c576b924a29b7b279c311d80a2707",
+    "sha256sums_sha256": "ff0b23cd4e7405c83545024d4d2238f440cef8b972fb9ba7130081a966ef0baa",
+    "files": [
+      {
+        "name": "doctor.json",
+        "sha256": "aa6d67923ad70c18a8ea9a5ac6cb080d0316818278e4f2773f08478ba167187e"
+      },
+      {
+        "name": "receipt.cbor",
+        "sha256": "c1bfd0b9f805945a3305ea57866a97bcaaf99c80a34eed91280b5353fbed7603"
+      },
+      {
+        "name": "attestation.cbor",
+        "sha256": "16da86e81ad656d88600571a00b22ede4bc408db8e1911db2eda4a5ee01c1d76"
+      },
+      {
+        "name": "receipt.txt",
+        "sha256": "da8412c05a53ae83ba4d153aaaaeefa92fc1fe5901e54feb388bcacb56afaced"
+      },
+      {
+        "name": "verification.json",
+        "sha256": "566d34557835ff5336cc44620f68b66d9488f2ec990448e27d7a0662c2bf5707"
+      },
+      {
+        "name": "enclave-measurements.json",
+        "sha256": "3be24003ef214980ebf188c016620c45a0809ede9f592c9435be7f177d5571cf"
+      },
+      {
+        "name": "inference-metadata.json",
+        "sha256": "7382674222ca237fd28ec6115558255250d4f3e7e70e1b711669c188f068e6fa"
+      },
+      {
+        "name": "model-info.json",
+        "sha256": "1c334c5ee999b1c9c904217aec900ef86e0a41f9696f47ae0ebf5b61ae8bdf91"
+      },
+      {
+        "name": "kms-release.json",
+        "sha256": "fcbad91f5b5857d9d696a69f7241feffbbc8903dc40f82d8d3413a3a9b59eb9f"
+      },
+      {
+        "name": "negative-tests.json",
+        "sha256": "437739a857dcf6adff92c777869a8d2989af3cac429a3509792f69d91e0f34ca"
+      },
+      {
+        "name": "benchmark.json",
+        "sha256": "c7c578c3ca4fba68ce73f6ebf0cde0e33340b7f4efa87b003f85989a6d1d1a15"
+      },
+      {
+        "name": "approval-report.md",
+        "sha256": "ed6499d3a03336babe668761decd1b11fd1008b6297989403766cbb95b831972"
+      }
+    ]
+  },
+  "cloud_correlation": {
+    "provider": "aws",
+    "account_id": "aws-account-redacted",
+    "region": "us-east-1",
+    "evidence_s3_uri": "s3://redacted-customer-evidence-bucket/smoke-tests/20260503T142806Z/"
+  },
+  "checks": [
+    {
+      "id": "COSE_DECODE",
+      "label": "COSE envelope",
+      "layer": "parse",
+      "status": "pass",
+      "evidence_ref": "receipt.cbor"
+    },
+    {
+      "id": "ALG",
+      "label": "Algorithm header",
+      "layer": "parse",
+      "status": "pass",
+      "evidence_ref": "receipt.cbor"
+    },
+    {
+      "id": "CONTENT_TYPE",
+      "label": "Content type",
+      "layer": "parse",
+      "status": "pass",
+      "evidence_ref": "receipt.cbor"
+    },
+    {
+      "id": "PAYLOAD",
+      "label": "Payload present",
+      "layer": "parse",
+      "status": "pass",
+      "evidence_ref": "receipt.cbor"
+    },
+    {
+      "id": "EAT_PROFILE",
+      "label": "AIR v1 profile",
+      "layer": "parse",
+      "status": "pass",
+      "evidence_ref": "receipt.cbor"
+    },
+    {
+      "id": "SIG",
+      "label": "Signature (Ed25519)",
+      "layer": "crypto",
+      "status": "pass",
+      "evidence_ref": "receipt.cbor"
+    },
+    {
+      "id": "CTI",
+      "label": "Receipt ID valid",
+      "layer": "claim",
+      "status": "pass",
+      "evidence_ref": "receipt.cbor"
+    },
+    {
+      "id": "MHASH_PRESENT",
+      "label": "Model hash non-zero",
+      "layer": "claim",
+      "status": "pass",
+      "evidence_ref": "receipt.cbor"
+    },
+    {
+      "id": "MEAS",
+      "label": "Measurements present",
+      "layer": "claim",
+      "status": "pass",
+      "evidence_ref": "receipt.cbor"
+    },
+    {
+      "id": "MTYPE",
+      "label": "Measurement type valid",
+      "layer": "claim",
+      "status": "pass",
+      "evidence_ref": "receipt.cbor"
+    },
+    {
+      "id": "MHASH_SCHEME",
+      "label": "Model hash scheme",
+      "layer": "claim",
+      "status": "pass",
+      "evidence_ref": "receipt.cbor"
+    },
+    {
+      "id": "SECURITY_MODE",
+      "label": "Security mode valid",
+      "layer": "claim",
+      "status": "pass",
+      "evidence_ref": "receipt.cbor"
+    },
+    {
+      "id": "FRESH",
+      "label": "Timestamp freshness",
+      "layer": "policy",
+      "status": "pass",
+      "evidence_ref": "receipt.cbor"
+    },
+    {
+      "id": "MHASH",
+      "label": "Model hash match",
+      "layer": "policy",
+      "status": "pass",
+      "evidence_ref": "receipt.cbor"
+    },
+    {
+      "id": "RHASH",
+      "label": "Request hash match",
+      "layer": "policy",
+      "status": "skip",
+      "evidence_ref": "receipt.cbor"
+    },
+    {
+      "id": "OHASH",
+      "label": "Response hash match",
+      "layer": "policy",
+      "status": "skip",
+      "evidence_ref": "receipt.cbor"
+    },
+    {
+      "id": "ADHASH",
+      "label": "Verification check",
+      "layer": "policy",
+      "status": "pass",
+      "evidence_ref": "receipt.cbor"
+    },
+    {
+      "id": "MODEL",
+      "label": "Model ID match",
+      "layer": "policy",
+      "status": "pass",
+      "evidence_ref": "receipt.cbor"
+    },
+    {
+      "id": "SECURITY_MODE_POLICY",
+      "label": "Security mode policy",
+      "layer": "policy",
+      "status": "pass",
+      "evidence_ref": "receipt.cbor"
+    },
+    {
+      "id": "PLATFORM",
+      "label": "Platform match",
+      "layer": "policy",
+      "status": "pass",
+      "evidence_ref": "receipt.cbor"
+    },
+    {
+      "id": "NONCE",
+      "label": "Nonce match",
+      "layer": "policy",
+      "status": "skip",
+      "evidence_ref": "receipt.cbor"
+    },
+    {
+      "id": "REPLAY",
+      "label": "Replay detection",
+      "layer": "policy",
+      "status": "skip",
+      "evidence_ref": "receipt.cbor"
+    },
+    {
+      "id": "platform_attestation",
+      "label": "Platform attestation sidecar",
+      "layer": "runtime",
+      "status": "pass",
+      "detail": "attestation sidecar supplied; AIR ADHASH check binds the receipt to this sidecar",
+      "evidence_ref": "attestation.cbor"
+    },
+    {
+      "id": "signing_key_binding",
+      "label": "Receipt signing key binding",
+      "layer": "runtime",
+      "status": "pass",
+      "detail": "receipt public key matches the key carried by the attestation sidecar",
+      "evidence_ref": "attestation.cbor"
+    },
+    {
+      "id": "ATTESTATION_PROVENANCE",
+      "label": "Attestation provenance",
+      "layer": "evidence",
+      "status": "pass",
+      "detail": "attestation_provenance=bundle",
+      "evidence_ref": "attestation.cbor"
+    }
+  ],
+  "limitations": [
+    {
+      "code": "not_compliance_determination",
+      "message": "Verification output is technical evidence, not a legal or regulatory compliance determination."
+    },
+    {
+      "code": "no_model_quality_claim",
+      "message": "Verification does not prove model accuracy, fairness, safety, clinical correctness, or business appropriateness."
+    },
+    {
+      "code": "no_deletion_proof",
+      "message": "Verification does not prove irrecoverable deletion of all possible copies."
+    },
+    {
+      "code": "raw_content_not_required",
+      "message": "Input and output content are represented by hashes by default; raw content is not required for receipt verification."
+    },
+    {
+      "code": "runtime_passport_unsigned_eif_internal_poc",
+      "message": "Runtime Passport limitation: Doctor EIF verification passed under CYNTRISEC_DOCTOR_ALLOW_UNSIGNED_EIF_FOR_POC because the host lacks an adjacent cosign bundle. This is acceptable only for internal PoC evidence and must be closed before production buyer evidence."
+    }
+  ],
+  "report_sha256": "d84be7201028379afcae6fe2c5d22523046829bfe815c10041725d7ffcf6be48"
+}

@@ -1,11 +1,12 @@
 //! Evidence bundle structure pinned by the spec.
 //!
-//! Every successful high-confidence smoke test uploads EXACTLY these 13 files to
+//! Every successful high-confidence smoke test uploads EXACTLY these 14 files to
 //! `s3://{bucket}/smoke-tests/{iso-timestamp-utc}/`:
 //!
 //! - manifest.json
 //! - doctor.json
 //! - receipt.cbor
+//! - attestation.cbor
 //! - receipt.txt
 //! - verification.json
 //! - enclave-measurements.json
@@ -26,7 +27,7 @@
 
 use serde::{Deserialize, Serialize};
 
-pub const BUNDLE_FORMAT_VERSION: &str = "2";
+pub const BUNDLE_FORMAT_VERSION: &str = "3";
 pub const BUNDLE_TYPE: &str = "cyntrisec-phase-1-smoke-test";
 pub const BENCHMARK_SCHEMA_VERSION: &str = "1";
 
@@ -35,6 +36,7 @@ pub const BENCHMARK_SCHEMA_VERSION: &str = "1";
 pub const BUNDLE_FILE_NAMES: &[&str] = &[
     "doctor.json",
     "receipt.cbor",
+    "attestation.cbor",
     "receipt.txt",
     "verification.json",
     "enclave-measurements.json",
@@ -155,13 +157,14 @@ mod tests {
     use super::*;
 
     #[test]
-    fn bundle_has_eleven_hashed_files_plus_manifest_and_sha256sums() {
-        // Spec's 13-file bundle = 11 hashed files + manifest.json (companion
+    fn bundle_has_twelve_hashed_files_plus_manifest_and_sha256sums() {
+        // Spec's 14-file bundle = 12 hashed files + manifest.json (companion
         // index, not hashed into SHA256SUMS) + SHA256SUMS itself. The
-        // BUNDLE_FILE_NAMES list names the 11 that go into SHA256SUMS.
-        assert_eq!(BUNDLE_FILE_NAMES.len(), 11);
+        // BUNDLE_FILE_NAMES list names the 12 that go into SHA256SUMS.
+        assert_eq!(BUNDLE_FILE_NAMES.len(), 12);
         assert!(BUNDLE_FILE_NAMES.contains(&"doctor.json"));
         assert!(BUNDLE_FILE_NAMES.contains(&"receipt.cbor"));
+        assert!(BUNDLE_FILE_NAMES.contains(&"attestation.cbor"));
         assert!(BUNDLE_FILE_NAMES.contains(&"verification.json"));
         assert!(BUNDLE_FILE_NAMES.contains(&"enclave-measurements.json"));
         assert!(BUNDLE_FILE_NAMES.contains(&"model-info.json"));

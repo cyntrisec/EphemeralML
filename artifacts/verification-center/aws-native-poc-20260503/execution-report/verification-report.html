@@ -1,0 +1,310 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Cyntrisec Verification Report</title><style>body{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;background:#050505;color:#f5f5f5;margin:0;padding:32px}main{max-width:980px;margin:auto}.card{border:1px solid #333;padding:20px;margin:16px 0;background:#0b0b0b}.warning{border-color:#ffb84a;background:#201600;color:#ffdc8a}.pass{color:#39ff7c}.fail{color:#ff5a5a}pre{white-space:pre-wrap;word-break:break-word;background:#000;padding:16px;border:1px solid #333}</style></head><body><main><h1>Cyntrisec Verification Report</h1><div class="card"><p>Report ID: <code>vrpt_b7420760-a297-40de-9403-b263480e9fbf</code></p><p>Status: <strong class="pass">Pass</strong></p><p>Assurance: <code>tee_provenance</code></p><p>Report SHA-256: <code>d84be7201028379afcae6fe2c5d22523046829bfe815c10041725d7ffcf6be48</code></p></div><div class="card warning"><h2>Reviewer-visible limitation</h2><ul><li><strong>runtime_passport_unsigned_eif_internal_poc</strong>: Runtime Passport limitation: Doctor EIF verification passed under CYNTRISEC_DOCTOR_ALLOW_UNSIGNED_EIF_FOR_POC because the host lacks an adjacent cosign bundle. This is acceptable only for internal PoC evidence and must be closed before production buyer evidence.</li></ul></div><div class="card"><h2>Machine-readable report</h2><pre>{
+  &quot;schema_version&quot;: &quot;1&quot;,
+  &quot;report_id&quot;: &quot;vrpt_b7420760-a297-40de-9403-b263480e9fbf&quot;,
+  &quot;report_type&quot;: &quot;execution_report&quot;,
+  &quot;created_at&quot;: 1777822104,
+  &quot;verified_at&quot;: 1777822104,
+  &quot;expires_at&quot;: 1785598104,
+  &quot;verifier&quot;: {
+    &quot;name&quot;: &quot;ephemeralml-report&quot;,
+    &quot;version&quot;: &quot;0.2.9&quot;
+  },
+  &quot;policy&quot;: {
+    &quot;policy_id&quot;: &quot;production-default&quot;,
+    &quot;policy_version&quot;: &quot;1&quot;,
+    &quot;expected_security_mode&quot;: &quot;production&quot;,
+    &quot;max_age_secs&quot;: 3600,
+    &quot;expected_model_id&quot;: &quot;stage-0&quot;,
+    &quot;expected_model_hash&quot;: &quot;53aa51172d142c89d9012cce15ae4d6cc0ca6895895114379cacb4fab128d9db&quot;,
+    &quot;require_tee_provenance&quot;: true,
+    &quot;require_runtime_passport&quot;: true,
+    &quot;require_cloud_correlation&quot;: true
+  },
+  &quot;overall_status&quot;: &quot;pass&quot;,
+  &quot;assurance_level&quot;: &quot;tee_provenance&quot;,
+  &quot;receipt&quot;: {
+    &quot;receipt_id&quot;: &quot;18d1ec19-0e27-497c-b187-fc44a148249c&quot;,
+    &quot;receipt_sha256&quot;: &quot;c1bfd0b9f805945a3305ea57866a97bcaaf99c80a34eed91280b5353fbed7603&quot;,
+    &quot;model_id&quot;: &quot;stage-0&quot;,
+    &quot;model_version&quot;: &quot;1.0&quot;,
+    &quot;model_hash&quot;: &quot;53aa51172d142c89d9012cce15ae4d6cc0ca6895895114379cacb4fab128d9db&quot;,
+    &quot;model_hash_scheme&quot;: &quot;sha256-manifest&quot;,
+    &quot;request_hash&quot;: &quot;cb9bd6d9524999c1967462dfe15c1f812bbbabc666abfbd3e0d63be09dab0824&quot;,
+    &quot;response_hash&quot;: &quot;c112afcd446500251adbea9e72c5b9ed937ae9f9b3cae97327fd54e5f3832cf9&quot;,
+    &quot;attestation_doc_hash&quot;: &quot;16da86e81ad656d88600571a00b22ede4bc408db8e1911db2eda4a5ee01c1d76&quot;,
+    &quot;issued_at&quot;: 1777818507,
+    &quot;security_mode&quot;: &quot;production&quot;,
+    &quot;platform&quot;: &quot;nitro-pcr&quot;
+  },
+  &quot;runtime_passport_ref&quot;: {
+    &quot;passport_id&quot;: &quot;rpass_4bd27e1d-605d-4908-a1b1-4d69d6325e36&quot;,
+    &quot;passport_sha256&quot;: &quot;20b69eec5fec2b905878c865c613ed31005fcb2835d22a91c5564394a99b55f9&quot;,
+    &quot;uri&quot;: &quot;repo://artifacts/verification-center/aws-native-poc-20260503/runtime-passport.json&quot;
+  },
+  &quot;evidence_bundle&quot;: {
+    &quot;bundle_type&quot;: &quot;cyntrisec-phase-1-smoke-test&quot;,
+    &quot;bundle_format_version&quot;: &quot;3&quot;,
+    &quot;uri&quot;: &quot;s3://redacted-customer-evidence-bucket/smoke-tests/20260503T142806Z/&quot;,
+    &quot;manifest_sha256&quot;: &quot;c773693ed22e827921a3fc0d3e3687357c3c576b924a29b7b279c311d80a2707&quot;,
+    &quot;sha256sums_sha256&quot;: &quot;ff0b23cd4e7405c83545024d4d2238f440cef8b972fb9ba7130081a966ef0baa&quot;,
+    &quot;files&quot;: [
+      {
+        &quot;name&quot;: &quot;doctor.json&quot;,
+        &quot;sha256&quot;: &quot;aa6d67923ad70c18a8ea9a5ac6cb080d0316818278e4f2773f08478ba167187e&quot;
+      },
+      {
+        &quot;name&quot;: &quot;receipt.cbor&quot;,
+        &quot;sha256&quot;: &quot;c1bfd0b9f805945a3305ea57866a97bcaaf99c80a34eed91280b5353fbed7603&quot;
+      },
+      {
+        &quot;name&quot;: &quot;attestation.cbor&quot;,
+        &quot;sha256&quot;: &quot;16da86e81ad656d88600571a00b22ede4bc408db8e1911db2eda4a5ee01c1d76&quot;
+      },
+      {
+        &quot;name&quot;: &quot;receipt.txt&quot;,
+        &quot;sha256&quot;: &quot;da8412c05a53ae83ba4d153aaaaeefa92fc1fe5901e54feb388bcacb56afaced&quot;
+      },
+      {
+        &quot;name&quot;: &quot;verification.json&quot;,
+        &quot;sha256&quot;: &quot;566d34557835ff5336cc44620f68b66d9488f2ec990448e27d7a0662c2bf5707&quot;
+      },
+      {
+        &quot;name&quot;: &quot;enclave-measurements.json&quot;,
+        &quot;sha256&quot;: &quot;3be24003ef214980ebf188c016620c45a0809ede9f592c9435be7f177d5571cf&quot;
+      },
+      {
+        &quot;name&quot;: &quot;inference-metadata.json&quot;,
+        &quot;sha256&quot;: &quot;7382674222ca237fd28ec6115558255250d4f3e7e70e1b711669c188f068e6fa&quot;
+      },
+      {
+        &quot;name&quot;: &quot;model-info.json&quot;,
+        &quot;sha256&quot;: &quot;1c334c5ee999b1c9c904217aec900ef86e0a41f9696f47ae0ebf5b61ae8bdf91&quot;
+      },
+      {
+        &quot;name&quot;: &quot;kms-release.json&quot;,
+        &quot;sha256&quot;: &quot;fcbad91f5b5857d9d696a69f7241feffbbc8903dc40f82d8d3413a3a9b59eb9f&quot;
+      },
+      {
+        &quot;name&quot;: &quot;negative-tests.json&quot;,
+        &quot;sha256&quot;: &quot;437739a857dcf6adff92c777869a8d2989af3cac429a3509792f69d91e0f34ca&quot;
+      },
+      {
+        &quot;name&quot;: &quot;benchmark.json&quot;,
+        &quot;sha256&quot;: &quot;c7c578c3ca4fba68ce73f6ebf0cde0e33340b7f4efa87b003f85989a6d1d1a15&quot;
+      },
+      {
+        &quot;name&quot;: &quot;approval-report.md&quot;,
+        &quot;sha256&quot;: &quot;ed6499d3a03336babe668761decd1b11fd1008b6297989403766cbb95b831972&quot;
+      }
+    ]
+  },
+  &quot;cloud_correlation&quot;: {
+    &quot;provider&quot;: &quot;aws&quot;,
+    &quot;account_id&quot;: &quot;aws-account-redacted&quot;,
+    &quot;region&quot;: &quot;us-east-1&quot;,
+    &quot;evidence_s3_uri&quot;: &quot;s3://redacted-customer-evidence-bucket/smoke-tests/20260503T142806Z/&quot;
+  },
+  &quot;checks&quot;: [
+    {
+      &quot;id&quot;: &quot;COSE_DECODE&quot;,
+      &quot;label&quot;: &quot;COSE envelope&quot;,
+      &quot;layer&quot;: &quot;parse&quot;,
+      &quot;status&quot;: &quot;pass&quot;,
+      &quot;evidence_ref&quot;: &quot;receipt.cbor&quot;
+    },
+    {
+      &quot;id&quot;: &quot;ALG&quot;,
+      &quot;label&quot;: &quot;Algorithm header&quot;,
+      &quot;layer&quot;: &quot;parse&quot;,
+      &quot;status&quot;: &quot;pass&quot;,
+      &quot;evidence_ref&quot;: &quot;receipt.cbor&quot;
+    },
+    {
+      &quot;id&quot;: &quot;CONTENT_TYPE&quot;,
+      &quot;label&quot;: &quot;Content type&quot;,
+      &quot;layer&quot;: &quot;parse&quot;,
+      &quot;status&quot;: &quot;pass&quot;,
+      &quot;evidence_ref&quot;: &quot;receipt.cbor&quot;
+    },
+    {
+      &quot;id&quot;: &quot;PAYLOAD&quot;,
+      &quot;label&quot;: &quot;Payload present&quot;,
+      &quot;layer&quot;: &quot;parse&quot;,
+      &quot;status&quot;: &quot;pass&quot;,
+      &quot;evidence_ref&quot;: &quot;receipt.cbor&quot;
+    },
+    {
+      &quot;id&quot;: &quot;EAT_PROFILE&quot;,
+      &quot;label&quot;: &quot;AIR v1 profile&quot;,
+      &quot;layer&quot;: &quot;parse&quot;,
+      &quot;status&quot;: &quot;pass&quot;,
+      &quot;evidence_ref&quot;: &quot;receipt.cbor&quot;
+    },
+    {
+      &quot;id&quot;: &quot;SIG&quot;,
+      &quot;label&quot;: &quot;Signature (Ed25519)&quot;,
+      &quot;layer&quot;: &quot;crypto&quot;,
+      &quot;status&quot;: &quot;pass&quot;,
+      &quot;evidence_ref&quot;: &quot;receipt.cbor&quot;
+    },
+    {
+      &quot;id&quot;: &quot;CTI&quot;,
+      &quot;label&quot;: &quot;Receipt ID valid&quot;,
+      &quot;layer&quot;: &quot;claim&quot;,
+      &quot;status&quot;: &quot;pass&quot;,
+      &quot;evidence_ref&quot;: &quot;receipt.cbor&quot;
+    },
+    {
+      &quot;id&quot;: &quot;MHASH_PRESENT&quot;,
+      &quot;label&quot;: &quot;Model hash non-zero&quot;,
+      &quot;layer&quot;: &quot;claim&quot;,
+      &quot;status&quot;: &quot;pass&quot;,
+      &quot;evidence_ref&quot;: &quot;receipt.cbor&quot;
+    },
+    {
+      &quot;id&quot;: &quot;MEAS&quot;,
+      &quot;label&quot;: &quot;Measurements present&quot;,
+      &quot;layer&quot;: &quot;claim&quot;,
+      &quot;status&quot;: &quot;pass&quot;,
+      &quot;evidence_ref&quot;: &quot;receipt.cbor&quot;
+    },
+    {
+      &quot;id&quot;: &quot;MTYPE&quot;,
+      &quot;label&quot;: &quot;Measurement type valid&quot;,
+      &quot;layer&quot;: &quot;claim&quot;,
+      &quot;status&quot;: &quot;pass&quot;,
+      &quot;evidence_ref&quot;: &quot;receipt.cbor&quot;
+    },
+    {
+      &quot;id&quot;: &quot;MHASH_SCHEME&quot;,
+      &quot;label&quot;: &quot;Model hash scheme&quot;,
+      &quot;layer&quot;: &quot;claim&quot;,
+      &quot;status&quot;: &quot;pass&quot;,
+      &quot;evidence_ref&quot;: &quot;receipt.cbor&quot;
+    },
+    {
+      &quot;id&quot;: &quot;SECURITY_MODE&quot;,
+      &quot;label&quot;: &quot;Security mode valid&quot;,
+      &quot;layer&quot;: &quot;claim&quot;,
+      &quot;status&quot;: &quot;pass&quot;,
+      &quot;evidence_ref&quot;: &quot;receipt.cbor&quot;
+    },
+    {
+      &quot;id&quot;: &quot;FRESH&quot;,
+      &quot;label&quot;: &quot;Timestamp freshness&quot;,
+      &quot;layer&quot;: &quot;policy&quot;,
+      &quot;status&quot;: &quot;pass&quot;,
+      &quot;evidence_ref&quot;: &quot;receipt.cbor&quot;
+    },
+    {
+      &quot;id&quot;: &quot;MHASH&quot;,
+      &quot;label&quot;: &quot;Model hash match&quot;,
+      &quot;layer&quot;: &quot;policy&quot;,
+      &quot;status&quot;: &quot;pass&quot;,
+      &quot;evidence_ref&quot;: &quot;receipt.cbor&quot;
+    },
+    {
+      &quot;id&quot;: &quot;RHASH&quot;,
+      &quot;label&quot;: &quot;Request hash match&quot;,
+      &quot;layer&quot;: &quot;policy&quot;,
+      &quot;status&quot;: &quot;skip&quot;,
+      &quot;evidence_ref&quot;: &quot;receipt.cbor&quot;
+    },
+    {
+      &quot;id&quot;: &quot;OHASH&quot;,
+      &quot;label&quot;: &quot;Response hash match&quot;,
+      &quot;layer&quot;: &quot;policy&quot;,
+      &quot;status&quot;: &quot;skip&quot;,
+      &quot;evidence_ref&quot;: &quot;receipt.cbor&quot;
+    },
+    {
+      &quot;id&quot;: &quot;ADHASH&quot;,
+      &quot;label&quot;: &quot;Verification check&quot;,
+      &quot;layer&quot;: &quot;policy&quot;,
+      &quot;status&quot;: &quot;pass&quot;,
+      &quot;evidence_ref&quot;: &quot;receipt.cbor&quot;
+    },
+    {
+      &quot;id&quot;: &quot;MODEL&quot;,
+      &quot;label&quot;: &quot;Model ID match&quot;,
+      &quot;layer&quot;: &quot;policy&quot;,
+      &quot;status&quot;: &quot;pass&quot;,
+      &quot;evidence_ref&quot;: &quot;receipt.cbor&quot;
+    },
+    {
+      &quot;id&quot;: &quot;SECURITY_MODE_POLICY&quot;,
+      &quot;label&quot;: &quot;Security mode policy&quot;,
+      &quot;layer&quot;: &quot;policy&quot;,
+      &quot;status&quot;: &quot;pass&quot;,
+      &quot;evidence_ref&quot;: &quot;receipt.cbor&quot;
+    },
+    {
+      &quot;id&quot;: &quot;PLATFORM&quot;,
+      &quot;label&quot;: &quot;Platform match&quot;,
+      &quot;layer&quot;: &quot;policy&quot;,
+      &quot;status&quot;: &quot;pass&quot;,
+      &quot;evidence_ref&quot;: &quot;receipt.cbor&quot;
+    },
+    {
+      &quot;id&quot;: &quot;NONCE&quot;,
+      &quot;label&quot;: &quot;Nonce match&quot;,
+      &quot;layer&quot;: &quot;policy&quot;,
+      &quot;status&quot;: &quot;skip&quot;,
+      &quot;evidence_ref&quot;: &quot;receipt.cbor&quot;
+    },
+    {
+      &quot;id&quot;: &quot;REPLAY&quot;,
+      &quot;label&quot;: &quot;Replay detection&quot;,
+      &quot;layer&quot;: &quot;policy&quot;,
+      &quot;status&quot;: &quot;skip&quot;,
+      &quot;evidence_ref&quot;: &quot;receipt.cbor&quot;
+    },
+    {
+      &quot;id&quot;: &quot;platform_attestation&quot;,
+      &quot;label&quot;: &quot;Platform attestation sidecar&quot;,
+      &quot;layer&quot;: &quot;runtime&quot;,
+      &quot;status&quot;: &quot;pass&quot;,
+      &quot;detail&quot;: &quot;attestation sidecar supplied; AIR ADHASH check binds the receipt to this sidecar&quot;,
+      &quot;evidence_ref&quot;: &quot;attestation.cbor&quot;
+    },
+    {
+      &quot;id&quot;: &quot;signing_key_binding&quot;,
+      &quot;label&quot;: &quot;Receipt signing key binding&quot;,
+      &quot;layer&quot;: &quot;runtime&quot;,
+      &quot;status&quot;: &quot;pass&quot;,
+      &quot;detail&quot;: &quot;receipt public key matches the key carried by the attestation sidecar&quot;,
+      &quot;evidence_ref&quot;: &quot;attestation.cbor&quot;
+    },
+    {
+      &quot;id&quot;: &quot;ATTESTATION_PROVENANCE&quot;,
+      &quot;label&quot;: &quot;Attestation provenance&quot;,
+      &quot;layer&quot;: &quot;evidence&quot;,
+      &quot;status&quot;: &quot;pass&quot;,
+      &quot;detail&quot;: &quot;attestation_provenance=bundle&quot;,
+      &quot;evidence_ref&quot;: &quot;attestation.cbor&quot;
+    }
+  ],
+  &quot;limitations&quot;: [
+    {
+      &quot;code&quot;: &quot;not_compliance_determination&quot;,
+      &quot;message&quot;: &quot;Verification output is technical evidence, not a legal or regulatory compliance determination.&quot;
+    },
+    {
+      &quot;code&quot;: &quot;no_model_quality_claim&quot;,
+      &quot;message&quot;: &quot;Verification does not prove model accuracy, fairness, safety, clinical correctness, or business appropriateness.&quot;
+    },
+    {
+      &quot;code&quot;: &quot;no_deletion_proof&quot;,
+      &quot;message&quot;: &quot;Verification does not prove irrecoverable deletion of all possible copies.&quot;
+    },
+    {
+      &quot;code&quot;: &quot;raw_content_not_required&quot;,
+      &quot;message&quot;: &quot;Input and output content are represented by hashes by default; raw content is not required for receipt verification.&quot;
+    },
+    {
+      &quot;code&quot;: &quot;runtime_passport_unsigned_eif_internal_poc&quot;,
+      &quot;message&quot;: &quot;Runtime Passport limitation: Doctor EIF verification passed under CYNTRISEC_DOCTOR_ALLOW_UNSIGNED_EIF_FOR_POC because the host lacks an adjacent cosign bundle. This is acceptable only for internal PoC evidence and must be closed before production buyer evidence.&quot;
+    }
+  ],
+  &quot;report_sha256&quot;: &quot;d84be7201028379afcae6fe2c5d22523046829bfe815c10041725d7ffcf6be48&quot;
+}</pre></div></main></body></html>

@@ -25,11 +25,14 @@ REMOTE_VERIFIER_BIN="/opt/cyntrisec/bin/ephemeralml-verify"
 EIF_PATH="/opt/cyntrisec/eif/ephemeralml-pilot.eif"
 BUNDLE_BASE="/tmp/cyntrisec-aws-poc"
 EXPECTED_MODEL_HASH=""
+EXPECTED_HOST_PROFILE=""
 REPETITIONS=1
 NO_BUILD=0
 NO_UPLOAD_BINARY=0
 LEAVE_RUNNING=0
 STOP_AFTER_RUN=0
+ALLOW_UNSIGNED_EIF_FOR_POC=0
+BINARY_UPLOAD_SSE_MODE="kms"
 DRY_RUN=0
 
 usage() {
@@ -56,6 +59,14 @@ Options:
   --eif-path PATH             Remote EIF path (default: /opt/cyntrisec/eif/ephemeralml-pilot.eif)
   --bundle-base PATH          Remote bundle base dir (default: /tmp/cyntrisec-aws-poc)
   --expected-model-hash HEX   Enforce expected AIR model hash
+  --expected-host-profile NAME
+                              Override doctor role check's expected instance profile
+  --allow-unsigned-eif-for-poc
+                              Internal PoC only: let doctor pass if EIF cosign bundle
+                              is absent; report details will show cosign_verified=false
+  --binary-upload-sse-s3      Use SSE-S3 for the temporary _codex binary upload.
+                              Evidence bundle uploads still use the smoke-test's
+                              normal SSE-KMS path from the host role.
   --repetitions N             Number of smoke-test repetitions (default: 1)
   --no-build                  Do not run cargo build before upload
   --no-upload-binary          Use the already-installed remote smoke-test binary
@@ -78,6 +89,10 @@ die() {
 
 info() {
   echo "==> $*"
+}
+
+warn() {
+  echo "WARN: $*" >&2
 }
 
 need_cmd() {
@@ -194,11 +209,14 @@ while [[ $# -gt 0 ]]; do
     --eif-path) EIF_PATH="$2"; shift 2 ;;
     --bundle-base) BUNDLE_BASE="$2"; shift 2 ;;
     --expected-model-hash) EXPECTED_MODEL_HASH="$2"; shift 2 ;;
+    --expected-host-profile) EXPECTED_HOST_PROFILE="$2"; shift 2 ;;
     --repetitions) REPETITIONS="$2"; shift 2 ;;
     --no-build) NO_BUILD=1; shift ;;
     --no-upload-binary) NO_UPLOAD_BINARY=1; shift ;;
     --leave-running) LEAVE_RUNNING=1; shift ;;
     --stop-after-run) STOP_AFTER_RUN=1; shift ;;
+    --allow-unsigned-eif-for-poc) ALLOW_UNSIGNED_EIF_FOR_POC=1; shift ;;
+    --binary-upload-sse-s3) BINARY_UPLOAD_SSE_MODE="sse-s3"; shift ;;
     --dry-run) DRY_RUN=1; shift ;;
     -h|--help) usage; exit 0 ;;
     *) die "unknown option: $1" ;;
@@ -208,6 +226,11 @@ done
 [[ -n "${STACK_NAME}" ]] || { usage; exit 1; }
 [[ "${REPETITIONS}" =~ ^[0-9]+$ ]] || die "--repetitions must be an integer"
 [[ "${REPETITIONS}" -ge 1 ]] || die "--repetitions must be >= 1"
+if [[ "${ALLOW_UNSIGNED_EIF_FOR_POC}" -eq 1
+  && "${STACK_NAME}" != *-poc-*
+  && "${CYNTRISEC_I_UNDERSTAND_UNSIGNED_EIF_OVERRIDE:-}" != "I_UNDERSTAND" ]]; then
+  die "--allow-unsigned-eif-for-poc is refused unless STACK_NAME contains '-poc-' or CYNTRISEC_I_UNDERSTAND_UNSIGNED_EIF_OVERRIDE=I_UNDERSTAND is set"
+fi
 
 need_cmd aws
 need_cmd python3
@@ -239,6 +262,9 @@ AWS-native PoC run plan
   local_binary:    ${SMOKE_TEST_BIN}
   remote_binary:   ${REMOTE_BIN}
   eif_path:        ${EIF_PATH}
+  expected_profile:${EXPECTED_HOST_PROFILE:-<doctor-default>}
+  unsigned_eif_poc:${ALLOW_UNSIGNED_EIF_FOR_POC}
+  binary_upload_sse:${BINARY_UPLOAD_SSE_MODE}
   repetitions:     ${REPETITIONS}
 EOF
 
@@ -315,7 +341,10 @@ if [[ "${NO_UPLOAD_BINARY}" -eq 0 ]]; then
   TEMP_S3_KEY="_codex/ephemeralml-smoke-test-$(date -u +%Y%m%dT%H%M%SZ)-${RANDOM}"
   info "Uploading smoke-test binary to s3://${EVIDENCE_BUCKET}/${TEMP_S3_KEY}"
   S3_CP_ARGS=(s3 cp "${SMOKE_TEST_BIN}" "s3://${EVIDENCE_BUCKET}/${TEMP_S3_KEY}" --region "${REGION}")
-  if [[ -n "${EVIDENCE_KMS_KEY}" && "${EVIDENCE_KMS_KEY}" != "None" ]]; then
+  if [[ "${BINARY_UPLOAD_SSE_MODE}" == "sse-s3" ]]; then
+    warn "binary upload uses SSE-S3 (no KMS access control); ensure no read-only IAM principal can list or read _codex/ objects"
+    S3_CP_ARGS+=(--sse AES256)
+  elif [[ -n "${EVIDENCE_KMS_KEY}" && "${EVIDENCE_KMS_KEY}" != "None" ]]; then
     S3_CP_ARGS+=(--sse aws:kms --sse-kms-key-id "${EVIDENCE_KMS_KEY}")
   fi
   aws "${S3_CP_ARGS[@]}" >/dev/null
@@ -340,7 +369,16 @@ for run_index in $(seq 1 "${REPETITIONS}"); do
   {
     echo "set -euo pipefail"
     echo "sudo mkdir -p $(shell_quote "${bundle_dir}")"
-    echo "sudo -E $(shell_quote "${REMOTE_BIN}") \\"
+    echo "sudo -E env \\"
+    echo "  AWS_REGION=$(shell_quote "${REGION}") \\"
+    echo "  AWS_DEFAULT_REGION=$(shell_quote "${REGION}") \\"
+    if [[ -n "${EXPECTED_HOST_PROFILE}" ]]; then
+      echo "  CYNTRISEC_EXPECTED_HOST_PROFILE=$(shell_quote "${EXPECTED_HOST_PROFILE}") \\"
+    fi
+    if [[ "${ALLOW_UNSIGNED_EIF_FOR_POC}" -eq 1 ]]; then
+      echo "  CYNTRISEC_DOCTOR_ALLOW_UNSIGNED_EIF_FOR_POC=1 \\"
+    fi
+    echo "  $(shell_quote "${REMOTE_BIN}") \\"
     echo "  --json \\"
     echo "  --terminate-existing \\"
     echo "  --stack-name $(shell_quote "${STACK_NAME}") \\"

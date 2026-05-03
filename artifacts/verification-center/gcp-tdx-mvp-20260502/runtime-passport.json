@@ -1,0 +1,256 @@
+{
+  "schema_version": "1",
+  "passport_id": "rpass_846be4a8-5019-4627-aefc-a23f73e3f59f",
+  "created_at": 1777822076,
+  "expires_at": 1785598076,
+  "overall_status": "partial",
+  "deployment": {
+    "cloud_provider": "gcp",
+    "account_id": "gcp-project-redacted",
+    "region": "us-central1"
+  },
+  "runtime": {
+    "runtime_type": "gcp-tdx",
+    "instance_type": "c3-standard-4"
+  },
+  "platform_evidence": {
+    "cloud_provider": "gcp",
+    "runtime_type": "gcp-tdx",
+    "adapter_version": "1",
+    "gcp_tdx": {
+      "mrtd": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "rtmr0": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "rtmr1": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+      "attestation_token_issuer": "https://confidentialcomputing.googleapis.com",
+      "image_digest": "sha256:054e413eda56b2c640af00b2766054a9acdd53e816bd4f2ac36670dd4d780304",
+      "kms_key_ref_hash": "sha256:a0f90b473d126454aa28de3ed800e94db597b0f465f0ad37e02c9f42904bd710",
+      "evidence_gcs_uri": "repo://evidence/mvp-20260502_212009/"
+    }
+  },
+  "doctor": {
+    "status": "unknown",
+    "summary": "doctor JSON not supplied"
+  },
+  "smoke_test": {
+    "status": "unknown",
+    "summary": "smoke-test JSON not supplied"
+  },
+  "compliance": {
+    "status": "pass",
+    "summary": "All 16 rules passed for profile 'baseline'"
+  },
+  "release": {
+    "eif_sha384": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+  },
+  "measurements": [
+    {
+      "name": "measurement_type",
+      "value": "tdx-mrtd-rtmr"
+    },
+    {
+      "name": "pcr0",
+      "value": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    },
+    {
+      "name": "pcr1",
+      "value": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+    },
+    {
+      "name": "pcr2",
+      "value": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+    },
+    {
+      "name": "mrtd",
+      "value": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    },
+    {
+      "name": "rtmr0",
+      "value": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+    },
+    {
+      "name": "rtmr1",
+      "value": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+    },
+    {
+      "name": "attestation_doc_hash",
+      "value": "791ceb1be5c52def2cca3dc6413ffa792ae0ed5cef38d5d63b1eb549bea6acda"
+    },
+    {
+      "name": "request_hash",
+      "value": "f4a68967743b669666516beb4efbd4c9b33025a0215257734c225b977a24ddb0"
+    },
+    {
+      "name": "response_hash",
+      "value": "baac9798d5b94282d5a97ef2e67789d4d5cf508b5c4de14eeba862d5f42ecb49"
+    }
+  ],
+  "evidence_bundle": {
+    "bundle_type": "unknown",
+    "bundle_format_version": "unknown",
+    "uri": "repo://evidence/mvp-20260502_212009/"
+  },
+  "checks": [
+    {
+      "id": "compliance_SIG-001",
+      "label": "Ed25519 signature verification",
+      "layer": "policy",
+      "status": "pass",
+      "detail": "Ed25519 signature verified (strict)",
+      "evidence_ref": "compliance-report.json"
+    },
+    {
+      "id": "compliance_SIG-002",
+      "label": "CBOR canonical round-trip determinism",
+      "layer": "policy",
+      "status": "pass",
+      "detail": "Canonical encoding is deterministic",
+      "evidence_ref": "compliance-report.json"
+    },
+    {
+      "id": "compliance_ATT-001",
+      "label": "Attestation document present",
+      "layer": "policy",
+      "status": "pass",
+      "detail": "Attestation evidence item found in bundle",
+      "evidence_ref": "compliance-report.json"
+    },
+    {
+      "id": "compliance_ATT-002",
+      "label": "Attestation hash matches receipt",
+      "layer": "policy",
+      "status": "pass",
+      "detail": "SHA-256(attestation) == receipt.attestation_doc_hash",
+      "evidence_ref": "compliance-report.json"
+    },
+    {
+      "id": "compliance_MEAS-001",
+      "label": "Measurements are 48 bytes",
+      "layer": "policy",
+      "status": "pass",
+      "detail": "All PCR/MRTD measurements are 48 bytes",
+      "evidence_ref": "compliance-report.json"
+    },
+    {
+      "id": "compliance_MEAS-002",
+      "label": "Recognized measurement type",
+      "layer": "policy",
+      "status": "pass",
+      "detail": "Measurement type 'tdx-mrtd-rtmr' is recognized",
+      "evidence_ref": "compliance-report.json"
+    },
+    {
+      "id": "compliance_FRESH-001",
+      "label": "Receipt within max age",
+      "layer": "policy",
+      "status": "pass",
+      "detail": "Receipt age 113s <= max 3600s",
+      "evidence_ref": "compliance-report.json"
+    },
+    {
+      "id": "compliance_FRESH-002",
+      "label": "Receipt not future-dated",
+      "layer": "policy",
+      "status": "pass",
+      "detail": "Receipt timestamp is not in the future",
+      "evidence_ref": "compliance-report.json"
+    },
+    {
+      "id": "compliance_MODEL-001",
+      "label": "Model ID present",
+      "layer": "policy",
+      "status": "pass",
+      "detail": "model_id = 'minilm-l6-v2'",
+      "evidence_ref": "compliance-report.json"
+    },
+    {
+      "id": "compliance_MODEL-002",
+      "label": "Model manifest present in bundle",
+      "layer": "policy",
+      "status": "pass",
+      "detail": "ModelManifest evidence item found",
+      "evidence_ref": "compliance-report.json"
+    },
+    {
+      "id": "compliance_CHAIN-001",
+      "label": "Receipt chain hash valid",
+      "layer": "policy",
+      "status": "pass",
+      "detail": "No previous_receipt_hash (single receipt or first in chain)",
+      "evidence_ref": "compliance-report.json"
+    },
+    {
+      "id": "compliance_CBOR-001",
+      "label": "CBOR deterministic encoding",
+      "layer": "policy",
+      "status": "pass",
+      "detail": "CBOR canonical round-trip produces identical bytes",
+      "evidence_ref": "compliance-report.json"
+    },
+    {
+      "id": "compliance_KEY-001",
+      "label": "Signing key bound to attestation",
+      "layer": "policy",
+      "status": "pass",
+      "detail": "signing-key-attestation binding found",
+      "evidence_ref": "compliance-report.json"
+    },
+    {
+      "id": "compliance_POLICY-001",
+      "label": "Policy version present",
+      "layer": "policy",
+      "status": "pass",
+      "detail": "policy_version = 'v1-default'",
+      "evidence_ref": "compliance-report.json"
+    },
+    {
+      "id": "compliance_SEQ-001",
+      "label": "Sequence numbers increasing",
+      "layer": "policy",
+      "status": "pass",
+      "detail": "Single receipt with sequence_number=0",
+      "evidence_ref": "compliance-report.json"
+    },
+    {
+      "id": "compliance_DESTROY-001",
+      "label": "Destroy evidence present",
+      "layer": "policy",
+      "status": "pass",
+      "detail": "Destroy evidence present with 5 action(s)",
+      "evidence_ref": "compliance-report.json"
+    },
+    {
+      "id": "platform_adapter",
+      "label": "Platform evidence adapter",
+      "layer": "platform",
+      "status": "pass",
+      "detail": "gcp / gcp-tdx adapter_version=1"
+    }
+  ],
+  "verifier": {
+    "name": "ephemeralml-runtime-passport",
+    "version": "0.2.9"
+  },
+  "limitations": [
+    {
+      "code": "not_compliance_determination",
+      "message": "Verification output is technical evidence, not a legal or regulatory compliance determination."
+    },
+    {
+      "code": "no_model_quality_claim",
+      "message": "Verification does not prove model accuracy, fairness, safety, clinical correctness, or business appropriateness."
+    },
+    {
+      "code": "no_deletion_proof",
+      "message": "Verification does not prove irrecoverable deletion of all possible copies."
+    },
+    {
+      "code": "raw_content_not_required",
+      "message": "Input and output content are represented by hashes by default; raw content is not required for receipt verification."
+    },
+    {
+      "code": "runtime_probe_json_not_supplied",
+      "message": "This gcp-tdx passport was generated from verifier/compliance evidence, not from BYOC doctor/smoke-test runtime probe JSON. Do not use it as evidence that those BYOC probes passed."
+    }
+  ],
+  "passport_sha256": "c4f8f4fcd0e7cd151020d6a771451dc568a3018f4fe5aee048cd165a408c23e9"
+}

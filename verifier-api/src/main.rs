@@ -4,7 +4,7 @@ use tracing_subscriber::EnvFilter;
 #[derive(Parser)]
 #[command(
     name = "ephemeralml-verifier",
-    about = "Cyntrisec Trust Center — Receipt Verification API"
+    about = "Cyntrisec Verification Center - Receipt Verification API"
 )]
 struct Args {
     /// Listen address
@@ -21,6 +21,8 @@ struct Args {
     #[arg(long, env = "EPHEMERALML_VERIFIER_API_KEY")]
     api_key: Option<String>,
     /// Deployment mode: "public-trust-center" or "secured-api".
+    /// The public-trust-center value is a backward-compatible CLI alias for
+    /// the public Verification Center surface.
     ///
     /// public-trust-center: No API key required. Strong rate limiting.
     ///                      Designed for public internet-facing verification.
@@ -57,7 +59,7 @@ async fn main() {
     let (api_key, rate_limit) = match &service_mode {
         ephemeralml_verifier_api::ServiceMode::PublicTrustCenter => {
             tracing::info!("╔══════════════════════════════════════════════╗");
-            tracing::info!("║  CYNTRISEC TRUST CENTER — PUBLIC MODE       ║");
+            tracing::info!("║  CYNTRISEC VERIFICATION CENTER - PUBLIC    ║");
             tracing::info!("║  No API key required for verification.      ║");
             tracing::info!("║  Rate limiting active.                      ║");
             tracing::info!("╚══════════════════════════════════════════════╝");
@@ -84,7 +86,7 @@ async fn main() {
                     "API key is shorter than 16 characters — consider using a stronger key"
                 );
             }
-            tracing::info!("Cyntrisec Trust Center — Secured API mode");
+            tracing::info!("Cyntrisec Verification Center - Secured API mode");
             tracing::info!("API key authentication enabled");
             (Some(key), args.rate_limit)
         }
@@ -105,7 +107,7 @@ async fn main() {
             std::process::exit(1);
         }
         if service_mode == ephemeralml_verifier_api::ServiceMode::PublicTrustCenter {
-            tracing::info!("CORS: permissive (public trust center mode)");
+            tracing::info!("CORS: permissive (public verification center mode)");
         } else {
             tracing::warn!("No --cors-origin specified; CORS is fully permissive");
         }
@@ -168,7 +170,7 @@ fn resolve_mode(args: &Args) -> ephemeralml_verifier_api::ServiceMode {
         eprintln!(
             "Error: No mode configured. Either:\n\
              \n\
-             1. Public trust center:  --mode public-trust-center\n\
+             1. Public Verification Center:  --mode public-trust-center\n\
              2. Secured API:          --mode secured-api --api-key <KEY>\n\
              3. Legacy (deprecated):  --insecure-no-auth"
         );

@@ -5,13 +5,18 @@ use ed25519_dalek::VerifyingKey;
 use sha2::{Digest, Sha256};
 
 use crate::api_types::{ErrorResponse, VerifyRequest};
-use crate::templates::LANDING_HTML;
+use crate::templates::{AWS_NATIVE_POC_HTML, LANDING_HTML};
 use crate::verify_dispatch::{self, DispatchPolicy};
 use crate::view_model::{CheckStatus, ReceiptFormat, TrustCenterCheck, TrustCenterResponse};
 
 /// `GET /` — landing page with paste/upload form.
 pub async fn landing_page() -> Html<&'static str> {
     Html(LANDING_HTML)
+}
+
+/// `GET /evidence/aws-native-poc` — public redacted AWS-native PoC evidence page.
+pub async fn aws_native_poc_evidence() -> Html<&'static str> {
+    Html(AWS_NATIVE_POC_HTML)
 }
 
 /// `GET /health` — liveness probe.

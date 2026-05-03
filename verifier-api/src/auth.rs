@@ -36,10 +36,14 @@ pub async fn auth_middleware(
         None => return next.run(request).await,
     };
 
-    // Skip auth for health check, landing page, and sample endpoints.
-    // Samples serve deterministic demo data with no security-sensitive content.
+    // Skip auth only for explicit public routes. Keep this allowlist narrow so
+    // future internal evidence paths cannot become public by namespace alone.
     let path = request.uri().path();
-    if path == "/health" || path == "/" || path.starts_with("/api/v1/samples/") {
+    if path == "/health"
+        || path == "/"
+        || path == "/evidence/aws-native-poc"
+        || path.starts_with("/api/v1/samples/")
+    {
         return next.run(request).await;
     }
 

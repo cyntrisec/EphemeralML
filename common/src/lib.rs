@@ -18,6 +18,7 @@ pub mod transport_types;
 pub mod types;
 pub mod ui;
 pub mod validation;
+pub mod verification_report;
 
 // Re-export commonly used types and errors
 pub use error::{
@@ -51,6 +52,15 @@ pub use transport_types::{
 };
 
 pub use validation::{InputValidator, ValidationError, ValidationLimits};
+
+pub use verification_report::{
+    default_verification_limitations, AwsNitroEvidence, AzureSnpEvidence, CloudCorrelation,
+    ComponentResult, DeploymentSummary, EvidenceBundleSummary, FileDigest, GcpTdxEvidence,
+    Limitation, MeasurementSummary, NvidiaGpuCcEvidence, PlatformEvidenceSummary, PolicySummary,
+    ReceiptEvidenceSummary, ReleaseSummary, ReportCheck, ReportCheckStatus, ReportStatus,
+    ReportType, RuntimePassportRef, RuntimePassportV1, RuntimeSummary, VerificationReportV1,
+    VerifierSummary, RUNTIME_PASSPORT_V1, VERIFICATION_REPORT_V1,
+};
 
 pub use receipt_verify::{verify_receipt, CheckResults, CheckStatus, VerifyOptions, VerifyResult};
 

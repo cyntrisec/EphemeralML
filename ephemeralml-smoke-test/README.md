@@ -23,7 +23,7 @@ verification passes and every required evidence file is present. In particular,
 2. `enclave_launch` — start `kms_proxy_host`, reject debug mode, launch the EIF with `nitro-cli run-enclave`, and require RUNNING state
 3. `inference` — run the host orchestrator against the fixed synthetic fixture and collect receipt/attestation artifacts
 4. `receipt_verify` — offline AIR verification via `ephemeralml-verify`, including attestation-document hash binding when `attestation.cbor` is supplied
-5. `s3_write` — 13-file evidence bundle uploaded to `s3://{bucket}/smoke-tests/{iso-timestamp}/`
+5. `s3_write` — 14-file evidence bundle uploaded to `s3://{bucket}/smoke-tests/{iso-timestamp}/`
 
 Failure at stage N marks stages N+1..5 as `skipped` with reason `"prior stage failed"`. Result vector always has exactly 5 entries regardless of where failure occurs.
 

@@ -1,0 +1,256 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Cyntrisec Runtime Passport</title><style>body{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;background:#050505;color:#f5f5f5;margin:0;padding:32px}main{max-width:980px;margin:auto}.card{border:1px solid #333;padding:20px;margin:16px 0;background:#0b0b0b}.warning{border-color:#ffb84a;background:#201600;color:#ffdc8a}.pass{color:#39ff7c}.fail{color:#ff5a5a}.partial{color:#ffb84a}pre{white-space:pre-wrap;word-break:break-word;background:#000;padding:16px;border:1px solid #333}</style></head><body><main><h1>Cyntrisec Runtime Passport</h1><div class="card"><p>Passport ID: <code>rpass_846be4a8-5019-4627-aefc-a23f73e3f59f</code></p><p>Status: <strong class="partial">Partial</strong></p><p>Runtime: <code>gcp/gcp-tdx</code></p><p>Passport SHA-256: <code>c4f8f4fcd0e7cd151020d6a771451dc568a3018f4fe5aee048cd165a408c23e9</code></p></div><div class="card"><h2>Machine-readable passport</h2><pre>{
+  &quot;schema_version&quot;: &quot;1&quot;,
+  &quot;passport_id&quot;: &quot;rpass_846be4a8-5019-4627-aefc-a23f73e3f59f&quot;,
+  &quot;created_at&quot;: 1777822076,
+  &quot;expires_at&quot;: 1785598076,
+  &quot;overall_status&quot;: &quot;partial&quot;,
+  &quot;deployment&quot;: {
+    &quot;cloud_provider&quot;: &quot;gcp&quot;,
+    &quot;account_id&quot;: &quot;gcp-project-redacted&quot;,
+    &quot;region&quot;: &quot;us-central1&quot;
+  },
+  &quot;runtime&quot;: {
+    &quot;runtime_type&quot;: &quot;gcp-tdx&quot;,
+    &quot;instance_type&quot;: &quot;c3-standard-4&quot;
+  },
+  &quot;platform_evidence&quot;: {
+    &quot;cloud_provider&quot;: &quot;gcp&quot;,
+    &quot;runtime_type&quot;: &quot;gcp-tdx&quot;,
+    &quot;adapter_version&quot;: &quot;1&quot;,
+    &quot;gcp_tdx&quot;: {
+      &quot;mrtd&quot;: &quot;aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa&quot;,
+      &quot;rtmr0&quot;: &quot;bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb&quot;,
+      &quot;rtmr1&quot;: &quot;cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc&quot;,
+      &quot;attestation_token_issuer&quot;: &quot;https://confidentialcomputing.googleapis.com&quot;,
+      &quot;image_digest&quot;: &quot;sha256:054e413eda56b2c640af00b2766054a9acdd53e816bd4f2ac36670dd4d780304&quot;,
+      &quot;kms_key_ref_hash&quot;: &quot;sha256:a0f90b473d126454aa28de3ed800e94db597b0f465f0ad37e02c9f42904bd710&quot;,
+      &quot;evidence_gcs_uri&quot;: &quot;repo://evidence/mvp-20260502_212009/&quot;
+    }
+  },
+  &quot;doctor&quot;: {
+    &quot;status&quot;: &quot;unknown&quot;,
+    &quot;summary&quot;: &quot;doctor JSON not supplied&quot;
+  },
+  &quot;smoke_test&quot;: {
+    &quot;status&quot;: &quot;unknown&quot;,
+    &quot;summary&quot;: &quot;smoke-test JSON not supplied&quot;
+  },
+  &quot;compliance&quot;: {
+    &quot;status&quot;: &quot;pass&quot;,
+    &quot;summary&quot;: &quot;All 16 rules passed for profile &#39;baseline&#39;&quot;
+  },
+  &quot;release&quot;: {
+    &quot;eif_sha384&quot;: &quot;aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa&quot;
+  },
+  &quot;measurements&quot;: [
+    {
+      &quot;name&quot;: &quot;measurement_type&quot;,
+      &quot;value&quot;: &quot;tdx-mrtd-rtmr&quot;
+    },
+    {
+      &quot;name&quot;: &quot;pcr0&quot;,
+      &quot;value&quot;: &quot;aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa&quot;
+    },
+    {
+      &quot;name&quot;: &quot;pcr1&quot;,
+      &quot;value&quot;: &quot;bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb&quot;
+    },
+    {
+      &quot;name&quot;: &quot;pcr2&quot;,
+      &quot;value&quot;: &quot;cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc&quot;
+    },
+    {
+      &quot;name&quot;: &quot;mrtd&quot;,
+      &quot;value&quot;: &quot;aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa&quot;
+    },
+    {
+      &quot;name&quot;: &quot;rtmr0&quot;,
+      &quot;value&quot;: &quot;bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb&quot;
+    },
+    {
+      &quot;name&quot;: &quot;rtmr1&quot;,
+      &quot;value&quot;: &quot;cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc&quot;
+    },
+    {
+      &quot;name&quot;: &quot;attestation_doc_hash&quot;,
+      &quot;value&quot;: &quot;791ceb1be5c52def2cca3dc6413ffa792ae0ed5cef38d5d63b1eb549bea6acda&quot;
+    },
+    {
+      &quot;name&quot;: &quot;request_hash&quot;,
+      &quot;value&quot;: &quot;f4a68967743b669666516beb4efbd4c9b33025a0215257734c225b977a24ddb0&quot;
+    },
+    {
+      &quot;name&quot;: &quot;response_hash&quot;,
+      &quot;value&quot;: &quot;baac9798d5b94282d5a97ef2e67789d4d5cf508b5c4de14eeba862d5f42ecb49&quot;
+    }
+  ],
+  &quot;evidence_bundle&quot;: {
+    &quot;bundle_type&quot;: &quot;unknown&quot;,
+    &quot;bundle_format_version&quot;: &quot;unknown&quot;,
+    &quot;uri&quot;: &quot;repo://evidence/mvp-20260502_212009/&quot;
+  },
+  &quot;checks&quot;: [
+    {
+      &quot;id&quot;: &quot;compliance_SIG-001&quot;,
+      &quot;label&quot;: &quot;Ed25519 signature verification&quot;,
+      &quot;layer&quot;: &quot;policy&quot;,
+      &quot;status&quot;: &quot;pass&quot;,
+      &quot;detail&quot;: &quot;Ed25519 signature verified (strict)&quot;,
+      &quot;evidence_ref&quot;: &quot;compliance-report.json&quot;
+    },
+    {
+      &quot;id&quot;: &quot;compliance_SIG-002&quot;,
+      &quot;label&quot;: &quot;CBOR canonical round-trip determinism&quot;,
+      &quot;layer&quot;: &quot;policy&quot;,
+      &quot;status&quot;: &quot;pass&quot;,
+      &quot;detail&quot;: &quot;Canonical encoding is deterministic&quot;,
+      &quot;evidence_ref&quot;: &quot;compliance-report.json&quot;
+    },
+    {
+      &quot;id&quot;: &quot;compliance_ATT-001&quot;,
+      &quot;label&quot;: &quot;Attestation document present&quot;,
+      &quot;layer&quot;: &quot;policy&quot;,
+      &quot;status&quot;: &quot;pass&quot;,
+      &quot;detail&quot;: &quot;Attestation evidence item found in bundle&quot;,
+      &quot;evidence_ref&quot;: &quot;compliance-report.json&quot;
+    },
+    {
+      &quot;id&quot;: &quot;compliance_ATT-002&quot;,
+      &quot;label&quot;: &quot;Attestation hash matches receipt&quot;,
+      &quot;layer&quot;: &quot;policy&quot;,
+      &quot;status&quot;: &quot;pass&quot;,
+      &quot;detail&quot;: &quot;SHA-256(attestation) == receipt.attestation_doc_hash&quot;,
+      &quot;evidence_ref&quot;: &quot;compliance-report.json&quot;
+    },
+    {
+      &quot;id&quot;: &quot;compliance_MEAS-001&quot;,
+      &quot;label&quot;: &quot;Measurements are 48 bytes&quot;,
+      &quot;layer&quot;: &quot;policy&quot;,
+      &quot;status&quot;: &quot;pass&quot;,
+      &quot;detail&quot;: &quot;All PCR/MRTD measurements are 48 bytes&quot;,
+      &quot;evidence_ref&quot;: &quot;compliance-report.json&quot;
+    },
+    {
+      &quot;id&quot;: &quot;compliance_MEAS-002&quot;,
+      &quot;label&quot;: &quot;Recognized measurement type&quot;,
+      &quot;layer&quot;: &quot;policy&quot;,
+      &quot;status&quot;: &quot;pass&quot;,
+      &quot;detail&quot;: &quot;Measurement type &#39;tdx-mrtd-rtmr&#39; is recognized&quot;,
+      &quot;evidence_ref&quot;: &quot;compliance-report.json&quot;
+    },
+    {
+      &quot;id&quot;: &quot;compliance_FRESH-001&quot;,
+      &quot;label&quot;: &quot;Receipt within max age&quot;,
+      &quot;layer&quot;: &quot;policy&quot;,
+      &quot;status&quot;: &quot;pass&quot;,
+      &quot;detail&quot;: &quot;Receipt age 113s &lt;= max 3600s&quot;,
+      &quot;evidence_ref&quot;: &quot;compliance-report.json&quot;
+    },
+    {
+      &quot;id&quot;: &quot;compliance_FRESH-002&quot;,
+      &quot;label&quot;: &quot;Receipt not future-dated&quot;,
+      &quot;layer&quot;: &quot;policy&quot;,
+      &quot;status&quot;: &quot;pass&quot;,
+      &quot;detail&quot;: &quot;Receipt timestamp is not in the future&quot;,
+      &quot;evidence_ref&quot;: &quot;compliance-report.json&quot;
+    },
+    {
+      &quot;id&quot;: &quot;compliance_MODEL-001&quot;,
+      &quot;label&quot;: &quot;Model ID present&quot;,
+      &quot;layer&quot;: &quot;policy&quot;,
+      &quot;status&quot;: &quot;pass&quot;,
+      &quot;detail&quot;: &quot;model_id = &#39;minilm-l6-v2&#39;&quot;,
+      &quot;evidence_ref&quot;: &quot;compliance-report.json&quot;
+    },
+    {
+      &quot;id&quot;: &quot;compliance_MODEL-002&quot;,
+      &quot;label&quot;: &quot;Model manifest present in bundle&quot;,
+      &quot;layer&quot;: &quot;policy&quot;,
+      &quot;status&quot;: &quot;pass&quot;,
+      &quot;detail&quot;: &quot;ModelManifest evidence item found&quot;,
+      &quot;evidence_ref&quot;: &quot;compliance-report.json&quot;
+    },
+    {
+      &quot;id&quot;: &quot;compliance_CHAIN-001&quot;,
+      &quot;label&quot;: &quot;Receipt chain hash valid&quot;,
+      &quot;layer&quot;: &quot;policy&quot;,
+      &quot;status&quot;: &quot;pass&quot;,
+      &quot;detail&quot;: &quot;No previous_receipt_hash (single receipt or first in chain)&quot;,
+      &quot;evidence_ref&quot;: &quot;compliance-report.json&quot;
+    },
+    {
+      &quot;id&quot;: &quot;compliance_CBOR-001&quot;,
+      &quot;label&quot;: &quot;CBOR deterministic encoding&quot;,
+      &quot;layer&quot;: &quot;policy&quot;,
+      &quot;status&quot;: &quot;pass&quot;,
+      &quot;detail&quot;: &quot;CBOR canonical round-trip produces identical bytes&quot;,
+      &quot;evidence_ref&quot;: &quot;compliance-report.json&quot;
+    },
+    {
+      &quot;id&quot;: &quot;compliance_KEY-001&quot;,
+      &quot;label&quot;: &quot;Signing key bound to attestation&quot;,
+      &quot;layer&quot;: &quot;policy&quot;,
+      &quot;status&quot;: &quot;pass&quot;,
+      &quot;detail&quot;: &quot;signing-key-attestation binding found&quot;,
+      &quot;evidence_ref&quot;: &quot;compliance-report.json&quot;
+    },
+    {
+      &quot;id&quot;: &quot;compliance_POLICY-001&quot;,
+      &quot;label&quot;: &quot;Policy version present&quot;,
+      &quot;layer&quot;: &quot;policy&quot;,
+      &quot;status&quot;: &quot;pass&quot;,
+      &quot;detail&quot;: &quot;policy_version = &#39;v1-default&#39;&quot;,
+      &quot;evidence_ref&quot;: &quot;compliance-report.json&quot;
+    },
+    {
+      &quot;id&quot;: &quot;compliance_SEQ-001&quot;,
+      &quot;label&quot;: &quot;Sequence numbers increasing&quot;,
+      &quot;layer&quot;: &quot;policy&quot;,
+      &quot;status&quot;: &quot;pass&quot;,
+      &quot;detail&quot;: &quot;Single receipt with sequence_number=0&quot;,
+      &quot;evidence_ref&quot;: &quot;compliance-report.json&quot;
+    },
+    {
+      &quot;id&quot;: &quot;compliance_DESTROY-001&quot;,
+      &quot;label&quot;: &quot;Destroy evidence present&quot;,
+      &quot;layer&quot;: &quot;policy&quot;,
+      &quot;status&quot;: &quot;pass&quot;,
+      &quot;detail&quot;: &quot;Destroy evidence present with 5 action(s)&quot;,
+      &quot;evidence_ref&quot;: &quot;compliance-report.json&quot;
+    },
+    {
+      &quot;id&quot;: &quot;platform_adapter&quot;,
+      &quot;label&quot;: &quot;Platform evidence adapter&quot;,
+      &quot;layer&quot;: &quot;platform&quot;,
+      &quot;status&quot;: &quot;pass&quot;,
+      &quot;detail&quot;: &quot;gcp / gcp-tdx adapter_version=1&quot;
+    }
+  ],
+  &quot;verifier&quot;: {
+    &quot;name&quot;: &quot;ephemeralml-runtime-passport&quot;,
+    &quot;version&quot;: &quot;0.2.9&quot;
+  },
+  &quot;limitations&quot;: [
+    {
+      &quot;code&quot;: &quot;not_compliance_determination&quot;,
+      &quot;message&quot;: &quot;Verification output is technical evidence, not a legal or regulatory compliance determination.&quot;
+    },
+    {
+      &quot;code&quot;: &quot;no_model_quality_claim&quot;,
+      &quot;message&quot;: &quot;Verification does not prove model accuracy, fairness, safety, clinical correctness, or business appropriateness.&quot;
+    },
+    {
+      &quot;code&quot;: &quot;no_deletion_proof&quot;,
+      &quot;message&quot;: &quot;Verification does not prove irrecoverable deletion of all possible copies.&quot;
+    },
+    {
+      &quot;code&quot;: &quot;raw_content_not_required&quot;,
+      &quot;message&quot;: &quot;Input and output content are represented by hashes by default; raw content is not required for receipt verification.&quot;
+    },
+    {
+      &quot;code&quot;: &quot;runtime_probe_json_not_supplied&quot;,
+      &quot;message&quot;: &quot;This gcp-tdx passport was generated from verifier/compliance evidence, not from BYOC doctor/smoke-test runtime probe JSON. Do not use it as evidence that those BYOC probes passed.&quot;
+    }
+  ],
+  &quot;passport_sha256&quot;: &quot;c4f8f4fcd0e7cd151020d6a771451dc568a3018f4fe5aee048cd165a408c23e9&quot;
+}</pre></div></main></body></html>

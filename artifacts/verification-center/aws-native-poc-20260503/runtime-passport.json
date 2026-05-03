@@ -1,0 +1,213 @@
+{
+  "schema_version": "1",
+  "passport_id": "rpass_4bd27e1d-605d-4908-a1b1-4d69d6325e36",
+  "created_at": 1777822056,
+  "expires_at": 1785598056,
+  "overall_status": "pass",
+  "deployment": {
+    "cloud_provider": "aws",
+    "account_id": "aws-account-redacted",
+    "region": "us-east-1",
+    "stack_name": "cyntrisec-aws-poc-redacted"
+  },
+  "runtime": {
+    "runtime_type": "aws-nitro",
+    "instance_type": "m7i.xlarge",
+    "enclave_cid": 16,
+    "enclave_memory_mib": 4096,
+    "enclave_cpu_count": 2
+  },
+  "platform_evidence": {
+    "cloud_provider": "aws",
+    "runtime_type": "aws-nitro",
+    "adapter_version": "1",
+    "aws_nitro": {
+      "pcr0": "184b2a72e7bbe6d84dfddc586d3ce7ecc49085c044f31594e67042b6a5ff4e010f7a2052e430190b6bb54762059c4b21",
+      "pcr1": "4b4d5b3661b3efc12920900c80e126e4ce783c522de6c02a2a5bf7af3a2b9327b86776f188e4be1c1c404a129dbda493",
+      "pcr2": "46dc284c9e5c517f8a7bebf30cf041565dfb2a5682f87cab430f2ded1a235d2f599853a51f55eaa98495573471427c21",
+      "eif_sha384": "184b2a72e7bbe6d84dfddc586d3ce7ecc49085c044f31594e67042b6a5ff4e010f7a2052e430190b6bb54762059c4b21",
+      "kms_key_ref_hash": "sha256:bb467b3c701972a200ea368c66a451a4908584168f1c528b44662c07b6832ce0",
+      "iam_role_ref_hash": "sha256:0188e3ba297801c862337bee3104c207bfd9e16f09e03a6319c524cb64a81f91",
+      "evidence_s3_uri": "s3://redacted-customer-evidence-bucket/smoke-tests/20260503T142806Z/"
+    }
+  },
+  "doctor": {
+    "status": "pass",
+    "duration_ms": 1262,
+    "summary": "6/6 doctor checks passed"
+  },
+  "smoke_test": {
+    "status": "pass",
+    "duration_ms": 21851,
+    "summary": "bundle-derived smoke result: manifest_status=pass, required_files=12/12, negative_tests=3/3"
+  },
+  "release": {
+    "eif_sha384": "184b2a72e7bbe6d84dfddc586d3ce7ecc49085c044f31594e67042b6a5ff4e010f7a2052e430190b6bb54762059c4b21"
+  },
+  "measurements": [
+    {
+      "name": "measurement_type",
+      "value": "nitro-pcr"
+    },
+    {
+      "name": "pcr0",
+      "value": "184b2a72e7bbe6d84dfddc586d3ce7ecc49085c044f31594e67042b6a5ff4e010f7a2052e430190b6bb54762059c4b21"
+    },
+    {
+      "name": "pcr1",
+      "value": "4b4d5b3661b3efc12920900c80e126e4ce783c522de6c02a2a5bf7af3a2b9327b86776f188e4be1c1c404a129dbda493"
+    },
+    {
+      "name": "pcr2",
+      "value": "46dc284c9e5c517f8a7bebf30cf041565dfb2a5682f87cab430f2ded1a235d2f599853a51f55eaa98495573471427c21"
+    },
+    {
+      "name": "eif_sha384",
+      "value": "184b2a72e7bbe6d84dfddc586d3ce7ecc49085c044f31594e67042b6a5ff4e010f7a2052e430190b6bb54762059c4b21"
+    }
+  ],
+  "evidence_bundle": {
+    "bundle_type": "cyntrisec-phase-1-smoke-test",
+    "bundle_format_version": "3",
+    "uri": "s3://redacted-customer-evidence-bucket/smoke-tests/20260503T142806Z/",
+    "manifest_sha256": "c773693ed22e827921a3fc0d3e3687357c3c576b924a29b7b279c311d80a2707",
+    "sha256sums_sha256": "ff0b23cd4e7405c83545024d4d2238f440cef8b972fb9ba7130081a966ef0baa",
+    "files": [
+      {
+        "name": "doctor.json",
+        "sha256": "aa6d67923ad70c18a8ea9a5ac6cb080d0316818278e4f2773f08478ba167187e"
+      },
+      {
+        "name": "receipt.cbor",
+        "sha256": "c1bfd0b9f805945a3305ea57866a97bcaaf99c80a34eed91280b5353fbed7603"
+      },
+      {
+        "name": "attestation.cbor",
+        "sha256": "16da86e81ad656d88600571a00b22ede4bc408db8e1911db2eda4a5ee01c1d76"
+      },
+      {
+        "name": "receipt.txt",
+        "sha256": "da8412c05a53ae83ba4d153aaaaeefa92fc1fe5901e54feb388bcacb56afaced"
+      },
+      {
+        "name": "verification.json",
+        "sha256": "566d34557835ff5336cc44620f68b66d9488f2ec990448e27d7a0662c2bf5707"
+      },
+      {
+        "name": "enclave-measurements.json",
+        "sha256": "3be24003ef214980ebf188c016620c45a0809ede9f592c9435be7f177d5571cf"
+      },
+      {
+        "name": "inference-metadata.json",
+        "sha256": "7382674222ca237fd28ec6115558255250d4f3e7e70e1b711669c188f068e6fa"
+      },
+      {
+        "name": "model-info.json",
+        "sha256": "1c334c5ee999b1c9c904217aec900ef86e0a41f9696f47ae0ebf5b61ae8bdf91"
+      },
+      {
+        "name": "kms-release.json",
+        "sha256": "fcbad91f5b5857d9d696a69f7241feffbbc8903dc40f82d8d3413a3a9b59eb9f"
+      },
+      {
+        "name": "negative-tests.json",
+        "sha256": "437739a857dcf6adff92c777869a8d2989af3cac429a3509792f69d91e0f34ca"
+      },
+      {
+        "name": "benchmark.json",
+        "sha256": "c7c578c3ca4fba68ce73f6ebf0cde0e33340b7f4efa87b003f85989a6d1d1a15"
+      },
+      {
+        "name": "approval-report.md",
+        "sha256": "ed6499d3a03336babe668761decd1b11fd1008b6297989403766cbb95b831972"
+      }
+    ]
+  },
+  "checks": [
+    {
+      "id": "doctor_allocator",
+      "label": "Doctor: allocator",
+      "layer": "runtime",
+      "status": "pass",
+      "evidence_ref": "doctor.json"
+    },
+    {
+      "id": "doctor_eif",
+      "label": "Doctor: eif",
+      "layer": "runtime",
+      "status": "skip",
+      "detail": "unsigned_internal_poc=true; cosign_verified=false",
+      "evidence_ref": "doctor.json"
+    },
+    {
+      "id": "doctor_role",
+      "label": "Doctor: role",
+      "layer": "runtime",
+      "status": "pass",
+      "evidence_ref": "doctor.json"
+    },
+    {
+      "id": "doctor_bucket",
+      "label": "Doctor: bucket",
+      "layer": "runtime",
+      "status": "pass",
+      "evidence_ref": "doctor.json"
+    },
+    {
+      "id": "doctor_kms",
+      "label": "Doctor: kms",
+      "layer": "runtime",
+      "status": "pass",
+      "evidence_ref": "doctor.json"
+    },
+    {
+      "id": "doctor_clock",
+      "label": "Doctor: clock",
+      "layer": "runtime",
+      "status": "pass",
+      "evidence_ref": "doctor.json"
+    },
+    {
+      "id": "smoke_bundle_manifest",
+      "label": "Smoke test bundle manifest",
+      "layer": "runtime",
+      "status": "pass",
+      "detail": "manifest_status=pass, bundle_type_ok=true, required_files_missing=0, negative_tests=3/3",
+      "evidence_ref": "manifest.json"
+    },
+    {
+      "id": "platform_adapter",
+      "label": "Platform evidence adapter",
+      "layer": "platform",
+      "status": "pass",
+      "detail": "aws / aws-nitro adapter_version=1"
+    }
+  ],
+  "verifier": {
+    "name": "ephemeralml-runtime-passport",
+    "version": "0.2.9"
+  },
+  "limitations": [
+    {
+      "code": "not_compliance_determination",
+      "message": "Verification output is technical evidence, not a legal or regulatory compliance determination."
+    },
+    {
+      "code": "no_model_quality_claim",
+      "message": "Verification does not prove model accuracy, fairness, safety, clinical correctness, or business appropriateness."
+    },
+    {
+      "code": "no_deletion_proof",
+      "message": "Verification does not prove irrecoverable deletion of all possible copies."
+    },
+    {
+      "code": "raw_content_not_required",
+      "message": "Input and output content are represented by hashes by default; raw content is not required for receipt verification."
+    },
+    {
+      "code": "unsigned_eif_internal_poc",
+      "message": "Doctor EIF verification passed under CYNTRISEC_DOCTOR_ALLOW_UNSIGNED_EIF_FOR_POC because the host lacks an adjacent cosign bundle. This is acceptable only for internal PoC evidence and must be closed before production buyer evidence."
+    }
+  ],
+  "passport_sha256": "20b69eec5fec2b905878c865c613ed31005fcb2835d22a91c5564394a99b55f9"
+}

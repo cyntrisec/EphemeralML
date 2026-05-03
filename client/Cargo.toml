@@ -68,5 +68,13 @@ name = "ephemeralml-verify"
 path = "src/bin/ephemeralml_verify.rs"
 
 [[bin]]
+name = "ephemeralml-report"
+path = "src/bin/ephemeralml_report.rs"
+
+[[bin]]
+name = "ephemeralml-runtime-passport"
+path = "src/bin/ephemeralml_runtime_passport.rs"
+
+[[bin]]
 name = "ephemeralml"
 path = "src/bin/ephemeralml.rs"

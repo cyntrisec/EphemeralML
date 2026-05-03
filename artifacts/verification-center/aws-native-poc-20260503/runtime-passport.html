@@ -1,0 +1,213 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Cyntrisec Runtime Passport</title><style>body{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;background:#050505;color:#f5f5f5;margin:0;padding:32px}main{max-width:980px;margin:auto}.card{border:1px solid #333;padding:20px;margin:16px 0;background:#0b0b0b}.warning{border-color:#ffb84a;background:#201600;color:#ffdc8a}.pass{color:#39ff7c}.fail{color:#ff5a5a}.partial{color:#ffb84a}pre{white-space:pre-wrap;word-break:break-word;background:#000;padding:16px;border:1px solid #333}</style></head><body><main><h1>Cyntrisec Runtime Passport</h1><div class="card"><p>Passport ID: <code>rpass_4bd27e1d-605d-4908-a1b1-4d69d6325e36</code></p><p>Status: <strong class="pass">Pass</strong></p><p>Runtime: <code>aws/aws-nitro</code></p><p>Passport SHA-256: <code>20b69eec5fec2b905878c865c613ed31005fcb2835d22a91c5564394a99b55f9</code></p></div><div class="card warning"><h2>Reviewer-visible limitation</h2><ul><li><strong>unsigned_eif_internal_poc</strong>: Doctor EIF verification passed under CYNTRISEC_DOCTOR_ALLOW_UNSIGNED_EIF_FOR_POC because the host lacks an adjacent cosign bundle. This is acceptable only for internal PoC evidence and must be closed before production buyer evidence.</li></ul></div><div class="card"><h2>Machine-readable passport</h2><pre>{
+  &quot;schema_version&quot;: &quot;1&quot;,
+  &quot;passport_id&quot;: &quot;rpass_4bd27e1d-605d-4908-a1b1-4d69d6325e36&quot;,
+  &quot;created_at&quot;: 1777822056,
+  &quot;expires_at&quot;: 1785598056,
+  &quot;overall_status&quot;: &quot;pass&quot;,
+  &quot;deployment&quot;: {
+    &quot;cloud_provider&quot;: &quot;aws&quot;,
+    &quot;account_id&quot;: &quot;aws-account-redacted&quot;,
+    &quot;region&quot;: &quot;us-east-1&quot;,
+    &quot;stack_name&quot;: &quot;cyntrisec-aws-poc-redacted&quot;
+  },
+  &quot;runtime&quot;: {
+    &quot;runtime_type&quot;: &quot;aws-nitro&quot;,
+    &quot;instance_type&quot;: &quot;m7i.xlarge&quot;,
+    &quot;enclave_cid&quot;: 16,
+    &quot;enclave_memory_mib&quot;: 4096,
+    &quot;enclave_cpu_count&quot;: 2
+  },
+  &quot;platform_evidence&quot;: {
+    &quot;cloud_provider&quot;: &quot;aws&quot;,
+    &quot;runtime_type&quot;: &quot;aws-nitro&quot;,
+    &quot;adapter_version&quot;: &quot;1&quot;,
+    &quot;aws_nitro&quot;: {
+      &quot;pcr0&quot;: &quot;184b2a72e7bbe6d84dfddc586d3ce7ecc49085c044f31594e67042b6a5ff4e010f7a2052e430190b6bb54762059c4b21&quot;,
+      &quot;pcr1&quot;: &quot;4b4d5b3661b3efc12920900c80e126e4ce783c522de6c02a2a5bf7af3a2b9327b86776f188e4be1c1c404a129dbda493&quot;,
+      &quot;pcr2&quot;: &quot;46dc284c9e5c517f8a7bebf30cf041565dfb2a5682f87cab430f2ded1a235d2f599853a51f55eaa98495573471427c21&quot;,
+      &quot;eif_sha384&quot;: &quot;184b2a72e7bbe6d84dfddc586d3ce7ecc49085c044f31594e67042b6a5ff4e010f7a2052e430190b6bb54762059c4b21&quot;,
+      &quot;kms_key_ref_hash&quot;: &quot;sha256:bb467b3c701972a200ea368c66a451a4908584168f1c528b44662c07b6832ce0&quot;,
+      &quot;iam_role_ref_hash&quot;: &quot;sha256:0188e3ba297801c862337bee3104c207bfd9e16f09e03a6319c524cb64a81f91&quot;,
+      &quot;evidence_s3_uri&quot;: &quot;s3://redacted-customer-evidence-bucket/smoke-tests/20260503T142806Z/&quot;
+    }
+  },
+  &quot;doctor&quot;: {
+    &quot;status&quot;: &quot;pass&quot;,
+    &quot;duration_ms&quot;: 1262,
+    &quot;summary&quot;: &quot;6/6 doctor checks passed&quot;
+  },
+  &quot;smoke_test&quot;: {
+    &quot;status&quot;: &quot;pass&quot;,
+    &quot;duration_ms&quot;: 21851,
+    &quot;summary&quot;: &quot;bundle-derived smoke result: manifest_status=pass, required_files=12/12, negative_tests=3/3&quot;
+  },
+  &quot;release&quot;: {
+    &quot;eif_sha384&quot;: &quot;184b2a72e7bbe6d84dfddc586d3ce7ecc49085c044f31594e67042b6a5ff4e010f7a2052e430190b6bb54762059c4b21&quot;
+  },
+  &quot;measurements&quot;: [
+    {
+      &quot;name&quot;: &quot;measurement_type&quot;,
+      &quot;value&quot;: &quot;nitro-pcr&quot;
+    },
+    {
+      &quot;name&quot;: &quot;pcr0&quot;,
+      &quot;value&quot;: &quot;184b2a72e7bbe6d84dfddc586d3ce7ecc49085c044f31594e67042b6a5ff4e010f7a2052e430190b6bb54762059c4b21&quot;
+    },
+    {
+      &quot;name&quot;: &quot;pcr1&quot;,
+      &quot;value&quot;: &quot;4b4d5b3661b3efc12920900c80e126e4ce783c522de6c02a2a5bf7af3a2b9327b86776f188e4be1c1c404a129dbda493&quot;
+    },
+    {
+      &quot;name&quot;: &quot;pcr2&quot;,
+      &quot;value&quot;: &quot;46dc284c9e5c517f8a7bebf30cf041565dfb2a5682f87cab430f2ded1a235d2f599853a51f55eaa98495573471427c21&quot;
+    },
+    {
+      &quot;name&quot;: &quot;eif_sha384&quot;,
+      &quot;value&quot;: &quot;184b2a72e7bbe6d84dfddc586d3ce7ecc49085c044f31594e67042b6a5ff4e010f7a2052e430190b6bb54762059c4b21&quot;
+    }
+  ],
+  &quot;evidence_bundle&quot;: {
+    &quot;bundle_type&quot;: &quot;cyntrisec-phase-1-smoke-test&quot;,
+    &quot;bundle_format_version&quot;: &quot;3&quot;,
+    &quot;uri&quot;: &quot;s3://redacted-customer-evidence-bucket/smoke-tests/20260503T142806Z/&quot;,
+    &quot;manifest_sha256&quot;: &quot;c773693ed22e827921a3fc0d3e3687357c3c576b924a29b7b279c311d80a2707&quot;,
+    &quot;sha256sums_sha256&quot;: &quot;ff0b23cd4e7405c83545024d4d2238f440cef8b972fb9ba7130081a966ef0baa&quot;,
+    &quot;files&quot;: [
+      {
+        &quot;name&quot;: &quot;doctor.json&quot;,
+        &quot;sha256&quot;: &quot;aa6d67923ad70c18a8ea9a5ac6cb080d0316818278e4f2773f08478ba167187e&quot;
+      },
+      {
+        &quot;name&quot;: &quot;receipt.cbor&quot;,
+        &quot;sha256&quot;: &quot;c1bfd0b9f805945a3305ea57866a97bcaaf99c80a34eed91280b5353fbed7603&quot;
+      },
+      {
+        &quot;name&quot;: &quot;attestation.cbor&quot;,
+        &quot;sha256&quot;: &quot;16da86e81ad656d88600571a00b22ede4bc408db8e1911db2eda4a5ee01c1d76&quot;
+      },
+      {
+        &quot;name&quot;: &quot;receipt.txt&quot;,
+        &quot;sha256&quot;: &quot;da8412c05a53ae83ba4d153aaaaeefa92fc1fe5901e54feb388bcacb56afaced&quot;
+      },
+      {
+        &quot;name&quot;: &quot;verification.json&quot;,
+        &quot;sha256&quot;: &quot;566d34557835ff5336cc44620f68b66d9488f2ec990448e27d7a0662c2bf5707&quot;
+      },
+      {
+        &quot;name&quot;: &quot;enclave-measurements.json&quot;,
+        &quot;sha256&quot;: &quot;3be24003ef214980ebf188c016620c45a0809ede9f592c9435be7f177d5571cf&quot;
+      },
+      {
+        &quot;name&quot;: &quot;inference-metadata.json&quot;,
+        &quot;sha256&quot;: &quot;7382674222ca237fd28ec6115558255250d4f3e7e70e1b711669c188f068e6fa&quot;
+      },
+      {
+        &quot;name&quot;: &quot;model-info.json&quot;,
+        &quot;sha256&quot;: &quot;1c334c5ee999b1c9c904217aec900ef86e0a41f9696f47ae0ebf5b61ae8bdf91&quot;
+      },
+      {
+        &quot;name&quot;: &quot;kms-release.json&quot;,
+        &quot;sha256&quot;: &quot;fcbad91f5b5857d9d696a69f7241feffbbc8903dc40f82d8d3413a3a9b59eb9f&quot;
+      },
+      {
+        &quot;name&quot;: &quot;negative-tests.json&quot;,
+        &quot;sha256&quot;: &quot;437739a857dcf6adff92c777869a8d2989af3cac429a3509792f69d91e0f34ca&quot;
+      },
+      {
+        &quot;name&quot;: &quot;benchmark.json&quot;,
+        &quot;sha256&quot;: &quot;c7c578c3ca4fba68ce73f6ebf0cde0e33340b7f4efa87b003f85989a6d1d1a15&quot;
+      },
+      {
+        &quot;name&quot;: &quot;approval-report.md&quot;,
+        &quot;sha256&quot;: &quot;ed6499d3a03336babe668761decd1b11fd1008b6297989403766cbb95b831972&quot;
+      }
+    ]
+  },
+  &quot;checks&quot;: [
+    {
+      &quot;id&quot;: &quot;doctor_allocator&quot;,
+      &quot;label&quot;: &quot;Doctor: allocator&quot;,
+      &quot;layer&quot;: &quot;runtime&quot;,
+      &quot;status&quot;: &quot;pass&quot;,
+      &quot;evidence_ref&quot;: &quot;doctor.json&quot;
+    },
+    {
+      &quot;id&quot;: &quot;doctor_eif&quot;,
+      &quot;label&quot;: &quot;Doctor: eif&quot;,
+      &quot;layer&quot;: &quot;runtime&quot;,
+      &quot;status&quot;: &quot;skip&quot;,
+      &quot;detail&quot;: &quot;unsigned_internal_poc=true; cosign_verified=false&quot;,
+      &quot;evidence_ref&quot;: &quot;doctor.json&quot;
+    },
+    {
+      &quot;id&quot;: &quot;doctor_role&quot;,
+      &quot;label&quot;: &quot;Doctor: role&quot;,
+      &quot;layer&quot;: &quot;runtime&quot;,
+      &quot;status&quot;: &quot;pass&quot;,
+      &quot;evidence_ref&quot;: &quot;doctor.json&quot;
+    },
+    {
+      &quot;id&quot;: &quot;doctor_bucket&quot;,
+      &quot;label&quot;: &quot;Doctor: bucket&quot;,
+      &quot;layer&quot;: &quot;runtime&quot;,
+      &quot;status&quot;: &quot;pass&quot;,
+      &quot;evidence_ref&quot;: &quot;doctor.json&quot;
+    },
+    {
+      &quot;id&quot;: &quot;doctor_kms&quot;,
+      &quot;label&quot;: &quot;Doctor: kms&quot;,
+      &quot;layer&quot;: &quot;runtime&quot;,
+      &quot;status&quot;: &quot;pass&quot;,
+      &quot;evidence_ref&quot;: &quot;doctor.json&quot;
+    },
+    {
+      &quot;id&quot;: &quot;doctor_clock&quot;,
+      &quot;label&quot;: &quot;Doctor: clock&quot;,
+      &quot;layer&quot;: &quot;runtime&quot;,
+      &quot;status&quot;: &quot;pass&quot;,
+      &quot;evidence_ref&quot;: &quot;doctor.json&quot;
+    },
+    {
+      &quot;id&quot;: &quot;smoke_bundle_manifest&quot;,
+      &quot;label&quot;: &quot;Smoke test bundle manifest&quot;,
+      &quot;layer&quot;: &quot;runtime&quot;,
+      &quot;status&quot;: &quot;pass&quot;,
+      &quot;detail&quot;: &quot;manifest_status=pass, bundle_type_ok=true, required_files_missing=0, negative_tests=3/3&quot;,
+      &quot;evidence_ref&quot;: &quot;manifest.json&quot;
+    },
+    {
+      &quot;id&quot;: &quot;platform_adapter&quot;,
+      &quot;label&quot;: &quot;Platform evidence adapter&quot;,
+      &quot;layer&quot;: &quot;platform&quot;,
+      &quot;status&quot;: &quot;pass&quot;,
+      &quot;detail&quot;: &quot;aws / aws-nitro adapter_version=1&quot;
+    }
+  ],
+  &quot;verifier&quot;: {
+    &quot;name&quot;: &quot;ephemeralml-runtime-passport&quot;,
+    &quot;version&quot;: &quot;0.2.9&quot;
+  },
+  &quot;limitations&quot;: [
+    {
+      &quot;code&quot;: &quot;not_compliance_determination&quot;,
+      &quot;message&quot;: &quot;Verification output is technical evidence, not a legal or regulatory compliance determination.&quot;
+    },
+    {
+      &quot;code&quot;: &quot;no_model_quality_claim&quot;,
+      &quot;message&quot;: &quot;Verification does not prove model accuracy, fairness, safety, clinical correctness, or business appropriateness.&quot;
+    },
+    {
+      &quot;code&quot;: &quot;no_deletion_proof&quot;,
+      &quot;message&quot;: &quot;Verification does not prove irrecoverable deletion of all possible copies.&quot;
+    },
+    {
+      &quot;code&quot;: &quot;raw_content_not_required&quot;,
+      &quot;message&quot;: &quot;Input and output content are represented by hashes by default; raw content is not required for receipt verification.&quot;
+    },
+    {
+      &quot;code&quot;: &quot;unsigned_eif_internal_poc&quot;,
+      &quot;message&quot;: &quot;Doctor EIF verification passed under CYNTRISEC_DOCTOR_ALLOW_UNSIGNED_EIF_FOR_POC because the host lacks an adjacent cosign bundle. This is acceptable only for internal PoC evidence and must be closed before production buyer evidence.&quot;
+    }
+  ],
+  &quot;passport_sha256&quot;: &quot;20b69eec5fec2b905878c865c613ed31005fcb2835d22a91c5564394a99b55f9&quot;
+}</pre></div></main></body></html>

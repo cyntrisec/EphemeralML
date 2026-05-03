@@ -3,9 +3,9 @@ pub const LANDING_HTML: &str = r##"<!DOCTYPE html>
 <head>
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Cyntrisec Trust Center</title>
+  <title>Cyntrisec Verification Center</title>
   <meta name="description" content="Verify AIR v1 and legacy receipts from confidential AI inference. Checks signatures, receipt structure, and optional caller-supplied policy bindings."/>
-  <meta property="og:title" content="Cyntrisec Trust Center"/>
+  <meta property="og:title" content="Cyntrisec Verification Center"/>
   <meta property="og:description" content="Verify AIR v1 and legacy receipts from confidential AI inference. Checks signatures, receipt structure, and optional caller-supplied policy bindings."/>
   <meta property="og:type" content="website"/>
   <meta name="theme-color" content="#000000"/>
@@ -571,7 +571,7 @@ pub const LANDING_HTML: &str = r##"<!DOCTYPE html>
 </head>
 <body>
   <div class="field" aria-hidden="true"><canvas id="trustField"></canvas></div>
-  <div class="hud tl"><span><i class="dot"></i>CYNTRISEC</span><span>TRUST CENTER</span></div>
+  <div class="hud tl"><span><i class="dot"></i>CYNTRISEC</span><span>VERIFICATION CENTER</span></div>
   <div class="hud tr"><span id="hudFrame">FRAME / 0000</span><span id="hudClock">00:00:00.000</span></div>
   <div class="hud bl"><span>RECEIPT / AIR_V1 · LEGACY</span><span>SIG / ED25519</span></div>
   <div class="hud br"><span>VERIFY / OFFLINE</span><span>ATTEST / OPTIONAL</span></div>
@@ -580,12 +580,13 @@ pub const LANDING_HTML: &str = r##"<!DOCTYPE html>
   <div class="hdr">
     <a class="brand" href="https://cyntrisec.com">
       <img src="https://cyntrisec.com/logo-ikeda.svg" alt="" width="20" height="20"/>
-      <span>CYNTRISEC <em>// TRUST CENTER</em></span>
+      <span>CYNTRISEC <em>// VERIFICATION CENTER</em></span>
     </a>
     <nav>
       <a href="https://cyntrisec.com/docs">Docs</a>
       <a href="https://github.com/cyntrisec/EphemeralML">GitHub</a>
       <a href="https://cyntrisec.com/spec/air/v1/">Spec</a>
+      <a href="/evidence/aws-native-poc">Evidence</a>
     </nav>
     <div class="hdr-meta">VERIFY / RECEIPTS <strong>· AIR_V1</strong></div>
   </div>
@@ -593,13 +594,13 @@ pub const LANDING_HTML: &str = r##"<!DOCTYPE html>
 
 <main class="page">
   <section class="panel hero">
-    <span class="panel-tag">// 001 / TRUST CENTER</span>
+    <span class="panel-tag">// 001 / VERIFICATION CENTER</span>
     <span class="panel-num">001</span>
     <div class="hero-grid">
       <div>
         <div class="eyebrow">RECEIPT VERIFICATION</div>
         <h1>VERIFY<br><span class="stroke">WITHOUT</span><br><span class="accent">TRUSTING US.</span></h1>
-        <p>Check AIR v1 and legacy receipts from confidential AI inference. The paste flow validates receipt signatures and structure; API callers can add model, hash, freshness, and platform policy inputs for stricter verdicts.</p>
+        <p>Check AIR v1 and legacy receipts from confidential AI inference. This stateless surface validates receipt signatures and structure; API callers can add model, hash, freshness, platform, and attestation inputs for stricter verifier-backed reports.</p>
       </div>
       <div class="hero-meta" aria-label="verification surface">
         <div class="hero-meta-row"><span>Formats</span><strong>AIR_V1 · LEGACY</strong></div>
@@ -617,7 +618,7 @@ pub const LANDING_HTML: &str = r##"<!DOCTYPE html>
     <div class="console">
       <div class="console-bar">
         <span class="dots"><i></i><i></i><i></i></span>
-        <span>ephemeralml-verifier / public trust center</span>
+        <span>ephemeralml-verifier / public verification center</span>
         <span>stateless verdict surface</span>
       </div>
       <div class="console-body">
@@ -686,7 +687,7 @@ pub const LANDING_HTML: &str = r##"<!DOCTYPE html>
             <strong>Limitations</strong>
             <ul>
               <li>Confirms the receipt is correctly signed and structurally valid.</li>
-              <li>Can derive the receipt key from a supplied attestation document, but does not enforce deployment-specific measurement policy by itself.</li>
+              <li>Can derive the receipt key from a supplied attestation document and check AIR attestation hash binding when the sidecar is supplied.</li>
               <li>Does not prove data was deleted after processing.</li>
               <li>Does not constitute a compliance determination.</li>
               <li>Deployment-specific trust policy depends on expected measurements, model allowlist, and freshness inputs.</li>
@@ -807,7 +808,7 @@ function showResult(data) {
   const el = document.getElementById('result');
   el.style.display = 'block';
   document.getElementById('printHeader').textContent =
-    'Cyntrisec Trust Center — ' + new Date().toISOString();
+    'Cyntrisec Verification Center - ' + new Date().toISOString();
 
   const isOk = data.verified === true || data.verdict === 'verified';
   const isAir = data.format === 'air_v1';
@@ -982,6 +983,97 @@ function copyJson() {
   document.addEventListener('visibilitychange', function(){ visible = !document.hidden; });
 })();
 </script>
+</body>
+</html>
+"##;
+
+pub const AWS_NATIVE_POC_HTML: &str = r##"<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Cyntrisec Verification Center - AWS-Native Nitro PoC Evidence</title>
+  <meta name="robots" content="noindex"/>
+  <style>
+    body{margin:0;background:#050505;color:#f5f5f5;font:14px/1.6 "IBM Plex Mono",Menlo,monospace}
+    main{max-width:980px;margin:0 auto;padding:42px 20px 72px}
+    a{color:#8fdcff}
+    h1{font-size:42px;line-height:1;margin:0 0 16px;text-transform:uppercase}
+    h2{margin-top:34px;border-top:1px solid #333;padding-top:22px;text-transform:uppercase;font-size:16px}
+    .eyebrow{color:#ff3838;text-transform:uppercase;letter-spacing:.2em;font-size:12px}
+    .card{border:1px solid #333;background:#0b0b0b;padding:18px;margin:18px 0}
+    .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px}
+    .metric{border:1px solid #252525;background:#000;padding:14px}
+    .metric span{display:block;color:#999;font-size:11px;text-transform:uppercase}
+    .metric strong{display:block;font-size:20px;color:#fff;margin-top:4px}
+    code{background:#000;border:1px solid #333;padding:1px 5px;word-break:break-all}
+    li{margin:.45rem 0}
+    .pass{color:#39ff7c}
+    .warn{color:#ffb84a}
+  </style>
+</head>
+<body>
+<main>
+  <div class="eyebrow">Verification Center / Redacted Evidence</div>
+  <h1>AWS-Native Nitro PoC Evidence</h1>
+  <p>This page summarizes the redacted AWS-native Nitro evidence packet checked into the repository at <code>artifacts/benchmarks/aws-native-poc-20260430/</code>. It is technical execution evidence, not a compliance determination.</p>
+
+  <div class="card">
+    <p>Status: <strong class="pass">PASS</strong></p>
+    <p>Date: <code>2026-04-30</code></p>
+    <p>Region: <code>us-east-1</code></p>
+    <p>Instance: <code>m7i.xlarge</code></p>
+    <p>Measurement type: <code>nitro-pcr</code></p>
+    <p>Security mode: <code>production</code></p>
+  </div>
+
+  <h2>What Was Proven</h2>
+  <ul>
+    <li>AWS KMS released model material only to a Nitro Enclave measurement accepted by policy.</li>
+    <li>Encrypted model weights were fetched from S3 through the host-side VSock proxy.</li>
+    <li>The enclave loaded the model and performed a synthetic inference.</li>
+    <li>The enclave emitted an AIR receipt.</li>
+    <li>Offline AIR verification passed against the supplied Nitro attestation sidecar.</li>
+    <li>Negative checks rejected tampered receipt, wrong attestation sidecar, and wrong model hash.</li>
+    <li>The evidence bundle was uploaded to the stack-owned S3 bucket with SSE-KMS.</li>
+  </ul>
+
+  <h2>Cryptographic Inputs</h2>
+  <div class="card">
+    <p>EIF PCR0: <code>184b2a72e7bbe6d84dfddc586d3ce7ecc49085c044f31594e67042b6a5ff4e010f7a2052e430190b6bb54762059c4b21</code></p>
+    <p>Model artifact hash: <code>53aa51172d142c89d9012cce15ae4d6cc0ca6895895114379cacb4fab128d9db</code></p>
+    <p>Receipt SHA-256: <code>473355582743d03d61846fc13aa7670a91653b2d1d59d688317e9e5b1d52cfca</code></p>
+  </div>
+
+  <h2>Timings</h2>
+  <div class="grid">
+    <div class="metric"><span>Doctor total</span><strong>1383 ms</strong></div>
+    <div class="metric"><span>KMS model decrypt</span><strong>35 ms</strong></div>
+    <div class="metric"><span>Enclave launch</span><strong>19228 ms</strong></div>
+    <div class="metric"><span>Synthetic inference</span><strong>67 ms</strong></div>
+    <div class="metric"><span>Receipt verification</span><strong>38 ms</strong></div>
+    <div class="metric"><span>S3 upload</span><strong>517 ms</strong></div>
+    <div class="metric"><span>Total smoke path</span><strong>21900 ms</strong></div>
+  </div>
+
+  <h2>Included Redacted Files</h2>
+  <ul>
+    <li><code>README.md</code>: human-readable redacted packet summary.</li>
+    <li><code>benchmark.redacted.json</code>: environment, timings, evidence sizes, and negative-test summary.</li>
+    <li><code>negative-tests.redacted.json</code>: verifier outputs for expected-reject checks.</li>
+    <li><code>SHA256SUMS</code>: hashes from the full uploaded evidence bundle.</li>
+  </ul>
+
+  <h2>Limitations</h2>
+  <ul>
+    <li>This packet does not include raw attestation documents, raw receipts, raw KMS response material, host logs, or exact cloud identifiers.</li>
+    <li>This proves the AWS CPU Nitro path only; it does not prove GPU attestation.</li>
+    <li>This does not prove model safety, fairness, legal compliance, or irrecoverable deletion.</li>
+    <li class="warn">For a real buyer review, use the private evidence bundle under an explicit review context.</li>
+  </ul>
+
+  <p><a href="/">Back to Verification Center</a></p>
+</main>
 </body>
 </html>
 "##;

@@ -128,9 +128,24 @@ async fn test_landing_page() {
     assert_eq!(resp.status(), 200);
     let text = resp.text().await.unwrap();
     assert!(
-        text.contains("EphemeralML") || text.contains("Cyntrisec") || text.contains("Trust Center")
+        text.contains("EphemeralML")
+            || text.contains("Cyntrisec")
+            || text.contains("Verification Center")
     );
     assert!(text.contains("Verif"));
+}
+
+#[tokio::test]
+async fn test_public_aws_native_poc_evidence_page() {
+    let base = require_base!(start_server());
+    let resp = reqwest::get(format!("{}/evidence/aws-native-poc", base))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 200);
+    let text = resp.text().await.unwrap();
+    assert!(text.contains("AWS-Native Nitro PoC Evidence"));
+    assert!(text.contains("PASS"));
+    assert!(text.contains("Redacted Evidence"));
 }
 
 #[tokio::test]
@@ -477,6 +492,17 @@ async fn test_auth_skips_samples() {
     assert_eq!(resp.status(), 200);
     let body: serde_json::Value = resp.json().await.unwrap();
     assert!(body["receipt"].is_object());
+}
+
+#[tokio::test]
+async fn test_auth_skips_public_evidence() {
+    let base = require_base!(start_server_with_auth("secret"));
+    let resp = reqwest::get(format!("{}/evidence/aws-native-poc", base))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 200);
+    let text = resp.text().await.unwrap();
+    assert!(text.contains("AWS-Native Nitro PoC Evidence"));
 }
 
 // ==========================================================================

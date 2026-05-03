@@ -27,7 +27,7 @@ pub struct AppState {
 /// Deployment mode for the verifier service.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ServiceMode {
-    /// Public trust center: no API key, rate-limited, explicit CORS.
+    /// Public Verification Center: no API key, rate-limited, explicit CORS.
     PublicTrustCenter,
     /// Secured API: API key required, explicit CORS.
     SecuredApi,
@@ -117,6 +117,10 @@ fn make_cors_layer(origins: &[String]) -> CorsLayer {
 fn build_router_inner(cors: CorsLayer, state: AppState) -> Router {
     Router::new()
         .route("/", get(routes::landing_page))
+        .route(
+            "/evidence/aws-native-poc",
+            get(routes::aws_native_poc_evidence),
+        )
         .route("/health", get(routes::health))
         .route("/api/v1/verify", post(routes::verify_json))
         .route("/api/v1/verify/upload", post(routes::verify_upload))
