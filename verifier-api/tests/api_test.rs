@@ -143,9 +143,62 @@ async fn test_public_aws_native_poc_evidence_page() {
         .unwrap();
     assert_eq!(resp.status(), 200);
     let text = resp.text().await.unwrap();
+    // Page identity
     assert!(text.contains("AWS-Native Nitro PoC Evidence"));
     assert!(text.contains("PASS"));
-    assert!(text.contains("Redacted Evidence"));
+    assert!(text.contains("REDACTED EVIDENCE"));
+    // 2026-05-03 Verification Center packet, not the old 2026-04-30 benchmark
+    assert!(
+        text.contains("2026-05-03"),
+        "evidence page must reference the 2026-05-03 run"
+    );
+    assert!(
+        text.contains("artifacts/verification-center/aws-native-poc-20260503"),
+        "evidence page must reference the current 2026-05-03 artifact path"
+    );
+    assert!(
+        !text.contains("2026-04-30"),
+        "evidence page must not reference the stale 2026-04-30 run"
+    );
+    assert!(
+        !text.contains("artifacts/benchmarks/aws-native-poc-20260430"),
+        "evidence page must not reference the stale benchmark artifact path"
+    );
+    // Runtime Passport + Execution Report surfaces are described
+    assert!(
+        text.contains("Runtime Passport") || text.contains("RUNTIME PASSPORT"),
+        "evidence page must describe the Runtime Passport"
+    );
+    assert!(
+        text.contains("Execution Report") || text.contains("EXECUTION REPORT"),
+        "evidence page must describe the Execution Report"
+    );
+    assert!(
+        text.contains("tee_provenance"),
+        "evidence page must state the tee_provenance assurance level"
+    );
+    // Unsigned-EIF internal-PoC limitation is prominent
+    assert!(
+        text.contains("UNSIGNED EIF"),
+        "evidence page must lead with the unsigned-EIF limitation"
+    );
+    assert!(
+        text.contains("CYNTRISEC_DOCTOR_ALLOW_UNSIGNED_EIF_FOR_POC"),
+        "evidence page must name the explicit override env var"
+    );
+    // Privacy guardrails: no raw account ID, ARN, instance ID, or live bucket
+    assert!(
+        !text.contains("272493677165"),
+        "evidence page must not contain the real AWS account ID"
+    );
+    assert!(
+        !text.contains("arn:aws"),
+        "evidence page must not contain raw arn:aws references"
+    );
+    assert!(
+        !text.contains("ephemeralml-pilot-evidence-272"),
+        "evidence page must not contain a live bucket name"
+    );
 }
 
 #[tokio::test]
@@ -503,6 +556,10 @@ async fn test_auth_skips_public_evidence() {
     assert_eq!(resp.status(), 200);
     let text = resp.text().await.unwrap();
     assert!(text.contains("AWS-Native Nitro PoC Evidence"));
+    // Even under auth-protected mode, the redacted evidence page must show
+    // the current 2026-05-03 packet, not the stale benchmark artifact.
+    assert!(text.contains("2026-05-03"));
+    assert!(!text.contains("artifacts/benchmarks/aws-native-poc-20260430"));
 }
 
 // ==========================================================================

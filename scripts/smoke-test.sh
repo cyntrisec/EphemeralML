@@ -52,6 +52,19 @@ echo
 # 1. Landing page
 check_status "Landing page" "$BASE_URL/" "200"
 
+# 1b. AWS-native PoC evidence page (current 2026-05-03 packet, not stale 2026-04-30)
+check_status "AWS evidence page" "$BASE_URL/evidence/aws-native-poc" "200"
+echo -n "  "
+EVIDENCE=$(curl -s --max-time 10 "$BASE_URL/evidence/aws-native-poc" 2>/dev/null || echo "")
+if [ -n "$EVIDENCE" ] \
+    && echo "$EVIDENCE" | grep -q "2026-05-03" \
+    && echo "$EVIDENCE" | grep -q "aws-native-poc-20260503" \
+    && ! echo "$EVIDENCE" | grep -q "aws-native-poc-20260430"; then
+    pass "AWS evidence content — references 2026-05-03 packet, not stale 2026-04-30"
+else
+    fail "AWS evidence content — expected 2026-05-03 packet references, stale 2026-04-30 must be absent"
+fi
+
 # 2. Health endpoint
 check_json_field "Health" "$BASE_URL/health" ".status" "ok"
 

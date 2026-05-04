@@ -993,86 +993,754 @@ pub const AWS_NATIVE_POC_HTML: &str = r##"<!DOCTYPE html>
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>Cyntrisec Verification Center - AWS-Native Nitro PoC Evidence</title>
+  <meta name="description" content="Redacted AWS Nitro Verification Center evidence packet. Runtime Passport and Execution Report from the 2026-05-03 internal PoC run. Internal PoC, not production buyer evidence."/>
   <meta name="robots" content="noindex"/>
+  <meta name="theme-color" content="#000000"/>
+  <link rel="icon" href="https://cyntrisec.com/logo-mark-64.png" type="image/png"/>
   <style>
-    body{margin:0;background:#050505;color:#f5f5f5;font:14px/1.6 "IBM Plex Mono",Menlo,monospace}
-    main{max-width:980px;margin:0 auto;padding:42px 20px 72px}
-    a{color:#8fdcff}
-    h1{font-size:42px;line-height:1;margin:0 0 16px;text-transform:uppercase}
-    h2{margin-top:34px;border-top:1px solid #333;padding-top:22px;text-transform:uppercase;font-size:16px}
-    .eyebrow{color:#ff3838;text-transform:uppercase;letter-spacing:.2em;font-size:12px}
-    .card{border:1px solid #333;background:#0b0b0b;padding:18px;margin:18px 0}
-    .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px}
-    .metric{border:1px solid #252525;background:#000;padding:14px}
-    .metric span{display:block;color:#999;font-size:11px;text-transform:uppercase}
-    .metric strong{display:block;font-size:20px;color:#fff;margin-top:4px}
-    code{background:#000;border:1px solid #333;padding:1px 5px;word-break:break-all}
-    li{margin:.45rem 0}
-    .pass{color:#39ff7c}
-    .warn{color:#ffb84a}
+    @import url("https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&display=swap");
+
+    *{margin:0;padding:0;box-sizing:border-box;font-variant-ligatures:none}
+    :root{
+      --bg:#000;
+      --bg-raised:rgba(0,0,0,.72);
+      --bg-input:#020202;
+      --ink:#fff;
+      --ink-dim:rgba(255,255,255,.68);
+      --ink-mute:rgba(255,255,255,.50);
+      --ink-faint:rgba(255,255,255,.26);
+      --rule:rgba(255,255,255,.14);
+      --rule-hi:rgba(255,255,255,.28);
+      --accent:#ff3838;
+      --accent-dim:rgba(255,56,56,.16);
+      --info:#8fdcff;
+      --info-dim:rgba(143,220,255,.12);
+      --green:#39ff7c;
+      --green-dim:rgba(57,255,124,.10);
+      --red:#ff5a5a;
+      --red-dim:rgba(255,90,90,.10);
+      --amber:#ffb84a;
+      --amber-dim:rgba(255,184,74,.12);
+      --font:"IBM Plex Mono","Menlo","Monaco",monospace;
+      --max:1200px;
+      --pad:20px;
+    }
+
+    html{scroll-behavior:smooth;background:var(--bg)}
+    body{
+      min-height:100vh;
+      background:var(--bg);
+      color:var(--ink);
+      font:400 13px/1.6 var(--font);
+      -webkit-font-smoothing:antialiased;
+      letter-spacing:.01em;
+      overflow-x:hidden;
+      position:relative;
+    }
+    ::selection{background:var(--accent);color:var(--bg)}
+    a{color:inherit;text-decoration:none}
+    .mono{font-family:var(--font)}
+
+    .field{
+      position:fixed;
+      inset:0;
+      z-index:0;
+      pointer-events:none;
+      background:#000;
+    }
+    .field::before{
+      content:"";
+      position:absolute;
+      inset:0;
+      background:
+        radial-gradient(circle at 50% 18%, rgba(143,220,255,.05), transparent 28%),
+        radial-gradient(circle at 72% 22%, rgba(255,56,56,.04), transparent 16%),
+        linear-gradient(180deg, rgba(0,0,0,.04), rgba(0,0,0,.26) 55%, rgba(0,0,0,.72));
+    }
+    .field::after{
+      content:"";
+      position:absolute;
+      inset:0;
+      background:repeating-linear-gradient(180deg, rgba(255,255,255,0) 0 2px, rgba(255,255,255,.014) 2px 3px);
+      mix-blend-mode:overlay;
+    }
+
+    .hud{
+      position:fixed;
+      z-index:20;
+      pointer-events:none;
+      display:flex;
+      gap:1rem;
+      padding:.9rem 1.1rem;
+      font:500 10px/1.3 var(--font);
+      letter-spacing:.18em;
+      text-transform:uppercase;
+      color:var(--ink-mute);
+    }
+    .hud.tl{top:0;left:0}
+    .hud.tr{top:0;right:0;text-align:right}
+    .hud.bl{bottom:0;left:0}
+    .hud.br{bottom:0;right:0;text-align:right}
+    .hud span{display:inline-flex;align-items:center;gap:.4rem}
+    .hud .dot{width:5px;height:5px;background:var(--accent);display:inline-block;animation:pulse 1.4s ease-in-out infinite}
+    @keyframes pulse{0%,100%{opacity:.4}50%{opacity:1}}
+    @media(max-width:760px){.hud{display:none}}
+
+    .page{
+      position:relative;
+      z-index:5;
+      max-width:var(--max);
+      margin:0 auto;
+      padding:28px var(--pad) 72px;
+    }
+
+    header{
+      position:sticky;
+      top:0;
+      z-index:30;
+      margin-bottom:28px;
+      border-bottom:1px solid var(--rule);
+      background:rgba(0,0,0,.74);
+      backdrop-filter:blur(10px);
+      -webkit-backdrop-filter:blur(10px);
+    }
+    .hdr{
+      max-width:var(--max);
+      margin:0 auto;
+      padding:0 var(--pad);
+      min-height:54px;
+      display:grid;
+      grid-template-columns:auto 1fr auto;
+      gap:1.5rem;
+      align-items:center;
+    }
+    .brand{
+      display:inline-flex;
+      align-items:center;
+      gap:.55rem;
+      color:var(--ink);
+      font:600 12px/1 var(--font);
+      letter-spacing:.18em;
+      text-transform:uppercase;
+    }
+    .brand img{width:20px;height:20px;display:block}
+    .brand em{
+      font-style:normal;
+      font-weight:500;
+      color:var(--ink-mute);
+      letter-spacing:.16em;
+      margin-left:.35rem;
+      padding-left:.55rem;
+      border-left:1px solid var(--rule);
+    }
+    header nav{display:flex;gap:.35rem;justify-self:center}
+    header nav a{
+      padding:.5rem .8rem;
+      color:var(--ink-dim);
+      border:1px solid transparent;
+      font:500 11px/1 var(--font);
+      letter-spacing:.16em;
+      text-transform:uppercase;
+      transition:color .15s ease,border-color .15s ease;
+    }
+    header nav a:hover{color:var(--ink);border-color:var(--rule-hi)}
+    header nav a.on{color:var(--accent);border-color:var(--accent)}
+    .hdr-meta{
+      text-align:right;
+      color:var(--ink-mute);
+      font:500 10px/1.3 var(--font);
+      letter-spacing:.14em;
+      text-transform:uppercase;
+    }
+    .hdr-meta strong{color:var(--ink);font-weight:500}
+    @media(max-width:760px){
+      .hdr{grid-template-columns:auto 1fr}
+      header nav,.hdr-meta{display:none}
+    }
+
+    .panel{
+      position:relative;
+      border-bottom:1px solid var(--rule);
+      padding:48px 0;
+    }
+    .panel:last-of-type{border-bottom:none}
+    .panel-tag,
+    .panel-num{
+      position:absolute;
+      top:14px;
+      font:500 10px/1 var(--font);
+      letter-spacing:.18em;
+      text-transform:uppercase;
+    }
+    .panel-tag{left:0;color:var(--ink-mute)}
+    .panel-num{right:0;color:var(--ink-faint)}
+    .eyebrow{
+      display:inline-flex;
+      align-items:center;
+      gap:.7rem;
+      color:var(--accent);
+      font:500 11px/1 var(--font);
+      letter-spacing:.32em;
+      text-transform:uppercase;
+    }
+    .eyebrow::before{content:"";width:32px;height:1px;background:var(--accent)}
+    .panel h2{
+      margin-top:1rem;
+      font:600 clamp(1.5rem,3.6vw,2.4rem)/1.05 var(--font);
+      letter-spacing:-.01em;
+      text-transform:uppercase;
+    }
+    .panel h2 .stroke{color:transparent;-webkit-text-stroke:1px var(--ink)}
+    .panel h2 .accent{color:var(--accent)}
+    .panel p.lead{
+      max-width:54rem;
+      margin-top:1rem;
+      padding-left:1rem;
+      border-left:1px solid var(--accent);
+      color:var(--ink-dim);
+      font-size:14px;
+      line-height:1.7;
+    }
+
+    .hero h1{
+      margin-top:1.3rem;
+      font:700 clamp(2.1rem,6.6vw,4.2rem)/.95 var(--font);
+      letter-spacing:-.02em;
+      text-transform:uppercase;
+      max-width:14ch;
+    }
+    .hero h1 .stroke{color:transparent;-webkit-text-stroke:1.2px var(--ink)}
+    .hero h1 .accent{color:var(--accent)}
+    .hero p.lead{
+      max-width:48rem;
+      margin-top:1rem;
+      padding-left:1rem;
+      border-left:1px solid var(--accent);
+      color:var(--ink-dim);
+      font-size:14px;
+      line-height:1.7;
+    }
+
+    .meta-strip{
+      display:grid;
+      grid-template-columns:repeat(auto-fit,minmax(160px,1fr));
+      gap:0;
+      margin-top:28px;
+      border:1px solid var(--rule);
+      background:var(--bg-raised);
+      backdrop-filter:blur(8px);
+      -webkit-backdrop-filter:blur(8px);
+    }
+    .meta-cell{
+      padding:14px 16px;
+      border-right:1px solid var(--rule);
+      font:500 10px/1.4 var(--font);
+      letter-spacing:.14em;
+      text-transform:uppercase;
+      color:var(--ink-mute);
+    }
+    .meta-cell:last-child{border-right:none}
+    .meta-cell strong{
+      display:block;
+      margin-top:6px;
+      color:var(--ink);
+      font:600 13px/1.2 var(--font);
+      letter-spacing:.04em;
+      text-transform:none;
+      word-break:break-all;
+    }
+    .meta-cell strong.acc{color:var(--accent)}
+    .meta-cell strong.ok{color:var(--green)}
+    @media(max-width:760px){.meta-cell{border-right:none;border-bottom:1px solid var(--rule)}.meta-cell:last-child{border-bottom:none}}
+
+    .alert{
+      margin-top:24px;
+      padding:18px 22px;
+      border:1px solid var(--amber);
+      border-left-width:3px;
+      background:var(--amber-dim);
+      color:var(--ink-dim);
+    }
+    .alert .alert-tag{
+      display:inline-flex;
+      align-items:center;
+      gap:.5rem;
+      color:var(--amber);
+      font:600 11px/1 var(--font);
+      letter-spacing:.22em;
+      text-transform:uppercase;
+      margin-bottom:10px;
+    }
+    .alert .alert-tag::before{content:"//";color:var(--amber)}
+    .alert h3{
+      margin-bottom:8px;
+      color:var(--ink);
+      font:600 16px/1.2 var(--font);
+      letter-spacing:.02em;
+      text-transform:uppercase;
+    }
+    .alert p+p{margin-top:8px}
+    .alert ul{margin-top:10px;padding-left:0;list-style:none}
+    .alert li{position:relative;padding-left:14px;margin-bottom:4px;font-size:12px;line-height:1.6}
+    .alert li::before{content:"›";position:absolute;left:0;color:var(--amber)}
+
+    .pair-grid{
+      display:grid;
+      grid-template-columns:repeat(auto-fit,minmax(280px,1fr));
+      gap:16px;
+      margin-top:28px;
+    }
+    .card{
+      border:1px solid var(--rule);
+      background:rgba(0,0,0,.62);
+      backdrop-filter:blur(10px);
+      -webkit-backdrop-filter:blur(10px);
+    }
+    .card-bar{
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      gap:1rem;
+      padding:.75rem 1rem;
+      border-bottom:1px solid var(--rule);
+      font:500 11px/1 var(--font);
+      letter-spacing:.14em;
+      text-transform:uppercase;
+      color:var(--ink-mute);
+      flex-wrap:wrap;
+    }
+    .card-bar .dots{display:flex;gap:6px}
+    .card-bar .dots i{width:6px;height:6px;background:var(--rule-hi);display:inline-block}
+    .card-bar .dots i:first-child{background:var(--accent)}
+    .card-bar .verdict{
+      display:inline-flex;
+      align-items:center;
+      gap:.4rem;
+      font:600 10px/1 var(--font);
+      letter-spacing:.18em;
+      padding:4px 8px;
+      color:var(--green);
+      background:var(--green-dim);
+    }
+    .card-bar .verdict.skip{color:var(--amber);background:var(--amber-dim)}
+    .card-body{padding:1.1rem 1.2rem}
+
+    .kv{
+      display:grid;
+      grid-template-columns:130px 1fr;
+      gap:6px 14px;
+      font:500 12px/1.55 var(--font);
+    }
+    .kv dt{
+      color:var(--ink-faint);
+      font:500 10px/1.6 var(--font);
+      letter-spacing:.14em;
+      text-transform:uppercase;
+      padding-top:1px;
+    }
+    .kv dd{color:var(--ink-dim);word-break:break-all}
+    .kv dd code{
+      display:inline-block;
+      padding:1px 4px;
+      background:var(--bg-input);
+      border:1px solid var(--rule);
+      color:var(--ink);
+      font-size:11px;
+      letter-spacing:.01em;
+    }
+    .kv dd .ok{color:var(--green)}
+    .kv dd .skip{color:var(--amber)}
+    @media(max-width:560px){.kv{grid-template-columns:1fr}.kv dt{margin-top:8px}}
+
+    .ck-list{margin-top:20px}
+    .ck-row{
+      display:flex;
+      align-items:flex-start;
+      justify-content:space-between;
+      gap:12px;
+      padding:10px 0;
+      border-top:1px solid var(--rule);
+      font-size:13px;
+    }
+    .ck-row:first-child{border-top:none}
+    .ck-info{display:flex;flex-direction:column;gap:4px;min-width:0}
+    .ck-name{color:var(--ink);font-weight:500}
+    .ck-detail{color:var(--ink-mute);font-size:12px;line-height:1.5}
+    .tag{
+      flex-shrink:0;
+      padding:4px 8px;
+      font:600 10px/1 var(--font);
+      letter-spacing:.14em;
+      text-transform:uppercase;
+    }
+    .tag-pass{color:var(--green);background:var(--green-dim)}
+    .tag-skip{color:var(--amber);background:var(--amber-dim)}
+    .tag-info{color:var(--info);background:var(--info-dim)}
+
+    .timing-grid{
+      display:grid;
+      grid-template-columns:repeat(auto-fit,minmax(180px,1fr));
+      gap:0;
+      margin-top:28px;
+      border:1px solid var(--rule);
+    }
+    .timing-cell{
+      padding:18px;
+      border-right:1px solid var(--rule);
+      border-bottom:1px solid var(--rule);
+    }
+    .timing-cell span{
+      display:block;
+      color:var(--ink-faint);
+      font:500 10px/1.4 var(--font);
+      letter-spacing:.14em;
+      text-transform:uppercase;
+    }
+    .timing-cell strong{
+      display:block;
+      margin-top:6px;
+      color:var(--ink);
+      font:600 22px/1 var(--font);
+      letter-spacing:-.01em;
+    }
+    .timing-cell strong em{
+      font-style:normal;
+      color:var(--ink-faint);
+      font:500 12px/1 var(--font);
+      letter-spacing:.04em;
+      margin-left:4px;
+    }
+    @media(max-width:760px){.timing-cell{border-right:none}}
+
+    .file-list{
+      list-style:none;
+      margin-top:24px;
+      border:1px solid var(--rule);
+    }
+    .file-list li{
+      display:grid;
+      grid-template-columns:minmax(0,1.4fr) minmax(0,2fr);
+      gap:18px;
+      padding:12px 16px;
+      border-bottom:1px solid var(--rule);
+      font-size:12px;
+      line-height:1.55;
+    }
+    .file-list li:last-child{border-bottom:none}
+    .file-list li code{
+      color:var(--ink);
+      font:500 12px/1.5 var(--font);
+      word-break:break-all;
+    }
+    .file-list li span{color:var(--ink-mute)}
+    @media(max-width:600px){.file-list li{grid-template-columns:1fr}}
+
+    .lim{
+      margin-top:28px;
+      padding:18px 20px;
+      border:1px dashed var(--rule-hi);
+      color:var(--ink-mute);
+      font-size:12px;
+      line-height:1.7;
+    }
+    .lim strong{
+      display:block;
+      margin-bottom:10px;
+      color:var(--amber);
+      font:500 11px/1 var(--font);
+      letter-spacing:.18em;
+      text-transform:uppercase;
+    }
+    .lim ul{list-style:none;margin:0;padding:0}
+    .lim li{position:relative;padding-left:14px;margin-bottom:6px}
+    .lim li::before{content:"–";position:absolute;left:0;color:var(--ink-faint)}
+
+    footer{
+      margin-top:34px;
+      padding-top:16px;
+      border-top:1px solid var(--rule);
+      display:flex;
+      justify-content:space-between;
+      align-items:center;
+      flex-wrap:wrap;
+      gap:8px;
+      color:var(--ink-faint);
+      font:500 10px/1.4 var(--font);
+      letter-spacing:.16em;
+      text-transform:uppercase;
+    }
+    footer a{color:var(--ink-mute)}
+    footer a:hover{color:var(--ink)}
+
+    @media(max-width:760px){
+      .page{padding:18px var(--pad) 48px}
+    }
+    @media(prefers-reduced-motion:reduce){
+      html{scroll-behavior:auto}
+      .hud .dot{animation:none}
+    }
   </style>
 </head>
 <body>
-<main>
-  <div class="eyebrow">Verification Center / Redacted Evidence</div>
-  <h1>AWS-Native Nitro PoC Evidence</h1>
-  <p>This page summarizes the redacted AWS-native Nitro evidence packet checked into the repository at <code>artifacts/benchmarks/aws-native-poc-20260430/</code>. It is technical execution evidence, not a compliance determination.</p>
+  <div class="field" aria-hidden="true"></div>
+  <div class="hud tl"><span><i class="dot"></i>CYNTRISEC</span><span>VERIFICATION CENTER</span></div>
+  <div class="hud tr"><span>EVIDENCE / AWS_NITRO</span><span>RUN / 2026-05-03</span></div>
+  <div class="hud bl"><span>RUNTIME PASSPORT / ED25519</span><span>EXEC REPORT / TEE_PROVENANCE</span></div>
+  <div class="hud br"><span>STATUS / PASS</span><span>EIF / UNSIGNED · INTERNAL_POC</span></div>
 
-  <div class="card">
-    <p>Status: <strong class="pass">PASS</strong></p>
-    <p>Date: <code>2026-04-30</code></p>
-    <p>Region: <code>us-east-1</code></p>
-    <p>Instance: <code>m7i.xlarge</code></p>
-    <p>Measurement type: <code>nitro-pcr</code></p>
-    <p>Security mode: <code>production</code></p>
+<header>
+  <div class="hdr">
+    <a class="brand" href="https://cyntrisec.com">
+      <img src="https://cyntrisec.com/logo-ikeda.svg" alt="" width="20" height="20"/>
+      <span>CYNTRISEC <em>// VERIFICATION CENTER</em></span>
+    </a>
+    <nav>
+      <a href="/">Verify</a>
+      <a href="https://cyntrisec.com/docs">Docs</a>
+      <a href="https://github.com/cyntrisec/EphemeralML">GitHub</a>
+      <a href="https://cyntrisec.com/spec/air/v1/">Spec</a>
+      <a href="/evidence/aws-native-poc" class="on">Evidence</a>
+    </nav>
+    <div class="hdr-meta">EVIDENCE / AWS NITRO <strong>· 2026-05-03</strong></div>
   </div>
+</header>
 
-  <h2>What Was Proven</h2>
-  <ul>
-    <li>AWS KMS released model material only to a Nitro Enclave measurement accepted by policy.</li>
-    <li>Encrypted model weights were fetched from S3 through the host-side VSock proxy.</li>
-    <li>The enclave loaded the model and performed a synthetic inference.</li>
-    <li>The enclave emitted an AIR receipt.</li>
-    <li>Offline AIR verification passed against the supplied Nitro attestation sidecar.</li>
-    <li>Negative checks rejected tampered receipt, wrong attestation sidecar, and wrong model hash.</li>
-    <li>The evidence bundle was uploaded to the stack-owned S3 bucket with SSE-KMS.</li>
-  </ul>
+<main class="page">
+  <section class="panel hero">
+    <span class="panel-tag">// 001 / EVIDENCE PACKET</span>
+    <span class="panel-num">001</span>
+    <div class="eyebrow">REDACTED EVIDENCE / INTERNAL POC</div>
+    <h1>AWS-NATIVE<br><span class="stroke">NITRO PoC</span><br><span class="accent">EVIDENCE.</span></h1>
+    <p class="lead">Redacted Verification Center packet generated from the AWS Nitro smoke-test bundle uploaded on 2026-05-03. The packet contains a Runtime Passport for the deployment, a linked Execution Report with <code>tee_provenance</code> assurance, and the bundle SHA256SUMS. This is technical execution evidence, not a compliance determination.</p>
 
-  <h2>Cryptographic Inputs</h2>
-  <div class="card">
-    <p>EIF PCR0: <code>184b2a72e7bbe6d84dfddc586d3ce7ecc49085c044f31594e67042b6a5ff4e010f7a2052e430190b6bb54762059c4b21</code></p>
-    <p>Model artifact hash: <code>53aa51172d142c89d9012cce15ae4d6cc0ca6895895114379cacb4fab128d9db</code></p>
-    <p>Receipt SHA-256: <code>473355582743d03d61846fc13aa7670a91653b2d1d59d688317e9e5b1d52cfca</code></p>
-  </div>
+    <div class="meta-strip" aria-label="run summary">
+      <div class="meta-cell"><span>Status</span><strong class="ok">PASS</strong></div>
+      <div class="meta-cell"><span>Run date</span><strong>2026-05-03</strong></div>
+      <div class="meta-cell"><span>Runtime</span><strong>AWS NITRO</strong></div>
+      <div class="meta-cell"><span>Instance</span><strong>m7i.xlarge</strong></div>
+      <div class="meta-cell"><span>Region</span><strong>us-east-1</strong></div>
+      <div class="meta-cell"><span>Assurance</span><strong class="acc">TEE_PROVENANCE</strong></div>
+    </div>
+  </section>
 
-  <h2>Timings</h2>
-  <div class="grid">
-    <div class="metric"><span>Doctor total</span><strong>1383 ms</strong></div>
-    <div class="metric"><span>KMS model decrypt</span><strong>35 ms</strong></div>
-    <div class="metric"><span>Enclave launch</span><strong>19228 ms</strong></div>
-    <div class="metric"><span>Synthetic inference</span><strong>67 ms</strong></div>
-    <div class="metric"><span>Receipt verification</span><strong>38 ms</strong></div>
-    <div class="metric"><span>S3 upload</span><strong>517 ms</strong></div>
-    <div class="metric"><span>Total smoke path</span><strong>21900 ms</strong></div>
-  </div>
+  <section class="panel">
+    <span class="panel-tag">// 002 / LIMITATION FIRST</span>
+    <span class="panel-num">002</span>
+    <div class="alert" role="alert">
+      <div class="alert-tag">UNSIGNED EIF · INTERNAL POC ONLY</div>
+      <h3>Production buyer evidence is not yet complete.</h3>
+      <p>The doctor EIF check is rendered as <code>Skip</code>, not <code>Pass</code>, because the host did not have an adjacent <code>ephemeralml-pilot.eif.cosign.bundle</code> at run time and the explicit internal-PoC override was enabled. Both the Runtime Passport and the linked Execution Report preserve this fact in a top-level warning and in <code>limitations[]</code>.</p>
+      <ul>
+        <li>Production buyer release evidence requires the release pipeline to attach and verify the EIF cosign bundle.</li>
+        <li>The flow must then be rerun without <code>CYNTRISEC_DOCTOR_ALLOW_UNSIGNED_EIF_FOR_POC</code>.</li>
+        <li>Until that closes, the Runtime Passport is correct internal AWS runtime / evidence-chain proof, not buyer release-signing evidence.</li>
+      </ul>
+    </div>
+  </section>
 
-  <h2>Included Redacted Files</h2>
-  <ul>
-    <li><code>README.md</code>: human-readable redacted packet summary.</li>
-    <li><code>benchmark.redacted.json</code>: environment, timings, evidence sizes, and negative-test summary.</li>
-    <li><code>negative-tests.redacted.json</code>: verifier outputs for expected-reject checks.</li>
-    <li><code>SHA256SUMS</code>: hashes from the full uploaded evidence bundle.</li>
-  </ul>
+  <section class="panel">
+    <span class="panel-tag">// 003 / RUNTIME PASSPORT</span>
+    <span class="panel-num">003</span>
+    <div class="eyebrow">DEPLOYMENT EVIDENCE</div>
+    <h2>RUNTIME <span class="accent">PASSPORT.</span></h2>
+    <p class="lead">The Runtime Passport is a deployment-level report that binds the AWS Nitro stack — region, runtime type, doctor result, smoke-test result, hashed key/role references, and redacted evidence S3 URI — to a stable hash that downstream Execution Reports can reference.</p>
+    <div class="card">
+      <div class="card-bar">
+        <span class="dots"><i></i><i></i><i></i></span>
+        <span>runtime-passport.json / overall_status</span>
+        <span class="verdict">PASS</span>
+      </div>
+      <div class="card-body">
+        <dl class="kv">
+          <dt>Passport SHA-256</dt>
+          <dd><code>20b69eec5fec2b905878c865c613ed31005fcb2835d22a91c5564394a99b55f9</code></dd>
+          <dt>Cloud / Runtime</dt>
+          <dd>AWS / Nitro Enclaves on <code>m7i.xlarge</code>, region <code>us-east-1</code></dd>
+          <dt>Account ID</dt>
+          <dd><code>aws-account-redacted</code></dd>
+          <dt>Stack name</dt>
+          <dd><code>cyntrisec-aws-poc-redacted</code></dd>
+          <dt>KMS key ref</dt>
+          <dd><code>sha256:bb467b3c701972a200ea368c66a451a4908584168f1c528b44662c07b6832ce0</code> (hashed; raw ARN not exposed)</dd>
+          <dt>IAM role ref</dt>
+          <dd><code>sha256:0188e3ba297801c862337bee3104c207bfd9e16f09e03a6319c524cb64a81f91</code> (hashed; raw ARN not exposed)</dd>
+          <dt>Evidence S3 URI</dt>
+          <dd><code>s3://redacted-customer-evidence-bucket/smoke-tests/20260503T142806Z/</code></dd>
+          <dt>Doctor</dt>
+          <dd><span class="ok">6/6 PASS</span> in 1262 ms (EIF cosign rendered <span class="skip">Skip</span> under the internal-PoC override; see panel 002)</dd>
+          <dt>Smoke test</dt>
+          <dd>bundle-derived <span class="ok">PASS</span> &middot; manifest + 12/12 hashed files + 3/3 negative tests rejected</dd>
+        </dl>
+      </div>
+    </div>
+  </section>
 
-  <h2>Limitations</h2>
-  <ul>
-    <li>This packet does not include raw attestation documents, raw receipts, raw KMS response material, host logs, or exact cloud identifiers.</li>
-    <li>This proves the AWS CPU Nitro path only; it does not prove GPU attestation.</li>
-    <li>This does not prove model safety, fairness, legal compliance, or irrecoverable deletion.</li>
-    <li class="warn">For a real buyer review, use the private evidence bundle under an explicit review context.</li>
-  </ul>
+  <section class="panel">
+    <span class="panel-tag">// 004 / EXECUTION REPORT</span>
+    <span class="panel-num">004</span>
+    <div class="eyebrow">PER-EVENT EVIDENCE</div>
+    <h2>EXECUTION <span class="accent">REPORT.</span></h2>
+    <p class="lead">The Execution Report turns the AIR receipt for the sampled inference into a reviewer-readable object. It records receipt structure, signing-key binding, attestation hash binding (<code>ADHASH</code>), and the assurance level the verifier was willing to assert from the supplied evidence.</p>
+    <div class="card">
+      <div class="card-bar">
+        <span class="dots"><i></i><i></i><i></i></span>
+        <span>execution-report/verification-report.json / overall_status</span>
+        <span class="verdict">PASS</span>
+      </div>
+      <div class="card-body">
+        <dl class="kv">
+          <dt>Report SHA-256</dt>
+          <dd><code>d84be7201028379afcae6fe2c5d22523046829bfe815c10041725d7ffcf6be48</code></dd>
+          <dt>Assurance level</dt>
+          <dd class="mono"><strong style="color:var(--accent)">tee_provenance</strong></dd>
+          <dt>Attestation provenance</dt>
+          <dd><code>bundle</code> (sidecar is part of the hashed evidence bundle, not an unaudited loose file)</dd>
+          <dt>Platform attestation</dt>
+          <dd><span class="ok">PASS</span> (Nitro PCR0 binds the EIF measurement carried by the receipt)</dd>
+          <dt>Signing-key binding</dt>
+          <dd><span class="ok">PASS</span> (receipt public key matches the public key carried by the attestation sidecar)</dd>
+          <dt>Receipt SHA-256</dt>
+          <dd><code>c1bfd0b9f805945a3305ea57866a97bcaaf99c80a34eed91280b5353fbed7603</code></dd>
+          <dt>Attestation SHA-256</dt>
+          <dd><code>16da86e81ad656d88600571a00b22ede4bc408db8e1911db2eda4a5ee01c1d76</code></dd>
+        </dl>
 
-  <p><a href="/">Back to Verification Center</a></p>
+        <div class="ck-list">
+          <div class="ck-row">
+            <div class="ck-info">
+              <span class="ck-name">AIR offline verification</span>
+              <span class="ck-detail">COSE_Sign1 signature, CWT/EAT claims, model_hash + measurements present.</span>
+            </div>
+            <span class="tag tag-pass">pass</span>
+          </div>
+          <div class="ck-row">
+            <div class="ck-info">
+              <span class="ck-name">Attestation hash binding (ADHASH)</span>
+              <span class="ck-detail">Receipt's <code>attestation_doc_hash</code> matches SHA-256 of the supplied attestation sidecar.</span>
+            </div>
+            <span class="tag tag-pass">pass</span>
+          </div>
+          <div class="ck-row">
+            <div class="ck-info">
+              <span class="ck-name">Signing-key binding</span>
+              <span class="ck-detail">Receipt's Ed25519 public key matches the key carried by the attestation sidecar.</span>
+            </div>
+            <span class="tag tag-pass">pass</span>
+          </div>
+          <div class="ck-row">
+            <div class="ck-info">
+              <span class="ck-name">EIF cosign</span>
+              <span class="ck-detail">No <code>ephemeralml-pilot.eif.cosign.bundle</code> available; explicit internal-PoC override active. Rendered as <code>Skip</code> by design (see panel 002).</span>
+            </div>
+            <span class="tag tag-skip">skip</span>
+          </div>
+          <div class="ck-row">
+            <div class="ck-info">
+              <span class="ck-name">Negative tests</span>
+              <span class="ck-detail">3/3 expected-rejects rejected: tampered receipt, wrong attestation sidecar, wrong model hash.</span>
+            </div>
+            <span class="tag tag-pass">pass</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="panel">
+    <span class="panel-tag">// 005 / CRYPTO INPUTS</span>
+    <span class="panel-num">005</span>
+    <div class="eyebrow">PUBLIC MEASUREMENTS</div>
+    <h2>HARDWARE <span class="accent">MEASUREMENTS.</span></h2>
+    <p class="lead">PCRs and EIF SHA-384 are stable measurements of the Nitro Enclave image and are intentionally public. The bundle SHA256SUMS allows independent recomputation of every file in the redacted artifact directory.</p>
+    <div class="pair-grid">
+      <div class="card">
+        <div class="card-bar"><span class="dots"><i></i><i></i><i></i></span><span>nitro / pcr</span></div>
+        <div class="card-body">
+          <dl class="kv">
+            <dt>PCR0 / EIF</dt><dd><code>184b2a72e7bbe6d84dfddc586d3ce7ecc49085c044f31594e67042b6a5ff4e010f7a2052e430190b6bb54762059c4b21</code></dd>
+            <dt>PCR1</dt><dd><code>4b4d5b3661b3efc12920900c80e126e4ce783c522de6c02a2a5bf7af3a2b9327b86776f188e4be1c1c404a129dbda493</code></dd>
+            <dt>PCR2</dt><dd><code>46dc284c9e5c517f8a7bebf30cf041565dfb2a5682f87cab430f2ded1a235d2f599853a51f55eaa98495573471427c21</code></dd>
+            <dt>EIF SHA-384</dt><dd><code>184b2a72e7bbe6d84dfddc586d3ce7ecc49085c044f31594e67042b6a5ff4e010f7a2052e430190b6bb54762059c4b21</code></dd>
+          </dl>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-bar"><span class="dots"><i></i><i></i><i></i></span><span>bundle / sha256</span></div>
+        <div class="card-body">
+          <dl class="kv">
+            <dt>Runtime Passport</dt><dd><code>20b69eec5fec2b905878c865c613ed31005fcb2835d22a91c5564394a99b55f9</code></dd>
+            <dt>Execution Report</dt><dd><code>d84be7201028379afcae6fe2c5d22523046829bfe815c10041725d7ffcf6be48</code></dd>
+            <dt>AIR receipt</dt><dd><code>c1bfd0b9f805945a3305ea57866a97bcaaf99c80a34eed91280b5353fbed7603</code></dd>
+            <dt>Attestation</dt><dd><code>16da86e81ad656d88600571a00b22ede4bc408db8e1911db2eda4a5ee01c1d76</code></dd>
+          </dl>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="panel">
+    <span class="panel-tag">// 006 / TIMINGS</span>
+    <span class="panel-num">006</span>
+    <div class="eyebrow">SMOKE PATH</div>
+    <h2>END-TO-END <span class="accent">TIMINGS.</span></h2>
+    <p class="lead">Five-stage smoke run from doctor through enclave launch, synthetic inference, AIR verification, and SSE-KMS upload to the customer-owned evidence bucket.</p>
+    <div class="timing-grid">
+      <div class="timing-cell"><span>Doctor total</span><strong>1262<em>ms</em></strong></div>
+      <div class="timing-cell"><span>Enclave launch</span><strong>19184<em>ms</em></strong></div>
+      <div class="timing-cell"><span>Synthetic inference</span><strong>748<em>ms</em></strong></div>
+      <div class="timing-cell"><span>Receipt verification</span><strong>37<em>ms</em></strong></div>
+      <div class="timing-cell"><span>S3 upload (SSE-KMS)</span><strong>641<em>ms</em></strong></div>
+      <div class="timing-cell"><span>Total smoke path</span><strong>21965<em>ms</em></strong></div>
+    </div>
+  </section>
+
+  <section class="panel">
+    <span class="panel-tag">// 007 / BUNDLE CONTENTS</span>
+    <span class="panel-num">007</span>
+    <div class="eyebrow">REDACTED FILES</div>
+    <h2>EVIDENCE <span class="accent">BUNDLE.</span></h2>
+    <p class="lead">Repository path: <code>artifacts/verification-center/aws-native-poc-20260503/</code>. Twelve hashed files including the raw <code>attestation.cbor</code> are listed in the smoke-test manifest; this redacted bundle exposes only the reviewer-facing artifacts and bundle hashes.</p>
+    <ul class="file-list">
+      <li><code>README.md</code><span>Human-readable redacted packet summary, evidence URI, and limitation note.</span></li>
+      <li><code>runtime-passport.json</code><span>Deployment-level Runtime Passport (machine-readable).</span></li>
+      <li><code>runtime-passport.md</code><span>Reviewer-readable Runtime Passport.</span></li>
+      <li><code>runtime-passport.html</code><span>Print-ready Runtime Passport.</span></li>
+      <li><code>execution-report/verification-report.json</code><span>Per-event Execution Report tied to the AIR receipt (machine-readable).</span></li>
+      <li><code>execution-report/verification-report.md</code><span>Reviewer-readable Execution Report.</span></li>
+      <li><code>execution-report/verification-report.html</code><span>Print-ready Execution Report.</span></li>
+      <li><code>execution-report/SHA256SUMS</code><span>Hashes for the execution-report sub-bundle.</span></li>
+      <li><code>SHA256SUMS</code><span>Top-level hashes covering passport files and the execution-report SHA256SUMS.</span></li>
+    </ul>
+  </section>
+
+  <section class="panel">
+    <span class="panel-tag">// 008 / OPERATIONAL NOTE</span>
+    <span class="panel-num">008</span>
+    <div class="eyebrow">RUN HYGIENE</div>
+    <h2>POST-RUN <span class="accent">CLEANUP.</span></h2>
+    <p class="lead">A narrow KMS key-policy statement was added during the run to allow the deployer to upload the smoke-test binary through the bucket's mandatory SSE-KMS policy. The temporary statement was removed after the run, and the Nitro host was stopped. The hashed KMS key reference and IAM role reference in the Runtime Passport are SHA-256 hashes of the canonical references rather than raw ARNs.</p>
+  </section>
+
+  <section class="panel">
+    <span class="panel-tag">// 009 / LIMITATIONS</span>
+    <span class="panel-num">009</span>
+    <div class="lim">
+      <strong>Limitations</strong>
+      <ul>
+        <li>This packet uses redacted operational identifiers throughout (<code>aws-account-redacted</code>, <code>cyntrisec-aws-poc-redacted</code>, hashed KMS / IAM references, redacted evidence bucket URI). Raw cloud identifiers are not exposed.</li>
+        <li>Internal PoC: the EIF cosign bundle was not present and the unsigned-EIF override was active. Production buyer release evidence requires that flow to close (see panel 002).</li>
+        <li>Proves the AWS CPU Nitro path only. Does not prove GPU attestation, multi-cloud parity, or pipeline-mode evidence.</li>
+        <li>Does not prove model correctness, fairness, safety, or legal compliance. Does not prove irrecoverable deletion.</li>
+        <li>This page is a redacted public summary. For a real buyer review, use the private evidence bundle under an explicit review context and verify the SHA-256 hashes against your local copy.</li>
+      </ul>
+    </div>
+  </section>
+
+  <footer>
+    <span><a href="/">&laquo; Back to Verification Center</a></span>
+    <span class="mono">AIR v1 + Runtime Passport + Execution Report</span>
+    <span>&copy; 2026 Cyntrisec</span>
+  </footer>
 </main>
 </body>
 </html>
