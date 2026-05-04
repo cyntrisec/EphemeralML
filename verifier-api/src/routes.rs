@@ -6,7 +6,7 @@ use sha2::{Digest, Sha256};
 
 use crate::api_types::{ErrorResponse, VerifyRequest};
 use crate::templates::{AWS_NATIVE_POC_HTML, LANDING_HTML};
-use crate::verify_dispatch::{self, DispatchPolicy};
+use crate::verify_dispatch::{self, DispatchPolicy, ExpectedPcrs};
 use crate::view_model::{CheckStatus, ReceiptFormat, TrustCenterCheck, TrustCenterResponse};
 
 /// `GET /` — landing page with paste/upload form.
@@ -43,6 +43,11 @@ pub async fn verify_json(
         body.expected_response_hash_hex.as_deref(),
         "expected_response_hash_hex",
     )?;
+    let expected_pcrs = parse_expected_pcrs(
+        body.expected_pcr0_hex.as_deref(),
+        body.expected_pcr1_hex.as_deref(),
+        body.expected_pcr2_hex.as_deref(),
+    )?;
     let expected_security_mode =
         parse_expected_security_mode(body.expected_security_mode.as_deref())?;
 
@@ -51,6 +56,7 @@ pub async fn verify_json(
         expected_model_hash,
         expected_request_hash,
         expected_response_hash,
+        expected_pcrs,
         expected_security_mode,
         expected_measurement_type: Some(body.measurement_type),
         max_age_secs: body.max_age_secs,
@@ -60,7 +66,13 @@ pub async fn verify_json(
 
     let mut response = verify_dispatch::verify_json_value(&body.receipt, &public_key, &policy)
         .map_err(bad_request)?;
-    annotate_air_provenance(&mut response, None, None, None);
+    annotate_air_provenance(
+        &mut response,
+        None,
+        None,
+        None,
+        policy.expected_pcrs.as_ref(),
+    );
 
     Ok(Json(response))
 }
@@ -79,6 +91,9 @@ pub async fn verify_upload(
     let mut expected_model_hash: Option<[u8; 32]> = None;
     let mut expected_request_hash: Option<[u8; 32]> = None;
     let mut expected_response_hash: Option<[u8; 32]> = None;
+    let mut expected_pcr0: Option<[u8; 48]> = None;
+    let mut expected_pcr1: Option<[u8; 48]> = None;
+    let mut expected_pcr2: Option<[u8; 48]> = None;
     let mut expected_security_mode: Option<String> = None;
     let mut measurement_type: String = "any".to_string();
     let mut max_age_secs: u64 = 0;
@@ -155,6 +170,24 @@ pub async fn verify_upload(
                 expected_response_hash =
                     parse_optional_hash32_hex(Some(text.trim()), "expected_response_hash_hex")?;
             }
+            "expected_pcr0_hex" => {
+                let text = field.text().await.map_err(|e| {
+                    bad_request(format!("Failed to read expected_pcr0_hex field: {}", e))
+                })?;
+                expected_pcr0 = parse_optional_hash48_hex(Some(text.trim()), "expected_pcr0_hex")?;
+            }
+            "expected_pcr1_hex" => {
+                let text = field.text().await.map_err(|e| {
+                    bad_request(format!("Failed to read expected_pcr1_hex field: {}", e))
+                })?;
+                expected_pcr1 = parse_optional_hash48_hex(Some(text.trim()), "expected_pcr1_hex")?;
+            }
+            "expected_pcr2_hex" => {
+                let text = field.text().await.map_err(|e| {
+                    bad_request(format!("Failed to read expected_pcr2_hex field: {}", e))
+                })?;
+                expected_pcr2 = parse_optional_hash48_hex(Some(text.trim()), "expected_pcr2_hex")?;
+            }
             "expected_security_mode" => {
                 let text = field.text().await.map_err(|e| {
                     bad_request(format!(
@@ -211,6 +244,7 @@ pub async fn verify_upload(
     }
 
     let receipt_data = receipt_bytes.ok_or_else(|| bad_request("Missing receipt_file field"))?;
+    let expected_pcrs = parse_expected_pcrs_arrays(expected_pcr0, expected_pcr1, expected_pcr2)?;
     let public_key = if let Some(key_hex) = public_key_hex {
         parse_hex_public_key(&key_hex)?
     } else if let Some(attestation) = attestation_bytes.as_deref() {
@@ -226,6 +260,7 @@ pub async fn verify_upload(
         expected_model_hash,
         expected_request_hash,
         expected_response_hash,
+        expected_pcrs,
         expected_security_mode,
         expected_measurement_type: Some(measurement_type),
         max_age_secs,
@@ -240,6 +275,7 @@ pub async fn verify_upload(
         Some(&receipt_data),
         Some(&public_key),
         attestation_bytes.as_deref(),
+        policy.expected_pcrs.as_ref(),
     );
 
     Ok(Json(response))
@@ -263,6 +299,7 @@ fn annotate_air_provenance(
     receipt_data: Option<&[u8]>,
     public_key: Option<&VerifyingKey>,
     attestation: Option<&[u8]>,
+    expected_pcrs: Option<&ExpectedPcrs>,
 ) {
     if !matches!(response.format, ReceiptFormat::AirV1) {
         return;
@@ -354,8 +391,9 @@ fn annotate_air_provenance(
 
     let mut platform_ok = false;
     let mut key_binding_ok = false;
-    match ephemeral_ml_client::receipt_key::extract_key_from_attestation(attestation, false) {
-        Ok(attested_key) => {
+    let mut runtime_policy_ok = false;
+    match verify_attestation_identity(attestation) {
+        Ok(identity) => {
             platform_ok = true;
             response.add_check(provenance_check(
                 "platform_attestation",
@@ -365,7 +403,7 @@ fn annotate_air_provenance(
                 Some("attestation COSE signature and certificate chain accepted".to_string()),
             ));
 
-            if attested_key.to_bytes() == public_key.to_bytes() {
+            if identity.receipt_signing_key == public_key.to_bytes() {
                 key_binding_ok = true;
                 response.add_check(provenance_check(
                     "signing_key_binding",
@@ -382,10 +420,53 @@ fn annotate_air_provenance(
                     "tee_provenance",
                     Some(format!(
                         "attestation public key {} does not match receipt verification key {}",
-                        hex::encode(attested_key.to_bytes()),
+                        hex::encode(identity.receipt_signing_key),
                         hex::encode(public_key.to_bytes())
                     )),
                 ));
+            }
+
+            match expected_pcrs {
+                Some(expected) if pcrs_match(&identity.measurements, expected) => {
+                    runtime_policy_ok = true;
+                    response.add_check(provenance_check(
+                        "runtime_measurement_policy",
+                        "Runtime measurement policy",
+                        CheckStatus::Pass,
+                        "tee_provenance",
+                        None,
+                    ));
+                }
+                Some(expected) => {
+                    response.add_check(provenance_check(
+                        "runtime_measurement_policy",
+                        "Runtime measurement policy",
+                        CheckStatus::Fail,
+                        "tee_provenance",
+                        Some(format!(
+                            "expected PCR0/PCR1/PCR2 {}/{}/{}, got {}/{}/{}",
+                            hex::encode(expected.pcr0),
+                            hex::encode(expected.pcr1),
+                            hex::encode(expected.pcr2),
+                            hex::encode(&identity.measurements.pcr0),
+                            hex::encode(&identity.measurements.pcr1),
+                            hex::encode(&identity.measurements.pcr2)
+                        )),
+                    ));
+                }
+                None => {
+                    response.add_check(provenance_check(
+                        "runtime_measurement_policy",
+                        "Runtime measurement policy",
+                        CheckStatus::Skip,
+                        "tee_provenance",
+                        Some(
+                            "no expected_pcr0_hex/expected_pcr1_hex/expected_pcr2_hex policy supplied; \
+                             platform attestation is verified but the runtime is not allowlisted"
+                                .to_string(),
+                        ),
+                    ));
+                }
             }
         }
         Err(err) => {
@@ -409,13 +490,37 @@ fn annotate_air_provenance(
         }
     }
 
-    if response.verified && hash_ok && platform_ok && key_binding_ok {
+    if response.verified && hash_ok && platform_ok && key_binding_ok && runtime_policy_ok {
         response.set_tee_provenance_verified();
+    } else if response.verified && hash_ok && platform_ok && key_binding_ok {
+        response.set_platform_attested();
+        response.add_warning(
+            "Platform attestation and signing-key binding were verified, but no runtime measurement policy was supplied; assurance_level is platform_attested, not tee_provenance.",
+        );
     } else {
         response.add_warning(
             "TEE provenance was requested but not fully verified; see tee_provenance checks.",
         );
     }
+}
+
+fn verify_attestation_identity(
+    attestation: &[u8],
+) -> Result<ephemeral_ml_client::attestation_verifier::EnclaveIdentity, String> {
+    let policy = ephemeral_ml_client::PolicyManager::new();
+    let mut verifier = ephemeral_ml_client::attestation_verifier::AttestationVerifier::new(policy);
+    verifier
+        .verify_attestation_bytes_skip_nonce(attestation)
+        .map_err(|err| err.to_string())
+}
+
+fn pcrs_match(
+    measurements: &ephemeral_ml_common::PcrMeasurements,
+    expected: &ExpectedPcrs,
+) -> bool {
+    measurements.pcr0 == expected.pcr0
+        && measurements.pcr1 == expected.pcr1
+        && measurements.pcr2 == expected.pcr2
 }
 
 fn provenance_check(
@@ -447,6 +552,46 @@ fn parse_optional_hash32_hex(
         .try_into()
         .map_err(|_| bad_request(format!("{field_name} must decode to exactly 32 bytes")))?;
     Ok(Some(array))
+}
+
+fn parse_optional_hash48_hex(
+    value: Option<&str>,
+    field_name: &str,
+) -> Result<Option<[u8; 48]>, (StatusCode, Json<ErrorResponse>)> {
+    let Some(value) = value.map(str::trim).filter(|v| !v.is_empty()) else {
+        return Ok(None);
+    };
+    let bytes = hex::decode(value)
+        .map_err(|_| bad_request(format!("{field_name} must be a 96-character hex string")))?;
+    let array: [u8; 48] = bytes
+        .try_into()
+        .map_err(|_| bad_request(format!("{field_name} must decode to exactly 48 bytes")))?;
+    Ok(Some(array))
+}
+
+fn parse_expected_pcrs(
+    pcr0: Option<&str>,
+    pcr1: Option<&str>,
+    pcr2: Option<&str>,
+) -> Result<Option<ExpectedPcrs>, (StatusCode, Json<ErrorResponse>)> {
+    let pcr0 = parse_optional_hash48_hex(pcr0, "expected_pcr0_hex")?;
+    let pcr1 = parse_optional_hash48_hex(pcr1, "expected_pcr1_hex")?;
+    let pcr2 = parse_optional_hash48_hex(pcr2, "expected_pcr2_hex")?;
+    parse_expected_pcrs_arrays(pcr0, pcr1, pcr2)
+}
+
+fn parse_expected_pcrs_arrays(
+    pcr0: Option<[u8; 48]>,
+    pcr1: Option<[u8; 48]>,
+    pcr2: Option<[u8; 48]>,
+) -> Result<Option<ExpectedPcrs>, (StatusCode, Json<ErrorResponse>)> {
+    match (pcr0, pcr1, pcr2) {
+        (None, None, None) => Ok(None),
+        (Some(pcr0), Some(pcr1), Some(pcr2)) => Ok(Some(ExpectedPcrs { pcr0, pcr1, pcr2 })),
+        _ => Err(bad_request(
+            "expected_pcr0_hex, expected_pcr1_hex, and expected_pcr2_hex must be supplied together",
+        )),
+    }
 }
 
 fn parse_expected_security_mode(

@@ -108,6 +108,10 @@ fn check_status(body: &serde_json::Value, check_id: &str) -> String {
         .to_string()
 }
 
+fn pcr48_hex(byte: u8) -> String {
+    hex::encode([byte; 48])
+}
+
 // ==========================================================================
 // Original backward-compatible tests
 // ==========================================================================
@@ -1018,6 +1022,37 @@ async fn test_air_v1_upload_attestation_mismatch_rejects_tee_provenance() {
     assert_eq!(check_status(&body, "attestation_doc_hash"), "fail");
     assert_eq!(check_status(&body, "platform_attestation"), "fail");
     assert_eq!(check_status(&body, "signing_key_binding"), "fail");
+}
+
+#[tokio::test]
+async fn test_air_v1_upload_partial_pcr_policy_rejected() {
+    let base = require_base!(start_server());
+    let key = ReceiptSigningKey::generate().unwrap();
+    let receipt_bytes = make_air_v1_receipt(&key);
+    let public_key_hex = hex::encode(key.public_key_bytes());
+
+    let client = reqwest::Client::new();
+    let form = reqwest::multipart::Form::new()
+        .part(
+            "receipt_file",
+            reqwest::multipart::Part::bytes(receipt_bytes).file_name("receipt.cbor"),
+        )
+        .text("public_key", public_key_hex)
+        .text("expected_pcr0_hex", pcr48_hex(0xAA));
+
+    let resp = client
+        .post(format!("{}/api/v1/verify/upload", base))
+        .multipart(form)
+        .send()
+        .await
+        .unwrap();
+
+    assert_eq!(resp.status(), 400);
+    let body: serde_json::Value = resp.json().await.unwrap();
+    assert!(body["error"]
+        .as_str()
+        .unwrap()
+        .contains("must be supplied together"));
 }
 
 #[tokio::test]

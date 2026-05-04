@@ -157,6 +157,7 @@ fn build_router_inner(cors: CorsLayer, state: AppState) -> Router {
                  font-src https://fonts.gstatic.com; \
                  img-src 'self' https://cyntrisec.com; \
                  connect-src 'self'; \
+                 object-src 'none'; base-uri 'none'; form-action 'self'; \
                  frame-ancestors 'none'",
             ),
         ))

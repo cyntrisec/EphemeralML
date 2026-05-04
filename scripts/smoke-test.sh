@@ -51,15 +51,33 @@ echo
 
 # 1. Landing page
 check_status "Landing page" "$BASE_URL/" "200"
+echo -n "  "
+LANDING=$(curl -s --max-time 10 "$BASE_URL/" 2>/dev/null || echo "")
+if [ -n "$LANDING" ] \
+    && [[ "$LANDING" == *"Cloud Run service may emit minimal platform request metadata"* ]] \
+    && [[ "$LANDING" != *"discarded within minutes"* ]]; then
+    pass "Privacy copy — platform request logging disclosed, stale IP-discard claim absent"
+else
+    fail "Privacy copy — expected platform logging disclosure and no stale IP-discard claim"
+fi
+echo -n "  "
+HEADERS=$(curl -sS -D - -o /dev/null --max-time 10 "$BASE_URL/" 2>/dev/null || echo "")
+if [[ "$HEADERS" == *"object-src 'none'"* ]] \
+    && [[ "$HEADERS" == *"base-uri 'none'"* ]] \
+    && [[ "$HEADERS" == *"form-action 'self'"* ]]; then
+    pass "Security headers — hardened CSP directives present"
+else
+    fail "Security headers — expected object-src/base-uri/form-action CSP directives"
+fi
 
 # 1b. AWS-native PoC evidence page (current 2026-05-03 packet, not stale 2026-04-30)
 check_status "AWS evidence page" "$BASE_URL/evidence/aws-native-poc" "200"
 echo -n "  "
 EVIDENCE=$(curl -s --max-time 10 "$BASE_URL/evidence/aws-native-poc" 2>/dev/null || echo "")
 if [ -n "$EVIDENCE" ] \
-    && echo "$EVIDENCE" | grep -q "2026-05-03" \
-    && echo "$EVIDENCE" | grep -q "aws-native-poc-20260503" \
-    && ! echo "$EVIDENCE" | grep -q "aws-native-poc-20260430"; then
+    && [[ "$EVIDENCE" == *"2026-05-03"* ]] \
+    && [[ "$EVIDENCE" == *"aws-native-poc-20260503"* ]] \
+    && [[ "$EVIDENCE" != *"aws-native-poc-20260430"* ]]; then
     pass "AWS evidence content — references 2026-05-03 packet, not stale 2026-04-30"
 else
     fail "AWS evidence content — expected 2026-05-03 packet references, stale 2026-04-30 must be absent"

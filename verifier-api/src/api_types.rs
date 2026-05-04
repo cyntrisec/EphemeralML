@@ -35,6 +35,16 @@ pub struct VerifyRequest {
     /// Expected container image digest (e.g. "sha256:abc123"). Optional.
     #[serde(default)]
     pub expected_image_digest: Option<String>,
+    /// Expected Nitro PCR0 measurement as 96-character hex. Must be supplied
+    /// with expected_pcr1_hex and expected_pcr2_hex to claim tee_provenance.
+    #[serde(default)]
+    pub expected_pcr0_hex: Option<String>,
+    /// Expected Nitro PCR1 measurement as 96-character hex.
+    #[serde(default)]
+    pub expected_pcr1_hex: Option<String>,
+    /// Expected Nitro PCR2 measurement as 96-character hex.
+    #[serde(default)]
+    pub expected_pcr2_hex: Option<String>,
 }
 
 fn default_measurement_type() -> String {

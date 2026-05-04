@@ -18,11 +18,19 @@ pub struct DispatchPolicy {
     pub expected_model_hash: Option<[u8; 32]>,
     pub expected_request_hash: Option<[u8; 32]>,
     pub expected_response_hash: Option<[u8; 32]>,
+    pub expected_pcrs: Option<ExpectedPcrs>,
     pub expected_security_mode: Option<String>,
     pub expected_measurement_type: Option<String>,
     pub max_age_secs: u64,
     pub expected_attestation_source: Option<String>,
     pub expected_image_digest: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ExpectedPcrs {
+    pub pcr0: [u8; 48],
+    pub pcr1: [u8; 48],
+    pub pcr2: [u8; 48],
 }
 
 /// Detect format and verify raw receipt bytes.

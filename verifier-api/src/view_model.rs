@@ -30,7 +30,10 @@ pub enum AssuranceLevel {
     /// Signature/claim/policy checks over the receipt only.
     AirLocal,
     /// Receipt-local checks plus attestation hash, signing-key binding, and
-    /// platform attestation authenticity checks supplied in the request.
+    /// platform attestation authenticity checks supplied in the request, without
+    /// an explicit runtime measurement allowlist.
+    PlatformAttested,
+    /// Platform-attested receipt plus caller-supplied runtime measurement policy.
     TeeProvenance,
     /// Legacy receipt verification path.
     LegacyLocal,
@@ -287,6 +290,11 @@ impl TrustCenterResponse {
         self.tee_provenance_verified = true;
     }
 
+    pub fn set_platform_attested(&mut self) {
+        self.assurance_level = AssuranceLevel::PlatformAttested;
+        self.tee_provenance_verified = false;
+    }
+
     pub fn refresh_verdict_from_checks(&mut self) {
         if self
             .checks
@@ -330,4 +338,61 @@ fn format_uuid(bytes: &[u8; 16]) -> String {
             | ((bytes[14] as u64) << 8)
             | (bytes[15] as u64),
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn sample_air_response() -> TrustCenterResponse {
+        TrustCenterResponse {
+            verdict: Verdict::Verified,
+            verified: true,
+            format: ReceiptFormat::AirV1,
+            assurance_level: AssuranceLevel::AirLocal,
+            tee_provenance_verified: false,
+            api_version: "v1",
+            verified_at: 0,
+            receipt: ReceiptSummary {
+                receipt_id: None,
+                model_id: None,
+                model_version: None,
+                platform: None,
+                execution_time_ms: None,
+                sequence_number: None,
+                issued_at: None,
+                issuer: None,
+                security_mode: None,
+                attestation_source: None,
+                model_hash_scheme: None,
+            },
+            checks: vec![],
+            errors: vec![],
+            warnings: vec![],
+        }
+    }
+
+    #[test]
+    fn platform_attested_is_distinct_from_tee_provenance() {
+        let mut response = sample_air_response();
+        response.set_platform_attested();
+
+        assert!(matches!(
+            response.assurance_level,
+            AssuranceLevel::PlatformAttested
+        ));
+        assert!(!response.tee_provenance_verified);
+    }
+
+    #[test]
+    fn tee_provenance_sets_explicit_boolean() {
+        let mut response = sample_air_response();
+        response.set_tee_provenance_verified();
+
+        assert!(matches!(
+            response.assurance_level,
+            AssuranceLevel::TeeProvenance
+        ));
+        assert!(response.tee_provenance_verified);
+    }
 }

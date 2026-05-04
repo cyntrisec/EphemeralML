@@ -668,6 +668,12 @@ pub const LANDING_HTML: &str = r##"<!DOCTYPE html>
               <label class="field-label">Or attestation file (.cbor / .bin)</label>
               <input type="file" id="attestationFile" accept=".cbor,.bin"/>
             </div>
+            <div class="field-group">
+              <label class="field-label">Runtime policy PCR0 / PCR1 / PCR2 (optional, 96 hex each)</label>
+              <input type="text" id="expectedPcr0Hex" placeholder="expected_pcr0_hex" class="mono"/>
+              <input type="text" id="expectedPcr1Hex" placeholder="expected_pcr1_hex" class="mono" style="margin-top:8px"/>
+              <input type="text" id="expectedPcr2Hex" placeholder="expected_pcr2_hex" class="mono" style="margin-top:8px"/>
+            </div>
             <div class="verify-actions">
               <button type="submit" class="btn-verify">Verify</button>
             </div>
@@ -688,6 +694,7 @@ pub const LANDING_HTML: &str = r##"<!DOCTYPE html>
             <ul>
               <li>Confirms the receipt is correctly signed and structurally valid.</li>
               <li>Can derive the receipt key from a supplied attestation document and check AIR attestation hash binding when the sidecar is supplied.</li>
+              <li><code>platform_attested</code> means the attestation is authentic and key-bound; <code>tee_provenance</code> additionally requires caller-supplied runtime PCR policy.</li>
               <li>Does not prove data was deleted after processing.</li>
               <li>Does not constitute a compliance determination.</li>
               <li>Deployment-specific trust policy depends on expected measurements, model allowlist, and freshness inputs.</li>
@@ -704,7 +711,7 @@ pub const LANDING_HTML: &str = r##"<!DOCTYPE html>
 
   <div class="privacy">
     <strong>Privacy:</strong>
-    Uploaded receipts are processed in memory and not stored. IP addresses are used for rate limiting only and discarded within minutes. No analytics or tracking. Source: <a href="https://github.com/cyntrisec/EphemeralML">github.com/cyntrisec/EphemeralML</a>
+    Uploaded receipts are processed in memory and are not stored by the verifier application. No app analytics or tracking scripts are used. The hosted Cloud Run service may emit minimal platform request metadata such as path, status, trace ID, and client IP under the project logging policy. Source: <a href="https://github.com/cyntrisec/EphemeralML">github.com/cyntrisec/EphemeralML</a>
   </div>
 
   <footer>
@@ -780,6 +787,9 @@ async function verifyUpload(e) {
   const keyHex = document.getElementById('uploadKeyHex').value.trim();
   const keyFile = document.getElementById('publicKeyFile');
   const attestationFile = document.getElementById('attestationFile');
+  const expectedPcr0 = document.getElementById('expectedPcr0Hex').value.trim();
+  const expectedPcr1 = document.getElementById('expectedPcr1Hex').value.trim();
+  const expectedPcr2 = document.getElementById('expectedPcr2Hex').value.trim();
   if (!fileInput.files.length) return alert('Select a receipt file.');
   if (!keyHex && !keyFile.files.length && !attestationFile.files.length) {
     return alert('Provide a public key or attestation file.');
@@ -789,6 +799,11 @@ async function verifyUpload(e) {
   if (keyHex) form.append('public_key', keyHex);
   else if (keyFile.files.length) form.append('public_key_file', keyFile.files[0]);
   else if (attestationFile.files.length) form.append('attestation_file', attestationFile.files[0]);
+  if (expectedPcr0 || expectedPcr1 || expectedPcr2) {
+    form.append('expected_pcr0_hex', expectedPcr0);
+    form.append('expected_pcr1_hex', expectedPcr1);
+    form.append('expected_pcr2_hex', expectedPcr2);
+  }
   showSpinner(true);
   try {
     const resp = await fetch('/api/v1/verify/upload', {method: 'POST', body: form});
