@@ -4,22 +4,25 @@ WORKDIR /build
 # Copy workspace root files
 COPY Cargo.toml Cargo.lock ./
 
-# Copy only the crates needed for verifier-api
+# Copy only the crates needed for verifier-api.
 COPY common/ common/
+COPY client/ client/
 COPY verifier-api/ verifier-api/
 
 # Create stub crates for workspace members that are excluded from context
 # so Cargo can resolve the workspace without their source
-RUN mkdir -p client/src host/src enclave/src gateway-api/src compliance/src \
-    && echo 'fn main() {}' > client/src/main.rs \
+RUN mkdir -p host/src enclave/src gateway-api/src compliance/src \
+    ephemeralml-doctor/src ephemeralml-smoke-test/src \
     && echo 'fn main() {}' > host/src/main.rs \
     && echo 'fn main() {}' > enclave/src/main.rs \
     && echo 'fn main() {}' > gateway-api/src/main.rs \
-    && echo 'fn main() {}' > compliance/src/main.rs
+    && echo 'fn main() {}' > compliance/src/main.rs \
+    && echo 'fn main() {}' > ephemeralml-doctor/src/main.rs \
+    && echo 'fn main() {}' > ephemeralml-smoke-test/src/main.rs
 
 # Copy stub Cargo.tomls for missing workspace members
 # These just need [package] name and version to satisfy the workspace resolver
-RUN for crate in client host enclave gateway-api compliance; do \
+RUN for crate in host enclave gateway-api compliance ephemeralml-doctor ephemeralml-smoke-test; do \
     if [ ! -f "$crate/Cargo.toml" ]; then \
         echo "[package]" > "$crate/Cargo.toml" \
         && echo "name = \"ephemeral-ml-$crate\"" >> "$crate/Cargo.toml" \

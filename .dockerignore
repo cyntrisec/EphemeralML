@@ -1,4 +1,5 @@
 target/
+test_assets/
 .target_codex/
 .target_*/
 .git/
@@ -11,6 +12,7 @@ demo-artifacts/
 demo-pack/
 evidence/
 attestation-evidence/
+artifacts/
 infra/
 site/
 spec/
