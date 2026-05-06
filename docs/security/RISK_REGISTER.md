@@ -1,10 +1,18 @@
 # Security Risk Register (Public Summary)
 
-Last updated: 2026-05-03
+Last updated: 2026-05-06
 
 This public summary tracks known third-party advisories relevant to the repository. Internal ownership, review cadence, and operational follow-up are maintained outside the public repo.
 
 ## Recently Closed
+
+### RUSTSEC-2026-0098 / RUSTSEC-2026-0099 / RUSTSEC-2026-0104 — `rustls-webpki 0.101.7`
+
+- **Affected path (previously):** AWS SDK runtime → `aws-smithy-http-client` → Rustls 0.21 → `rustls-webpki 0.101.7`
+- **Issue:** Certificate validation (URI / wildcard name constraints) and CRL parsing advisories in older `rustls-webpki`.
+- **Resolution:** AWS SDK service-crate default features include both the modern `default-https-client` path (Rustls 0.23 + `rustls-webpki 0.103.13`) and a deprecated `rustls` compatibility feature that maps to `aws-smithy-runtime/tls-rustls` → `aws-smithy-http-client/legacy-rustls-ring` → Rustls 0.21 → `rustls-webpki 0.101.7`. The fix sets `default-features = false` on `aws-config`, `aws-sdk-kms`, `aws-sdk-s3`, and `aws-sdk-ssm` in `host`, `enclave` (production-feature deps), `ephemeralml-doctor`, and `ephemeralml-smoke-test`, and explicitly enables only `behavior-version-latest`, `rt-tokio`, `default-https-client` (plus `credentials-process` + `sso` for `aws-config` and `http-1x` + `sigv4a` for `aws-sdk-s3`). The legacy `rustls` feature is no longer enabled, so Rustls 0.21 / `rustls-webpki 0.101.7` are removed from the build graph.
+- **Upstream tracking:** <https://rustsec.org/advisories/RUSTSEC-2026-0098>, <https://rustsec.org/advisories/RUSTSEC-2026-0099>, <https://rustsec.org/advisories/RUSTSEC-2026-0104>
+- **Public status:** Closed for this repository's dependency graph (verified via `cargo audit`, `cargo tree -i rustls-webpki@0.101.7 --workspace`, and `cargo tree -i rustls@0.21.12 --workspace`).
 
 ### RUSTSEC-2023-0071 / CVE-2023-49092 — `rsa 0.9.10`
 
@@ -14,15 +22,6 @@ This public summary tracks known third-party advisories relevant to the reposito
 - **Resolution:** Removed the RustCrypto `rsa` dependency from the enclave. Nitro KMS recipient decryption now uses OpenSSL `PKey` + `Decrypter` with RSAES-OAEP-SHA256.
 - **Upstream tracking:** <https://github.com/RustCrypto/RSA/issues/19>
 - **Public status:** Closed for this repository's direct dependency graph.
-
-## Active Transitive Advisories
-
-### RUSTSEC-2026-0098 / RUSTSEC-2026-0099 / RUSTSEC-2026-0104 — `rustls-webpki 0.101.7`
-
-- **Affected path:** AWS SDK runtime → `aws-smithy-http-client` → Rustls 0.21 → `rustls-webpki 0.101.7`
-- **Issue:** Certificate validation and CRL parsing advisories in older `rustls-webpki`.
-- **Current mitigation:** Updated the independent Rustls 0.23 path to `rustls-webpki 0.103.13`. The remaining 0.101.7 copy is retained by the current AWS SDK HTTP client stack. Current `aws-smithy-http-client 1.1.12` still enables the legacy Rustls 0.21 / hyper 0.14 path alongside the Rustls 0.23 path, so closure requires upstream AWS SDK migration or replacing the generated SDK default HTTP connector with a non-legacy connector.
-- **Public status:** Active upstream/transitive dependency risk.
 
 ## Informational / Unmaintained Dependencies
 
