@@ -34,7 +34,7 @@ x25519-dalek = { workspace = true }
 zeroize = { workspace = true }
 rand = { workspace = true }
 ed25519-dalek = { workspace = true }
-aws-sdk-kms = { version = "1.103.0", default-features = false, features = ["behavior-version-latest", "rt-tokio", "default-https-client"], optional = true }
+aws-sdk-kms = { version = "1.106.0", default-features = false, features = ["behavior-version-latest", "rt-tokio", "default-https-client"], optional = true }
 aws-config = { version = "1.8.15", default-features = false, features = ["behavior-version-latest", "rt-tokio", "default-https-client", "credentials-process", "sso"], optional = true }
 reqwest = { version = "0.13", features = ["json", "form"], optional = true }
 base64 = "0.22"
