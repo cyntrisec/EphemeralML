@@ -289,13 +289,13 @@ dependencies = [
 
 [[package]]
 name = "aws-nitro-enclaves-nsm-api"
-version = "0.5.0"
+version = "0.5.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "597f622c473bdc54103cfe964bbad00609df2bb88a0ac6cee0fc951aaee9694e"
+checksum = "973aa18816fcc09c669dfc311362028f63f6f7b4142ef4e98461078d91ef46b7"
 dependencies = [
  "libc",
  "log",
- "nix 0.26.4",
+ "nix 0.31.2",
  "serde",
  "serde_bytes",
  "serde_cbor",
@@ -1950,7 +1950,7 @@ dependencies = [
  "anyhow",
  "async-trait",
  "aws-config",
- "aws-nitro-enclaves-nsm-api 0.5.0",
+ "aws-nitro-enclaves-nsm-api 0.5.1",
  "aws-sdk-kms",
  "base64 0.22.1",
  "bytes",
@@ -3450,6 +3450,18 @@ dependencies = [
  "cfg_aliases",
  "libc",
  "memoffset 0.9.1",
+]
+
+[[package]]
+name = "nix"
+version = "0.31.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5d6d0705320c1e6ba1d912b5e37cf18071b6c2e9b7fa8215a1e8a7651966f5d3"
+dependencies = [
+ "bitflags 2.11.0",
+ "cfg-if",
+ "cfg_aliases",
+ "libc",
 ]
 
 [[package]]
