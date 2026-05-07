@@ -69,7 +69,7 @@ host stopped even if it was already running before the script started.
 For one packet:
 
 ```bash
-scripts/aws/summarize_benchmarks.py artifacts/benchmarks/aws-native-poc-20260430
+scripts/aws/summarize_benchmarks.py artifacts/benchmarks/aws-native-poc-YYYYMMDD
 ```
 
 For multiple downloaded bundles:
@@ -95,6 +95,12 @@ The first clean redacted run on 2026-04-30 measured:
 
 These are PoC measurements, not a production SLO. For customer claims, report
 cold-start and warm-enclave paths separately.
+
+The current public Verification Center packet is
+`artifacts/verification-center/aws-native-poc-20260503/`. It includes the
+runtime passport, execution report, SHA-256 manifest, and the unsigned-EIF
+internal-PoC caveat surfaced as a limitation. Use that packet for current
+buyer-review demos rather than the older 2026-04-30 benchmark-only directory.
 
 ## Redacted Evidence Packet
 

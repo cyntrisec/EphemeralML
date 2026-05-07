@@ -126,7 +126,7 @@ EphemeralML's proof bundle maps to HIPAA Security Rule controls:
 
 | HIPAA Control | Section | EphemeralML Evidence |
 |---------------|---------|---------------------|
-| Access control | 164.312(a) | TDX enclave isolation proof — only the attested workload can access the model and data |
+| Access control | 164.312(a) | Evidence that KMS/model access is scoped to an attested workload under the deployment policy |
 | Audit controls | 164.312(b) | The receipt itself — cryptographically signed record of what happened |
 | Integrity | 164.312(c) | Model hash in manifest + attestation signature chain |
 | Transmission security | 164.312(e) | HPKE + ChaCha20-Poly1305 AEAD encryption proof (SecureChannel) |
@@ -185,11 +185,11 @@ Each inference produces a signed receipt containing:
 ### Verification
 
 ```bash
-cargo run -p ephemeral-ml-client --bin ephemeralml_verify -- receipt.json
+cargo run -p ephemeral-ml-client --bin ephemeralml-verify -- receipt.json
 ```
 
 The verifier checks:
 1. Ed25519 signature is valid
 2. Signing key matches the one in the attestation document
-3. Sequence number is monotonically increasing
+3. Sequence/freshness policy when verifier state or policy inputs are supplied
 4. All hashes are present and well-formed

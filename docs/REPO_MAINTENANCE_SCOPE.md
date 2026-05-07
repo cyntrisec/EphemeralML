@@ -37,7 +37,7 @@ These paths are part of the repo, but they are not the default place to spend fo
 | `compliance/` | Useful support surface, but not the current moat or near-term buying trigger |
 | `infra/` | Preserve working deployment scaffolding, but avoid broad Terraform churn without live infra pressure |
 | one-off scripts in `scripts/` | Keep runnable if still referenced; otherwise do not polish for its own sake |
-| `artifacts/`, `demo-artifacts/`, `evidence/` | Preserve evidence; add new material only when it supports a current proof point |
+| `artifacts/`, `demo-artifacts/`, `evidence/` | Preserve public evidence bundles; promote only redacted/publication-grade artifacts, not raw ad-hoc cloud run output |
 
 ## Local Disk Hygiene
 
@@ -46,6 +46,7 @@ Large local directories are mostly workspace state, not repository weight:
 - `target/` is disposable Rust build output
 - `test_assets/` is local model/data cache; most large files are ignored and can be re-downloaded
 - `infra/**/.terraform/` is local provider/plugin cache
+- ignored `evidence/mvp-*`, `evidence/nitro-*`, and `pilot/**/artifacts/` are local run output, not public repo surface
 
 Recommended local habit:
 

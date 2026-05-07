@@ -4,7 +4,7 @@
 
 Confidential AI inference with per-inference cryptographic receipts.
 
-Every inference runs inside a hardware-isolated enclave. Every inference produces a signed receipt — model identity, data hashes, hardware attestation — verifiable offline.
+In production hardware deployments, inference runs inside a hardware-isolated TEE. Every inference can produce a signed receipt with model identity, data hashes, and attestation linkage that can be verified offline. Local mock mode is only a developer proof path and does not provide hardware attestation.
 
 `AWS Nitro` · `GCP Confidential Space (TDX)` · `NVIDIA H100 CC` · `Rust` · `Apache 2.0`
 
@@ -19,7 +19,7 @@ Every inference runs inside a hardware-isolated enclave. Every inference produce
 | | |
 |---|---|
 | Runtime | Multi-cloud E2E paths, OpenAI-compatible gateway, per-inference AIR receipts |
-| Validated | AWS Nitro, GCP TDX, GCP H100 CC — 500+ tests, CI green |
+| Validated | AWS Nitro, GCP TDX, and GCP H100 CC functional paths; 752 workspace test cases listed locally on 2026-05-07 |
 | Moat | Receipt format + verifier + compliance layer — not raw TEE infra |
 | Missing | External AIR implementors, design-partner revenue, pipeline-proof chaining |
 
@@ -41,10 +41,10 @@ The repository is intentionally split between product crates, standards artifact
 | `docs/` | Architecture, benchmark methodology, production notes, and publication-facing documentation |
 | `scripts/`, `infra/`, `manifests/` | Operational helpers and deployment scaffolding |
 | `site/pages-root/` | GitHub Pages source for the legacy repo-domain redirect to `https://cyntrisec.com/docs` |
-| `evidence/`, `artifacts/benchmarks/`, `demo-artifacts/` | Reproducibility artifacts and public benchmark/evaluation bundles |
+| `evidence/`, `artifacts/benchmarks/`, `demo-artifacts/` | Redacted or publication-grade reproducibility artifacts and public benchmark/evaluation bundles |
 
 Open-source boundary note:
-- verifier logic, AIR v1, public demos, and reproducible evidence stay public
+- verifier logic, AIR v1, public demos, and redacted/publication-grade reproducible evidence stay public
 - managed-service operations, live infrastructure inventory, and pre-interface moat work stay private
 - the static `cyntrisec.com` marketing/docs site now lives in a separate private web repo
 - see [`docs/OPEN_SOURCE_BOUNDARY.md`](docs/OPEN_SOURCE_BOUNDARY.md)
@@ -127,7 +127,7 @@ AIR v1 is **single-inference only** (pipeline proof chaining is planned for vNEX
 │  Client │◄────────────────►│  GCP Confidential Space CVM (TDX)      │
 └─────────┘  SecureChannel   │  ┌───────────────────────────────────┐  │
                              │  │  EphemeralML Container             │  │
-                             │  │  - TDX attestation (configfs-tsm)  │  │
+                             │  │  - TDX/CS attestation evidence      │  │
                              │  │  - Inference + receipt signing      │  │
                              │  │  - Direct HTTPS to GCS / Cloud KMS │  │
                              │  └───────────────────────────────────┘  │
@@ -147,7 +147,7 @@ AIR v1 is **single-inference only** (pipeline proof chaining is planned for vNEX
 │  Client │◄────────────────►│  GCP Confidential Space CVM (TDX + H100 CC) │
 └─────────┘  SecureChannel   │  ┌────────────────────────────────────────┐  │
                              │  │  EphemeralML Container (CUDA 12.2)     │  │
-                             │  │  - TDX attestation (configfs-tsm)      │  │
+                             │  │  - TDX/CS attestation evidence         │  │
                              │  │  - GGUF model loaded from GCS          │  │
                              │  │  - GPU inference (candle-cuda, H100)   │  │
                              │  │  - Receipt signing (Ed25519)           │  │
@@ -161,7 +161,7 @@ AIR v1 is **single-inference only** (pipeline proof chaining is planned for vNEX
                               └─────────────┘     └──────────────────┘
 ```
 
-**Key insight**: Host never has keys. On AWS, it just forwards ciphertext. On GCP, the entire CVM is the trust boundary — no host/enclave split, no VSock. GPU deployments use NVIDIA H100 in CC-mode (attestation confirms `nvidia_gpu.cc_mode: ON`). The pipeline layer (`confidential-ml-pipeline`) orchestrates multi-stage inference with per-stage attestation.
+**Key insight**: in supported confidential paths, the relay host is not expected to receive plaintext model keys or request payloads. On AWS, the host forwards ciphertext and KMS/S3 traffic to a Nitro Enclave; AWS KMS wraps released key material to an attested enclave key via `RecipientInfo`. On GCP, the entire Confidential Space CVM is the trust boundary — no host/enclave split and no VSock. GCP GPU deployments use NVIDIA H100 in CC-mode as reported by Google Confidential Space evidence; NVIDIA NRAS appraisement for tested GCP A3 evidence is tracked separately and should not be treated as implied by AIR receipt verification.
 
 ---
 
@@ -181,10 +181,10 @@ Three-layer trust model: environment attestation, workload identity, model integ
 
 | Threat | Outcome |
 |--------|---------|
-| Compromised host OS | Protected (enclave isolation) |
-| Malicious cloud admin | Protected (can't decrypt) |
-| Supply chain attack | Detected (measurement verification) |
-| Model swap | Prevented (signed manifests) |
+| Compromised host OS | Mitigated under the platform TEE threat model |
+| Malicious cloud admin | Reduced trust via TEE isolation, attestation, and KMS policy |
+| Supply chain attack | Detectable when measurement and manifest policy are pinned |
+| Model swap | Rejected when signed manifest/model-hash policy is enforced |
 
 ---
 
@@ -208,8 +208,8 @@ Three-layer trust model: environment attestation, workload identity, model integ
 - **Attested Inference Receipts (AIR)** — Ed25519-signed, CBOR-canonical, binding input/output hashes to enclave attestation
 - **Policy update system** with signature verification and hot-reload
 - **Model format validation** (safetensors, dtype enforcement)
-- **500+ tests** across the workspace and CI (including pipeline integration, GCP tests, and AIR v1 conformance vectors)
-- **Deterministic builds** for reproducibility
+- **752 test cases** listed by `cargo test --workspace --all-targets -- --list` on 2026-05-07, including pipeline integration, GCP tests, and AIR v1 conformance vectors
+- **Reproducible evidence workflows** with SHA-256 manifests; fully reproducible container/EIF builds remain a hardening target
 
 ---
 
@@ -278,7 +278,7 @@ The +12.6% and +3.2% measure different boundaries. The ~10ms gap is VSock transp
 - **Per-inference crypto cost negligible** — 0.028ms per request (< 0.04% of inference time)
 - **Throughput plateaus at ~14.7 inf/s** — CPU-bound on 2 vCPUs; latency scales linearly with concurrency
 - **$4.11–4.72 per 1M inferences** in enclave (1.03–1.13x bare metal cost, depending on measurement)
-- **3/3 cross-cloud E2E PASS** — AWS Nitro + GCP CPU TDX + GCP GPU H100 CC (functional + security validation, not cross-provider overhead comparison)
+- **Cross-cloud E2E functional PASS** — AWS Nitro + GCP CPU TDX + GCP GPU H100 CC paths have produced verifiable receipts. GPU AIR receipts cover the CPU-side TDX/CS evidence; NVIDIA NRAS appraisement is separate.
 
 ### GPU Performance (GCP Confidential Space, H100 CC-mode)
 
@@ -290,7 +290,7 @@ Measured on GCP a3-highgpu-1g (1x NVIDIA H100, TDX CC-mode ON) with Llama 3 8B Q
 | Machine | a3-highgpu-1g (1x H100, TDX) |
 | Boot to ready | ~3.5 min |
 | 50 tokens generated | 12s (241ms/token) |
-| Attestation | TDX quote, `nvidia_gpu.cc_mode: ON` |
+| Attestation | TDX/Confidential Space evidence, with Google-reported `nvidia_gpu.cc_mode: ON`; NVIDIA NRAS appraisement is tracked separately |
 | Receipt | Ed25519-signed, CBOR-canonical |
 
 **Critical**: GCP Confidential Space GPU uses cos-gpu-installer v2.5.3, which installs driver 535.247.01. This driver supports CUDA <= 12.2 only. Using CUDA 12.6+ fails with `CUDA_ERROR_UNSUPPORTED_PTX_VERSION`. The `Dockerfile.gpu` must use `nvidia/cuda:12.2.2-devel-ubuntu22.04` as the base image.
@@ -438,7 +438,7 @@ See [`QUICKSTART.md`](QUICKSTART.md) and [`docs/build-matrix.md`](docs/build-mat
 | NSM Attestation (AWS) | Production | 11 |
 | TDX Attestation (GCP) | Production | — |
 | KMS Integration (AWS) | Production | — |
-| GCP KMS / WIP | Code exists, not wired into runtime | — |
+| GCP KMS / WIP | Wired for `--model-source=gcs-kms`; requires signed manifest, expected model hash, KMS key, and WIP audience | — |
 | Inference Engine (Candle) | Production | 4 |
 | Receipt Signing (Ed25519) | Production | 6 |
 | Common / Types | Production | 42 |
@@ -448,7 +448,7 @@ See [`QUICKSTART.md`](QUICKSTART.md) and [`docs/build-matrix.md`](docs/build-mat
 | GPU Inference (H100 CC, CUDA 12.2) | Verified on hardware | — |
 | TDX Verifier Bridge (Client) | Implemented | — |
 
-**v3.1 GPU Confidential** — GPU inference on GCP Confidential Space (a3-highgpu-1g, NVIDIA H100 CC-mode) with Llama 3 8B Q4_K_M GGUF, CUDA 12.2, TDX attestation, and Ed25519-signed receipts. GCS loader supports up to 16GB models with Content-Length pre-check. CI green.
+**v3.1 GPU Confidential** — GPU inference on GCP Confidential Space (a3-highgpu-1g, NVIDIA H100 CC-mode) with Llama 3 8B Q4_K_M GGUF, CUDA 12.2, TDX/CS evidence, and Ed25519-signed receipts. GCS loader supports up to 16GB models with Content-Length pre-check. Treat NVIDIA NRAS/vendor appraisement as separate from the AIR receipt path.
 
 ---
 
@@ -462,7 +462,6 @@ See [`QUICKSTART.md`](QUICKSTART.md) and [`docs/build-matrix.md`](docs/build-mat
 - [`QUICKSTART.md`](QUICKSTART.md) — Deployment guide
 - [`docs/OPEN_SOURCE_BOUNDARY.md`](docs/OPEN_SOURCE_BOUNDARY.md) — What stays public vs private in this repo
 - [`docs/security-demo.md`](docs/security-demo.md) — Security walkthrough
-- [`docs/infra.md`](docs/infra.md) — Infrastructure notes and Nitro deployment loop
 - [`scripts/run_final_kms_validation.sh`](scripts/run_final_kms_validation.sh) — Multi-run KMS-enforced benchmark validation
 - [`scripts/check_kms_integrity.sh`](scripts/check_kms_integrity.sh) — Post-run KMS/commit/hardware integrity audit
 - [`scripts/final_release_gate.sh`](scripts/final_release_gate.sh) — Single-command release gate for benchmark artifacts

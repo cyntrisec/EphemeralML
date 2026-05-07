@@ -1,7 +1,14 @@
-# Gateway Deployment Guide (GCP Confidential Space)
+# Gateway Deployment Guide (GCP TDX / Confidential Space)
 
-Minimal deployment of the EphemeralML OpenAI-compatible gateway on GCP
-Confidential Space with Intel TDX. This is the strongest validated path.
+Minimal deployment notes for the EphemeralML OpenAI-compatible gateway with a
+GCP TDX backend.
+
+This file is a gateway wiring guide, not the canonical Confidential Space/KMS
+production runbook. Step 2 below uses a plain Ubuntu TDX VM shape for clarity
+and does not, by itself, exercise the full Confidential Space Launcher/WIP/KMS
+path. For the validated KMS-gated Confidential Space flow, use
+[`../../docs/PRODUCTION_GCP.md`](../../docs/PRODUCTION_GCP.md) or
+`scripts/gcp/deploy.sh`.
 
 ## Prerequisites
 
@@ -33,7 +40,7 @@ docker build -f Dockerfile.gcp -t us-docker.pkg.dev/$PROJECT/ephemeralml/enclave
 docker push us-docker.pkg.dev/$PROJECT/ephemeralml/enclave:latest
 ```
 
-## Step 2: Deploy enclave on Confidential Space
+## Step 2: Deploy backend on a TDX VM (minimal wiring sketch)
 
 ```bash
 gcloud compute instances create ephemeralml-enclave \
@@ -47,7 +54,8 @@ gcloud compute instances create ephemeralml-enclave \
   --metadata=startup-script='#!/bin/bash
     docker pull us-docker.pkg.dev/PROJECT/ephemeralml/enclave:latest
     docker run -p 9000:9000 us-docker.pkg.dev/PROJECT/ephemeralml/enclave:latest \
-      --gcp --model-dir /app/model --model-id stage-0 --listen 0.0.0.0:9000'
+      --gcp --model-source local --model-dir /app/model --model-id stage-0 \
+      --direct --listen 0.0.0.0:9000'
 ```
 
 ## Step 3: Deploy gateway

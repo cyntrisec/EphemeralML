@@ -10,13 +10,14 @@ This repository is intentionally public for the verification ecosystem, develope
 - Verifier / trust-center code and public API surface
 - CLI tooling and generic developer documentation
 - Sample receipts, vectors, and generic demo scripts
-- Public benchmark summaries and publication-ready evidence bundles
+- Public benchmark summaries and publication-ready evidence bundles, preferably redacted or packaged as stable release assets
 - High-level architecture and security-model documentation
 
 ## Keep Private
 
 - Live account inventories, IAM mappings, DNS inventories, and certificate inventories
 - Production deployment runbooks tied to current cloud accounts or routing topology
+- Raw ad-hoc cloud run artifacts with live project IDs, bucket names, instance IDs, IAM names, or account-specific logs
 - Customer-specific artifacts, pilot data, and operator/admin workflows
 - Billing, tenancy, abuse tooling, and managed-service operational code
 - Internal security ownership logs, review cadence, and exception handling notes

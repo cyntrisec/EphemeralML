@@ -1,61 +1,58 @@
-# Security Demonstration: Host Blindness via Spy Mode
+# Security Demonstration: Host Blindness
 
-This document describes how to use **Spy Mode** to verify the core security guarantee of EphemeralML: **Host Blindness**.
+This document describes how to demonstrate the host-blindness property without
+overclaiming what the demo proves.
 
-Even when the host is actively trying to "spy" on the traffic passing through it, it cannot see the plaintext prompts, model weights, or inference results because they are protected by end-to-end HPKE encryption between the Client and the Enclave.
+## Current Status
 
-## Overview of Spy Mode
+The old `SpyProxy` / `host/tests/spy_test.rs` walkthrough was removed with the
+legacy in-repo transport implementation. The current transport layer lives in
+the sibling `confidential-ml-transport` crate and is exercised by the
+EphemeralML demo, gateway, and platform E2E runbooks.
 
-Spy Mode is a diagnostic tool implemented as a `SpyProxy` wrapper around the host's relay logic. When enabled, it:
-1. Intercepts every payload forwarded to the enclave.
-2. Logs the raw bytes (in hex) to a file.
-3. Attempts to find any human-readable strings (ASCII graphics) in the payload.
-4. Records the timestamp and payload length.
+`host/src/bin/spy_host.rs` remains as a simple diagnostic/demo utility, but it
+is not the canonical security test and should not be cited as cryptographic
+proof.
 
-This simulates a "malicious" or "compromised" host attempting to exfiltrate data.
+## What To Run Today
 
-## Verifying Host Blindness
-
-To verify that the host is indeed blind to the sensitive data, you can run the integration test specifically designed for this purpose.
-
-### Running the Verification Test
-
-Execute the following command from the project root:
+Use the local demo for a developer-level proof path:
 
 ```bash
-cargo test -p ephemeral-ml-host --test spy_test
+bash scripts/demo.sh
 ```
 
-### What the Test Does
+The demo starts a mock-mode backend, sends an encrypted request, returns a
+signed receipt, and verifies tamper detection. It proves the local protocol and
+receipt tooling work; it does not prove hardware isolation.
 
-The `spy_test.rs` (located in `host/tests/spy_test.rs`) performs the following steps:
-1. **Initializes a `SpyProxy`**: It wraps a mock host proxy with the spying capability.
-2. **Simulates Encrypted Traffic**: It sends a payload that represents an HPKE-encrypted message (simulated with non-printable bytes in the test).
-3. **Intercepts and Logs**: The `SpyProxy` writes the intercepted data to `spy_intercept.log`.
-4. **Validates Blindness**: The test checks the log file to ensure:
-   - The hex representation matches the sent bytes (confirming interception works).
-   - **Crucially**, no sensitive plaintext is found in the "Potential clear-text" section.
-   - Non-printable characters are represented as dots (`.`), demonstrating that the data remains opaque to the host.
+Use the platform runbooks for hardware-backed evidence:
 
-## Understanding `spy_intercept.log`
+```bash
+# AWS Nitro
+bash scripts/nitro_e2e.sh
 
-The log file produced by Spy Mode follows this format:
-
-```text
-[TIMESTAMP] Intercepted payload length: N bytes
-Payload (hex): [HEX_BYTES]
-Potential clear-text: [FILTERED_ASCII]
----
+# GCP Confidential Space
+bash scripts/gcp/mvp_gpu_e2e.sh --cpu-only
 ```
 
-### Log Format Breakdown:
+For AWS BYOC evidence, use `docs/AWS_NATIVE_POC_RUNBOOK.md` and the
+`ephemeralml-doctor` / `ephemeralml-smoke-test` tooling.
 
-- **TIMESTAMP**: Unix epoch time of the interception.
-- **Payload (hex)**: The raw bytes as seen by the host. While the host can see the raw bits, it cannot interpret them without the private keys held only by the Enclave.
-- **Potential clear-text**: A best-effort attempt by the host to find printable ASCII characters (`is_ascii_graphic()`). 
-  - If the data is truly encrypted, this field will mostly consist of dots (`.`) and random gibberish characters.
-  - If you see your prompt or inference results here, the security boundary has been breached!
+## What The Demo Proves
 
-## Conclusion
+- The host/gateway path can carry encrypted transport frames without needing
+  plaintext prompts or responses.
+- The inference result is bound to a signed receipt.
+- Tampering with the receipt or expected hashes is detected by the verifier.
 
-Spy Mode provides cryptographic proof through empirical observation that the Host remains a "dumb pipe". By inspecting the `spy_intercept.log`, security auditors can verify that sensitive information never leaves the enclave-client encrypted tunnel in a readable format.
+## What It Does Not Prove
+
+- Local mock mode does not prove TEE hardware isolation.
+- A packet/log inspection demo is observational, not a mathematical proof that
+  no plaintext can ever appear in host memory.
+- Hardware-backed claims require platform attestation evidence, measurement
+  policy, and receipt signing-key binding.
+
+Use `docs/AIR_PROOF_BOUNDARY.md` for customer-facing language about the exact
+assurance layer a receipt/verifier result supports.

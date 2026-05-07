@@ -16,7 +16,7 @@ This document complements existing artifacts; it does not supersede them:
 | `docs/SECURITY_MODEL.md` | Trust assumptions (what we trust / reduce trust in) | Explicit STRIDE enumeration, per-data-flow threats, residual risk matrix |
 | `SECURITY.md` | Vulnerability disclosure process | — |
 | `compliance/` crate | HIPAA/SOC 2 control mapping (planned) | Threat-to-control linkage (future work) |
-| `startup-plans/09-compliance/claim-language-guardrails.md` | Marketing / customer-facing wording rules | This doc follows those rules; see claim-safety notes inline |
+| Internal claim-language guardrails | Marketing / customer-facing wording rules | This doc follows those rules; see claim-safety notes inline |
 
 ## 1. System overview
 
@@ -81,7 +81,7 @@ This threat model applies to multi-cloud deployments. Not all mitigations are eq
 | Mode | Status | TEE technology |
 |---|---|---|
 | GCP Confidential Space (TDX) | **E2E validated** (2026-02-27 evidence) | Intel TDX + Google-maintained CS image + Cloud KMS WIP |
-| GCP H100 Confidential Computing | **E2E validated** (2026-02-27 evidence) | Intel TDX host + NVIDIA H100 CC + Google Cloud Attestation |
+| GCP H100 Confidential Computing | **functional E2E receipt path validated** (2026-02-27 evidence); NVIDIA NRAS appraisement for tested GCP A3 evidence is separate and currently tracked as rejected | Intel TDX host + NVIDIA H100 CC + Google Cloud Attestation |
 | AWS Nitro Enclaves | **E2E validated** (2026-02-27 evidence) | AWS Nitro Enclaves, NSM-signed attestation docs |
 | Azure SEV-SNP (CPU) | **transport-level pass** (2026-03-15 evidence); full app E2E planned | AMD SEV-SNP + Azure vTPM + HCL report |
 
@@ -168,11 +168,11 @@ Each row: **(Asset or DF) × STRIDE category × Specific threat × Mitigation ×
 | T-10 | A-04 receipt | **T**ampering | Attacker modifies claims between enclave and client | COSE_Sign1 wrapping; signature covers full CWT claimset; any byte change → signature invalid | **mitigated** |
 | T-11 | A-04 receipt | **R**epudiation | Enclave operator denies producing a specific receipt | Ed25519 signature binds receipt to a key committed in attestation evidence | **mitigated** |
 | T-12 | A-05 signing key | **I**nformation disclosure | Operator extracts Ed25519 key from enclave | Key generated inside enclave on boot; `zeroize` on shutdown; never persisted to disk. Attacker needs hardware TEE compromise. | **mitigated in-model** (TB-3). Residual: TA-8. |
-| T-13 | A-05 signing key | **E**levation of privilege | Rogue image shipped that leaks the key | CI-signed image + manifest; attestation evidence includes image measurement (MRTD / PCR / userData); client's verifier pins expected measurement | **partially mitigated** — depends on verifier-side measurement pinning being enabled. Open item: `A-005 Enforce MRTD pinning in production verification profile` (STATE.yaml). |
+| T-13 | A-05 signing key | **E**levation of privilege | Rogue image shipped that leaks the key | CI-signed image + manifest; attestation evidence includes image measurement (MRTD / PCR / userData); verifier policy must pin expected measurements for deployment approval | **partially mitigated** — production verifier paths reject evaluation mode and require explicit measurement policy for strongest `tee_provenance`; deployments must supply the expected measurement/PCR policy. |
 | T-14 | A-06 session keys | **I**nformation disclosure | Session keys leak | Ephemeral per handshake; transport v0.6 has Phase 2+ session key zeroization (SEC-705); forward secrecy via ephemeral X25519 | **mitigated** |
-| T-15 | A-07 attestation doc | **T**ampering | Attacker forges attestation document claiming a patched TCB | Chain verification with vendor root + (for SEV-SNP) TCB binding via VCEK extensions (Phase 5 of 2026-04 audit); AMD SB-3019 / BadRAM remediation | **mitigated** (all TEE verifiers — see `references/amd-sev-snp-audit-2026-04-12/findings.md` and TDX M2 hardening) |
+| T-15 | A-07 attestation doc | **T**ampering | Attacker forges attestation document claiming a patched TCB | Chain verification with vendor root + TCB binding where implemented (for example SEV-SNP VCEK extensions and TDX DCAP collateral checks) | **mitigated for supported CPU TEE verifiers**; GPU vendor appraisement is tracked separately from AIR receipt verification. |
 | T-16 | A-07 attestation doc | **R**eplay | Old attestation reused in new session | `nonce` field in REPORT_DATA / userData is per-handshake random; verifier checks match | **mitigated** |
-| T-17 (GCP) | A-08 KEK | **I**nformation disclosure | Cloud KMS releases key to attacker's workload | KMS policy binds to CS attestation claims (container image digest + TDX measurements); WIP/WIF token exchange enforces at Google-side; DEK travels over HTTPS to attested enclave only | **mitigated** — E2E validated (GCP TDX + GCP GPU H100 CC 2026-02-27 evidence) |
+| T-17 (GCP) | A-08 KEK | **I**nformation disclosure | Cloud KMS releases key to attacker's workload | KMS policy binds to CS attestation claims (container image digest + TDX measurements); WIP/WIF token exchange enforces at Google-side; DEK travels over HTTPS to the Confidential Space workload | **mitigated for the configured `gcs-kms` path** — CPU TDX path validated; GPU flows require the same policy discipline and do not imply NVIDIA NRAS acceptance. |
 | T-17 (AWS) | A-08 KEK | **I**nformation disclosure | AWS KMS releases key to attacker's workload | `Decrypt` with `RecipientInfo`: KMS verifies NSM attestation doc matches key policy (PCR0/PCR1/PCR2) and wraps DEK to the RSA-2048 ephemeral pubkey embedded in that specific attestation doc. Only the attested enclave holds the matching private key. | **mitigated** — E2E validated (AWS Nitro 2026-02-27 evidence) |
 | T-17 (Azure) | A-08 KEK | **I**nformation disclosure | Azure Key Vault releases key to attacker's workload | AAD token issuance bound to Azure Attestation; AKV `release_key` policy pins attestation claims. Full app-layer E2E not yet validated; transport layer passes. | **planned** — defer to pilot E2E validation on Azure |
 | T-18 | All | **D**enial of service | Attacker floods gateway with attestation-triggering requests | Per-IP sliding-window rate limit + concurrency semaphore (transport v0.5.0). Exhaustion risk: TEE enclaves are memory-constrained; oversubscription degrades gracefully | **partially mitigated** — rate limiting present; load-shedding policy under review |
@@ -236,7 +236,7 @@ External reviewers should treat D-01 in the STRIDE matrix and this section as **
 
 ## 8. HIPAA §164.312 preliminary mapping
 
-Preliminary — full mapping requires legal / compliance review before use in customer-facing material. See also `startup-plans/09-compliance/claim-language-guardrails.md` C-203 ("Tie compliance language to control mapping, not guarantees").
+Preliminary — full mapping requires legal / compliance review before use in customer-facing material. Claim language should tie compliance statements to control mapping, not guarantees.
 
 | HIPAA Control | Relevant EphemeralML mechanism | Threat IDs covered |
 |---|---|---|
@@ -249,7 +249,7 @@ Preliminary — full mapping requires legal / compliance review before use in cu
 
 - [ ] **RR-08** — should we require client-side request signing in a future protocol version? Product decision.
 - [ ] **RR-10** — what's the model-publisher revocation story? Needed before customer publishes sensitive models through us.
-- [ ] **T-13** — measurement pinning default in production verification profile (tracked as `A-005` in STATE.yaml).
+- [ ] **T-13** — deployment profiles must keep expected measurement/PCR policy explicit; do not present `air_local` as deployment approval.
 - [ ] **T-18** — load-shedding policy: when the enclave pool is saturated, do we reject with attestation still, or fail open with explicit non-attested fallback? Fail-closed by default; explicit opt-in for non-attested. Needs docs.
 - [ ] **§7** — commission ProVerif analysis of `confidential-ml-transport` binding (6-8 weeks; tied to AIR v1 IETF standardization milestone).
 - [ ] **§8 HIPAA mapping** — legal review before customer-facing use.
@@ -276,7 +276,7 @@ Preliminary — full mapping requires legal / compliance review before use in cu
 - `docs/SECURITY_MODEL.md` — upstream trust-model doc this builds on
 - `spec/v1/threat-model.md` — AIR v1 receipt-format threat model
 - `references/amd-sev-snp-audit-2026-04-12/findings.md` — SEV-SNP verifier audit + hardware validation
-- `startup-plans/09-compliance/claim-language-guardrails.md` — wording rules for customer-facing statements
+- Internal claim-language guardrails — wording rules for customer-facing statements
 - IETF RFC 9334 — RATS architecture (roles, terminology)
 - Sardar, Moustafa, Aura — *Identity Crisis in Confidential Computing: Formal Analysis of Attested TLS* — ACM AsiaCCS 2026 (referenced for structural argument in §7)
 - AMD Security Bulletin SB-3019 / CVE-2024-56161 (BadRAM) — informs T-15 / RR-01

@@ -3,6 +3,10 @@
 This directory contains the published benchmark bundles that are part of the
 public evidence surface for EphemeralML.
 
+Do not add raw ad-hoc cloud run output here unless it has been reviewed for
+public release. Prefer redacted summaries, SHA-256 manifests, or GitHub Release
+assets for bulky/raw traces.
+
 Tracked historical bundles:
 
 - `aws-nitro-modern-20260225/`

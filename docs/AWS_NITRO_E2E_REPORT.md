@@ -3,6 +3,11 @@
 **Date:** 2026-04-10/11
 **Status:** SUCCESS — Full pipeline inference with PCR-pinned attestation on real Nitro hardware, plus offline AIR v1 verification and trust-center upload verification.
 
+> **Current-status note (2026-05-07):** This report is historical for the
+> bundled-model Nitro E2E path. The AWS-native KMS/S3 BYOC PoC path was later
+> exercised with model key release gated by AWS KMS and a public Verification
+> Center packet at `artifacts/verification-center/aws-native-poc-20260503/`.
+
 ## What Worked
 
 End-to-end confidential inference and receipt verification completed successfully:
@@ -124,22 +129,12 @@ End-to-end confidential inference and receipt verification completed successfull
 | E2E runbook | `docs/AWS_NITRO_E2E_RUNBOOK.md` |
 | Automation script | `scripts/nitro_e2e.sh` |
 | This report | `docs/AWS_NITRO_E2E_REPORT.md` |
-| Latest success-run evidence bundle | `evidence/nitro-20260410_225206/` |
-| Earlier success-run evidence bundle | `evidence/aws-nitro-e2e-20260225_095649/` |
+| Public publication evidence bundle | `evidence/publication-airv1-20260228/aws-nitro/` |
+| Current AWS-native PoC packet | `artifacts/verification-center/aws-native-poc-20260503/` |
 | Attestation bridge fixes | `enclave/src/attestation.rs`, `enclave/src/attestation_bridge.rs` |
 | Nitro attestation-sidecar flow | `enclave/src/main.rs`, `enclave/src/stage_executor.rs`, `host/src/main.rs`, `client/src/receipt_key.rs`, `verifier-api/src/routes.rs` |
 
-Fresh success-run evidence is now checked in under `evidence/nitro-20260410_225206/`, including:
-- `eif_build_output.json` and `pcr_measurements.json`
-- `enclave_launch.json` and `enclave_describe*.json`
-- `host_output.log`
-- `receipt.json`, `receipt.raw`, and `receipt.cbor`
-- `attestation.cbor`
-- `legacy_verify.log`, `air_verify.log`, `verification.json`
-- `trust_center_verify.json` and `trust_center_server.log`
-- `timing.json`
-
-The older `evidence/aws-nitro-e2e-20260221_193937/` directory is retained as a blocked-run artifact for debugging history.
+Raw ad-hoc Nitro run directories such as `evidence/nitro-*` are local-only by `.gitignore` unless they are promoted into a redacted publication bundle. Public evidence should use `evidence/publication-*`, `evidence/hardening-*`, or a redacted `artifacts/verification-center/*` packet.
 
 ## Next Steps to Harden / Productionize
 
@@ -152,8 +147,8 @@ The older `evidence/aws-nitro-e2e-20260221_193937/` directory is retained as a b
 
 ### Medium-term (production readiness)
 
-5. **KMS-gated model release** — add IAM role to the instance, run `kms_proxy_host`, enclave decrypts model weights at runtime instead of bundling in EIF.
-6. **Receipt chain verification** — bind the Ed25519 signing key to the attestation document so external verifiers can validate receipts without trusting the host.
+5. ~~**KMS-gated model release**~~ — Done for the AWS-native PoC path via `aws-s3-kms`, `kms_proxy_host`, signed manifest, wrapped DEK, and KMS `RecipientInfo`.
+6. ~~**Receipt chain verification**~~ — Done. The verifier derives the Ed25519 signing key from `attestation.cbor` and binds AIR `attestation_doc_hash` to the attestation sidecar.
 7. **Multi-enclave pipeline** — test 2-3 stage pipeline on m6i.2xlarge (8 vCPUs, 32 GiB) with 3 enclaves for model sharding.
 8. **Restrict security group** — SSH from VPN/bastion only, or use SSM Session Manager (no SSH at all).
 

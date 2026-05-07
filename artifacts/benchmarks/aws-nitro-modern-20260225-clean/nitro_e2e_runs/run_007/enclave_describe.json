@@ -1,7 +1,7 @@
 [
   {
     "EnclaveName": "ephemeral-ml-enclave",
-    "EnclaveID": "i-00d5010abc6b8b398-enc19c947486075eff",
+    "EnclaveID": "i-redacted-enc19c947486075eff",
     "ProcessID": 72741,
     "EnclaveCID": 16,
     "NumberOfCPUs": 2,

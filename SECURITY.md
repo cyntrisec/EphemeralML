@@ -41,7 +41,9 @@ The following are in scope for security reports:
 
 | Version | Supported |
 |---------|-----------|
+| `main`  | Yes       |
 | 0.2.x   | Yes       |
+| 0.1.x gateway/operator crates | Yes, only as shipped on current `main` |
 | < 0.2   | No        |
 
 ## Security Design
@@ -49,4 +51,7 @@ The following are in scope for security reports:
 For details on the threat model and security architecture, see:
 
 - [`docs/design.md`](docs/design.md) -- Architecture and threat model
-- Internal security audit results are kept private; contact `security@cyntrisec.com` for reviewer access
+- [`docs/security/AUDIT_STATUS.md`](docs/security/AUDIT_STATUS.md) -- current public audit status
+- [`docs/security/RISK_REGISTER.md`](docs/security/RISK_REGISTER.md) -- accepted risks and dependency exceptions
+
+Detailed internal workpapers and customer-specific evidence remain private. Contact `security@cyntrisec.com` for reviewer access where appropriate.

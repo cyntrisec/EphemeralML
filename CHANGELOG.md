@@ -31,7 +31,6 @@
 
 ### Added
 - **`--count` load test flag**: `ephemeralml infer --count N` sends N inference requests over a single encrypted channel, with per-request timing and p50/p95/p99/RPS summary output.
-- **Milestone report**: `docs/MILESTONE_v0.2.9_REPORT.md` with CPU load test results, compliance overhead measurements, and encrypted model reuse validation.
 
 ### Validated
 - **CPU 300-request sustained load**: 100+200 sequential requests over GCP TDX Confidential Space (c3-standard-4), zero failures, ~4 RPS, p50=230ms.
@@ -109,7 +108,7 @@
 ### Fixed
 - **Clippy `--tests` warnings**: Fixed `clone_on_copy`, `useless_conversion`, `redundant_field_names`, `needless_borrows_for_generic_args` in enclave test code (`model_loader.rs`, `pipeline_integration_test.rs`)
 - **Dead code lint in test helpers**: Added `#[allow(dead_code)]` to `MockHttpServer` (used across modules but clippy `--tests` flags it)
-- **Stale doc references**: Removed remaining `--allow-synthetic-transport` / `ALLOW_SYNTHETIC_TRANSPORT` mentions from `docs/GCP_HARDWARE_TEST_REPORT.md`
+- **Stale doc references**: Removed remaining `--allow-synthetic-transport` / `ALLOW_SYNTHETIC_TRANSPORT` mentions from historical GCP hardware notes. The account-specific report is no longer part of the public documentation set.
 
 ### Changed
 - **Version bump**: All crates from 0.2.2 to 0.2.4
@@ -169,7 +168,7 @@
 - **TDX attestation bridge**: `TeeAttestationBridge` adapts the TDX attestation envelope to `confidential-ml-transport` trait interface, propagating receipt key through the full CBOR envelope
 - **Client TDX verifier**: `TdxEnvelopeVerifierBridge` in `client/src/attestation_bridge.rs` — decodes CBOR envelope, verifies inner TDX document via `TdxVerifier`, extracts user_data for receipt key delivery
 - **MRTD measurement pinning**: `EPHEMERALML_EXPECTED_MRTD` environment variable for TDX measurement enforcement on the client side
-- **GCP KMS client**: `GcpKmsClient` in `enclave/src/gcp_kms_client.rs` — Attestation API challenge/verify + STS token exchange + Cloud KMS Decrypt API (implemented and tested, not yet wired into runtime model-loading path)
+- **GCP KMS client**: `GcpKmsClient` in `enclave/src/gcp_kms_client.rs` — Attestation API challenge/verify + STS token exchange + Cloud KMS Decrypt API, wired into runtime model loading for `--model-source=gcs-kms`
 - **GCS model loader**: `GcsModelLoader` in `enclave/src/gcs_loader.rs` — fetches encrypted models from Google Cloud Storage
 - **Three-way feature exclusivity**: `mock`, `production`, `gcp` are mutually exclusive via `compile_error!` guards in all three crates (client, enclave, host)
 - **Feature-driven dependency activation**: Transport/pipeline features (`mock`, `tcp`, `tdx`, `vsock`) are now driven by crate feature flags instead of hardcoded in base dependency declarations

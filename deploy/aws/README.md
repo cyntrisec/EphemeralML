@@ -1,12 +1,14 @@
 # Cyntrisec AWS Deployment Templates
 
-Three CloudFormation templates will eventually live here. Each runs in a
+AWS CloudFormation templates live here. Each runs in a
 **different trust domain**. Mixing them — deploying a Cyntrisec-operated
 template in a customer account, or a customer-deployed template in a
-Cyntrisec account — breaks the architectural boundary the
-[HIPAA Position Memo](../../../startup-plans/05-legal/hipaa-position-memo-byoc-default-architecture-2026-04-23.md)
-and [MSA Security Addendum](../../../startup-plans/05-legal/pilot-contract-pack-v0-1-2026-04-23.md)
-rest on.
+Cyntrisec account — breaks the BYOC architectural boundary.
+
+The detailed HIPAA memo, MSA addendum, and customer-output contract are private
+commercial/legal artifacts and are intentionally not linked from this public
+repo. Public technical boundaries are summarized below and in
+`docs/AWS_NATIVE_POC_RUNBOOK.md`.
 
 ## Templates
 
@@ -16,8 +18,6 @@ rest on.
 - **Purpose:** stand up a Phase 1 BYOC pilot host in the customer's account
 - **What it creates:** EC2 Nitro host + customer-managed KMS key + S3 evidence
   bucket + least-privilege IAM role + SSH security group + SSM config parameters
-- **Contract:**
-  [byoc-phase-1-cloudformation-output-contract-2026-04-23.md](../../../startup-plans/10-operations/byoc-phase-1-cloudformation-output-contract-2026-04-23.md)
 - **Trust story:** Customer owns everything. Cyntrisec has no IAM principal
   on any resource. Customer Data never leaves the customer's account.
 
@@ -34,8 +34,6 @@ rest on.
   - IAM role `cyntrisec-gha-eval-signer` — trusted by OIDC, bound to
     `byoc-eval-release.yml` + branch `main`
   - Pilot release S3 bucket + eval release S3 bucket (write-only-from-role)
-- **Contract:**
-  [byoc-phase-1-supply-chain-posture-spec-2026-04-23.md](../../../startup-plans/10-operations/byoc-phase-1-supply-chain-posture-spec-2026-04-23.md)
 - **Trust story:** Cyntrisec operates the signing keys; GitHub Actions is the
   only principal that can use them, via OIDC with `workflow_ref`-pinned trust.
   No customer account has any trust relationship with this account.
@@ -52,8 +50,6 @@ rest on.
 - **What it does NOT create:** EIF image, PII filter (Presidio), session
   store (Redis), API service, CloudFront distribution, Route 53 records —
   all either software-level or deferred to separate ChangeSets
-- **Contract:**
-  [byoc-phase-1-eval-endpoint-spec-2026-04-23.md](../../../startup-plans/10-operations/byoc-phase-1-eval-endpoint-spec-2026-04-23.md)
 - **Trust story:** Separate account = blast-radius isolation. Compromise of
   the eval endpoint cannot reach pilot customers or the production signing
   account because no cross-account trust exists.
@@ -131,10 +127,9 @@ explicit role naming, and the `PutMetricData` resource-level API constraint).
 
 If at any future point Cyntrisec needs to take action inside a customer's
 AWS account (a capability this boundary currently forbids), that change
-is a HIPAA Position Memo flip condition F5 — the memo's three-part
-structure describes what happens operationally before any such IAM grant
-can be accepted.
+is a commercial/legal boundary change. It requires a new security review,
+customer disclosure, and contract update before any such IAM grant can be
+accepted.
 
 Do not provision cross-account trust between these accounts without
-revisiting the memo, the contract pack's Support Boundary Clause, and the
-BYOC trust disclosure.
+revisiting the BYOC trust disclosure and customer support boundary.

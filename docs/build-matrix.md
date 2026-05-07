@@ -6,8 +6,8 @@
 |------|----------|---------------|---------|----------|-------------|
 | **Mock** | Any (dev/CI) | `--features mock` | TCP localhost | KMS proxy (mock) | Mock COSE_Sign1 |
 | **AWS Production** | Nitro Enclave | `--no-default-features --features production` | VSock (host ↔ enclave) | Enclave → VSock → Host Proxy → AWS KMS | NSM device → COSE_Sign1 |
-| **GCP Production** | TDX CVM (c3-standard-4) | `--no-default-features --features gcp` | Direct TCP | Local, GCS, or GCS-KMS (`GcpKmsClient` → attestation-bound Cloud KMS) | configfs-tsm → TDX quote |
-| **GCP GPU** | TDX CVM + H100 CC (a3-highgpu-1g) | `--no-default-features --features gcp,cuda` | Direct TCP | GCS (GGUF, ≤16GB) | CS Launcher attestation (TDX + `nvidia_gpu.cc_mode: ON`) |
+| **GCP Production** | TDX CVM (c3-standard-4) | `--no-default-features --features gcp` | Direct TCP | Local, GCS, or GCS-KMS (`GcpKmsClient` → attestation-bound Cloud KMS) | Confidential Space Launcher JWT in CS containers; configfs-tsm TDX quote in non-CS TDX VM paths |
+| **GCP GPU** | TDX CVM + H100 CC (a3-highgpu-1g) | `--no-default-features --features gcp,cuda` | Direct TCP | GCS (GGUF, ≤16GB) | CS Launcher attestation (TDX + Google-reported `nvidia_gpu.cc_mode: ON`; NVIDIA NRAS appraisement is separate) |
 
 **Mutually exclusive:** `mock`, `production`, and `gcp` cannot be combined (`compile_error!` in all crates).
 
@@ -33,20 +33,23 @@
 
 | Binary | Purpose | Mock | AWS Prod | GCP Prod |
 |--------|---------|------|----------|----------|
-| `ephemeral-ml-client` | Inference client | `--features mock` | `--features production` | `--features gcp` |
+| `ephemeral-ml-client` | Inference client (`client/src/main.rs`) | `--features mock` | `--features production` | `--features gcp` |
+| `ephemeralml` | Operator/developer CLI | `--features mock` | `--features production` | `--features gcp` |
 | `commander` | Stage control CLI | `--features mock` | `--features production` | `--features gcp` |
-| `verify_receipt` | Receipt verifier | `--features mock` | `--features production` | `--features gcp` |
-| `benchmark_cose` | COSE benchmarks | `--features mock` | `--features mock` | N/A |
-| `generate_compliance_report` | Compliance reports | `--features mock` | `--features mock` | N/A |
+| `ephemeralml-verify` | Receipt verifier | `--features mock` | `--features production` | `--features gcp` |
+| `ephemeralml-report` | Execution report generator | `--features mock` | `--features production` | `--features gcp` |
+| `ephemeralml-runtime-passport` | Runtime passport generator | `--features mock` | `--features production` | `--features gcp` |
+| `verify_receipt`, `benchmark_cose`, `generate_compliance_report` | Legacy/support utilities | `--features mock` | `--features production` where applicable | N/A / as applicable |
 
 ## Build Commands
 
 ### Development / CI (default)
 
 ```bash
-cargo build --workspace                    # mock mode, all crates
-cargo test --workspace                     # all mock-mode tests
-cargo clippy --workspace -- -D warnings    # zero warnings
+cargo build --workspace                    # default feature set
+cargo test --workspace                     # default workspace tests
+cargo test --workspace --features mock     # local mock-mode tests
+cargo clippy --workspace --all-targets -- -D warnings
 ```
 
 ### GCP (real c3-standard-4 TDX CVM)
@@ -113,7 +116,7 @@ Host (EC2 instance)                    Enclave (CID 16)
 ```
 
 - **Attestation model:** One-way. Enclave attests to host via NSM COSE_Sign1 (NitroProvider); host uses MockProvider because it is not inside a TEE. The host verifies the enclave's Nitro attestation (NitroVerifier with PCR pinning); the enclave accepts the host without attestation (MockVerifier). This is by design — the host runs on the same EC2 instance, not in a separate TEE.
-- **Model loading:** Bundled in EIF Docker image via `--model-dir`. KMS/S3 model fetch is available but requires separate `kms_proxy_host`.
+- **Model loading:** Bundled in EIF Docker image via `--model-dir`, or AWS-native `--model-source=aws-s3-kms` with `kms_proxy_host`, signed manifest, wrapped DEK, and KMS `RecipientInfo` key release.
 - **PCR pinning:** Set `EPHEMERALML_EXPECTED_PCR0/1/2` env vars on the host to pin enclave measurements.
 
 ### Direct Mode (not yet supported in production)
@@ -124,7 +127,7 @@ A VSock-based direct server would be needed (tracked as future work).
 
 ### Known Limitations
 
-- **KMS/S3 model loading:** Not yet integrated into the production pipeline path. Use `--model-dir` with model files bundled in the Docker image.
+- **KMS/S3 model loading:** Available for the AWS-native PoC path via `--model-source=aws-s3-kms` and `kms_proxy_host`. The older bundled-`--model-dir` path remains the simpler runbook path.
 - **Multi-stage pipelines:** VSock infrastructure supports it, but only single-stage has been tested on real Nitro hardware.
 - **tokio-vsock 0.7:** Workspace upgraded from 0.4 to 0.7 for pipeline compatibility.
 
@@ -132,7 +135,7 @@ A VSock-based direct server would be needed (tracked as future work).
 
 | Feature | Enclave | Host | Client | Common |
 |---------|---------|------|--------|--------|
-| `mock` | Default, mock attestation | Default, mock transport | Default, `MockVerifierBridge` | N/A |
+| `mock` | Explicit mock attestation (`--features mock`) | Default for host crate and explicit for tests | Explicit `MockVerifierBridge` (`--features mock`) | N/A |
 | `production` | AWS Nitro deps (NSM, VSock) | VSock + NitroVerifier + MockProvider (one-way attestation: host is not in TEE) | `CoseVerifierBridge` | N/A |
 | `gcp` | `tdx` + reqwest + base64, TDX attestation | N/A | `TdxEnvelopeVerifierBridge` | N/A |
 | `tdx` | OpenSSL + TDX attestation | N/A | N/A | N/A |
@@ -149,7 +152,7 @@ The client uses a 3-way compile-time dispatch for attestation verification:
 |---------|----------|--------------------|
 | `mock` | `MockVerifierBridge` | Mock COSE_Sign1 |
 | `gcp` | `TdxEnvelopeVerifierBridge` | TDX quote in CBOR envelope |
-| `production` (default) | `CoseVerifierBridge` | Nitro NSM COSE_Sign1 |
+| `production` | `CoseVerifierBridge` | Nitro NSM COSE_Sign1 |
 
 The GCP verifier decodes a `TeeAttestationEnvelope` (CBOR: `{platform, tdx_wire, user_data}`) — verifies the inner TDX document and extracts the receipt signing key from `user_data`.
 

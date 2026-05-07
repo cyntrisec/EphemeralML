@@ -1,8 +1,9 @@
 # Claim-to-Evidence Integrity Matrix
 
 **Date:** 2026-02-28
+**Current-status addendum:** 2026-05-07
 **Baseline commit:** `2664132` (publication tag `publication-airv1-20260228`)
-**Purpose:** For every public claim, this file traces the exact value, source artifact, reproduction command, commit, and caveats. No claim without evidence. No evidence without context.
+**Purpose:** For every publication-era claim, this file traces the exact value, source artifact, reproduction command, commit, and caveats. Historical benchmark artifacts remain unchanged; current external claims must also check `README.md`, `docs/security/AUDIT_STATUS.md`, and the latest platform runbooks.
 
 ## Matrix
 
@@ -22,11 +23,11 @@
 |---|-------|-------------|-----------------|------------------|--------|---------|
 | C-5a | AWS Nitro E2E PASS | 1/1 positive, receipt verified, AIR v1 CBOR | `evidence/publication-airv1-20260228/aws-nitro/` | `scripts/nitro_e2e.sh` | `2664132` | AIR v1 COSE_Sign1 receipt (585 bytes). PCR pinning verified. 113ms e2e, 77ms enclave. |
 | C-5b | GCP CPU TDX E2E PASS | 10/10 steps, 2/2 negative | `evidence/publication-airv1-20260228/gcp-cpu-tdx/metadata.json` | `scripts/gcp/mvp_gpu_e2e.sh --cpu-only` | `f1ba30d` (image) | c3-standard-4, us-central1-a. AIR v1 CBOR receipt verified. Source run: `mvp-20260227_092628`. |
-| C-5c | GCP GPU H100 CC E2E PASS | 10/10 steps, 2/2 negative | `evidence/publication-airv1-20260228/gcp-gpu-h100cc/metadata.json` | `scripts/gcp/mvp_gpu_e2e.sh` | `f1ba30d` (image) | a3-highgpu-1g, us-central1-a. MiniLM inference time NOT representative. Source run: `mvp-20260227_095900`. |
+| C-5c | GCP GPU H100 CC functional E2E PASS | 10/10 steps, 2/2 negative | `evidence/publication-airv1-20260228/gcp-gpu-h100cc/metadata.json` | `scripts/gcp/mvp_gpu_e2e.sh` | `f1ba30d` (image) | a3-highgpu-1g, us-central1-a. MiniLM inference time NOT representative. Source run: `mvp-20260227_095900`. AIR receipt covers CPU-side TDX/Confidential Space evidence; NVIDIA NRAS/vendor appraisement is separate. |
 | C-6 | AIR v1 verification pass | 11/11 mandatory checks | `evidence/publication-airv1-20260228/gcp-{cpu-tdx,gpu-h100cc}/receipt_air_v1_verify_log.txt` | `ephemeralml-verify receipt.cbor --public-key receipt.pubkey` | `f1ba30d` | Policy-optional checks (FRESH, MHASH, MODEL, PLATFORM, NONCE, REPLAY) skipped when unconstrained. |
 | C-7 | Compliance baseline pass | 16/16 rules | `evidence/publication-airv1-20260228/gcp-cpu-tdx/compliance_verify_log.txt` | `ephemeralml-compliance verify --profile baseline` | `f1ba30d` | Baseline profile only. Advanced profiles not tested. |
 | C-8 | Negative test coverage | 2/2 per GCP platform | `evidence/publication-airv1-20260228/gcp-{cpu-tdx,gpu-h100cc}/negative_wrong_{hash,key}_{deploy,verify}.txt` | `scripts/gcp/mvp_gpu_e2e.sh` step 10 | `f1ba30d` | GCP only (hash + key mismatch). Nitro uses PCR mismatch separately. |
-| C-9 | Test suite size | 575 tests, 0 failures | `cargo test -q` output | `cargo test -q` | `a33dc8b` | Includes unit, integration, conformance. Some tests marked `#[ignore]` for cloud-only scenarios not counted. |
+| C-9 | Test suite size | Current inventory: 752 test cases listed on 2026-05-07. Historical publication run: 575 tests, 0 failures. | Current inventory from local `cargo test --workspace --all-targets -- --list`; historical publication output from `cargo test -q` | Current: `cargo test --workspace --all-targets -- --list`; historical: `cargo test -q` | Current lineage: `c6885fc`; historical: `a33dc8b` | Current value is a test inventory count, not a completed pass-run transcript. Historical value is the publication-era pass count. Some cloud-only tests may be ignored/skipped depending on environment. |
 
 ### Specification Claims
 
@@ -43,7 +44,7 @@
 |----------|--------------|----------|-------------------|---------|
 | AWS Nitro | 2026-02-28 | 0 | AIR v1 Nitro emission + model_hash_scheme enforcement | **Valid** — tri-cloud rerun with AIR v1 CBOR |
 | GCP CPU TDX | 2026-02-27 | 1 | AIR v1 Nitro emission + model_hash_scheme enforcement | **Valid** — no GCP code changes |
-| GCP GPU H100 CC | 2026-02-27 | 1 | AIR v1 Nitro emission + model_hash_scheme enforcement | **Valid** — no GCP code changes |
+| GCP GPU H100 CC | 2026-02-27 | Historical | AIR v1 Nitro emission + model_hash_scheme enforcement | **Valid for publication-era functional E2E** — do not use as evidence that NVIDIA NRAS accepts current GCP A3 evidence |
 | Benchmark (modern) | 2026-02-25 | 3 | Doc-only + parse hardening (rejection paths) | **Valid** — measurement code unchanged |
 | Benchmark (legacy) | 2026-02-04 | 24 | Pipeline removed from main | **Historical** — not reproducible, still citable |
 

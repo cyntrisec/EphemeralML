@@ -15,7 +15,6 @@ This repository serves multiple audiences: developers integrating the product, r
 - [`AWS_NATIVE_POC_RUNBOOK.md`](AWS_NATIVE_POC_RUNBOOK.md) — repeatable AWS-native Nitro PoC, benchmark, and redacted evidence workflow
 - [`verifier-api.md`](verifier-api.md) — verifier service surface
 - [`cli-ux.md`](cli-ux.md) — operator and developer CLI ergonomics
-- [`infra.md`](infra.md) — infrastructure notes and Nitro deployment loop
 - [`REPO_MAINTENANCE_SCOPE.md`](REPO_MAINTENANCE_SCOPE.md) — active vs frozen areas and local disk hygiene
 - [`TROUBLESHOOTING.md`](TROUBLESHOOTING.md) — operational debugging notes
 

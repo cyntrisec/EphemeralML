@@ -5,6 +5,11 @@
 **Scope:** 3 repos — EphemeralML-cyntrisec, confidential-ml-transport, confidential-ml-pipeline
 **Build target:** `CARGO_TARGET_DIR=/tmp/eml-target`
 
+> **Historical audit record:** Phase A findings below describe the state at
+> discovery time, not current open findings. Later sections document the fixes.
+> For current security posture, use `docs/security/AUDIT_STATUS.md` and
+> `docs/security/RISK_REGISTER.md`.
+
 ---
 
 ## Phase A — Inventory

@@ -11,7 +11,7 @@ inference with cryptographic receipts — no SDK changes required.
 ```bash
 # Terminal 1: start the EphemeralML enclave (mock mode)
 cargo run --release --features mock --bin ephemeral-ml-enclave -- \
-    --model-dir test_assets/minilm --model-id stage-0
+    --model-dir test_assets/minilm --model-id stage-0 --direct --listen 127.0.0.1:9000
 
 # Terminal 2: start the gateway
 cargo run --release -p ephemeralml-gateway --features mock -- \
@@ -65,15 +65,15 @@ values, state transitions, K8s/ECS probe mapping, and operator actions.
 
 ## Attestation Metadata
 
-### Response Headers (always present, proxy-safe)
+### Response Headers (proxy-safe)
 
 | Header | Description |
 |--------|-------------|
 | `x-request-id` | Unique request identifier |
 | `x-ephemeralml-attestation-mode` | Attestation platform (`mock`, `nitro-pcr`, `cs-tdx`) |
 | `x-ephemeralml-receipt-present` | `true` or `false` — whether an AIR v1 receipt was produced |
-| `x-ephemeralml-receipt-sha256` | SHA-256 of the receipt (when present) |
-| `x-ephemeralml-model-manifest-sha256` | SHA-256 of the model manifest (when available) |
+| `x-ephemeralml-receipt-sha256` | SHA-256 of the receipt, when present |
+| `x-ephemeralml-model-manifest-sha256` | SHA-256 of the model manifest, when available |
 
 The full receipt is **not** sent in headers by default (proxy/LB header-size
 limits are typically 4-8 KB, and receipts can exceed this). To opt in:

@@ -4,7 +4,7 @@ Phase 1 BYOC end-to-end smoke test. Runs doctor preflight, launches the
 Cyntrisec enclave, runs a synthetic inference, verifies the AIR v1 receipt
 offline, writes the evidence bundle to S3.
 
-**Contract:** `startup-plans/10-operations/byoc-phase-1-ephemeralml-smoke-test-spec-2026-04-23.md`
+**Design contract:** private operator spec `byoc-phase-1-ephemeralml-smoke-test-spec-2026-04-23.md`
 
 ## Status
 
@@ -79,7 +79,7 @@ stops only a host that it started itself unless `--stop-after-run` is set.
 Summarize benchmark packets with:
 
 ```bash
-scripts/aws/summarize_benchmarks.py artifacts/benchmarks/aws-native-poc-20260430
+scripts/aws/summarize_benchmarks.py artifacts/benchmarks/aws-native-poc-YYYYMMDD
 ```
 
 Create a redacted shareable packet from a private evidence bundle with:
@@ -88,7 +88,9 @@ Create a redacted shareable packet from a private evidence bundle with:
 scripts/aws/redact_evidence_bundle.py /tmp/private-bundle artifacts/benchmarks/aws-native-poc-YYYYMMDD
 ```
 
-See `docs/AWS_NATIVE_POC_RUNBOOK.md` for the full operator flow and
+See `docs/AWS_NATIVE_POC_RUNBOOK.md` and
+`artifacts/verification-center/aws-native-poc-20260503/README.md` for the
+current operator flow, public Verification Center packet, caveats, and
 customer-safe claim language.
 
 ## Exit codes

@@ -36,12 +36,12 @@
     219
   ],
   "hash_algorithm": "sha256",
-  "key_id": "projects/project-d3c20737-eec2-453d-8e5/locations/us-central1/keyRings/ephemeralml/cryptoKeys/model-dek",
+  "key_id": "projects/gcp-project-redacted/locations/us-central1/keyRings/ephemeralml/cryptoKeys/model-dek",
   "gcs_uris": {
-    "config": "gs://ephemeralml-models-project-d3c20737-eec2-453d-8e5/models/minilm/config.json",
-    "tokenizer": "gs://ephemeralml-models-project-d3c20737-eec2-453d-8e5/models/minilm/tokenizer.json",
-    "weights_enc": "gs://ephemeralml-models-project-d3c20737-eec2-453d-8e5/models/minilm/model.safetensors.enc",
-    "wrapped_dek": "gs://ephemeralml-models-project-d3c20737-eec2-453d-8e5/models/minilm/wrapped_dek.bin"
+    "config": "gs://redacted-model-bucket/models/minilm/config.json",
+    "tokenizer": "gs://redacted-model-bucket/models/minilm/tokenizer.json",
+    "weights_enc": "gs://redacted-model-bucket/models/minilm/model.safetensors.enc",
+    "wrapped_dek": "gs://redacted-model-bucket/models/minilm/wrapped_dek.bin"
   },
   "created_at": "2026-02-27T09:26:28Z",
   "signature": [

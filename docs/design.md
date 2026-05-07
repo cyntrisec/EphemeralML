@@ -1,5 +1,7 @@
 # Design Document: Confidential Inference Gateway
 
+> **Status note (2026-05-07):** This is an architecture/design document, not a release checklist. Current implementation status and caveats are tracked in `README.md`, `docs/build-matrix.md`, `docs/security/AUDIT_STATUS.md`, and the platform runbooks. Target properties in this file should not be quoted as customer claims without checking those current-status docs.
+
 ## Overview
 
 The Confidential Inference Gateway implements a defense-in-depth architecture for protecting model weights and sensitive user inputs during AI inference. In v1, the security model is the Gateway path: TEE isolation, attestation-gated key release, end-to-end encrypted sessions using HPKE, and signed execution receipts.
@@ -8,7 +10,7 @@ The Confidential Inference Gateway implements a defense-in-depth architecture fo
 
 **Multi-cloud support**: The system supports two deployment targets:
 - **AWS Nitro Enclaves** (`--features production`): The host acts as a blind relay via VSock. All AWS API access is mediated through VSock proxies. Attestation uses NSM (COSE_Sign1).
-- **GCP Confidential Space** (`--features gcp`): The entire CVM is the trust boundary — no host/enclave split, no VSock. The CVM has direct network access. Attestation uses Intel TDX hardware quotes (configfs-tsm). Key release via Attestation API + WIP (Workload Identity Pool, via WIF token exchange) + Cloud KMS is implemented (`GcpKmsClient`) but not yet wired into the runtime model-loading path.
+- **GCP Confidential Space** (`--features gcp`): The entire CVM is the trust boundary — no host/enclave split, no VSock. The CVM has direct network access. Transport evidence uses the Confidential Space Launcher JWT in CS containers where configfs-tsm is not exposed, and configfs-tsm TDX quotes in non-CS TDX VM paths. Key release via Attestation API + WIP (Workload Identity Pool, via WIF token exchange) + Cloud KMS is wired for `--model-source=gcs-kms`.
 
 The core security properties (attestation-gated key release, end-to-end encryption, signed receipts) are platform-independent. The transport layer (`confidential-ml-transport`) abstracts over VSock/TCP and Nitro/TDX attestation backends.
 
@@ -122,10 +124,10 @@ sequenceDiagram
 | Trust boundary | Enclave process only | Entire CVM |
 | Host relationship | Untrusted, blind relay | No separate host |
 | Network from TEE | None (VSock only) | Full TCP/HTTPS |
-| Attestation hardware | NSM device | Intel TDX (configfs-tsm) |
+| Attestation hardware | NSM device | Intel TDX via CS Launcher JWT in Confidential Space containers; configfs-tsm in non-CS TDX VM paths |
 | Attestation format | COSE_Sign1 | TDX quote (ECDSA-P256, 8KB) |
 | Measurement registers | PCR0/1/2/8 (SHA-384) | MRTD + RTMR0-3 (SHA-384) |
-| Key release | NSM attestation → AWS KMS RecipientInfo | `GcpKmsClient` (Attestation API → WIP/WIF → Cloud KMS), not yet wired into runtime |
+| Key release | NSM attestation → AWS KMS RecipientInfo | `GcpKmsClient` (Attestation API → WIP/WIF → Cloud KMS), wired for `--model-source=gcs-kms` |
 | Model storage | S3 via host VSock proxy | GCS via direct HTTPS |
 
 ### TDX Attestation Flow
@@ -148,7 +150,7 @@ Current implementation in `enclave/src/gcp_kms_client.rs` uses the Google Cloud 
 6. OIDC token exchanged via STS (`sts.googleapis.com/v1/token`) for federated access token
 7. Access token used to call Cloud KMS Decrypt API for model DEK
 
-**Note:** `GcpKmsClient` is implemented and tested but not yet wired into the GCP runtime model-loading path. The current GCP main path loads models from local files or GCS directly without KMS-gated decryption.
+**Note:** `GcpKmsClient` is implemented and wired into the GCP runtime for `--model-source=gcs-kms`. The `local` and `gcs` sources remain available for development, unsigned/public model demos, and GPU GGUF flows where KMS-gated model packaging is not being exercised.
 
 ### Measurement Pinning
 
@@ -161,7 +163,7 @@ Current implementation in `enclave/src/gcp_kms_client.rs` uses the Google Cloud 
 ### KMS Authorization Model
 
 **Attestation-Bound Key Release Policy (Hardened Production Mode)**:
-The system has transitioned from permissive/mock mode to a hardened production-ready architecture. The security of the system depends on KMS key policies that cryptographically bind key release to enclave attestation.
+The production path is fail-closed for the key controls described here. The security of the system depends on KMS key policies that cryptographically bind key release to enclave attestation and on verifier policy that pins measurements/model identity for the deployment being approved.
 
 **KMS RecipientInfo Implementation**:
 The system uses the **RSA-2048 SPKI DER** format for the public key embedded within the NSM attestation document. AWS KMS utilizes this key as the `RecipientInfo` to wrap the Data Encryption Key (DEK) specifically for the requesting enclave instance. This ensures that even if the host intercepts the KMS response, it cannot decrypt the wrapped secret.

@@ -145,6 +145,11 @@ Assurance levels are intentionally separated:
 
 When no attestation is supplied, the response reports `assurance_level: "air_local"`, `tee_provenance_verified: false`, and skipped `tee_provenance` checks. When an attestation is supplied without PCR policy, the response can report `assurance_level: "platform_attested"`, but `tee_provenance_verified` remains `false`.
 
+The JSON endpoint does not accept an attestation sidecar, so it cannot upgrade a
+receipt to `platform_attested` or `tee_provenance`. Use the multipart upload
+endpoint with `attestation_file` and deployment measurement policy for
+TEE-provenance verification.
+
 ## Multipart Endpoint
 
 ### `POST /api/v1/verify/upload`

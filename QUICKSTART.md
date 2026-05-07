@@ -36,6 +36,8 @@ bash scripts/gcp/mvp_gpu_e2e.sh --project $EPHEMERALML_GCP_PROJECT
 
 This runs the complete 10-step golden path: KMS setup, model packaging, GPU deployment (a3-highgpu-1g + H100 CC), inference, receipt verification, compliance bundle, negative tests, and teardown. Add `--cpu-only` for c3-standard-4 (no GPU).
 
+GPU note: the AIR receipt path verifies the EphemeralML/TDX/Confidential Space evidence. NVIDIA NRAS/vendor appraisement for tested GCP A3 evidence is a separate chain and is not implied by a green AIR receipt.
+
 ---
 
 ## Prerequisites
@@ -182,7 +184,7 @@ Boot timeline: ~3.5 min (image pull -> cos-gpu-installer -> model fetch from GCS
 
 Expected output with Llama 3 8B Q4_K_M (4.6GB GGUF):
 - 50 tokens generated in ~12s (241ms/token)
-- TDX attestation with `nvidia_gpu.cc_mode: ON`
+- TDX/Confidential Space evidence with Google-reported `nvidia_gpu.cc_mode: ON`
 - Ed25519-signed receipt returned to client
 
 **CUDA version warning**: Confidential Space GPU uses cos-gpu-installer v2.5.3 which installs driver 535.247.01. This driver supports CUDA <= 12.2 only. Using CUDA 12.6+ produces `CUDA_ERROR_UNSUPPORTED_PTX_VERSION`. Always use `nvidia/cuda:12.2.2-devel-ubuntu22.04` as the base image.
@@ -201,7 +203,7 @@ EphemeralML defaults to **fail-closed** for all security-sensitive settings. Pro
 | `--synthetic` flag | Rejected in release builds | Debug builds only | Entire attestation stack uses fake quotes |
 | KMS IAM binding | Image digest condition required | `--allow-broad-binding` in `setup_kms.sh` | Which containers can decrypt model keys |
 
-**Transport attestation vs KMS attestation**: These are separate trust anchors. The Launcher JWT (KMS attestation) is always hardware-backed in Confidential Space. Transport attestation (SecureChannel handshake) uses configfs-tsm TDX quotes when available, or the Launcher JWT via `CsTransportAttestationBridge` in Confidential Space containers where configfs-tsm is not exposed.
+**Transport attestation vs KMS attestation**: These are separate trust anchors. The Launcher JWT is the Confidential Space attestation evidence used for KMS/WIP policy. Transport attestation (SecureChannel handshake) uses configfs-tsm TDX quotes when available, or the Launcher JWT via `CsTransportAttestationBridge` in Confidential Space containers where configfs-tsm is not exposed.
 
 ## GCP Architecture Differences
 
@@ -212,7 +214,7 @@ EphemeralML defaults to **fail-closed** for all security-sensitive settings. Pro
 | Network | None (VSock only) | Full TCP/HTTPS |
 | KMS auth | NSM attestation + RecipientInfo | WIP + Cloud KMS (attestation-bound) |
 | Model loading | Host fetches S3, relays via VSock | CVM fetches GCS directly |
-| Attestation | COSE_Sign1 (NSM) | TDX quote (configfs-tsm) |
+| Attestation | COSE_Sign1 (NSM) | CS Launcher JWT in Confidential Space containers; configfs-tsm quote in non-CS TDX VM paths |
 
 ## Verification
 

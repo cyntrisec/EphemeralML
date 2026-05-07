@@ -3,17 +3,18 @@
 Phase 1 BYOC preflight check. Verifies that a deployed Cyntrisec pilot host is
 ready to run inference before `ephemeralml-smoke-test` exercises it.
 
-**Contract:** `startup-plans/10-operations/byoc-phase-1-ephemeralml-doctor-spec-2026-04-23.md`
+**Design contract:** private operator spec `byoc-phase-1-ephemeralml-doctor-spec-2026-04-23.md`
 
 ## Status
 
-Skeleton — the CLI, output formatting, error routing, and check registry are
-real and tested. The six check implementations return
-`check_code: "SKELETON_UNIMPLEMENTED"` until the Phase 1 real-AWS deploy run
-produces the concrete outputs needed to exercise the real probes.
+Real AWS-native probes are implemented. The retired
+`check_code: "SKELETON_UNIMPLEMENTED"` path is covered by regression tests so
+new checks must return a specific failure code instead of silently looking
+unimplemented.
 
-A skeleton run always exits **1** (check failures) by design. A real run
-exits 0 only when all six checks pass against a live deployment.
+On a live configured AWS Nitro pilot host, the command exits 0 only when all six
+checks pass. Off-host or partially configured runs fail with specific
+remediation text.
 
 ## Running
 
@@ -31,8 +32,8 @@ sudo /opt/cyntrisec/bin/ephemeralml-doctor --check clock
 ephemeralml-doctor --help
 ```
 
-Must run as root because probes read `/etc/nitro_enclaves/allocator.yaml` and
-`/sys/kernel/config/tsm/*`.
+Must run as root because probes read Nitro allocator/device state and some
+system service metadata.
 
 ## Exit codes
 

@@ -179,14 +179,14 @@ Expected output: 384-dimensional embedding vector + signed receipt.
 ## Step 8: Verify Receipt
 
 ```bash
-cargo run --release -p ephemeral-ml-client --bin ephemeralml_verify -- receipt.json
+cargo run --release -p ephemeral-ml-client --bin ephemeralml-verify -- receipt.json
 ```
 
 The verifier checks:
 - Ed25519 signature validity
-- Model hash matches expected
+- Model hash matches expected when an expected hash is supplied
 - Attestation hash chains to boot evidence
-- Sequence number monotonicity
+- Sequence/freshness policy when verifier state or policy inputs are supplied
 
 ## Step 8b: Compliance Bundle (v0.2.8+)
 
@@ -257,10 +257,10 @@ For production deployments, verify each layer of data destruction:
 |-------|--------|--------------|
 | Session keys | Automatic (`ZeroizeOnDrop`) | Included in legacy cleanup-event receipt metadata |
 | DEK | Automatic (`Zeroizing<Vec<u8>>`) | Included in legacy cleanup-event receipt metadata |
-| Inference buffers | Automatic (`.zeroize()` on request/response) | Included in legacy cleanup-event receipt metadata |
+| Inference buffers | Best-effort owned-buffer cleanup where ownership permits; request bytes are not independently proven erased | Included in legacy cleanup-event receipt metadata when emitted; not AIR v1 proof |
 | CVM termination | Run `teardown.sh` | `gcloud compute instances list` shows no instance |
 | CS image | Use `confidential-space` (NOT `-debug`) | `--image-family=confidential-space` in deploy.sh |
-| Cloud Logging | Production CS image: no container stdout in Cloud Logging | Verify no log entries in Cloud Console |
+| Cloud Logging | Production deployments should avoid plaintext/debug logging; do not rely on logs as a data-deletion boundary | Verify Cloud Logging sinks and container stdout/stderr do not contain prompts, outputs, keys, or PHI |
 | GCS artifacts | Delete after deployment if model rotation is not needed | `gsutil rm -r gs://BUCKET/models/` |
 
 **Important**: Always use the production Confidential Space image (`confidential-space`),
@@ -302,6 +302,10 @@ not cryptographic proof of deletion and is not part of frozen AIR v1.
 ## GPU Deployment Variant
 
 Deploy EphemeralML with GPU inference on GCP Confidential Space using NVIDIA H100 in CC-mode (confidential computing). This enables large model inference (e.g., Llama 3 8B) inside a TDX-attested CVM with GPU acceleration.
+
+The AIR receipt path verifies the EphemeralML/TDX/Confidential Space evidence.
+NVIDIA NRAS/vendor appraisement for tested GCP A3 evidence is a separate chain
+and should not be implied by a green AIR receipt.
 
 ### Requirements
 

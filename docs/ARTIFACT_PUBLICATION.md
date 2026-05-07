@@ -2,6 +2,18 @@
 
 This guide publishes benchmark evidence so readers can verify paper claims without any AWS credentials.
 
+Only publish redacted, publication-grade bundles. Raw ad-hoc cloud run
+directories with live project IDs, bucket names, instance IDs, IAM names, or
+account-specific diagnostics should stay local/private unless they are redacted
+and promoted intentionally.
+
+For repo-local evidence bundles, run:
+
+```bash
+python3 scripts/redact_public_artifacts.py
+python3 scripts/redact_public_artifacts.py --check
+```
+
 ## Why
 
 - `s3://...` links usually require IAM access

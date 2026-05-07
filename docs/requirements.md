@@ -1,5 +1,10 @@
 # Requirements Document
 
+> **Status note (2026-05-07):** This document mixes implemented v1
+> requirements and target requirements. Treat it as design intent unless a
+> requirement is backed by the current README, build matrix, security audit, or
+> platform runbook.
+
 ## Introduction
 
 EphemeralML is a defense-in-depth confidential inference system that protects model weights and sensitive user inputs through TEE isolation, attestation-gated key release, end-to-end encrypted sessions where the host acts as a blind relay, and signed execution receipts. V1 does not define a separate model-obfuscation layer.
@@ -9,7 +14,7 @@ EphemeralML is a defense-in-depth confidential inference system that protects mo
 - Black-box model extraction/distillation via repeated queries
 - Complete protection from all microarchitectural side-channels (timing/page-fault)
 - Availability guarantees (host can DoS)
-- Confidential GPU support (future)
+- Confidential GPU support beyond the validated GCP H100 CC functional path; no independent GPU-side memory-scrubbing or NVIDIA NRAS acceptance claim
 - Multi-model / arbitrary topology support
 - Multi-tenant SaaS / user management / billing
 - High availability / autoscaling / SLA guarantees
@@ -121,7 +126,7 @@ EphemeralML is a defense-in-depth confidential inference system that protects mo
 
 1. WHEN loading models, THE Enclave SHALL decrypt model weights only within the trusted boundary using attestation-gated keys
 2. THE Enclave SHALL execute all operations that must remain plaintext/trusted (tokenization, embedding lookup, mask/unmask, sampling, receipt signing)
-3. THE Host/GPU SHALL execute only on obfuscated tensors and SHALL never observe plaintext prompts/weights
+3. THE Host/GPU SHALL not receive plaintext prompts or model weights in supported confidential paths. GPU-side confidentiality depends on the vendor CC mode and platform evidence; EphemeralML does not independently prove GPU memory scrubbing.
 4. THE Enclave SHALL ensure no plaintext model weights, intermediate results, or sensitive data leak to the host
 5. WHEN inference completes, THE Enclave SHALL immediately clear sensitive material from memory using secure erasure
 6. THE Enclave SHALL support safetensors format for v1 (additional formats are future scope)

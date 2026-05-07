@@ -1,26 +1,28 @@
 # Multicloud E2E Validation Status
 
-**Last updated:** 2026-04-11
+**Last updated:** 2026-05-07
 **Canonical claims:** See `docs/publication/claim_definitions.md` for formal definitions and `docs/publication/claim_evidence_matrix.md` for traceability.
 
-EphemeralML has been validated single-stage E2E on AWS Nitro Enclaves and GCP Confidential Space (CPU and H100 GPU). All three platforms completed inference with MiniLM-L6-v2, produced Ed25519-signed attestation receipts, and verified them. Cross-cloud results validate functional and security correctness — they are NOT cross-provider overhead comparisons (different CPUs, different TEE architectures).
+EphemeralML has been validated single-stage E2E on AWS Nitro Enclaves and GCP Confidential Space (CPU and H100 GPU). All three platforms completed inference with MiniLM-L6-v2, produced Ed25519-signed receipts, and verified them. Cross-cloud results validate functional correctness and receipt verification — they are NOT cross-provider overhead comparisons.
+
+Attestation-chain recheck note (2026-05-07): Intel TDX, AMD SEV-SNP, and AWS Nitro accepted through the project verifier code on commodity cloud hardware. NVIDIA H100 NRAS rejected tested GCP A3 evidence; that vendor appraisement result is separate from AIR receipt verification and is tracked outside this historical E2E matrix.
 
 ## Summary
 
 | Platform | Machine | TEE | Model | Execution | AIR v1 | Negative | Compliance | Evidence | Status |
 |----------|---------|-----|-------|-----------|--------|----------|------------|----------|--------|
-| AWS Nitro | m6i.xlarge | Nitro Enclave | MiniLM-L6-v2 | 78ms | 11/11 PASS + trust center PASS | PCR-pinned | N/A | `nitro-20260410_225206/` | **PASS** |
-| GCP TDX CPU | c3-standard-4 | Intel TDX | MiniLM-L6-v2 | 75ms | 11/11 PASS | 2/2 PASS | 16/16 | `mvp-20260227_092628/` | **PASS** |
-| GCP TDX GPU | a3-highgpu-1g | TDX + H100 CC | MiniLM-L6-v2 | pipeline* | 11/11 PASS | 2/2 PASS | 16/16 | `mvp-20260227_095900/` | **PASS** |
+| AWS Nitro | m6i.xlarge | Nitro Enclave | MiniLM-L6-v2 | 78ms | 11/11 PASS + trust center PASS | PCR-pinned | N/A | `evidence/publication-airv1-20260228/aws-nitro/` | **PASS** |
+| GCP TDX CPU | c3-standard-4 | Intel TDX | MiniLM-L6-v2 | 75ms | 11/11 PASS | 2/2 PASS | 16/16 | `evidence/publication-airv1-20260228/gcp-cpu-tdx/` | **PASS** |
+| GCP TDX GPU | a3-highgpu-1g | TDX + H100 CC | MiniLM-L6-v2 | pipeline* | 11/11 PASS | 2/2 PASS | 16/16 | `evidence/publication-airv1-20260228/gcp-gpu-h100cc/` | **PASS for functional E2E receipt path; NVIDIA NRAS appraisement separate** |
 
-\*GPU inference time for MiniLM is dominated by CUDA JIT warmup and is NOT representative of GPU performance. MiniLM (22.7M params) is far too small to benefit from H100 parallelism. The H100 E2E validates the pipeline, not GPU performance. Real GPU benchmarks require 7B+ parameter models. Do not cite GPU inference time as a performance metric.
+\*GPU inference time for MiniLM is dominated by CUDA JIT warmup and is NOT representative of GPU performance. MiniLM (22.7M params) is far too small to benefit from H100 parallelism. The H100 E2E validates the EphemeralML pipeline and receipt path, not H100 performance or NVIDIA NRAS acceptance. Real GPU benchmarks require 7B+ parameter models. Do not cite GPU inference time as a performance metric.
 
 ---
 
 ## 1. AWS Nitro Enclaves
 
 **Date:** 2026-04-10/11 (latest), 2026-02-25 (benchmark baseline)
-**Evidence:** `evidence/nitro-20260410_225206/` (latest), `artifacts/benchmarks/aws-nitro-modern-20260225-clean/` (benchmark)
+**Public evidence:** `evidence/publication-airv1-20260228/aws-nitro/` (publication bundle), `artifacts/benchmarks/aws-nitro-modern-20260225-clean/` (benchmark), `artifacts/verification-center/aws-native-poc-20260503/` (current AWS-native PoC packet)
 **Docs:** [`docs/AWS_NITRO_E2E_REPORT.md`](AWS_NITRO_E2E_REPORT.md), [`docs/AWS_NITRO_E2E_RUNBOOK.md`](AWS_NITRO_E2E_RUNBOOK.md)
 
 ### Configuration
@@ -60,9 +62,10 @@ EphemeralML has been validated single-stage E2E on AWS Nitro Enclaves and GCP Co
 ### Evidence
 
 - Checked-in report: `docs/AWS_NITRO_E2E_REPORT.md`
-- `evidence/nitro-20260410_225206/` — latest success run (legacy receipt, AIR v1 receipt, boot attestation sidecar, offline verify logs, trust-center JSON verdict, PCRs, Nitro JSON, logs, timing)
-- `evidence/aws-nitro-e2e-20260225_095649/` — earlier success run (receipt, raw receipt, PCRs, Nitro JSON, logs, timing)
-- `evidence/aws-nitro-e2e-20260221_193937/REPORT.md` — earlier blocked run (kept for debugging history)
+- Public publication bundle: `evidence/publication-airv1-20260228/aws-nitro/`
+- Public benchmark bundle: `artifacts/benchmarks/aws-nitro-modern-20260225-clean/`
+- Current AWS-native Verification Center packet: `artifacts/verification-center/aws-native-poc-20260503/`
+- Raw ad-hoc Nitro run directories such as `evidence/nitro-*` are local-only by `.gitignore` unless promoted into a redacted publication bundle.
 
 ---
 
@@ -70,7 +73,7 @@ EphemeralML has been validated single-stage E2E on AWS Nitro Enclaves and GCP Co
 
 **Date:** 2026-02-25
 **Image tag:** `f1ba30d`
-**Evidence:** `evidence/gcp-tdx-e2e-20260225_091357/`
+**Public evidence:** `evidence/publication-airv1-20260228/gcp-cpu-tdx/`
 
 ### Configuration
 
@@ -123,7 +126,7 @@ EphemeralML has been validated single-stage E2E on AWS Nitro Enclaves and GCP Co
 
 **Date:** 2026-02-25
 **Image tag:** `f1ba30d-gpu-20260225`
-**Evidence:** `evidence/gcp-gpu-e2e-20260225_092824/`
+**Public evidence:** `evidence/publication-airv1-20260228/gcp-gpu-h100cc/`
 
 ### Configuration
 
@@ -141,7 +144,7 @@ EphemeralML has been validated single-stage E2E on AWS Nitro Enclaves and GCP Co
 
 ### Attestation Model
 
-Same as CPU TDX above. The H100 operates in CC-On mode (Confidential Computing enabled), providing GPU memory isolation. The TDX quote covers the CPU TEE; the GPU CC status is attested separately by the Launcher.
+Same as CPU TDX above for the AIR receipt path. The H100 operates in CC-On mode (Confidential Computing enabled) as reported by Google Confidential Space evidence. The TDX/CS evidence covers the CPU TEE and launcher metadata; NVIDIA NRAS/vendor appraisement is a separate chain and should not be inferred from AIR verification.
 
 ### Timing
 
@@ -245,7 +248,7 @@ Each E2E run should produce the following standard artifacts:
 
 ### Evidence Gaps
 
-- [x] AWS success-run artifacts preserved locally (`evidence/aws-nitro-e2e-20260225_095649/`)
+- [x] AWS publication artifacts preserved under `evidence/publication-airv1-20260228/aws-nitro/`
 - [x] Host binary now supports `--receipt-output <path>` (parsed JSON) and `--receipt-output-raw <path>` (wire-format bytes)
 - [x] `timing.json` generation added to `verify.sh` (GCP) and `nitro_e2e.sh` (AWS)
 
@@ -257,9 +260,9 @@ Each E2E run should produce the following standard artifacts:
 
 ### Production Gaps
 
-- [ ] KMS-gated model release not tested on Nitro (model bundled in EIF)
+- [x] KMS-gated model release tested in the AWS-native PoC path; the older bundled-EIF report remains as historical evidence
 - [ ] MRTD pinning not enforced on GCP runs (`REQUIRE_MRTD=false`)
-- [ ] CS configfs-tsm not available inside container — boot evidence uses synthetic TDX provider
+- [x] CS configfs-tsm not available inside container — current CS path uses the Launcher JWT bridge instead of silently falling back to synthetic TDX evidence
 - [ ] No multi-enclave pipeline tested on either platform
 - [ ] Dockerfile base images not pinned to digest
 

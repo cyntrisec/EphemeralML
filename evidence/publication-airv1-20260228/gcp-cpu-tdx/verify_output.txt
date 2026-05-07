@@ -6,7 +6,14 @@
   Instance IP:  34.10.87.31
 
   [2/4] Waiting for 34.10.87.31:9000 to be reachable (max 180s)...
-  Waiting... [5/180s]  Waiting... [10/180s]  Waiting... [15/180s]  Waiting... [20/180s]  Waiting... [25/180s]  Waiting... [30/180s]  Waiting... [35/180s]  Port 9000 is reachable.
+  Waiting... [5/180s]
+  Waiting... [10/180s]
+  Waiting... [15/180s]
+  Waiting... [20/180s]
+  Waiting... [25/180s]
+  Waiting... [30/180s]
+  Waiting... [35/180s]
+  Port 9000 is reachable.
 
   [3/4] Running inference against 34.10.87.31:9000...
   Text:         "Verify EphemeralML on Confidential Space"
@@ -14,7 +21,8 @@
   Request model ID: stage-0
   Receipt model ID: minilm-l6-v2
 
-[3/4] Building GCP client...  [OK] Building GCP client (32s)          
+[3/4] Building GCP client...
+  [OK] Building GCP client (32s)
     Finished `release` profile [optimized] target(s) in 0.23s
      Running `target/release/ephemeral-ml-client`
 EphemeralML Client (GCP Mode)
@@ -206,8 +214,8 @@ Manifest saved to /tmp/ephemeralml-manifest.json
    Compiling reqwest v0.13.2
    Compiling jsonwebtoken v10.3.0
    Compiling clap v4.5.60
-   Compiling ephemeral-ml-common v0.2.9 (/home/tsyrulb/vsock/EphemeralML-cyntrisec/common)
-   Compiling ephemeral-ml-client v0.2.9 (/home/tsyrulb/vsock/EphemeralML-cyntrisec/client)
+   Compiling ephemeral-ml-common v0.2.9 (<redacted-local-path>
+   Compiling ephemeral-ml-client v0.2.9 (<redacted-local-path>
     Finished `release` profile [optimized] target(s) in 3m 02s
      Running `target/release/ephemeralml-verify /tmp/ephemeralml-receipt.json --public-key 8320a6d52b783ebb11278d274a63c228686b61a47e895510c76dc3c26d112d24 --max-age 0 --format text`
 

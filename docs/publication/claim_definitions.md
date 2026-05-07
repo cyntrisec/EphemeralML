@@ -2,7 +2,8 @@
 
 **Status:** Active
 **Date:** 2026-02-28
-**Purpose:** Canonical definitions for every public-facing claim. Every number cited in README, papers, or external communications MUST trace back to a definition in this file.
+**Current-status addendum:** 2026-05-07
+**Purpose:** Canonical definitions for publication-era public-facing claims. Historical benchmark values remain unchanged; current external claims must also check `README.md`, `docs/security/AUDIT_STATUS.md`, and the latest runbooks.
 
 ## 1. Claim Registry
 
@@ -77,12 +78,12 @@
 
 | Field | Value |
 |-------|-------|
-| **Canonical value** | 3/3 platforms PASS (AWS Nitro + GCP CPU TDX + GCP GPU H100 CC) |
+| **Canonical value** | 3/3 publication platforms PASS (AWS Nitro + GCP CPU TDX + GCP GPU H100 CC functional paths) |
 | **Formula** | Binary PASS/FAIL per platform. PASS = positive path verified + negative tests pass + AIR v1 strict verification pass. |
 | **Scope** | Functional and security correctness. NOT cross-provider overhead comparison. |
 | **Evidence date** | 2026-02-27 |
 | **Commit (evidence)** | Between `f1ba30d` (image build) and `a33dc8b` (HEAD at collection) |
-| **Caveats** | GCP GPU MiniLM inference time (12.3s) is not representative of GPU performance — dominated by CUDA JIT warmup. MiniLM is too small for GPU benefit. |
+| **Caveats** | GCP GPU MiniLM inference time (12.3s) is not representative of GPU performance — dominated by CUDA JIT warmup. MiniLM is too small for GPU benefit. GPU AIR receipts cover CPU-side TDX/Confidential Space evidence; NVIDIA NRAS/vendor appraisement is separate and should not be implied by this claim. |
 
 ### C-6: AIR v1 Verification Pass
 
@@ -115,11 +116,11 @@
 
 | Field | Value |
 |-------|-------|
-| **Canonical value** | 574 tests passing, zero failures |
-| **Breakdown** | 240 in ephemeral-ml-common (224 unit + 16 conformance), 334 across other crates |
-| **Command** | `cargo test -q` |
-| **Commit** | `a33dc8b` |
-| **Date** | 2026-02-28 |
+| **Canonical value** | 752 test cases listed locally, plus historical 574/575 publication-era passing count |
+| **Breakdown** | Current: `cargo test --workspace --all-targets -- --list` returned 752 test cases on 2026-05-07. Historical publication count: 240 in ephemeral-ml-common (224 unit + 16 conformance), 334 across other crates at `a33dc8b`. |
+| **Command** | Current inventory: `cargo test --workspace --all-targets -- --list`; historical pass run: `cargo test -q` |
+| **Commit** | Current inventory checked at `c6885fc` lineage; historical publication count at `a33dc8b` |
+| **Date** | Current inventory: 2026-05-07; historical publication count: 2026-02-28 |
 
 ### C-10: Per-Inference Crypto Overhead
 
@@ -160,7 +161,7 @@ For external communication (papers, website, slide decks), use:
 | **Conservative single number** | "+12.6% (MiniLM-L6-v2, 100 iterations, m6i.xlarge)" | C-1, fully instrumented, highest rigor. |
 | **Reproducible on main** | "+3.2% enclave execution overhead" | C-2, with caveat: excludes VSock transport. |
 | **Multi-model** | "+12.9% weighted mean (3 models)" | C-4, broadest model coverage. |
-| **Cross-cloud** | "3/3 platforms PASS" | C-5, functional correctness only. Do NOT cite cross-provider latency comparisons. |
+| **Cross-cloud** | "Publication-era AWS Nitro, GCP CPU TDX, and GCP GPU H100 CC functional paths produced verifiable receipts" | C-5, functional correctness only. Do NOT cite cross-provider latency comparisons or imply NVIDIA NRAS acceptance. |
 | **Per-inference crypto** | "< 0.03ms per request" | C-10, negligible. |
 
 ### What NOT to claim

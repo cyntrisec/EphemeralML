@@ -183,17 +183,17 @@ Legacy JSON receipts continue to work unchanged. No flags needed.
 - Legacy `receipt.json` continues in all paths
 - If `model_hash` is unavailable, AIR v1 is simply not emitted (non-fatal)
 
-### Latest cross-cloud verification run (2026-02-25)
+### Latest public cross-cloud AIR v1 publication bundle (2026-02-28)
 
 - AWS Nitro E2E: PASS
 - GCP CPU (TDX / Confidential Space) E2E: PASS (strict AIR v1 verification enabled in `verify.sh`)
 - GCP GPU (TDX + H100 CC) E2E: PASS
 
-Evidence bundles (local repo paths from latest run):
+Public evidence bundles:
 
-- `evidence/nitro-e2e-20260225T160258Z/`
-- `evidence/mvp-20260225_194858/` (GCP CPU, strict AIR v1 verify)
-- `evidence/mvp-20260225_161319/`
+- `evidence/publication-airv1-20260228/aws-nitro/`
+- `evidence/publication-airv1-20260228/gcp-cpu-tdx/` (GCP CPU, strict AIR v1 verify)
+- `evidence/publication-airv1-20260228/gcp-gpu-h100cc/`
 
 ## 6. Known Gaps (Summary)
 

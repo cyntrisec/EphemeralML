@@ -13,6 +13,7 @@ This directory contains public reproducibility artifacts for EphemeralML and AIR
 - customer or pilot data
 - live account inventories or environment-specific operator notes
 - transient local runs that are not part of a public claim
+- raw cloud run logs with live project IDs, bucket names, instance IDs, IAM names, or account-specific diagnostics
 
 ## Current structure
 
@@ -20,3 +21,10 @@ This directory contains public reproducibility artifacts for EphemeralML and AIR
 - `hardening-*` — evidence captured for shipped hardening or validation work
 
 For the public/private rule set, see [`../docs/OPEN_SOURCE_BOUNDARY.md`](../docs/OPEN_SOURCE_BOUNDARY.md).
+
+Before promoting local run output into tracked public evidence, run:
+
+```bash
+python3 scripts/redact_public_artifacts.py
+python3 scripts/redact_public_artifacts.py --check
+```

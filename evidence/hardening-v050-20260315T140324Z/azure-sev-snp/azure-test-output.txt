@@ -44,7 +44,7 @@
    Compiling proptest v1.10.0
    Compiling criterion v0.5.1
    Compiling rcgen v0.14.7
-   Compiling confidential-ml-transport v0.5.0 (/home/benchuser/confidential-ml-transport)
+   Compiling confidential-ml-transport v0.5.0 (<redacted-local-path>
     Finished `release` profile [optimized] target(s) in 41.01s
 warning: the following packages contain code that will be rejected by a future version of Rust: picky-asn1-x509 v0.12.0
 note: to see what the problems were, use the option `--future-incompat-report`, or run `cargo report future-incompatibilities --id 1`

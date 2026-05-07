@@ -21,27 +21,28 @@ This project follows the [Contributor Covenant Code of Conduct](CODE_OF_CONDUCT.
 git clone https://github.com/cyntrisec/EphemeralML.git
 cd EphemeralML
 
-# Build (mock mode, default)
-cargo build
+# Build default feature set. Some application crates default to no mock feature;
+# host tooling defaults to mock for local development.
+cargo build --workspace
 
 # Run tests
 cargo test --workspace
 
 # Check formatting
-cargo fmt --check
+cargo fmt --all -- --check
 
 # Run linter
-cargo clippy --workspace
+cargo clippy --workspace --all-targets -- -D warnings
 ```
 
 ### Feature Flags
 
-- `mock` (default) — Local development without TEE hardware
+- `mock` — Local development without TEE hardware. Use explicitly for local demos and mock-mode tests.
 - `production` — Real NSM attestation and VSock communication (AWS Nitro)
-- `gcp` — Intel TDX attestation, direct TCP, WIP + Cloud KMS via WIF (GCP Confidential Space)
+- `gcp` — Intel TDX / Confidential Space attestation, direct TCP, WIP + Cloud KMS via WIF (GCP Confidential Space)
 - `cuda` — GPU inference via Candle
 
-**Mutually exclusive:** `mock`, `production`, and `gcp` cannot be combined (enforced by `compile_error!`).
+Default features differ by crate. The gateway, client, common, and enclave crates default to no platform feature; the host crate defaults to mock for local tooling. `mock`, `production`, and `gcp` are mutually exclusive where enforced by crate-level `compile_error!` guards.
 
 ## How to Contribute
 
@@ -64,8 +65,8 @@ Open a [Feature Request](https://github.com/cyntrisec/EphemeralML/issues/new?tem
 3. Make your changes
 4. Ensure all checks pass:
    ```bash
-   cargo fmt --check
-   cargo clippy --workspace
+   cargo fmt --all -- --check
+   cargo clippy --workspace --all-targets -- -D warnings
    cargo test --workspace
    ```
 5. Commit with a descriptive message
@@ -89,7 +90,7 @@ Open a [Feature Request](https://github.com/cyntrisec/EphemeralML/issues/new?tem
 
 ## Architecture
 
-The workspace has 4 main crates:
+The workspace has core runtime crates plus service/operator crates:
 
 | Crate | Purpose |
 |-------|---------|
@@ -97,6 +98,10 @@ The workspace has 4 main crates:
 | `client` | Client library (attestation verification, policy) |
 | `host` | Host relay proxy (KMS, S3, VSock forwarding) |
 | `enclave` | TEE application (Nitro/TDX attestation, inference) |
+| `gateway-api` | OpenAI-compatible HTTP gateway |
+| `verifier-api` | Hosted verifier / Verification Center API |
+| `compliance` | Evidence bundle and control-profile verification |
+| `ephemeralml-doctor`, `ephemeralml-smoke-test` | AWS BYOC preflight and smoke-test tooling |
 
 See [`docs/design.md`](docs/design.md) for the full architecture.
 
