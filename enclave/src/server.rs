@@ -132,8 +132,7 @@ struct DirectBenchmarkRecord {
 
 #[derive(Default, serde::Serialize)]
 struct DirectTimingsUs {
-    /// Exact transport decrypt timing is inside `confidential-ml-transport`
-    /// and is not exposed through the current SecureChannel API.
+    /// Server-side SecureChannel AEAD open time for the inbound request frame.
     request_decrypt: Option<u64>,
     request_hash: Option<u64>,
     inference: Option<u64>,
@@ -150,8 +149,8 @@ struct DirectTimingsUs {
     air_cose_create_signature: Option<u64>,
     air_sign: Option<u64>,
     air_serialize: Option<u64>,
-    /// Exact transport encrypt timing is inside `confidential-ml-transport`
-    /// and is not exposed through the current SecureChannel API.
+    /// Exact same-response server-side AEAD seal time cannot be embedded in the
+    /// response body because it happens after this benchmark record is serialized.
     response_encrypt: Option<u64>,
 }
 
@@ -187,7 +186,7 @@ pub async fn run_direct_tcp<A: crate::AttestationProvider + Send + Sync>(
 ) -> std::result::Result<(), Box<dyn std::error::Error + Send + Sync>> {
     use bytes::Bytes;
     use confidential_ml_transport::session::channel::Message;
-    use confidential_ml_transport::{SecureChannel, SessionConfig};
+    use confidential_ml_transport::{ChannelTimingOperation, SecureChannel, SessionConfig};
     use ephemeral_ml_common::transport_types::ConnectionState;
     use sha2::{Digest, Sha256};
 
@@ -310,6 +309,13 @@ pub async fn run_direct_tcp<A: crate::AttestationProvider + Send + Sync>(
                     break;
                 }
             };
+            let request_decrypt_us = channel
+                .take_last_timing()
+                .filter(|t| {
+                    t.operation == ChannelTimingOperation::Open
+                        && t.frame_type == confidential_ml_transport::FrameType::Data
+                })
+                .map(|t| t.elapsed_us());
 
             match msg {
                 Message::Data(bytes) => {
@@ -364,6 +370,7 @@ pub async fn run_direct_tcp<A: crate::AttestationProvider + Send + Sync>(
 
                     match handle_direct_request(
                         &bytes,
+                        request_decrypt_us,
                         &engine,
                         &attestation_provider,
                         &mut state,
@@ -454,7 +461,8 @@ fn record_elapsed(slot: &mut Option<u64>, start: Option<std::time::Instant>) {
 fn warm_path_caveats() -> Vec<&'static str> {
     vec![
         "development-only timing record; production responses do not expose per-stage timings",
-        "request_decrypt and response_encrypt are not decomposed by this record because they happen inside confidential-ml-transport SecureChannel",
+        "request_decrypt is server-side SecureChannel AEAD open time for the inbound request frame",
+        "response_encrypt is null because exact same-response server-side AEAD seal happens after this record is serialized; use client_request_encrypt/client_response_decrypt for client-side transport crypto timing",
         "request_hash is SHA-256 over the serialized plaintext request bytes bound into the receipt",
         "response_hash is SHA-256 over the canonical f32 little-endian output bytes bound into the receipt",
         "air_build is AIR claim-set CBOR encoding time; air_claims_from_legacy is reported separately",
@@ -466,6 +474,7 @@ fn warm_path_caveats() -> Vec<&'static str> {
 #[allow(clippy::too_many_arguments)]
 fn handle_direct_request<A: crate::AttestationProvider>(
     bytes: &[u8],
+    request_decrypt_us: Option<u64>,
     engine: &crate::CandleInferenceEngine,
     attestation_provider: &A,
     state: &mut ephemeral_ml_common::transport_types::ConnectionState,
@@ -483,6 +492,9 @@ fn handle_direct_request<A: crate::AttestationProvider>(
     let benchmark_mode = requested_benchmark_mode(&request);
     let timing_enabled = benchmark_mode.is_some();
     let mut timings = DirectTimingsUs::default();
+    if timing_enabled {
+        timings.request_decrypt = request_decrypt_us;
+    }
 
     // Validate model_id using the shared InputValidator (common/src/validation.rs).
     let validator = ephemeral_ml_common::InputValidator::new();

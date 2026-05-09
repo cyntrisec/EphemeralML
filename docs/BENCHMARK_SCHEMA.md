@@ -156,7 +156,7 @@ record:
   "benchmark_id": "gcp_warm_path_request",
   "mode": "development",
   "timings_us": {
-    "request_decrypt": null,
+    "request_decrypt": 5,
     "request_hash": 8,
     "inference": 2070000,
     "response_canonicalize": 11,
@@ -173,11 +173,13 @@ record:
 }
 ```
 
-Important boundary: `request_decrypt` and `response_encrypt` are `null` in this
-record because HPKE/AEAD open/seal happen inside `confidential-ml-transport`
-`SecureChannel`, not inside the direct request handler. Use transport crypto
-benches for exact ChaCha20-Poly1305 AEAD open/seal costs until the transport
-crate exposes per-frame timing hooks.
+Important boundary: `request_decrypt` is server-side `SecureChannel` AEAD open
+time for the inbound request frame. `response_encrypt` remains `null` in the
+embedded response record because exact same-response server-side AEAD seal
+happens after the response JSON is serialized. The matrix runner augments each
+top-level request record with client-side `client_request_encrypt` and
+`client_response_decrypt` timings from `SecureChannel` timing hooks; those are
+useful for transport crypto decomposition but are not enclave-side measurements.
 
 For enterprise reports, aggregate these per-request records into the top-level
 schema described above. `scripts/gcp/warm_path_benchmark.sh` writes JSONL under

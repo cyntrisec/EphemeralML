@@ -234,7 +234,22 @@ async fn run_session(
         let timings = benchmark
             .get("timings_us")
             .ok_or_else(|| anyhow::anyhow!("benchmark record missing timings_us"))?;
-        let timings_map = numeric_timings(timings)?;
+        let mut timings_json = timings.clone();
+        let mut timings_map = numeric_timings(timings)?;
+        if let Some(transport) = result.transport_timings {
+            add_transport_timing(
+                &mut timings_json,
+                &mut timings_map,
+                "client_request_encrypt",
+                transport.request_encrypt_us,
+            );
+            add_transport_timing(
+                &mut timings_json,
+                &mut timings_map,
+                "client_response_decrypt",
+                transport.response_decrypt_us,
+            );
+        }
 
         let sample = RequestSample {
             wall_us,
@@ -255,7 +270,7 @@ async fn run_session(
                 "request_index": request_index,
                 "warmup_discarded_for_session": args.warmup,
             }),
-            timings_us: timings.clone(),
+            timings_us: timings_json,
             metrics: json!({
                 "gateway_to_receipt_wall_us": round3(wall_us),
             }),
@@ -346,10 +361,27 @@ fn environment(args: &Args) -> Value {
 fn caveats() -> Vec<&'static str> {
     vec![
         "development-only timing channel; production responses must not expose per-stage timings",
-        "request_decrypt and response_encrypt are null until confidential-ml-transport exposes per-frame timing hooks",
+        "request_decrypt is server-side SecureChannel AEAD open time for the inbound request frame",
+        "client_request_encrypt and client_response_decrypt are client-side SecureChannel AEAD timings",
+        "response_encrypt remains null because exact same-response server-side AEAD seal happens after the benchmark record is serialized",
         "gateway_to_receipt_wall_us is local client wall-clock around execute_inference_text and includes client/gateway-equivalent transport overhead",
         "concurrency uses independent SecureChannel sessions, not multiple in-flight requests on one session",
     ]
+}
+
+fn add_transport_timing(
+    timings_json: &mut Value,
+    timings_map: &mut BTreeMap<String, f64>,
+    name: &str,
+    value: Option<u64>,
+) {
+    let Some(value) = value else {
+        return;
+    };
+    timings_map.insert(name.to_string(), value as f64);
+    if let Some(obj) = timings_json.as_object_mut() {
+        obj.insert(name.to_string(), json!(value));
+    }
 }
 
 fn numeric_timings(value: &Value) -> anyhow::Result<BTreeMap<String, f64>> {

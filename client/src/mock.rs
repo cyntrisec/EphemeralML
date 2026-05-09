@@ -149,6 +149,7 @@ impl SecureClient for MockSecureClient {
             air_v1_model_hash_scheme: None,
             model_identity_coverage: None,
             benchmark: None,
+            transport_timings: None,
         })
     }
 
@@ -188,6 +189,7 @@ impl SecureClient for MockSecureClient {
             air_v1_model_hash_scheme: None,
             model_identity_coverage: None,
             benchmark: None,
+            transport_timings: None,
         })
     }
 
@@ -232,6 +234,7 @@ impl SecureClient for MockSecureClient {
             air_v1_model_hash_scheme: None,
             model_identity_coverage: None,
             benchmark: None,
+            transport_timings: None,
         })
     }
 }

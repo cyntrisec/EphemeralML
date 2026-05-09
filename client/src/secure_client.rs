@@ -1,7 +1,9 @@
 use crate::policy::PolicyManager;
 use crate::{ClientError, EphemeralError, Result};
 use confidential_ml_transport::session::channel::Message;
-use confidential_ml_transport::{SecureChannel, SessionConfig};
+use confidential_ml_transport::{
+    ChannelTiming, ChannelTimingOperation, SecureChannel, SessionConfig,
+};
 use ephemeral_ml_common::transport_types::EphemeralUserData;
 use ephemeral_ml_common::{AttestationReceipt, ReceiptVerifier};
 use serde::{Deserialize, Serialize};
@@ -98,6 +100,25 @@ pub struct InferenceResult {
     pub model_identity_coverage: Option<BTreeMap<String, bool>>,
     /// Development-only benchmark timings returned by the backend when enabled.
     pub benchmark: Option<serde_json::Value>,
+    /// Development-only client-side SecureChannel AEAD timings.
+    pub transport_timings: Option<ClientTransportTimings>,
+}
+
+/// Development-only SecureChannel timings measured on the client side.
+#[derive(Clone, Copy, Debug, Default, Serialize)]
+pub struct ClientTransportTimings {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub request_encrypt_us: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub response_decrypt_us: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub request_plaintext_bytes: Option<usize>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub request_ciphertext_bytes: Option<usize>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub response_ciphertext_bytes: Option<usize>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub response_plaintext_bytes: Option<usize>,
 }
 
 fn benchmark_request_mode() -> Option<String> {
@@ -105,6 +126,32 @@ fn benchmark_request_mode() -> Option<String> {
         Some("development") => Some("development".to_string()),
         _ => None,
     }
+}
+
+fn client_transport_timings(
+    enabled: bool,
+    request_timing: Option<ChannelTiming>,
+    response_timing: Option<ChannelTiming>,
+) -> Option<ClientTransportTimings> {
+    if !enabled {
+        return None;
+    }
+    let request = request_timing.filter(|t| {
+        t.operation == ChannelTimingOperation::Seal
+            && t.frame_type == confidential_ml_transport::FrameType::Data
+    });
+    let response = response_timing.filter(|t| {
+        t.operation == ChannelTimingOperation::Open
+            && t.frame_type == confidential_ml_transport::FrameType::Data
+    });
+    Some(ClientTransportTimings {
+        request_encrypt_us: request.map(ChannelTiming::elapsed_us),
+        response_decrypt_us: response.map(ChannelTiming::elapsed_us),
+        request_plaintext_bytes: request.map(|t| t.input_len),
+        request_ciphertext_bytes: request.map(|t| t.output_len),
+        response_ciphertext_bytes: response.map(|t| t.input_len),
+        response_plaintext_bytes: response.map(|t| t.output_len),
+    })
 }
 
 /// Trait for secure client communication
@@ -436,6 +483,8 @@ impl SecureClient for SecureEnclaveClient {
 
         // 1. Build plaintext request
         let input_data: Vec<u8> = input_tensor.iter().map(|&x| (x * 255.0) as u8).collect();
+        let benchmark_mode = benchmark_request_mode();
+
         let input = InferenceHandlerInput {
             model_id: model_id.to_string(),
             input_data,
@@ -444,7 +493,7 @@ impl SecureClient for SecureEnclaveClient {
             max_tokens: None,
             temperature: None,
             top_p: None,
-            benchmark_mode: benchmark_request_mode(),
+            benchmark_mode: benchmark_mode.clone(),
         };
         let plaintext = serde_json::to_vec(&input)
             .map_err(|e| ClientError::Client(EphemeralError::SerializationError(e.to_string())))?;
@@ -465,6 +514,7 @@ impl SecureClient for SecureEnclaveClient {
                     e
                 )))
             })?;
+        let request_timing = channel.take_last_timing();
 
         // 3. Receive response
         let msg = channel.recv().await.map_err(|e| {
@@ -473,6 +523,7 @@ impl SecureClient for SecureEnclaveClient {
                 e
             )))
         })?;
+        let response_timing = channel.take_last_timing();
 
         let response_bytes = match msg {
             Message::Data(data) => data,
@@ -628,6 +679,11 @@ impl SecureClient for SecureEnclaveClient {
             air_v1_model_hash_scheme: output.air_v1_model_hash_scheme,
             model_identity_coverage: output.model_identity_coverage,
             benchmark: output.benchmark,
+            transport_timings: client_transport_timings(
+                benchmark_mode.is_some(),
+                request_timing,
+                response_timing,
+            ),
         })
     }
 
@@ -642,6 +698,8 @@ impl SecureClient for SecureEnclaveClient {
             ))
         })?;
 
+        let benchmark_mode = benchmark_request_mode();
+
         // Send raw UTF-8 bytes — the server tokenizes internally
         let input = InferenceHandlerInput {
             model_id: model_id.to_string(),
@@ -651,7 +709,7 @@ impl SecureClient for SecureEnclaveClient {
             max_tokens: None,
             temperature: None,
             top_p: None,
-            benchmark_mode: benchmark_request_mode(),
+            benchmark_mode: benchmark_mode.clone(),
         };
         let plaintext = serde_json::to_vec(&input)
             .map_err(|e| ClientError::Client(EphemeralError::SerializationError(e.to_string())))?;
@@ -671,6 +729,7 @@ impl SecureClient for SecureEnclaveClient {
                     e
                 )))
             })?;
+        let request_timing = channel.take_last_timing();
 
         let msg = channel.recv().await.map_err(|e| {
             ClientError::Client(EphemeralError::TransportError(format!(
@@ -678,6 +737,7 @@ impl SecureClient for SecureEnclaveClient {
                 e
             )))
         })?;
+        let response_timing = channel.take_last_timing();
 
         let response_bytes = match msg {
             Message::Data(data) => data,
@@ -821,6 +881,11 @@ impl SecureClient for SecureEnclaveClient {
             air_v1_model_hash_scheme: output.air_v1_model_hash_scheme,
             model_identity_coverage: output.model_identity_coverage,
             benchmark: output.benchmark,
+            transport_timings: client_transport_timings(
+                benchmark_mode.is_some(),
+                request_timing,
+                response_timing,
+            ),
         })
     }
 
@@ -836,6 +901,8 @@ impl SecureClient for SecureEnclaveClient {
             ))
         })?;
 
+        let benchmark_mode = benchmark_request_mode();
+
         let input = InferenceHandlerInput {
             model_id: model_id.to_string(),
             input_data: text.as_bytes().to_vec(),
@@ -844,7 +911,7 @@ impl SecureClient for SecureEnclaveClient {
             max_tokens: Some(max_tokens),
             temperature: None,
             top_p: None,
-            benchmark_mode: benchmark_request_mode(),
+            benchmark_mode: benchmark_mode.clone(),
         };
         let plaintext = serde_json::to_vec(&input)
             .map_err(|e| ClientError::Client(EphemeralError::SerializationError(e.to_string())))?;
@@ -864,6 +931,7 @@ impl SecureClient for SecureEnclaveClient {
                     e
                 )))
             })?;
+        let request_timing = channel.take_last_timing();
 
         let msg = channel.recv().await.map_err(|e| {
             ClientError::Client(EphemeralError::TransportError(format!(
@@ -871,6 +939,7 @@ impl SecureClient for SecureEnclaveClient {
                 e
             )))
         })?;
+        let response_timing = channel.take_last_timing();
 
         let response_bytes = match msg {
             Message::Data(data) => data,
@@ -1011,6 +1080,11 @@ impl SecureClient for SecureEnclaveClient {
             air_v1_model_hash_scheme: output.air_v1_model_hash_scheme,
             model_identity_coverage: output.model_identity_coverage,
             benchmark: output.benchmark,
+            transport_timings: client_transport_timings(
+                benchmark_mode.is_some(),
+                request_timing,
+                response_timing,
+            ),
         })
     }
 }
