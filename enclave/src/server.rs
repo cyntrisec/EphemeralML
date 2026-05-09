@@ -85,6 +85,10 @@ struct DirectInferenceRequest {
     /// Accepts null or absent — defaults to 0.9.
     #[serde(default)]
     top_p: Option<f64>,
+    /// Request benchmark-only timing metadata. Honored only when the enclave
+    /// has `EPHEMERALML_BENCHMARK_MODE=development` set.
+    #[serde(default)]
+    benchmark_mode: Option<String>,
 }
 
 #[derive(serde::Serialize)]
@@ -112,6 +116,43 @@ struct DirectInferenceResponse {
     /// Human-readable identity coverage from the authoritative signed manifest.
     #[serde(skip_serializing_if = "Option::is_none")]
     model_identity_coverage: Option<BTreeMap<String, bool>>,
+    /// Development-only warm-path timing record.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    benchmark: Option<DirectBenchmarkRecord>,
+}
+
+#[derive(serde::Serialize)]
+struct DirectBenchmarkRecord {
+    schema_version: u32,
+    benchmark_id: &'static str,
+    mode: &'static str,
+    timings_us: DirectTimingsUs,
+    caveats: Vec<&'static str>,
+}
+
+#[derive(Default, serde::Serialize)]
+struct DirectTimingsUs {
+    /// Exact transport decrypt timing is inside `confidential-ml-transport`
+    /// and is not exposed through the current SecureChannel API.
+    request_decrypt: Option<u64>,
+    request_hash: Option<u64>,
+    inference: Option<u64>,
+    response_canonicalize: Option<u64>,
+    response_hash: Option<u64>,
+    legacy_receipt_build: Option<u64>,
+    legacy_receipt_sign: Option<u64>,
+    air_claims_from_legacy: Option<u64>,
+    /// CBOR claim-set construction/encoding cost; this maps to the report's
+    /// `air_build` stage.
+    air_build: Option<u64>,
+    air_claim_validate: Option<u64>,
+    air_claims_cbor_encode: Option<u64>,
+    air_cose_create_signature: Option<u64>,
+    air_sign: Option<u64>,
+    air_serialize: Option<u64>,
+    /// Exact transport encrypt timing is inside `confidential-ml-transport`
+    /// and is not exposed through the current SecureChannel API.
+    response_encrypt: Option<u64>,
 }
 
 /// Accept client SecureChannels on `listen_addr` and serve inference
@@ -385,6 +426,42 @@ struct DirectResult {
     sequence: u64,
 }
 
+fn requested_benchmark_mode(request: &DirectInferenceRequest) -> Option<&'static str> {
+    let requested = request.benchmark_mode.as_deref()?;
+    if requested != "development" && requested != "benchmark" {
+        return None;
+    }
+    match std::env::var("EPHEMERALML_BENCHMARK_MODE").ok().as_deref() {
+        Some("development") => Some("development"),
+        _ => None,
+    }
+}
+
+fn elapsed_us(start: std::time::Instant) -> u64 {
+    start.elapsed().as_micros().try_into().unwrap_or(u64::MAX)
+}
+
+fn timing_start(enabled: bool) -> Option<std::time::Instant> {
+    enabled.then(std::time::Instant::now)
+}
+
+fn record_elapsed(slot: &mut Option<u64>, start: Option<std::time::Instant>) {
+    if let Some(start) = start {
+        *slot = Some(elapsed_us(start));
+    }
+}
+
+fn warm_path_caveats() -> Vec<&'static str> {
+    vec![
+        "development-only timing record; production responses do not expose per-stage timings",
+        "request_decrypt and response_encrypt are not decomposed by this record because they happen inside confidential-ml-transport SecureChannel",
+        "request_hash is SHA-256 over the serialized plaintext request bytes bound into the receipt",
+        "response_hash is SHA-256 over the canonical f32 little-endian output bytes bound into the receipt",
+        "air_build is AIR claim-set CBOR encoding time; air_claims_from_legacy is reported separately",
+        "air_sign is raw Ed25519 signing time inside COSE_Sign1 construction",
+    ]
+}
+
 /// Process a single direct-mode inference request.
 #[allow(clippy::too_many_arguments)]
 fn handle_direct_request<A: crate::AttestationProvider>(
@@ -399,8 +476,13 @@ fn handle_direct_request<A: crate::AttestationProvider>(
     model_identity_coverage: Option<&BTreeMap<String, bool>>,
     receipt_issuer: &str,
 ) -> std::result::Result<DirectResult, Box<dyn std::error::Error + Send + Sync>> {
+    use sha2::{Digest, Sha256};
+
     let request: DirectInferenceRequest =
         serde_json::from_slice(bytes).map_err(|e| format!("Bad request JSON: {}", e))?;
+    let benchmark_mode = requested_benchmark_mode(&request);
+    let timing_enabled = benchmark_mode.is_some();
+    let mut timings = DirectTimingsUs::default();
 
     // Validate model_id using the shared InputValidator (common/src/validation.rs).
     let validator = ephemeral_ml_common::InputValidator::new();
@@ -424,6 +506,10 @@ fn handle_direct_request<A: crate::AttestationProvider>(
         request.input_data.len(),
         request.generate,
     );
+
+    let request_hash_start = timing_start(timing_enabled);
+    let request_hash: [u8; 32] = Sha256::digest(bytes).into();
+    record_elapsed(&mut timings.request_hash, request_hash_start);
 
     let start = std::time::Instant::now();
 
@@ -462,9 +548,18 @@ fn handle_direct_request<A: crate::AttestationProvider>(
     };
 
     let exec_ms = start.elapsed().as_millis() as u64;
+    if timing_enabled {
+        timings.inference = Some(elapsed_us(start));
+    }
 
     // Compute response bytes for receipt hash
+    let canonicalize_start = timing_start(timing_enabled);
     let mut output_bytes: Vec<u8> = output_tensor.iter().flat_map(|f| f.to_le_bytes()).collect();
+    record_elapsed(&mut timings.response_canonicalize, canonicalize_start);
+
+    let response_hash_start = timing_start(timing_enabled);
+    let response_hash: [u8; 32] = Sha256::digest(&output_bytes).into();
+    record_elapsed(&mut timings.response_hash, response_hash_start);
 
     // Resolve receipt model_id: prefer manifest (authoritative) over client request.
     // When a signed manifest is loaded (GCS/GCS-KMS flow), the manifest's model_id
@@ -490,16 +585,18 @@ fn handle_direct_request<A: crate::AttestationProvider>(
     // Hash the full request bytes (not just input_data) so the client can verify
     // SHA256(serialized_request) == receipt.request_hash.
     state.model_id = receipt_model_id.clone();
-    let mut receipt = crate::receipt::ReceiptBuilder::build(
+    let receipt_build_start = timing_start(timing_enabled);
+    let mut receipt = crate::receipt::ReceiptBuilder::build_with_hashes(
         state,
         attestation_provider,
-        bytes,
-        &output_bytes,
+        request_hash,
+        response_hash,
         receipt_model_id,
         receipt_model_version,
         exec_ms,
         0,
     )?;
+    record_elapsed(&mut timings.legacy_receipt_build, receipt_build_start);
     output_bytes.zeroize();
 
     // Record destroy evidence for the cleanup actions taken during this request.
@@ -529,10 +626,13 @@ fn handle_direct_request<A: crate::AttestationProvider>(
         ],
     });
 
+    let receipt_sign_start = timing_start(timing_enabled);
     receipt.sign(&state.receipt_signing_key)?;
+    record_elapsed(&mut timings.legacy_receipt_sign, receipt_sign_start);
 
     // Build AIR v1 receipt (non-fatal: skip if model_hash unavailable or build fails)
     let air_v1_receipt_b64: Option<String> = if let Some(mh) = model_hash {
+        let air_claims_start = timing_start(timing_enabled);
         match ephemeral_ml_common::air_receipt::AirReceiptClaims::from_legacy_with_scheme(
             &receipt,
             receipt_issuer.to_string(),
@@ -540,21 +640,47 @@ fn handle_direct_request<A: crate::AttestationProvider>(
             model_hash_scheme.map(|s| s.to_string()),
         ) {
             Ok(claims) => {
-                match ephemeral_ml_common::air_receipt::build_air_v1(
-                    &claims,
-                    &state.receipt_signing_key,
-                ) {
-                    Ok(cbor_bytes) => {
-                        use base64::Engine as _;
-                        Some(base64::engine::general_purpose::STANDARD.encode(&cbor_bytes))
+                record_elapsed(&mut timings.air_claims_from_legacy, air_claims_start);
+                if timing_enabled {
+                    match ephemeral_ml_common::air_receipt::build_air_v1_with_timings(
+                        &claims,
+                        &state.receipt_signing_key,
+                    ) {
+                        Ok(timed) => {
+                            use base64::Engine as _;
+                            timings.air_claim_validate = Some(timed.timings.validate_us);
+                            timings.air_build = Some(timed.timings.claims_cbor_encode_us);
+                            timings.air_claims_cbor_encode =
+                                Some(timed.timings.claims_cbor_encode_us);
+                            timings.air_cose_create_signature =
+                                Some(timed.timings.cose_create_signature_us);
+                            timings.air_sign = Some(timed.timings.ed25519_sign_us);
+                            timings.air_serialize = Some(timed.timings.cose_serialize_us);
+                            Some(base64::engine::general_purpose::STANDARD.encode(&timed.bytes))
+                        }
+                        Err(e) => {
+                            eprintln!("[direct] Warning: AIR v1 build failed: {}", e);
+                            None
+                        }
                     }
-                    Err(e) => {
-                        eprintln!("[direct] Warning: AIR v1 build failed: {}", e);
-                        None
+                } else {
+                    match ephemeral_ml_common::air_receipt::build_air_v1(
+                        &claims,
+                        &state.receipt_signing_key,
+                    ) {
+                        Ok(cbor_bytes) => {
+                            use base64::Engine as _;
+                            Some(base64::engine::general_purpose::STANDARD.encode(&cbor_bytes))
+                        }
+                        Err(e) => {
+                            eprintln!("[direct] Warning: AIR v1 build failed: {}", e);
+                            None
+                        }
                     }
                 }
             }
             Err(e) => {
+                record_elapsed(&mut timings.air_claims_from_legacy, air_claims_start);
                 eprintln!("[direct] Warning: AIR v1 from_legacy failed: {}", e);
                 None
             }
@@ -566,6 +692,13 @@ fn handle_direct_request<A: crate::AttestationProvider>(
     let seq = receipt.sequence_number;
     let n_floats = output_tensor.len();
     use base64::Engine as _;
+    let benchmark = benchmark_mode.map(|mode| DirectBenchmarkRecord {
+        schema_version: 1,
+        benchmark_id: "gcp_warm_path_request",
+        mode,
+        timings_us: timings,
+        caveats: warm_path_caveats(),
+    });
     let response = DirectInferenceResponse {
         output_tensor,
         receipt,
@@ -576,6 +709,7 @@ fn handle_direct_request<A: crate::AttestationProvider>(
         air_v1_receipt_b64,
         air_v1_model_hash_scheme: model_hash_scheme.map(|s| s.to_string()),
         model_identity_coverage: model_identity_coverage.cloned(),
+        benchmark,
     };
     let response_json = Zeroizing::new(serde_json::to_vec(&response)?);
 

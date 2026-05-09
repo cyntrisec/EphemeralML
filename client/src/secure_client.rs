@@ -25,6 +25,9 @@ pub struct InferenceHandlerInput {
     /// Top-p (nucleus) sampling threshold (only used when generate=true).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub top_p: Option<f64>,
+    /// Development-only request for backend benchmark timings.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub benchmark_mode: Option<String>,
 }
 
 fn is_false(v: &bool) -> bool {
@@ -53,6 +56,9 @@ pub struct InferenceHandlerOutput {
     /// Human-readable model identity coverage when a signed manifest is authoritative.
     #[serde(default)]
     pub model_identity_coverage: Option<BTreeMap<String, bool>>,
+    /// Development-only benchmark timings returned by the backend when enabled.
+    #[serde(default)]
+    pub benchmark: Option<serde_json::Value>,
 }
 
 #[derive(Deserialize)]
@@ -90,6 +96,15 @@ pub struct InferenceResult {
     pub air_v1_model_hash_scheme: Option<String>,
     /// Human-readable model identity coverage when a signed manifest is authoritative.
     pub model_identity_coverage: Option<BTreeMap<String, bool>>,
+    /// Development-only benchmark timings returned by the backend when enabled.
+    pub benchmark: Option<serde_json::Value>,
+}
+
+fn benchmark_request_mode() -> Option<String> {
+    match std::env::var("EPHEMERALML_BENCHMARK_MODE").ok().as_deref() {
+        Some("development") => Some("development".to_string()),
+        _ => None,
+    }
 }
 
 /// Trait for secure client communication
@@ -429,6 +444,7 @@ impl SecureClient for SecureEnclaveClient {
             max_tokens: None,
             temperature: None,
             top_p: None,
+            benchmark_mode: benchmark_request_mode(),
         };
         let plaintext = serde_json::to_vec(&input)
             .map_err(|e| ClientError::Client(EphemeralError::SerializationError(e.to_string())))?;
@@ -611,6 +627,7 @@ impl SecureClient for SecureEnclaveClient {
             air_v1_receipt_b64: output.air_v1_receipt_b64,
             air_v1_model_hash_scheme: output.air_v1_model_hash_scheme,
             model_identity_coverage: output.model_identity_coverage,
+            benchmark: output.benchmark,
         })
     }
 
@@ -634,6 +651,7 @@ impl SecureClient for SecureEnclaveClient {
             max_tokens: None,
             temperature: None,
             top_p: None,
+            benchmark_mode: benchmark_request_mode(),
         };
         let plaintext = serde_json::to_vec(&input)
             .map_err(|e| ClientError::Client(EphemeralError::SerializationError(e.to_string())))?;
@@ -802,6 +820,7 @@ impl SecureClient for SecureEnclaveClient {
             air_v1_receipt_b64: output.air_v1_receipt_b64,
             air_v1_model_hash_scheme: output.air_v1_model_hash_scheme,
             model_identity_coverage: output.model_identity_coverage,
+            benchmark: output.benchmark,
         })
     }
 
@@ -825,6 +844,7 @@ impl SecureClient for SecureEnclaveClient {
             max_tokens: Some(max_tokens),
             temperature: None,
             top_p: None,
+            benchmark_mode: benchmark_request_mode(),
         };
         let plaintext = serde_json::to_vec(&input)
             .map_err(|e| ClientError::Client(EphemeralError::SerializationError(e.to_string())))?;
@@ -990,6 +1010,7 @@ impl SecureClient for SecureEnclaveClient {
             air_v1_receipt_b64: output.air_v1_receipt_b64,
             air_v1_model_hash_scheme: output.air_v1_model_hash_scheme,
             model_identity_coverage: output.model_identity_coverage,
+            benchmark: output.benchmark,
         })
     }
 }
@@ -1095,6 +1116,7 @@ mod tests {
                     air_v1_receipt_b64: None,
                     air_v1_model_hash_scheme: None,
                     model_identity_coverage: None,
+                    benchmark: None,
                 };
                 let response_bytes = serde_json::to_vec(&output).unwrap();
                 channel.send(Bytes::from(response_bytes)).await.unwrap();
@@ -1123,6 +1145,7 @@ mod tests {
             max_tokens: None,
             temperature: None,
             top_p: None,
+            benchmark_mode: benchmark_request_mode(),
         };
         let input_bytes = serde_json::to_vec(&input).unwrap();
         channel.send(Bytes::from(input_bytes)).await.unwrap();

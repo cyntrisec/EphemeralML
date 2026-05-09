@@ -8,6 +8,7 @@
 # Usage:
 #   bash scripts/gcp/openai_gateway_e2e.sh --project PROJECT_ID
 #   bash scripts/gcp/openai_gateway_e2e.sh --project PROJECT_ID --gpu
+#   bash scripts/gcp/openai_gateway_e2e.sh --project PROJECT_ID --benchmark
 #   bash scripts/gcp/openai_gateway_e2e.sh --project PROJECT_ID --ip 34.x.x.x
 set -euo pipefail
 
@@ -29,6 +30,7 @@ MODEL_CAPABILITIES="${EPHEMERALML_MODEL_CAPABILITIES:-embeddings}"
 ALLOW_UNPINNED_AUDIENCE=false
 SKIP_BUILD=false
 USE_DOCKER=false
+BENCHMARK=false
 DOCKER_IMAGE="${EPHEMERALML_GATEWAY_DOCKER_IMAGE:-ephemeralml-gateway-gcp-e2e}"
 TARGET_DIR="${EPHEMERALML_GATEWAY_TARGET_DIR:-${PROJECT_DIR}/.target_openai_gateway}"
 TMP_WORK_DIR="${EPHEMERALML_GATEWAY_TMPDIR:-${PROJECT_DIR}/.tmp_openai_gateway}"
@@ -39,6 +41,7 @@ while [[ $# -gt 0 ]]; do
         --zone) ZONE="$2"; shift 2 ;;
         --ip) IP="$2"; shift 2 ;;
         --gpu) INSTANCE_NAME="ephemeralml-gpu"; shift ;;
+        --benchmark) BENCHMARK=true; shift ;;
         --gateway-port) GATEWAY_PORT="$2"; shift 2 ;;
         --api-key) API_KEY="$2"; shift 2 ;;
         --default-model) DEFAULT_MODEL="$2"; shift 2 ;;
@@ -108,6 +111,7 @@ ui_kv "Gateway port" "${GATEWAY_PORT}"
 ui_kv "Default model" "${DEFAULT_MODEL}"
 ui_kv "Capabilities" "${MODEL_CAPABILITIES}"
 ui_kv "Runtime" "$($USE_DOCKER && echo docker || echo cargo)"
+ui_kv "Benchmark mode" "$($BENCHMARK && echo development || echo off)"
 ui_kv "Docker image" "${DOCKER_IMAGE}"
 ui_kv "Cargo target" "${TARGET_DIR}"
 ui_kv "Cargo tmp" "${TMP_WORK_DIR}"
@@ -155,6 +159,7 @@ if $USE_DOCKER; then
           -e EPHEMERALML_GATEWAY_PORT="${GATEWAY_PORT}" \
           -e EPHEMERALML_INCLUDE_METADATA_JSON=true \
           -e EPHEMERALML_MODEL_CAPABILITIES="${MODEL_CAPABILITIES}" \
+          -e EPHEMERALML_BENCHMARK_MODE="$($BENCHMARK && echo development || echo "")" \
           -e EPHEMERALML_EXPECTED_AUDIENCE="${GCP_WIP_AUDIENCE}" \
           -e EPHEMERALML_REQUIRE_MRTD=false \
           -e EPHEMERALML_ALLOW_UNPINNED_AUDIENCE="$($ALLOW_UNPINNED_AUDIENCE && echo true || echo false)" \
@@ -175,6 +180,7 @@ else
         EPHEMERALML_GATEWAY_PORT="${GATEWAY_PORT}" \
         EPHEMERALML_INCLUDE_METADATA_JSON=true \
         EPHEMERALML_MODEL_CAPABILITIES="${MODEL_CAPABILITIES}" \
+        EPHEMERALML_BENCHMARK_MODE=$($BENCHMARK && echo development || echo "") \
         EPHEMERALML_EXPECTED_AUDIENCE="${GCP_WIP_AUDIENCE}" \
         EPHEMERALML_REQUIRE_MRTD=false \
         EPHEMERALML_ALLOW_UNPINNED_AUDIENCE=$($ALLOW_UNPINNED_AUDIENCE && echo true || echo false) \
@@ -213,6 +219,7 @@ ui_info "Running OpenAI SDK client..."
 EPHEMERALML_GATEWAY_URL="http://127.0.0.1:${GATEWAY_PORT}" \
 EPHEMERALML_API_KEY="${API_KEY}" \
 EPHEMERALML_E2E_OUTPUT_DIR="${EVIDENCE_DIR}" \
+EPHEMERALML_BENCHMARK_MODE="$($BENCHMARK && echo development || echo "")" \
 python3 "${PY_CLIENT}" | tee "${EVIDENCE_DIR}/client_stdout.txt"
 
 ui_blank

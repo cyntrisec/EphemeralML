@@ -21,6 +21,29 @@ impl ReceiptBuilder {
         let request_hash: [u8; 32] = Sha256::digest(request_plaintext).into();
         let response_hash: [u8; 32] = Sha256::digest(response_plaintext).into();
 
+        Self::build_with_hashes(
+            state,
+            provider,
+            request_hash,
+            response_hash,
+            model_id,
+            model_version,
+            execution_time_ms,
+            memory_peak_mb,
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn build_with_hashes<A: AttestationProvider>(
+        state: &mut ConnectionState,
+        provider: &A,
+        request_hash: [u8; 32],
+        response_hash: [u8; 32],
+        model_id: String,
+        model_version: String,
+        execution_time_ms: u64,
+        memory_peak_mb: u64,
+    ) -> Result<AttestationReceipt> {
         // 2. Get PCRs / TDX measurements
         let pcrs = provider.get_pcr_measurements()?;
         let enclave_measurements = match provider.measurement_type() {

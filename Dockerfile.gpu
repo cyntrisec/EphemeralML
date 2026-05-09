@@ -37,9 +37,20 @@ ENV PATH="/root/.cargo/bin:${PATH}"
 WORKDIR /build
 COPY . .
 
-# Download MiniLM-L6-v2 model weights for smoke tests (gitignored, not in repo).
+# Download MiniLM-L6-v2 model files for smoke tests. `test_assets/` is excluded
+# from the Docker build context, so the image build must create this directory
+# and fetch the runtime files explicitly.
 # Production GPU deployments fetch models from GCS at runtime.
-RUN if [ ! -f test_assets/minilm/model.safetensors ]; then \
+RUN mkdir -p test_assets/minilm && \
+    if [ ! -f test_assets/minilm/config.json ]; then \
+      curl -fsSL -o test_assets/minilm/config.json \
+        https://huggingface.co/sentence-transformers/all-MiniLM-L6-v2/resolve/main/config.json; \
+    fi && \
+    if [ ! -f test_assets/minilm/tokenizer.json ]; then \
+      curl -fsSL -o test_assets/minilm/tokenizer.json \
+        https://huggingface.co/sentence-transformers/all-MiniLM-L6-v2/resolve/main/tokenizer.json; \
+    fi && \
+    if [ ! -f test_assets/minilm/model.safetensors ]; then \
       curl -fsSL -o test_assets/minilm/model.safetensors \
         https://huggingface.co/sentence-transformers/all-MiniLM-L6-v2/resolve/main/model.safetensors; \
     fi
@@ -67,8 +78,8 @@ COPY --from=builder /build/target/release/ephemeral-ml-enclave /app/ephemeral-ml
 # For GPU deployments, models are fetched from GCS at runtime (not bundled).
 # Bundling a 5+ GB GGUF model in the image would make it too large to push/pull.
 # A small fallback model is included for smoke tests only.
-COPY test_assets/minilm/config.json     /app/model/config.json
-COPY test_assets/minilm/tokenizer.json  /app/model/tokenizer.json
+COPY --from=builder /build/test_assets/minilm/config.json /app/model/config.json
+COPY --from=builder /build/test_assets/minilm/tokenizer.json /app/model/tokenizer.json
 COPY --from=builder /build/test_assets/minilm/model.safetensors /app/model/model.safetensors
 
 # GCP configuration (override via instance metadata tee-env-* or env).
@@ -85,6 +96,7 @@ ENV EPHEMERALML_MODEL_SOURCE="gcs" \
     EPHEMERALML_EXPECTED_MODEL_HASH="" \
     EPHEMERALML_EXPECTED_MRTD="" \
     EPHEMERALML_DIRECT="true" \
+    EPHEMERALML_BENCHMARK_MODE="" \
     EPHEMERALML_MODEL_FORMAT="gguf"
 
 # NVIDIA runtime env: make CUDA libraries visible inside the container.
@@ -95,7 +107,7 @@ ENV NVIDIA_VISIBLE_DEVICES=all \
 # Confidential Space launch policy: allow operator to override these env vars
 # via instance metadata (tee-env-*). Without this label, the Launcher rejects
 # all env overrides.
-LABEL "tee.launch_policy.allow_env_override"="EPHEMERALML_MODEL_SOURCE,EPHEMERALML_GCS_BUCKET,EPHEMERALML_GCP_MODEL_PREFIX,EPHEMERALML_GCP_PROJECT,EPHEMERALML_GCP_LOCATION,EPHEMERALML_GCP_KMS_KEY,EPHEMERALML_GCP_WIP_AUDIENCE,EPHEMERALML_EXPECTED_MODEL_HASH,EPHEMERALML_EXPECTED_MRTD,EPHEMERALML_DIRECT,EPHEMERALML_MODEL_FORMAT,EPHEMERALML_LOG_FORMAT,EPHEMERALML_MODEL_SIGNING_PUBKEY"
+LABEL "tee.launch_policy.allow_env_override"="EPHEMERALML_MODEL_SOURCE,EPHEMERALML_GCS_BUCKET,EPHEMERALML_GCP_MODEL_PREFIX,EPHEMERALML_GCP_PROJECT,EPHEMERALML_GCP_LOCATION,EPHEMERALML_GCP_KMS_KEY,EPHEMERALML_GCP_WIP_AUDIENCE,EPHEMERALML_EXPECTED_MODEL_HASH,EPHEMERALML_EXPECTED_MRTD,EPHEMERALML_DIRECT,EPHEMERALML_MODEL_FORMAT,EPHEMERALML_LOG_FORMAT,EPHEMERALML_MODEL_SIGNING_PUBKEY,EPHEMERALML_BENCHMARK_MODE"
 LABEL "tee.launch_policy.log_redirect"="always"
 
 EXPOSE 9000

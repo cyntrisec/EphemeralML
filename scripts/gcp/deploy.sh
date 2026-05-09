@@ -5,6 +5,7 @@
 #   bash scripts/gcp/deploy.sh                     # CPU production image (no SSH)
 #   bash scripts/gcp/deploy.sh --gpu                # GPU image (a3-highgpu-1g, H100 CC, Spot)
 #   bash scripts/gcp/deploy.sh --debug              # debug image (SSH enabled)
+#   bash scripts/gcp/deploy.sh --benchmark          # expose development-only warm-path timing metadata
 #   bash scripts/gcp/deploy.sh --skip-build         # skip Docker build/push (image already in AR)
 #   bash scripts/gcp/deploy.sh --tag v1.0           # custom image tag
 #   bash scripts/gcp/deploy.sh --zone us-central1-b # custom zone
@@ -36,6 +37,7 @@ ZONE="${EPHEMERALML_GCP_ZONE:-us-central1-a}"
 DEBUG=false
 TAG=""
 SKIP_BUILD=false
+BENCHMARK=false
 
 # KMS / model configuration — hydrate from env vars (set by init_gcp.sh / setup_kms.sh)
 MODEL_SOURCE="${EPHEMERALML_MODEL_SOURCE:-local}"
@@ -55,6 +57,7 @@ while [[ $# -gt 0 ]]; do
     case "$1" in
         --debug)        DEBUG=true; shift ;;
         --gpu)          GPU=true; shift ;;
+        --benchmark)    BENCHMARK=true; shift ;;
         --skip-build)   SKIP_BUILD=true; shift ;;
         --yes|-y)       YES=true; shift ;;
         --tag)          TAG="$2"; shift 2 ;;
@@ -288,6 +291,9 @@ METADATA="${METADATA},tee-env-EPHEMERALML_MODEL_FORMAT=${MODEL_FORMAT}"
 METADATA="${METADATA},tee-env-EPHEMERALML_LOG_FORMAT=json"
 METADATA="${METADATA},tee-env-EPHEMERALML_GCP_PROJECT=${PROJECT}"
 METADATA="${METADATA},tee-env-EPHEMERALML_GCP_LOCATION=${ZONE%-*}"
+if $BENCHMARK; then
+    METADATA="${METADATA},tee-env-EPHEMERALML_BENCHMARK_MODE=development"
+fi
 # Inject GCS env vars for gcs and gcs-kms model sources
 if [[ "${MODEL_SOURCE}" == "gcs" || "${MODEL_SOURCE}" == "gcs-kms" ]]; then
     METADATA="${METADATA},tee-env-EPHEMERALML_GCS_BUCKET=${GCS_BUCKET}"
@@ -365,6 +371,7 @@ ui_kv "Instance" "${INSTANCE_NAME}"
 ui_kv "Zone" "${ZONE}"
 ui_kv "Status" "${STATUS}"
 ui_kv "External IP" "${EXTERNAL_IP}"
+ui_kv "Benchmark mode" "$($BENCHMARK && echo development || echo off)"
 ui_kv "Ports" "9000 (control), 9001 (data_in), 9002 (data_out)"
 ui_blank
 if $DEBUG; then

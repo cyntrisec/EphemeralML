@@ -157,6 +157,7 @@ def main() -> int:
         "mode_used": chosen_mode,
         "capabilities": capabilities,
     }
+    benchmark_expected = os.environ.get("EPHEMERALML_BENCHMARK_MODE") == "development"
 
     if chosen_mode == "embeddings":
         raw = client.embeddings.with_raw_response.create(
@@ -176,6 +177,9 @@ def main() -> int:
                 "vector_dim": len(parsed.data[0].embedding) if parsed.data else 0,
                 "metadata": body.get("_ephemeralml"),
             }
+        )
+        result_summary["benchmark_present"] = bool(
+            (result_summary.get("metadata") or {}).get("benchmark")
         )
     else:
         raw = client.chat.completions.with_raw_response.create(
@@ -197,6 +201,9 @@ def main() -> int:
                 "metadata": body.get("_ephemeralml"),
             }
         )
+        result_summary["benchmark_present"] = bool(
+            (result_summary.get("metadata") or {}).get("benchmark")
+        )
 
     api_headers = {
         k: v
@@ -213,6 +220,7 @@ def main() -> int:
             "model_id": model_entry.get("id"),
             "capabilities": capabilities,
             "mode_used": chosen_mode,
+            "benchmark_expected": benchmark_expected,
             "api_headers": api_headers,
             "result_summary": result_summary,
         }
@@ -246,6 +254,8 @@ def main() -> int:
         core_checks.append(("non-empty embedding", result_summary.get("vector_dim", 0) > 0))
     else:
         core_checks.append(("non-empty response", bool(result_summary.get("first_output"))))
+    if benchmark_expected:
+        core_checks.append(("benchmark metadata present", result_summary["benchmark_present"]))
 
     failures = [name for name, ok in core_checks if not ok]
     for name, ok in core_checks:

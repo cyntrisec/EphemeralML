@@ -16,6 +16,8 @@ use crate::receipt_signing::{AttestationReceipt, EnclaveMeasurements, ReceiptSig
 use ciborium::Value;
 use coset::iana;
 use coset::TaggedCborSerializable;
+use serde::Serialize;
+use std::time::Instant;
 
 // ── CWT / EAT claim keys ────────────────────────────────────────────
 
@@ -405,6 +407,95 @@ pub fn build_air_v1(claims: &AirReceiptClaims, signing_key: &ReceiptSigningKey) 
     sign1
         .to_tagged_vec()
         .map_err(|e| EphemeralError::SerializationError(format!("COSE_Sign1 encoding failed: {e}")))
+}
+
+/// Stage timings for AIR v1 receipt construction.
+///
+/// These timings are intended for benchmark/development evidence only. Do not
+/// expose them from production inference APIs; per-stage timings can become a
+/// workload side channel.
+#[derive(Debug, Clone, Copy, Serialize)]
+pub struct AirBuildTimings {
+    pub validate_us: u64,
+    pub claims_cbor_encode_us: u64,
+    pub cose_create_signature_us: u64,
+    pub ed25519_sign_us: u64,
+    pub cose_serialize_us: u64,
+    pub total_us: u64,
+}
+
+/// Signed AIR v1 receipt plus construction timings.
+#[derive(Debug, Clone)]
+pub struct TimedAirReceipt {
+    pub bytes: Vec<u8>,
+    pub timings: AirBuildTimings,
+}
+
+/// Build a signed AIR v1 receipt and return split construction timings.
+///
+/// The `ed25519_sign_us` field times the raw Ed25519 signing operation inside
+/// COSE signature construction. `cose_create_signature_us` includes COSE
+/// Sig_structure preparation and the signing callback.
+pub fn build_air_v1_with_timings(
+    claims: &AirReceiptClaims,
+    signing_key: &ReceiptSigningKey,
+) -> Result<TimedAirReceipt> {
+    let total_start = Instant::now();
+
+    let validate_start = Instant::now();
+    claims.validate()?;
+    if signing_key.is_expired() {
+        return Err(EphemeralError::EncryptionError(
+            "Signing key expired".to_string(),
+        ));
+    }
+    let validate_us = elapsed_us(validate_start);
+
+    let encode_start = Instant::now();
+    let payload = encode_claims(claims)?;
+    let claims_cbor_encode_us = elapsed_us(encode_start);
+
+    let protected = coset::HeaderBuilder::new()
+        .algorithm(iana::Algorithm::EdDSA)
+        .content_format(coset::iana::CoapContentFormat::Cwt)
+        .build();
+
+    let mut ed25519_sign_us = 0;
+    let create_signature_start = Instant::now();
+    let sign1 = coset::CoseSign1Builder::new()
+        .protected(protected)
+        .payload(payload)
+        .try_create_signature(b"", |tbs| {
+            let sign_start = Instant::now();
+            let sig = signing_key.raw_sign(tbs);
+            ed25519_sign_us = elapsed_us(sign_start);
+            Ok(sig)
+        })
+        .map_err(|e: EphemeralError| e)?
+        .build();
+    let cose_create_signature_us = elapsed_us(create_signature_start);
+
+    let serialize_start = Instant::now();
+    let bytes = sign1.to_tagged_vec().map_err(|e| {
+        EphemeralError::SerializationError(format!("COSE_Sign1 encoding failed: {e}"))
+    })?;
+    let cose_serialize_us = elapsed_us(serialize_start);
+
+    Ok(TimedAirReceipt {
+        bytes,
+        timings: AirBuildTimings {
+            validate_us,
+            claims_cbor_encode_us,
+            cose_create_signature_us,
+            ed25519_sign_us,
+            cose_serialize_us,
+            total_us: elapsed_us(total_start),
+        },
+    })
+}
+
+fn elapsed_us(start: Instant) -> u64 {
+    start.elapsed().as_micros().try_into().unwrap_or(u64::MAX)
 }
 
 /// Parsed AIR v1 receipt (claims + raw envelope for re-verification).

@@ -1,0 +1,5 @@
+    Finished `release` profile [optimized] target(s) in 0.31s
+     Running `target/release/benchmark_gcp_warm_path --backend-addr 'redacted-backend-ip:9000' --model-id stage-0 --receipt-model-id minilm-l6-v2 --concurrency 1 --prompt-sizes short,medium,long --warmup 10 --measured 120 --output /home/tsyrulb/vsock/EphemeralML-cyntrisec/evidence/benchmarks/gcp-cs-tdx-warm-path-20260509T143636Z/warm-path-records.jsonl`
+[client] WARNING: No expected MRTD configured (EPHEMERALML_REQUIRE_MRTD=false). TDX peer measurements are NOT pinned. This is unsafe for production.
+[client] WARNING: No expected MRTD configured (EPHEMERALML_REQUIRE_MRTD=false). TDX peer measurements are NOT pinned. This is unsafe for production.
+[client] WARNING: No expected MRTD configured (EPHEMERALML_REQUIRE_MRTD=false). TDX peer measurements are NOT pinned. This is unsafe for production.

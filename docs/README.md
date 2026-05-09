@@ -8,6 +8,7 @@ This repository serves multiple audiences: developers integrating the product, r
 - [`../QUICKSTART.md`](../QUICKSTART.md) — fastest product proof path
 - [`design.md`](design.md) — architecture and threat model
 - [`benchmarks.md`](benchmarks.md) — benchmark methodology and measured results
+- [`BENCHMARK_SCHEMA.md`](BENCHMARK_SCHEMA.md) — shared JSON shape for reproducible benchmark outputs
 
 ## Product and Deployment
 

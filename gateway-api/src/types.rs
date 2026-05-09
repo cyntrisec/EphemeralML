@@ -232,6 +232,10 @@ pub struct EphemeralMetadata {
     pub air_v1_receipt_b64: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub model_manifest_sha256: Option<String>,
+    /// Development-only backend timing record. Present only when the gateway
+    /// and backend are explicitly run with `EPHEMERALML_BENCHMARK_MODE=development`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub benchmark: Option<serde_json::Value>,
 }
 
 // ---------------------------------------------------------------------------

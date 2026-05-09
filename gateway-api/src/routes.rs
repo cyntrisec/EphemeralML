@@ -1048,6 +1048,7 @@ fn build_metadata(
         receipt_sha256,
         air_v1_receipt_b64: result.air_v1_receipt_b64.clone(),
         model_manifest_sha256: manifest_sha256,
+        benchmark: result.benchmark.clone(),
     })
 }
 
@@ -1193,6 +1194,7 @@ mod tests {
             receipt_sha256: Some("abc123".into()),
             air_v1_receipt_b64: None,
             model_manifest_sha256: None,
+            benchmark: None,
         };
         let json = serde_json::to_value(&meta).unwrap();
         assert_eq!(json["executed_model"], "stage-0");
@@ -1221,6 +1223,7 @@ mod tests {
                 receipt_sha256: Some("deadbeef".into()),
                 air_v1_receipt_b64: Some("base64data".into()),
                 model_manifest_sha256: None,
+                benchmark: None,
             }),
         };
         let json = serde_json::to_value(&resp).unwrap();
