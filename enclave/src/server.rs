@@ -130,6 +130,8 @@ struct DirectBenchmarkRecord {
     caveats: Vec<&'static str>,
 }
 
+const DIRECT_BENCHMARK_SCHEMA_VERSION: u32 = 2;
+
 #[derive(Default, serde::Serialize)]
 struct DirectTimingsUs {
     /// Server-side SecureChannel AEAD open time for the inbound request frame.
@@ -705,7 +707,7 @@ fn handle_direct_request<A: crate::AttestationProvider>(
     let n_floats = output_tensor.len();
     use base64::Engine as _;
     let benchmark = benchmark_mode.map(|mode| DirectBenchmarkRecord {
-        schema_version: 1,
+        schema_version: DIRECT_BENCHMARK_SCHEMA_VERSION,
         benchmark_id: "gcp_warm_path_request",
         mode,
         timings_us: timings,

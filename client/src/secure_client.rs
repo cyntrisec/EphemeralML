@@ -1235,6 +1235,133 @@ mod tests {
         }
     }
 
+    #[tokio::test]
+    async fn secure_channel_exposes_aead_timing_hooks_locally() {
+        let listener = match tokio::net::TcpListener::bind("127.0.0.1:0").await {
+            Ok(listener) => listener,
+            Err(err) if err.kind() == std::io::ErrorKind::PermissionDenied => {
+                eprintln!(
+                    "skipping secure_channel_exposes_aead_timing_hooks_locally: loopback bind not permitted: {}",
+                    err
+                );
+                return;
+            }
+            Err(err) => panic!(
+                "secure_channel_exposes_aead_timing_hooks_locally failed to bind loopback listener: {}",
+                err
+            ),
+        };
+        let addr = listener.local_addr().unwrap();
+        let (server_tx, server_rx) = tokio::sync::oneshot::channel();
+
+        tokio::spawn(async move {
+            let (stream, _) = listener.accept().await.unwrap();
+            let mock_provider = confidential_ml_transport::MockProvider;
+            let mock_verifier = confidential_ml_transport::MockVerifier;
+            let config = SessionConfig::builder()
+                .security_profile(SecurityProfile::Development)
+                .build()
+                .unwrap();
+            let mut channel = SecureChannel::accept_with_attestation(
+                stream,
+                &mock_provider,
+                &mock_verifier,
+                config,
+            )
+            .await
+            .unwrap();
+
+            let msg = channel.recv().await.unwrap();
+            let request_open = channel.take_last_timing();
+            match msg {
+                Message::Data(data) => assert_eq!(&data[..], b"ping"),
+                other => panic!("expected Data, got {other:?}"),
+            }
+            channel.send(Bytes::from_static(b"pong")).await.unwrap();
+            let response_seal = channel.take_last_timing();
+            server_tx.send((request_open, response_seal)).unwrap();
+        });
+
+        let client_provider = confidential_ml_transport::MockProvider;
+        let verifier = MockVerifierBridge::new();
+        let stream = TcpStream::connect(addr).await.unwrap();
+        let config = SessionConfig::builder()
+            .security_profile(SecurityProfile::Development)
+            .build()
+            .unwrap();
+        let mut channel =
+            SecureChannel::connect_with_attestation(stream, &client_provider, &verifier, config)
+                .await
+                .unwrap();
+
+        channel.send(Bytes::from_static(b"ping")).await.unwrap();
+        let request_seal = channel.take_last_timing();
+
+        let msg = channel.recv().await.unwrap();
+        let response_open = channel.take_last_timing();
+        match msg {
+            Message::Data(data) => assert_eq!(&data[..], b"pong"),
+            other => panic!("expected Data, got {other:?}"),
+        }
+
+        let (request_open, response_seal) = server_rx.await.unwrap();
+        assert_data_timing(
+            request_seal,
+            ChannelTimingOperation::Seal,
+            4,
+            "client request seal",
+        );
+        assert_data_timing(
+            request_open,
+            ChannelTimingOperation::Open,
+            4,
+            "server request open",
+        );
+        assert_data_timing(
+            response_seal,
+            ChannelTimingOperation::Seal,
+            4,
+            "server response seal",
+        );
+        assert_data_timing(
+            response_open,
+            ChannelTimingOperation::Open,
+            4,
+            "client response open",
+        );
+    }
+
+    fn assert_data_timing(
+        timing: Option<ChannelTiming>,
+        operation: ChannelTimingOperation,
+        plaintext_len: usize,
+        label: &str,
+    ) {
+        let timing = timing.unwrap_or_else(|| panic!("{label} timing missing"));
+        assert_eq!(timing.operation, operation, "{label} operation");
+        assert_eq!(
+            timing.frame_type,
+            confidential_ml_transport::FrameType::Data,
+            "{label} frame type"
+        );
+        match operation {
+            ChannelTimingOperation::Seal => {
+                assert_eq!(timing.input_len, plaintext_len, "{label} plaintext len");
+                assert!(
+                    timing.output_len >= plaintext_len,
+                    "{label} ciphertext shorter than plaintext"
+                );
+            }
+            ChannelTimingOperation::Open => {
+                assert_eq!(timing.output_len, plaintext_len, "{label} plaintext len");
+                assert!(
+                    timing.input_len >= plaintext_len,
+                    "{label} ciphertext shorter than plaintext"
+                );
+            }
+        }
+    }
+
     /// Full Phase 1 binding-chain test: build a real bundle on the "server"
     /// side, hash it, simulate the fields the handshake would have captured,
     /// and prove `verify_platform_evidence` accepts matching bundle bytes

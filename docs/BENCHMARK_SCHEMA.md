@@ -1,9 +1,10 @@
 # Benchmark JSON Schema
 
-`schema_version: 1` is the shared shape for local microbenchmarks and cloud
-path benchmarks. The goal is reproducibility: a benchmark result must explain
-what was measured, where it ran, which code produced it, and what boundary the
-timing covers.
+`schema_version` identifies the exact result shape for a benchmark family.
+Local AIR microbenchmarks currently emit `schema_version: 1`; GCP warm-path
+records with transport timing hooks emit `schema_version: 2`. The goal is
+reproducibility: a benchmark result must explain what was measured, where it
+ran, which code produced it, and what boundary the timing covers.
 
 ## Required Top-Level Fields
 
@@ -152,7 +153,7 @@ record:
 
 ```json
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "benchmark_id": "gcp_warm_path_request",
   "mode": "development",
   "timings_us": {
@@ -180,6 +181,7 @@ happens after the response JSON is serialized. The matrix runner augments each
 top-level request record with client-side `client_request_encrypt` and
 `client_response_decrypt` timings from `SecureChannel` timing hooks; those are
 useful for transport crypto decomposition but are not enclave-side measurements.
+This client-side transport timing augmentation is the schema v2 addition.
 
 For enterprise reports, aggregate these per-request records into the top-level
 schema described above. `scripts/gcp/warm_path_benchmark.sh` writes JSONL under
