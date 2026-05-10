@@ -1,0 +1,4 @@
+backend_private_port_ready
+[client] WARNING: No expected MRTD configured (EPHEMERALML_REQUIRE_MRTD=false). TDX peer measurements are NOT pinned. This is unsafe for production.
+[client] WARNING: No expected MRTD configured (EPHEMERALML_REQUIRE_MRTD=false). TDX peer measurements are NOT pinned. This is unsafe for production.
+[client] WARNING: No expected MRTD configured (EPHEMERALML_REQUIRE_MRTD=false). TDX peer measurements are NOT pinned. This is unsafe for production.
