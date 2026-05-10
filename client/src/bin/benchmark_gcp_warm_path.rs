@@ -112,8 +112,13 @@ async fn main() -> anyhow::Result<()> {
 
     let concurrencies = parse_usize_csv(&args.concurrency, "--concurrency")?;
     let prompt_sizes = parse_string_csv(&args.prompt_sizes, "--prompt-sizes")?;
-    let git_sha = command_output(Command::new("git").args(["rev-parse", "--short", "HEAD"]))
-        .unwrap_or_else(|| "unknown".to_string());
+    let git_sha = std::env::var("EPHEMERALML_BENCHMARK_GIT_SHA")
+        .ok()
+        .filter(|v| !v.trim().is_empty())
+        .unwrap_or_else(|| {
+            command_output(Command::new("git").args(["rev-parse", "--short", "HEAD"]))
+                .unwrap_or_else(|| "unknown".to_string())
+        });
     let env = environment(&args);
 
     if let Some(parent) = args.output.parent() {

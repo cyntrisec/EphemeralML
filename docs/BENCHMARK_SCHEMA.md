@@ -57,6 +57,10 @@ drift:
 }
 ```
 
+Benchmark binaries should populate `git_sha` from the local Git checkout. For
+remote runner VMs that receive only a compiled binary, set
+`EPHEMERALML_BENCHMARK_GIT_SHA=<commit>` explicitly.
+
 Cloud benchmarks should extend `host` with provider-specific fields such as
 `provider`, `region`, `zone`, `instance_type`, `tee`, and `image_digest` when
 available.
