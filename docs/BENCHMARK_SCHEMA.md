@@ -61,9 +61,11 @@ Benchmark binaries should populate `git_sha` from the local Git checkout. For
 remote runner VMs that receive only a compiled binary, set
 `EPHEMERALML_BENCHMARK_GIT_SHA=<commit>` explicitly.
 
-Cloud benchmarks should extend `host` with provider-specific fields such as
-`provider`, `region`, `zone`, `instance_type`, `tee`, and `image_digest` when
-available.
+Cloud benchmarks should distinguish the benchmark runner host from the measured
+backend host. If a binary runs on a client VM and calls a remote TEE backend,
+`host` describes the runner/client unless the record explicitly names it
+`backend_host`. Publish backend fields such as `provider`, `region`, `zone`,
+`instance_type`, `tee`, and `image_digest` separately when available.
 
 ## Workload
 

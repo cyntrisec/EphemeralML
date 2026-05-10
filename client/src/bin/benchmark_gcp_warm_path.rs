@@ -370,6 +370,7 @@ fn caveats() -> Vec<&'static str> {
         "client_request_encrypt and client_response_decrypt are client-side SecureChannel AEAD timings",
         "response_encrypt remains null because exact same-response server-side AEAD seal happens after the benchmark record is serialized",
         "gateway_to_receipt_wall_us is local client wall-clock around execute_inference_text and includes client/gateway-equivalent transport overhead",
+        "environment.host describes the benchmark runner/client host; record backend VM metadata separately when publishing cloud artifacts",
         "concurrency uses independent SecureChannel sessions, not multiple in-flight requests on one session",
     ]
 }
