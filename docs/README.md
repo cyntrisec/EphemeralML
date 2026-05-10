@@ -9,6 +9,7 @@ This repository serves multiple audiences: developers integrating the product, r
 - [`design.md`](design.md) — architecture and threat model
 - [`benchmarks.md`](benchmarks.md) — benchmark methodology and measured results
 - [`BENCHMARK_SCHEMA.md`](BENCHMARK_SCHEMA.md) — shared JSON shape for reproducible benchmark outputs
+- [`ENTERPRISE_BENCHMARK_REPORT.md`](ENTERPRISE_BENCHMARK_REPORT.md) — current buyer-facing AIR receipt cost report from the GCP Confidential Space warm-path benchmark
 
 ## Product and Deployment
 

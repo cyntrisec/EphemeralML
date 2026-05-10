@@ -4,6 +4,26 @@
 **Date:** January 30, 2026
 **Derived from:** Analysis of 11 academic/industry papers on confidential computing benchmarks
 
+## Current Addendum: GCP AIR Warm-Path Cost (2026-05-10)
+
+The current enterprise-facing AIR receipt cost measurement is the GCP
+Confidential Space same-zone warm-path benchmark:
+
+- Report: `docs/ENTERPRISE_BENCHMARK_REPORT.md`
+- Artifact: `evidence/benchmarks/gcp-cs-tdx-warm-path-colocated-20260510T150933Z/redacted/`
+- Measured code: `4fb6df3`
+- Artifact commit: `e5498a2`
+
+The measured full AIR v1 creation cost was `46.7-49.0` microseconds per
+inference, below `0.1%` of measured MiniLM-class embedding inference time. The
+correct accounting boundary is:
+
+`air_claim_validate + air_claims_cbor_encode + air_cose_create_signature + air_serialize`
+
+Older February benchmark references to `0.022ms` describe an earlier
+`benchmark_crypto` receipt-signing boundary. Do not use that number as the
+current full AIR creation cost.
+
 ---
 
 ## 1. Purpose

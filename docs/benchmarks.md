@@ -1,5 +1,15 @@
 # EphemeralML Benchmark & Competitive Analysis
 
+> **Current AIR cost claim (2026-05-10):** The GCP Confidential Space same-zone
+> warm-path benchmark measured full AIR v1 receipt creation at **46.7-49.0
+> microseconds**, below **0.1%** of measured MiniLM-class embedding inference
+> time. This is a direct SecureChannel benchmark, not an OpenAI HTTP gateway
+> benchmark. See `docs/ENTERPRISE_BENCHMARK_REPORT.md` and
+> `evidence/benchmarks/gcp-cs-tdx-warm-path-colocated-20260510T150933Z/redacted/`.
+>
+> Correct accounting boundary: `air_claim_validate + air_claims_cbor_encode +
+> air_cose_create_signature + air_serialize`.
+
 > **Canonical claims (2026-02-28):** Two Nitro overhead measurements exist. Both are correct but measure different boundaries. See `docs/publication/claim_definitions.md` for formal definitions, mandatory metadata, and disambiguation.
 >
 > | Label | Value | Scope | Commit | Reproducible? |
