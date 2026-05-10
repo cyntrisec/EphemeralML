@@ -19,6 +19,23 @@ use std::time::Instant;
 use tokio::sync::Mutex;
 
 const SCHEMA_VERSION: u32 = 2;
+const REQUIRED_SERVER_TIMINGS: &[&str] = &[
+    "request_decrypt",
+    "request_hash",
+    "inference",
+    "response_canonicalize",
+    "response_hash",
+    "legacy_receipt_build",
+    "legacy_receipt_sign",
+    "air_claims_from_legacy",
+    "air_build",
+    "air_claim_validate",
+    "air_claims_cbor_encode",
+    "air_cose_create_signature",
+    "air_sign",
+    "air_serialize",
+];
+const REQUIRED_CLIENT_TIMINGS: &[&str] = &["client_request_encrypt", "client_response_decrypt"];
 
 #[derive(Parser, Debug, Clone)]
 #[command(
@@ -236,11 +253,23 @@ async fn run_session(
         let benchmark = result.benchmark.ok_or_else(|| {
             anyhow::anyhow!("backend response did not include benchmark metadata")
         })?;
+        let backend_schema_version = benchmark
+            .get("schema_version")
+            .and_then(serde_json::Value::as_u64)
+            .ok_or_else(|| anyhow::anyhow!("backend benchmark record missing schema_version"))?;
+        if backend_schema_version != u64::from(SCHEMA_VERSION) {
+            anyhow::bail!(
+                "backend benchmark schema_version mismatch: expected {}, got {}",
+                SCHEMA_VERSION,
+                backend_schema_version
+            );
+        }
         let timings = benchmark
             .get("timings_us")
             .ok_or_else(|| anyhow::anyhow!("benchmark record missing timings_us"))?;
         let mut timings_json = timings.clone();
         let mut timings_map = numeric_timings(timings)?;
+        require_timings(&timings_map, REQUIRED_SERVER_TIMINGS, "backend")?;
         if let Some(transport) = result.transport_timings {
             add_transport_timing(
                 &mut timings_json,
@@ -255,6 +284,7 @@ async fn run_session(
                 transport.response_decrypt_us,
             );
         }
+        require_timings(&timings_map, REQUIRED_CLIENT_TIMINGS, "client")?;
 
         let sample = RequestSample {
             wall_us,
@@ -401,6 +431,22 @@ fn numeric_timings(value: &Value) -> anyhow::Result<BTreeMap<String, f64>> {
         }
     }
     Ok(out)
+}
+
+fn require_timings(
+    timings: &BTreeMap<String, f64>,
+    required: &[&str],
+    source: &str,
+) -> anyhow::Result<()> {
+    let missing = required
+        .iter()
+        .copied()
+        .filter(|name| !timings.contains_key(*name))
+        .collect::<Vec<_>>();
+    if !missing.is_empty() {
+        anyhow::bail!("{source} benchmark timings missing required fields: {missing:?}");
+    }
+    Ok(())
 }
 
 async fn write_jsonl<T: Serialize>(

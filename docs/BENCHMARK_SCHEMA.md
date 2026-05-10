@@ -146,7 +146,8 @@ The GCP direct backend can emit one development-only timing record per response
 when both sides explicitly opt in:
 
 - Backend deployment: `bash scripts/gcp/deploy.sh --benchmark ...`
-- Direct matrix run: `bash scripts/gcp/warm_path_benchmark.sh ...`
+- Local direct matrix run: `bash scripts/gcp/warm_path_benchmark.sh ...`
+- Same-zone private-IP matrix run: `bash scripts/gcp/warm_path_colocated_benchmark.sh ...`
 - Gateway smoke run: `bash scripts/gcp/openai_gateway_e2e.sh --benchmark ...`
 
 The request sets `benchmark_mode: "development"` in the enclave plaintext
@@ -191,13 +192,17 @@ This client-side transport timing augmentation is the schema v2 addition.
 
 For enterprise reports, aggregate these per-request records into the top-level
 schema described above. `scripts/gcp/warm_path_benchmark.sh` writes JSONL under
-`evidence/benchmarks/gcp-cs-tdx-warm-path-<timestamp>/` with one `request`
-record per measured request and one `summary` record per matrix point. Use 10
-warmup requests per independent session, discard post-handshake cache/page-fault
-outliers, and measure at least 100 requests per
-`(concurrency, prompt_size, model_shape)` point. Concurrency 16 should mean 16
-independent client sessions unless explicitly labeled as single-session
-in-flight concurrency.
+`evidence/benchmarks/gcp-cs-tdx-warm-path-<timestamp>/` for local-to-backend
+runs. `scripts/gcp/warm_path_colocated_benchmark.sh` writes JSONL under
+`evidence/benchmarks/gcp-cs-tdx-warm-path-colocated-<timestamp>/` by creating a
+temporary same-zone client VM and using the backend private IP; use this script
+when publishing residual/wall-time decomposition because it removes most public
+Internet variance. Both scripts emit one `request` record per measured request
+and one `summary` record per matrix point. Use 10 warmup requests per
+independent session, discard post-handshake cache/page-fault outliers, and
+measure at least 100 requests per `(concurrency, prompt_size, model_shape)`
+point. Concurrency 16 should mean 16 independent client sessions unless
+explicitly labeled as single-session in-flight concurrency.
 
 For audit throughput, report both total pass time and derived throughput:
 
