@@ -371,9 +371,13 @@ for token in "${PRIVACY_TOKENS[@]}"; do
     fi
 done
 
+python3 "${SCRIPT_DIR}/summarize_warm_path_benchmark.py" \
+    --artifact-dir "${REDACTED_DIR}" \
+    --title "GCP Confidential Space Warm-Path Benchmark, Same-Zone Client"
+
 (
     cd "${REDACTED_DIR}"
-    HASH_INPUTS=(warm-path-records.jsonl run.log CONTEXT.md)
+    HASH_INPUTS=(SUMMARY.md FACT_CHECK.md warm-path-records.jsonl run.log CONTEXT.md)
     if [[ -f build.log ]]; then
         HASH_INPUTS+=(build.log)
     fi

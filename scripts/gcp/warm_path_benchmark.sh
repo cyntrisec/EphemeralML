@@ -11,9 +11,9 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
-# shellcheck source=../lib/ui.sh
+# shellcheck disable=SC1091
 source "${SCRIPT_DIR}/../lib/ui.sh"
-# shellcheck source=lib.sh
+# shellcheck disable=SC1091
 source "${SCRIPT_DIR}/lib.sh"
 gcp_source_env_file "${PROJECT_DIR}"
 gcp_export_env_aliases
@@ -179,9 +179,13 @@ if [[ -f "${RAW_DIR}/build.log" ]]; then
     redact_artifact_file "${RAW_DIR}/build.log" "${REDACTED_DIR}/build.log"
 fi
 
+python3 "${SCRIPT_DIR}/summarize_warm_path_benchmark.py" \
+    --artifact-dir "${REDACTED_DIR}" \
+    --title "GCP Confidential Space Warm-Path Benchmark, External-IP Runner"
+
 (
     cd "${REDACTED_DIR}"
-    HASH_INPUTS=(warm-path-records.jsonl run.log)
+    HASH_INPUTS=(SUMMARY.md FACT_CHECK.md warm-path-records.jsonl run.log)
     if [[ -f build.log ]]; then
         HASH_INPUTS+=(build.log)
     fi
