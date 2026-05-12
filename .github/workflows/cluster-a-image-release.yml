@@ -137,6 +137,16 @@ jobs:
         with:
           cosign-release: 'v2.4.1'
 
+      - name: Ensure ECR Public repository exists
+        if: needs.release-tag.outputs.push == 'true'
+        env:
+          REPOSITORY: ${{ matrix.repository }}
+        run: |
+          set -euo pipefail
+          if ! aws ecr-public describe-repositories --repository-names "$REPOSITORY" >/dev/null 2>&1; then
+            aws ecr-public create-repository --repository-name "$REPOSITORY" >/dev/null
+          fi
+
       - name: Push and sign host binary OCI artifact
         id: publish
         if: needs.release-tag.outputs.push == 'true'
@@ -217,6 +227,14 @@ jobs:
         uses: aws-actions/amazon-ecr-login@v2
         with:
           registry-type: public
+
+      - name: Ensure ECR Public repository exists
+        if: needs.release-tag.outputs.push == 'true'
+        run: |
+          set -euo pipefail
+          if ! aws ecr-public describe-repositories --repository-names proxy >/dev/null 2>&1; then
+            aws ecr-public create-repository --repository-name proxy >/dev/null
+          fi
 
       - name: Build proxy image
         id: build
@@ -312,6 +330,16 @@ jobs:
         uses: aws-actions/amazon-ecr-login@v2
         with:
           registry-type: public
+
+      - name: Ensure ECR Public repositories exist
+        if: needs.release-tag.outputs.push == 'true'
+        run: |
+          set -euo pipefail
+          for repository in enclave-rootfs enclave; do
+            if ! aws ecr-public describe-repositories --repository-names "$repository" >/dev/null 2>&1; then
+              aws ecr-public create-repository --repository-name "$repository" >/dev/null
+            fi
+          done
 
       - name: Build enclave rootfs image
         env:

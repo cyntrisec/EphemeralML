@@ -68,6 +68,12 @@ Do not broaden the `sub` condition to all tags or branches. If the legacy
 `worker-v*` tag family is used for an internal dry run, add that ref pattern
 explicitly and remove it again before a customer-facing release.
 
+The role's ECR Public permissions must allow publishing and first-time
+repository bootstrap for the five release repositories (`relay`,
+`relay-egress`, `proxy`, `enclave-rootfs`, `enclave`). In addition to the
+upload and image-read actions, include `ecr-public:CreateRepository` so a
+fresh release account can publish without a manual repository pre-create step.
+
 ## Release public keys
 
 This directory ships the cosign public keys the `ephemeralml-doctor` binary
