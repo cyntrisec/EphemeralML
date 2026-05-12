@@ -106,9 +106,12 @@ async fn tcp_relay_refuses_connections_at_capacity() {
     let mut buf = [0u8; 1];
     let read = tokio::time::timeout(Duration::from_secs(1), second.read(&mut buf))
         .await
-        .unwrap()
         .unwrap();
-    assert_eq!(read, 0);
+    match read {
+        Ok(0) => {}
+        Err(err) if err.kind() == io::ErrorKind::ConnectionReset => {}
+        other => panic!("expected refused connection to close or reset, got {other:?}"),
+    }
     assert_eq!(connector_count.load(Ordering::SeqCst), 1);
 
     first.write_all(b"q").await.unwrap();
