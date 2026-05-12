@@ -27,6 +27,13 @@ to `https://templates.cyntrisec.com/aws/v1/worker.yaml`.
    - `EvidenceBucketName`
    - `RetentionDays`
    - `InstanceType`
+
+`AccessCIDR` defaults to `192.0.2.0/32`, a non-routable TEST-NET-1 address,
+so the worker NLB is closed until the operator explicitly opens it. Set it to
+the customer proxy's egress IP, VPN CIDR, or office CIDR. Do not use
+`0.0.0.0/0` for a pilot unless the account owner has explicitly accepted the
+resource-abuse risk.
+
 4. Create the stack and wait for `CREATE_COMPLETE`.
 
 The stack smoke test only checks service liveness: both relay services active,

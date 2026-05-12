@@ -13,7 +13,7 @@ use anyhow::{bail, Context, Result};
 use clap::Parser;
 use coset::CborSerializable;
 use ed25519_dalek::VerifyingKey;
-use ephemeral_ml_common::{AttestationReceipt, AttestationUserData};
+use ephemeral_ml_common::{AttestationReceipt, AttestationUserData, WorkerAttestationUserData};
 use sha2::{Digest, Sha256};
 use std::fs;
 use std::path::PathBuf;
@@ -378,13 +378,23 @@ fn extract_user_data_from_map(doc: &ciborium::Value) -> Result<AttestationUserDa
         None => bail!("user_data field not found in attestation"),
     };
 
-    // Parse user data (try JSON first, then CBOR)
+    if let Ok(worker_user_data) = WorkerAttestationUserData::from_cbor(&user_data_bytes) {
+        return Ok(AttestationUserData::new(
+            [0u8; 32],
+            worker_user_data.receipt_signing_pubkey,
+            worker_user_data.schema_version as u32,
+            vec!["worker_user_data_v1".to_string()],
+        ));
+    }
+
+    // Parse legacy user data (try JSON first, then CBOR)
     let user_data: AttestationUserData =
         if let Ok(parsed) = serde_json::from_slice(&user_data_bytes) {
             parsed
         } else {
-            ephemeral_ml_common::cbor::from_slice(&user_data_bytes)
-                .context("Failed to parse user_data (tried JSON and CBOR)")?
+            ephemeral_ml_common::cbor::from_slice(&user_data_bytes).context(
+                "Failed to parse user_data (tried Worker CBOR, legacy JSON, and legacy CBOR)",
+            )?
         };
 
     Ok(user_data)

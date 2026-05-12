@@ -5,7 +5,7 @@ use confidential_ml_transport::{
     ChannelTiming, ChannelTimingOperation, SecureChannel, SessionConfig,
 };
 use ephemeral_ml_common::transport_types::EphemeralUserData;
-use ephemeral_ml_common::{AttestationReceipt, ReceiptVerifier};
+use ephemeral_ml_common::{AttestationReceipt, ReceiptVerifier, WorkerAttestationUserData};
 pub use ephemeral_ml_common::{InferenceHandlerInput, InferenceHandlerOutput};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
@@ -50,6 +50,10 @@ pub struct InferenceResult {
     pub bundle_url: Option<String>,
     /// SHA-256 of the compressed per-inference receipt bundle, when emitted.
     pub bundle_sha256: Option<String>,
+    /// Model id bound into the worker's attested user_data, when worker mode is used.
+    pub attested_worker_model_id: Option<String>,
+    /// Model hash bound into the worker's attested user_data, when worker mode is used.
+    pub attested_worker_model_hash: Option<[u8; 32]>,
     /// Development-only benchmark timings returned by the backend when enabled.
     pub benchmark: Option<serde_json::Value>,
     /// Development-only client-side SecureChannel AEAD timings.
@@ -152,6 +156,8 @@ pub struct SecureEnclaveClient {
     server_receipt_signing_key: Option<[u8; 32]>,
     server_attestation_hash: Option<[u8; 32]>,
     server_platform_evidence_hash: Option<[u8; 32]>,
+    server_worker_model_id: Option<String>,
+    server_worker_model_hash: Option<[u8; 32]>,
     /// Tracks the last seen sequence number for replay detection
     last_sequence_number: u64,
     /// Maximum allowed receipt age in seconds (default: 5 minutes)
@@ -167,6 +173,8 @@ impl SecureEnclaveClient {
             server_receipt_signing_key: None,
             server_attestation_hash: None,
             server_platform_evidence_hash: None,
+            server_worker_model_id: None,
+            server_worker_model_hash: None,
             last_sequence_number: u64::MAX, // sentinel: no receipts seen yet
             max_receipt_age_secs: 300,      // 5 minutes
         }
@@ -184,6 +192,8 @@ impl SecureEnclaveClient {
             server_receipt_signing_key: None,
             server_attestation_hash: None,
             server_platform_evidence_hash: None,
+            server_worker_model_id: None,
+            server_worker_model_hash: None,
             last_sequence_number: u64::MAX, // sentinel: no receipts seen yet
             max_receipt_age_secs: 300,
         }
@@ -201,6 +211,92 @@ impl SecureEnclaveClient {
 
     pub fn server_platform_evidence_hash(&self) -> Option<[u8; 32]> {
         self.server_platform_evidence_hash
+    }
+
+    /// Returns the worker model id bound into attestation user_data, if present.
+    pub fn server_worker_model_id(&self) -> Option<&str> {
+        self.server_worker_model_id.as_deref()
+    }
+
+    /// Returns the worker model hash bound into attestation user_data, if present.
+    pub fn server_worker_model_hash(&self) -> Option<[u8; 32]> {
+        self.server_worker_model_hash
+    }
+
+    fn capture_server_user_data(&mut self, user_data_bytes: &[u8]) {
+        self.server_receipt_signing_key = None;
+        self.server_platform_evidence_hash = None;
+        self.server_worker_model_id = None;
+        self.server_worker_model_hash = None;
+
+        if let Ok(user_data) = WorkerAttestationUserData::from_cbor(user_data_bytes) {
+            self.server_receipt_signing_key = Some(user_data.receipt_signing_pubkey);
+            self.server_worker_model_id = Some(user_data.model_id);
+            self.server_worker_model_hash = Some(user_data.model_hash);
+            return;
+        }
+
+        if let Ok(user_data) = EphemeralUserData::from_cbor(user_data_bytes) {
+            self.server_receipt_signing_key = Some(user_data.receipt_signing_key);
+            self.server_platform_evidence_hash = user_data.platform_evidence_hash;
+        }
+    }
+
+    fn verify_worker_identity_binding(&self, output: &InferenceHandlerOutput) -> Result<()> {
+        if let Some(attested_model_id) = self.server_worker_model_id.as_deref() {
+            if output.receipt.model_id != attested_model_id {
+                return Err(ClientError::Client(EphemeralError::ValidationError(
+                    format!(
+                        "Receipt model_id '{}' does not match attested worker model_id '{}'",
+                        output.receipt.model_id, attested_model_id
+                    ),
+                )));
+            }
+        }
+
+        if let Some(attested_model_hash) = self.server_worker_model_hash {
+            let Some(air_b64) = output.air_v1_receipt_b64.as_ref() else {
+                return Err(ClientError::Client(EphemeralError::ValidationError(
+                    "Worker attested a model_hash but response did not include AIR v1 receipt claims"
+                        .to_string(),
+                )));
+            };
+
+            use base64::Engine as _;
+            let air_bytes = base64::engine::general_purpose::STANDARD
+                .decode(air_b64.as_bytes())
+                .map_err(|e| {
+                    ClientError::Client(EphemeralError::SerializationError(format!(
+                        "AIR v1 receipt base64 decode failed: {}",
+                        e
+                    )))
+                })?;
+            let parsed = ephemeral_ml_common::air_receipt::parse_air_v1(&air_bytes)
+                .map_err(ClientError::Client)?;
+
+            if let Some(attested_model_id) = self.server_worker_model_id.as_deref() {
+                if parsed.claims.model_id != attested_model_id {
+                    return Err(ClientError::Client(EphemeralError::ValidationError(
+                        format!(
+                            "AIR v1 model_id '{}' does not match attested worker model_id '{}'",
+                            parsed.claims.model_id, attested_model_id
+                        ),
+                    )));
+                }
+            }
+
+            if parsed.claims.model_hash != attested_model_hash {
+                return Err(ClientError::Client(EphemeralError::ValidationError(
+                    format!(
+                        "AIR v1 model_hash {} does not match attested worker model_hash {}",
+                        hex::encode(parsed.claims.model_hash),
+                        hex::encode(attested_model_hash)
+                    ),
+                )));
+            }
+        }
+
+        Ok(())
     }
 
     /// Verify an externally-delivered platform evidence bundle against the
@@ -406,15 +502,18 @@ impl SecureClient for SecureEnclaveClient {
                 )))
             })?;
 
+        self.server_attestation_hash = None;
+        self.server_receipt_signing_key = None;
+        self.server_platform_evidence_hash = None;
+        self.server_worker_model_id = None;
+        self.server_worker_model_hash = None;
+
         // Extract server's receipt signing key and attestation hash from peer attestation
         if let Some(attestation) = channel.peer_attestation() {
             self.server_attestation_hash = Some(attestation.document_hash);
 
             if let Some(ref user_data_bytes) = attestation.user_data {
-                if let Ok(user_data) = EphemeralUserData::from_cbor(user_data_bytes) {
-                    self.server_receipt_signing_key = Some(user_data.receipt_signing_key);
-                    self.server_platform_evidence_hash = user_data.platform_evidence_hash;
-                }
+                self.capture_server_user_data(user_data_bytes);
             }
         }
 
@@ -561,6 +660,7 @@ impl SecureClient for SecureEnclaveClient {
                 ),
             )));
         }
+        self.verify_worker_identity_binding(&output)?;
 
         // 8. Verify timestamp freshness (reject stale and future timestamps)
         let now = std::time::SystemTime::now()
@@ -632,6 +732,8 @@ impl SecureClient for SecureEnclaveClient {
             model_identity_coverage: output.model_identity_coverage,
             bundle_url: output.bundle_url,
             bundle_sha256: output.bundle_sha256,
+            attested_worker_model_id: self.server_worker_model_id.clone(),
+            attested_worker_model_hash: self.server_worker_model_hash,
             benchmark: output.benchmark,
             transport_timings: client_transport_timings(
                 benchmark_mode.is_some(),
@@ -769,6 +871,7 @@ impl SecureClient for SecureEnclaveClient {
                 ),
             )));
         }
+        self.verify_worker_identity_binding(&output)?;
 
         let now = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
@@ -836,6 +939,8 @@ impl SecureClient for SecureEnclaveClient {
             model_identity_coverage: output.model_identity_coverage,
             bundle_url: output.bundle_url,
             bundle_sha256: output.bundle_sha256,
+            attested_worker_model_id: self.server_worker_model_id.clone(),
+            attested_worker_model_hash: self.server_worker_model_hash,
             benchmark: output.benchmark,
             transport_timings: client_transport_timings(
                 benchmark_mode.is_some(),
@@ -970,6 +1075,7 @@ impl SecureClient for SecureEnclaveClient {
                 ),
             )));
         }
+        self.verify_worker_identity_binding(&output)?;
 
         let now = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
@@ -1037,6 +1143,8 @@ impl SecureClient for SecureEnclaveClient {
             model_identity_coverage: output.model_identity_coverage,
             bundle_url: output.bundle_url,
             bundle_sha256: output.bundle_sha256,
+            attested_worker_model_id: self.server_worker_model_id.clone(),
+            attested_worker_model_hash: self.server_worker_model_hash,
             benchmark: output.benchmark,
             transport_timings: client_transport_timings(
                 benchmark_mode.is_some(),
@@ -1056,6 +1164,21 @@ mod tests {
     use confidential_ml_transport::session::SecurityProfile;
     use confidential_ml_transport::{SecureChannel, SessionConfig};
     use ephemeral_ml_common::{EnclaveMeasurements, ReceiptSigningKey, SecurityMode};
+
+    #[test]
+    fn captures_worker_user_data_model_identity() {
+        let user_data = WorkerAttestationUserData::new([0x11; 32], "stage-0", [0x22; 32])
+            .to_cbor()
+            .unwrap();
+        let mut client = SecureEnclaveClient::new("test-client".to_string());
+
+        client.capture_server_user_data(&user_data);
+
+        assert_eq!(client.server_receipt_signing_key(), Some([0x11; 32]));
+        assert_eq!(client.server_worker_model_id(), Some("stage-0"));
+        assert_eq!(client.server_worker_model_hash(), Some([0x22; 32]));
+        assert_eq!(client.server_platform_evidence_hash(), None);
+    }
 
     #[tokio::test]
     async fn test_full_secure_inference_mock() {

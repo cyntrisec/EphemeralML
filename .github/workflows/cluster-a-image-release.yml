@@ -42,10 +42,15 @@ jobs:
         id: tag
         run: |
           if [ "${GITHUB_REF_TYPE}" = "tag" ]; then
-            TAG="${GITHUB_REF_NAME}"
+            RAW_TAG="${GITHUB_REF_NAME}"
           else
-            TAG="${{ inputs.release_tag }}"
+            RAW_TAG="${{ inputs.release_tag }}"
           fi
+          case "$RAW_TAG" in
+            cluster-a-*) TAG="${RAW_TAG#cluster-a-}" ;;
+            worker-*) TAG="${RAW_TAG#worker-}" ;;
+            *) TAG="$RAW_TAG" ;;
+          esac
           case "$TAG" in
             *[!A-Za-z0-9_.-]*|'')
               echo "invalid release tag: $TAG" >&2
@@ -72,6 +77,7 @@ jobs:
     name: Build Host Binary (${{ matrix.repository }})
     runs-on: ubuntu-22.04
     needs: release-tag
+    environment: production-release
     strategy:
       fail-fast: false
       matrix:
@@ -104,7 +110,7 @@ jobs:
           mkdir -p "dist/${{ matrix.repository }}"
           for binary in $BINARIES; do
             cp "target/release/${binary}" "dist/${{ matrix.repository }}/${binary}"
-            sha256sum "dist/${{ matrix.repository }}/${binary}" > "dist/${{ matrix.repository }}/${binary}.sha256"
+            (cd "dist/${{ matrix.repository }}" && sha256sum "${binary}" > "${binary}.sha256")
           done
 
       - name: Configure AWS credentials
@@ -192,6 +198,7 @@ jobs:
     name: Build Proxy OCI Image
     runs-on: ubuntu-22.04
     needs: release-tag
+    environment: production-release
     steps:
       - uses: actions/checkout@v4
 
@@ -279,6 +286,7 @@ jobs:
     runs-on: [self-hosted, linux, x64, nitro-enclaves]
     needs: release-tag
     if: needs.release-tag.outputs.build_enclave_eif == 'true'
+    environment: production-release
     steps:
       - uses: actions/checkout@v4
 

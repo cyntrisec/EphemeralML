@@ -1,7 +1,7 @@
 use crate::{ClientError, FreshnessEnforcer, PolicyManager, Result};
 use ciborium::Value as CborValue;
 use coset::{CborSerializable, CoseSign1};
-use ephemeral_ml_common::{AttestationDocument, PcrMeasurements};
+use ephemeral_ml_common::{AttestationDocument, PcrMeasurements, WorkerAttestationUserData};
 use openssl::hash::MessageDigest;
 use openssl::sign::Verifier;
 use openssl::x509::X509;
@@ -66,6 +66,49 @@ pub struct AttestationUserData {
     pub platform_evidence_hash: Option<[u8; 32]>,
 }
 
+struct ParsedUserDataIdentity {
+    hpke_public_key: [u8; 32],
+    receipt_signing_key: [u8; 32],
+    protocol_version: u32,
+    supported_features: Vec<String>,
+    platform_evidence_hash: Option<[u8; 32]>,
+}
+
+fn parse_user_data_identity(user_data_bytes: &[u8]) -> Result<ParsedUserDataIdentity> {
+    if let Ok(worker_user_data) = WorkerAttestationUserData::from_cbor(user_data_bytes) {
+        return Ok(ParsedUserDataIdentity {
+            // Worker-mode user_data binds the receipt key and model identity.
+            // The SecureChannel HPKE key is provided by confidential-ml-transport,
+            // not by Cyntrisec's worker identity payload.
+            hpke_public_key: [0u8; 32],
+            receipt_signing_key: worker_user_data.receipt_signing_pubkey,
+            protocol_version: worker_user_data.schema_version as u32,
+            supported_features: vec!["worker_user_data_v1".to_string()],
+            platform_evidence_hash: None,
+        });
+    }
+
+    let user_data: AttestationUserData = if let Ok(parsed) = serde_json::from_slice(user_data_bytes)
+    {
+        parsed
+    } else {
+        ephemeral_ml_common::cbor::from_slice(user_data_bytes).map_err(|e| {
+            ClientError::Client(crate::EphemeralError::AttestationError(format!(
+                "Failed to parse user_data (tried Worker CBOR, legacy JSON, and legacy CBOR): {}",
+                e
+            )))
+        })?
+    };
+
+    Ok(ParsedUserDataIdentity {
+        hpke_public_key: user_data.hpke_public_key,
+        receipt_signing_key: user_data.receipt_signing_key,
+        protocol_version: user_data.protocol_version,
+        supported_features: user_data.supported_features,
+        platform_evidence_hash: user_data.platform_evidence_hash,
+    })
+}
+
 /// AWS Nitro Enclaves Root CA (G1)
 const AWS_NITRO_ROOT_CA: &[u8] = include_bytes!("aws_nitro_root_ca.der");
 
@@ -127,13 +170,7 @@ impl AttestationVerifier {
                             "Mock attestation missing user_data field".to_string(),
                         ))
                     })?;
-                    let ud =
-                        serde_json::from_slice::<AttestationUserData>(&ud_bytes).map_err(|e| {
-                            ClientError::Client(crate::EphemeralError::AttestationError(format!(
-                                "Mock attestation user_data parse failed: {}",
-                                e
-                            )))
-                        })?;
+                    let ud = parse_user_data_identity(&ud_bytes)?;
 
                     // Extract PCRs
                     let pcrs = self.extract_pcrs(map).unwrap_or_else(|_| doc.pcrs.clone());
@@ -346,13 +383,7 @@ impl AttestationVerifier {
 
         // 8. Extract user_data and keys
         let user_data_bytes = get_bytes_field(payload_map, "user_data")?;
-        let user_data: AttestationUserData =
-            serde_json::from_slice(&user_data_bytes).map_err(|e| {
-                ClientError::Client(crate::EphemeralError::AttestationError(format!(
-                    "Failed to parse user data: {}",
-                    e
-                )))
-            })?;
+        let user_data = parse_user_data_identity(&user_data_bytes)?;
 
         // 9. Extract optional KMS public key
         let kms_public_key = get_bytes_field(payload_map, "public_key").ok();

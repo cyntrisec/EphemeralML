@@ -2,6 +2,24 @@ use anyhow::{bail, Context, Result};
 use ciborium::Value;
 use ed25519_dalek::VerifyingKey;
 
+fn receipt_signing_key_from_user_data(user_data_bytes: &[u8]) -> Result<[u8; 32]> {
+    if let Ok(worker_user_data) =
+        ephemeral_ml_common::WorkerAttestationUserData::from_cbor(user_data_bytes)
+    {
+        return Ok(worker_user_data.receipt_signing_pubkey);
+    }
+
+    let user_data: ephemeral_ml_common::AttestationUserData = if let Ok(parsed) =
+        serde_json::from_slice(user_data_bytes)
+    {
+        parsed
+    } else {
+        ephemeral_ml_common::cbor::from_slice(user_data_bytes)
+                .context("Failed to parse user_data from attestation (tried Worker CBOR, legacy JSON, and legacy CBOR)")?
+    };
+    Ok(user_data.receipt_signing_key)
+}
+
 /// Extract the receipt signing key from an attestation document.
 ///
 /// For Nitro COSE_Sign1 documents, this verifies the attestation signature and
@@ -45,13 +63,6 @@ pub fn extract_key_from_attestation(att_bytes: &[u8], allow_mock: bool) -> Resul
         _ => bail!("No user_data bytes in attestation document"),
     };
 
-    let user_data: ephemeral_ml_common::AttestationUserData =
-        if let Ok(parsed) = serde_json::from_slice(user_data_bytes) {
-            parsed
-        } else {
-            ephemeral_ml_common::cbor::from_slice(user_data_bytes)
-                .context("Failed to parse user_data from attestation (tried JSON and CBOR)")?
-        };
-
-    VerifyingKey::from_bytes(&user_data.receipt_signing_key).context("Invalid receipt signing key")
+    let receipt_signing_key = receipt_signing_key_from_user_data(user_data_bytes)?;
+    VerifyingKey::from_bytes(&receipt_signing_key).context("Invalid receipt signing key")
 }

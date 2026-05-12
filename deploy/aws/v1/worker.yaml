@@ -49,9 +49,9 @@ Metadata:
 Parameters:
   AccessCIDR:
     Type: String
-    Default: 0.0.0.0/0
+    Default: 192.0.2.0/32
     AllowedPattern: ^(([0-9]{1,3}\.){3}[0-9]{1,3}/[0-9]{1,2}|::/0)$
-    Description: CIDR allowed to connect to the worker NLB on TCP 443.
+    Description: CIDR allowed to connect to the worker NLB on TCP 443. Default is TEST-NET-1 and intentionally blocks public access; set this to your proxy host, VPN, or office CIDR.
 
   ModelURI:
     Type: String
@@ -468,17 +468,40 @@ Resources:
           YAML
           systemctl enable --now nitro-enclaves-allocator.service
 
+          ORAS_SHA256=bff970346470e5ef888e9f2c0bf7f8ee47283f5a45207d6e7a037da1fb0eae0d
+          COSIGN_SHA256=8b24b946dd5809c6bd93de08033bcf6bc0ed7d336b7785787c080f574b89249b
+          COSIGN_CERT_IDENTITY='https://github.com/cyntrisec/EphemeralML/.github/workflows/cluster-a-image-release.yml@refs/tags/cluster-a-v.*'
+          COSIGN_OIDC_ISSUER='https://token.actions.githubusercontent.com'
+
           curl -fsSL https://github.com/oras-project/oras/releases/download/v1.2.2/oras_1.2.2_linux_amd64.tar.gz -o /tmp/oras.tar.gz
+          echo "$ORAS_SHA256  /tmp/oras.tar.gz" | sha256sum -c -
           tar -xzf /tmp/oras.tar.gz -C /tmp oras
           install -m 0755 /tmp/oras /usr/local/bin/oras
 
+          curl -fsSL https://github.com/sigstore/cosign/releases/download/v2.4.1/cosign-linux-amd64 -o /tmp/cosign
+          echo "$COSIGN_SHA256  /tmp/cosign" | sha256sum -c -
+          install -m 0755 /tmp/cosign /usr/local/bin/cosign
+
+          verify_release_ref() {
+            local ref="$1"
+            cosign verify \
+              --certificate-identity-regexp "$COSIGN_CERT_IDENTITY" \
+              --certificate-oidc-issuer "$COSIGN_OIDC_ISSUER" \
+              "$ref" >/tmp/cosign-verify.log
+          }
+
+          verify_release_ref public.ecr.aws/cyntrisec/relay:${ReleaseTag}
           oras pull public.ecr.aws/cyntrisec/relay:${ReleaseTag} -o /tmp/cyntrisec-relay
+          (cd /tmp/cyntrisec-relay && sha256sum -c cyntrisec-relay.sha256)
           install -m 0755 /tmp/cyntrisec-relay/cyntrisec-relay /opt/cyntrisec/bin/cyntrisec-relay
 
+          verify_release_ref public.ecr.aws/cyntrisec/relay-egress:${ReleaseTag}
           oras pull public.ecr.aws/cyntrisec/relay-egress:${ReleaseTag} -o /tmp/cyntrisec-relay-egress
+          (cd /tmp/cyntrisec-relay-egress && sha256sum -c cyntrisec-relay-egress.sha256 && sha256sum -c cyntrisec-worker-config.sha256)
           install -m 0755 /tmp/cyntrisec-relay-egress/cyntrisec-relay-egress /opt/cyntrisec/bin/cyntrisec-relay-egress
           install -m 0755 /tmp/cyntrisec-relay-egress/cyntrisec-worker-config /opt/cyntrisec/bin/cyntrisec-worker-config
 
+          verify_release_ref public.ecr.aws/cyntrisec/enclave:${ReleaseTag}
           oras pull public.ecr.aws/cyntrisec/enclave:${ReleaseTag} -o /tmp/cyntrisec-enclave
           install -m 0644 /tmp/cyntrisec-enclave/cyntrisec-enclave.eif /opt/cyntrisec/enclave/cyntrisec-enclave.eif
 

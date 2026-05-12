@@ -150,6 +150,8 @@ impl SecureClient for MockSecureClient {
             model_identity_coverage: None,
             bundle_url: None,
             bundle_sha256: None,
+            attested_worker_model_id: None,
+            attested_worker_model_hash: None,
             benchmark: None,
             transport_timings: None,
         })
@@ -192,6 +194,8 @@ impl SecureClient for MockSecureClient {
             model_identity_coverage: None,
             bundle_url: None,
             bundle_sha256: None,
+            attested_worker_model_id: None,
+            attested_worker_model_hash: None,
             benchmark: None,
             transport_timings: None,
         })
@@ -239,6 +243,8 @@ impl SecureClient for MockSecureClient {
             model_identity_coverage: None,
             bundle_url: None,
             bundle_sha256: None,
+            attested_worker_model_id: None,
+            attested_worker_model_hash: None,
             benchmark: None,
             transport_timings: None,
         })

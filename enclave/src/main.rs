@@ -2277,6 +2277,11 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
                 })?,
             );
             let transport_verifier = Arc::new(OneWayHostVerifier::new());
+            // The customer-side proxy is not itself a TEE. It proves the
+            // worker's Nitro identity using the pinned policy, while the worker
+            // accepts the host-relayed client channel without transport-layer
+            // measurement pinning.
+            let worker_session_config = confidential_ml_transport::SessionConfig::development();
             let mut server = WorkerServer::with_worker_identity(
                 handler,
                 transport_provider,
@@ -2284,7 +2289,7 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
                 receipt_pk,
                 args.model_id.clone(),
                 worker_model_hash,
-                confidential_ml_transport::SessionConfig::default(),
+                worker_session_config,
             )
             .map_err(|err| format!("failed to construct production worker server: {err}"))?;
 

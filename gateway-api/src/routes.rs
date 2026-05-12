@@ -833,6 +833,8 @@ fn inference_result_from_worker_output(output: InferenceHandlerOutput) -> Infere
         model_identity_coverage: output.model_identity_coverage,
         bundle_url: output.bundle_url,
         bundle_sha256: output.bundle_sha256,
+        attested_worker_model_id: None,
+        attested_worker_model_hash: None,
         benchmark: output.benchmark,
         transport_timings: None,
     }

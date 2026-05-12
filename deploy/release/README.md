@@ -33,11 +33,40 @@ For a CI dry run, start the workflow manually with `push=false`. That builds the
 relay executables and proxy image without publishing or signing them. Set
 `build_enclave_eif=true` only on the Nitro runner. A tag push to
 `cluster-a-v*` or `worker-v*` enables publish mode and signs pushed artifacts with
-keyless cosign via GitHub OIDC after pushing with the release AWS role.
+keyless cosign via GitHub OIDC after pushing with the release AWS role. The
+workflow strips the `cluster-a-` / `worker-` prefix for OCI tags, so
+`cluster-a-v1` publishes `public.ecr.aws/cyntrisec/...:v1`.
 
 The first public v1 EIF uses the bundled MiniLM smoke model so the release has
 stable measurements. Customer model selection and the final worker boot
 configuration are owned by the AWS `worker.yaml` deployment slice.
+
+## Release gates
+
+Jobs that assume `AWS_RELEASE_ROLE_ARN` run under the GitHub environment
+`production-release`. Configure that environment with required reviewers before
+publishing customer artifacts, and keep the self-hosted Nitro runner ephemeral:
+one release job per fresh runner, then tear it down.
+
+The AWS release role trust policy must be scoped to this repository, release
+environment, and release tag namespace. The intended GitHub OIDC conditions are:
+
+```json
+{
+  "StringEquals": {
+    "token.actions.githubusercontent.com:aud": "sts.amazonaws.com",
+    "token.actions.githubusercontent.com:repository": "cyntrisec/EphemeralML",
+    "token.actions.githubusercontent.com:sub": "repo:cyntrisec/EphemeralML:environment:production-release"
+  },
+  "StringLike": {
+    "token.actions.githubusercontent.com:ref": "refs/tags/cluster-a-v*"
+  }
+}
+```
+
+Do not broaden the `sub` condition to all tags or branches. If the legacy
+`worker-v*` tag family is used for an internal dry run, add that ref pattern
+explicitly and remove it again before a customer-facing release.
 
 ## Release public keys
 
