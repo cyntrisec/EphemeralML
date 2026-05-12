@@ -87,6 +87,6 @@ impl WorkerInferenceError {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(tag = "result", content = "data", rename_all = "snake_case")]
 pub enum WorkerResponse {
-    Ok(InferenceHandlerOutput),
+    Ok(Box<InferenceHandlerOutput>),
     Err(WorkerInferenceError),
 }

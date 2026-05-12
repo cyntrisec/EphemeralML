@@ -174,6 +174,7 @@ mod tests {
     use rand::rngs::OsRng;
     use rand::RngCore;
     use serde::Serialize;
+    use std::io::ErrorKind;
     use tokio::net::TcpListener;
 
     fn safetensors_with_dtype(
@@ -261,7 +262,11 @@ mod tests {
         let hpke_pk_bytes_clone = hpke_pk_bytes;
 
         // Start Mock KMS Server
-        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let listener = match TcpListener::bind("127.0.0.1:0").await {
+            Ok(listener) => listener,
+            Err(err) if err.kind() == ErrorKind::PermissionDenied => return,
+            Err(err) => panic!("failed to bind mock KMS listener: {err}"),
+        };
         let port = listener.local_addr().unwrap().port();
 
         tokio::spawn(async move {

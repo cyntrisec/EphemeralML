@@ -394,7 +394,7 @@ impl WorkerServer {
                     let response = match self.handler.handle(input).await {
                         Ok(mut output) => {
                             self.attach_bundle_metadata(&mut output).await;
-                            WorkerResponse::Ok(output)
+                            WorkerResponse::Ok(Box::new(output))
                         }
                         Err(err) => WorkerResponse::Err(err),
                     };

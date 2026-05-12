@@ -597,7 +597,7 @@ impl SecureChannelTransport {
             }
         };
         match response {
-            WorkerResponse::Ok(output) => Ok(output),
+            WorkerResponse::Ok(output) => Ok(*output),
             WorkerResponse::Err(err) => Err(WorkerChannelError::inference(format!(
                 "{}: {}",
                 err.code, err.message
@@ -876,7 +876,7 @@ fn normalize_inference_request(
 }
 
 fn f32_tensor_from_le_bytes(bytes: &[u8]) -> Result<Vec<f32>, WorkerChannelError> {
-    if bytes.len() % 4 != 0 {
+    if !bytes.len().is_multiple_of(4) {
         return Err(WorkerChannelError::invalid_input(format!(
             "tensor input has {} bytes, not a multiple of 4",
             bytes.len()
