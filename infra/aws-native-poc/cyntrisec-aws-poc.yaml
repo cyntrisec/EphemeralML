@@ -30,7 +30,15 @@ Parameters:
   EnclaveImageSha384:
     Type: String
     AllowedPattern: "^[0-9a-fA-F]{96}$"
-    Description: Approved Nitro EIF image SHA-384 for KMS RecipientAttestation.
+    Description: Approved Nitro EIF image SHA-384 for KMS RecipientAttestation. This pins the image/PCR0 measurement.
+  EnclavePcr1Sha384:
+    Type: String
+    AllowedPattern: "^[0-9a-fA-F]{96}$"
+    Description: Approved Nitro PCR1 SHA-384 measurement for KMS RecipientAttestation.
+  EnclavePcr2Sha384:
+    Type: String
+    AllowedPattern: "^[0-9a-fA-F]{96}$"
+    Description: Approved Nitro PCR2 SHA-384 measurement for KMS RecipientAttestation.
   LatestAmiId:
     Type: AWS::SSM::Parameter::Value<AWS::EC2::Image::Id>
     Default: /aws/service/ami-amazon-linux-latest/al2023-ami-kernel-default-x86_64
@@ -218,6 +226,8 @@ Resources:
                 Condition:
                   StringEqualsIgnoreCase:
                     kms:RecipientAttestation:ImageSha384: !Ref EnclaveImageSha384
+                    kms:RecipientAttestation:PCR1: !Ref EnclavePcr1Sha384
+                    kms:RecipientAttestation:PCR2: !Ref EnclavePcr2Sha384
 
   HostInstanceProfile:
     Type: AWS::IAM::InstanceProfile
@@ -266,6 +276,8 @@ Resources:
             printf 'export CYNTRISEC_MODEL_KMS_KEY_ARN=%s\n' '${ModelKey.Arn}'
             printf 'export CYNTRISEC_MODEL_KMS_ALIAS=%s\n' 'alias/${ProjectName}-model'
             printf 'export CYNTRISEC_APPROVED_EIF_SHA384=%s\n' '${EnclaveImageSha384}'
+            printf 'export CYNTRISEC_APPROVED_PCR1_SHA384=%s\n' '${EnclavePcr1Sha384}'
+            printf 'export CYNTRISEC_APPROVED_PCR2_SHA384=%s\n' '${EnclavePcr2Sha384}'
             printf 'export CYNTRISEC_EXPECTED_HOST_PROFILE=%s\n' '${ProjectName}-host-profile-${AWS::Region}'
           } >/etc/cyntrisec-poc.env
       Tags:
@@ -308,6 +320,20 @@ Resources:
       Name: !Sub "/cyntrisec/pilot/config/${AWS::StackName}/approved-eif-sha384"
       Type: String
       Value: !Ref EnclaveImageSha384
+
+  ApprovedPcr1Sha384Parameter:
+    Type: AWS::SSM::Parameter
+    Properties:
+      Name: !Sub "/cyntrisec/pilot/config/${AWS::StackName}/approved-pcr1-sha384"
+      Type: String
+      Value: !Ref EnclavePcr1Sha384
+
+  ApprovedPcr2Sha384Parameter:
+    Type: AWS::SSM::Parameter
+    Properties:
+      Name: !Sub "/cyntrisec/pilot/config/${AWS::StackName}/approved-pcr2-sha384"
+      Type: String
+      Value: !Ref EnclavePcr2Sha384
 
 Outputs:
   HostInstanceId:

@@ -279,6 +279,23 @@ struct Args {
     #[arg(long, env = "EPHEMERALML_DIRECT")]
     direct: bool,
 
+    /// Production worker mode: accept Cyntrisec proxy SecureChannel sessions on
+    /// a single vsock port and emit per-inference bundles through relay-egress.
+    #[arg(long, env = "CYNTRISEC_WORKER_SERVER")]
+    worker_server: bool,
+
+    /// Vsock port for production WorkerServer traffic from cyntrisec-relay.
+    #[arg(long, env = "CYNTRISEC_WORKER_VSOCK_PORT", default_value_t = 5000)]
+    worker_vsock_port: u32,
+
+    /// Parent-side vsock port that serves dynamic worker boot config.
+    #[arg(
+        long,
+        env = "CYNTRISEC_WORKER_CONFIG_VSOCK_PORT",
+        default_value_t = 5002
+    )]
+    worker_config_vsock_port: u32,
+
     /// Control channel listen address for pipeline mode.
     #[arg(long, default_value = "127.0.0.1:9000")]
     control_addr: String,
@@ -298,6 +315,183 @@ struct Args {
         default_value = "cyntrisec.com"
     )]
     receipt_issuer: String,
+
+    /// Parent CID for the production egress helper used by bundle emission.
+    #[arg(long, env = "CYNTRISEC_EGRESS_PARENT_CID", default_value_t = 3)]
+    egress_parent_cid: u32,
+
+    /// Parent-side vsock port for cyntrisec-relay-egress.
+    #[arg(long, env = "CYNTRISEC_EGRESS_VSOCK_PORT", default_value_t = 5001)]
+    egress_vsock_port: u32,
+
+    /// Timeout for one egress request to the parent helper.
+    #[arg(long, env = "CYNTRISEC_EGRESS_TIMEOUT_SECS", default_value_t = 30)]
+    egress_timeout_secs: u64,
+
+    /// Evidence bucket where relay-egress writes per-inference bundles.
+    #[arg(long, env = "CYNTRISEC_EVIDENCE_BUCKET")]
+    evidence_bucket: Option<String>,
+
+    /// Prefix under the evidence bucket for bundle objects.
+    #[arg(long, env = "CYNTRISEC_EVIDENCE_PREFIX", default_value = "bundles")]
+    evidence_prefix: String,
+
+    /// Tenant identifier used in evidence bundle S3 partition keys.
+    #[arg(long, env = "CYNTRISEC_TENANT_ID", default_value = "tenant")]
+    tenant_id: String,
+
+    /// Path to the policy JSON copied into evidence bundles.
+    #[arg(
+        long,
+        env = "CYNTRISEC_BUNDLE_POLICY_PATH",
+        default_value = "/app/cyntrisec-policy.json"
+    )]
+    bundle_policy_path: PathBuf,
+
+    /// Path to the runtime passport JSON copied into evidence bundles.
+    #[arg(
+        long,
+        env = "CYNTRISEC_RUNTIME_PASSPORT_PATH",
+        default_value = "/app/runtime-passport.json"
+    )]
+    runtime_passport_path: PathBuf,
+
+    /// SSE-KMS key ARN used by relay-egress for evidence bundle PutObject.
+    #[arg(long, env = "CYNTRISEC_EVIDENCE_KMS_KEY_ARN")]
+    evidence_kms_key_arn: Option<String>,
+}
+
+#[cfg(feature = "production")]
+#[allow(dead_code)]
+fn build_bundle_egress_client(
+    args: &Args,
+) -> std::sync::Arc<dyn ephemeral_ml_common::EgressClient> {
+    std::sync::Arc::new(
+        ephemeral_ml_enclave::egress_vsock_client::VsockEgressClient::new(
+            args.egress_parent_cid,
+            args.egress_vsock_port,
+            std::time::Duration::from_secs(args.egress_timeout_secs),
+        ),
+    )
+}
+
+#[cfg(feature = "mock")]
+#[allow(dead_code)]
+fn build_bundle_egress_client(
+    _args: &Args,
+) -> std::sync::Arc<dyn ephemeral_ml_common::EgressClient> {
+    std::sync::Arc::new(ephemeral_ml_common::egress_client::mock::MockEgressClient::default())
+}
+
+#[cfg(feature = "production")]
+fn read_json_file(path: &PathBuf, label: &str) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
+    std::fs::read(path)
+        .map_err(|err| format!("failed to read {label} at {}: {err}", path.display()).into())
+}
+
+#[cfg(feature = "production")]
+fn generated_local_model_manifest_json(
+    model_id: &str,
+    model_hash: [u8; 32],
+    model_format: &str,
+) -> Result<String, Box<dyn std::error::Error>> {
+    let manifest = serde_json::json!({
+        "model_id": model_id,
+        "version": "1.0",
+        "model_hash": model_hash,
+        "hash_algorithm": "sha256",
+        "key_id": "local-bundled-model",
+        "tokenizer_hash": null,
+        "config_hash": null,
+        "gcs_uris": {},
+        "created_at": "release-build",
+        "model_identity": {
+            "packaging_format": model_format,
+            "source": "bundled-in-eif"
+        },
+        "signature": []
+    });
+    serde_json::to_string_pretty(&manifest).map_err(|err| err.into())
+}
+
+#[cfg(feature = "production")]
+fn coverage_to_owned(
+    coverage: std::collections::BTreeMap<&'static str, bool>,
+) -> std::collections::BTreeMap<String, bool> {
+    coverage
+        .into_iter()
+        .map(|(key, value)| (key.to_string(), value))
+        .collect()
+}
+
+#[cfg(feature = "production")]
+#[derive(Debug, serde::Deserialize)]
+struct WorkerBootConfig {
+    schema_version: u8,
+    evidence_bucket: Option<String>,
+    evidence_prefix: Option<String>,
+    tenant_id: Option<String>,
+    policy_json: Option<String>,
+    runtime_passport_json: Option<String>,
+    evidence_kms_key_arn: Option<String>,
+}
+
+#[cfg(feature = "production")]
+async fn fetch_worker_boot_config(
+    port: u32,
+) -> Result<Option<WorkerBootConfig>, Box<dyn std::error::Error>> {
+    use tokio::io::AsyncReadExt;
+    use tokio_vsock::{VsockAddr, VsockStream, VMADDR_CID_HOST};
+
+    let stream = match VsockStream::connect(VsockAddr::new(VMADDR_CID_HOST, port)).await {
+        Ok(stream) => stream,
+        Err(err) => {
+            warn!(
+                worker_config_vsock_port = port,
+                error = %err,
+                "worker boot config service unavailable; falling back to baked args/env"
+            );
+            return Ok(None);
+        }
+    };
+    let mut bytes = Vec::new();
+    stream
+        .take(1024 * 1024)
+        .read_to_end(&mut bytes)
+        .await
+        .map_err(|err| format!("failed reading worker boot config: {err}"))?;
+    let config: WorkerBootConfig = serde_json::from_slice(&bytes)
+        .map_err(|err| format!("failed to decode worker boot config JSON: {err}"))?;
+    if config.schema_version != 1 {
+        return Err(format!(
+            "unsupported worker boot config schema_version {}; expected 1",
+            config.schema_version
+        )
+        .into());
+    }
+    Ok(Some(config))
+}
+
+#[cfg(feature = "production")]
+async fn run_worker_server_vsock(
+    server: ephemeral_ml_enclave::worker_server::WorkerServer,
+    port: u32,
+) -> Result<(), Box<dyn std::error::Error>> {
+    use std::sync::Arc;
+    use tokio_vsock::{VsockAddr, VsockListener, VMADDR_CID_ANY};
+
+    let listener = Arc::new(VsockListener::bind(VsockAddr::new(VMADDR_CID_ANY, port))?);
+    info!(
+        worker_vsock_port = port,
+        "Production WorkerServer listening on vsock"
+    );
+    server
+        .serve_accept_loop(move || {
+            let listener = Arc::clone(&listener);
+            async move { listener.accept().await.map(|(stream, _addr)| stream) }
+        })
+        .await
+        .map_err(|err| Box::new(err) as Box<dyn std::error::Error>)
 }
 
 /// Classify an error message into a structured exit code for CI/script parsing.
@@ -1713,7 +1907,9 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
         let attestation_provider = DefaultAttestationProvider::new()?;
         let engine = CandleInferenceEngine::new()?;
 
-        // Generate receipt signing key early — needed for KMS attestation binding
+        // Generate the in-enclave process receipt signer early so its public key
+        // can be bound into attestation. Do not move receipt signing to KMS:
+        // Nitro RecipientAttestation gates Decrypt/DataKey-style APIs, not Sign.
         let receipt_key = ReceiptSigningKey::generate()?;
         let receipt_pk = receipt_key.public_key_bytes();
 
@@ -1737,6 +1933,9 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
         #[allow(unused_assignments)]
         let mut model_hash: Option<[u8; 32]> = None;
         let mut model_hash_scheme: Option<String> = None;
+        #[allow(unused_assignments)]
+        let mut model_manifest_json: Option<String> = None;
+        let mut model_identity_coverage: Option<std::collections::BTreeMap<String, bool>> = None;
         let mut kms_release_evidence: Option<Vec<u8>> = None;
 
         match model_source {
@@ -1764,7 +1963,13 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
 
                     {
                         use sha2::{Digest, Sha256};
-                        model_hash = Some(Sha256::digest(&gguf_bytes).into());
+                        let actual_model_hash: [u8; 32] = Sha256::digest(&gguf_bytes).into();
+                        model_manifest_json = Some(generated_local_model_manifest_json(
+                            &args.model_id,
+                            actual_model_hash,
+                            model_format,
+                        )?);
+                        model_hash = Some(actual_model_hash);
                     }
 
                     engine.register_model_gguf(&args.model_id, &gguf_bytes, &tokenizer_bytes)?;
@@ -1782,7 +1987,13 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
 
                     {
                         use sha2::{Digest, Sha256};
-                        model_hash = Some(Sha256::digest(&weights_bytes).into());
+                        let actual_model_hash: [u8; 32] = Sha256::digest(&weights_bytes).into();
+                        model_manifest_json = Some(generated_local_model_manifest_json(
+                            &args.model_id,
+                            actual_model_hash,
+                            model_format,
+                        )?);
+                        model_hash = Some(actual_model_hash);
                     }
 
                     engine.register_model(
@@ -1855,6 +2066,11 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
                 })?;
                 let manifest = ephemeral_ml_common::ModelManifest::from_json(&manifest_bytes)
                     .map_err(|e| format!("manifest.json parse failed: {}", e))?;
+                model_manifest_json = Some(
+                    String::from_utf8(manifest_bytes.clone())
+                        .map_err(|e| format!("manifest.json is not valid UTF-8: {e}"))?,
+                );
+                model_identity_coverage = Some(coverage_to_owned(manifest.identity_coverage()));
 
                 let kms_client = KmsClient::new(attestation_provider.clone(), receipt_pk);
                 let loader = ModelLoader::new(kms_client, trusted_signing_key);
@@ -2028,6 +2244,109 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
 
             ((attestation_hash, platform_evidence_hash), boot_doc_bytes)
         };
+
+        if args.worker_server {
+            use ephemeral_ml_enclave::bundle_emit::{BundleAssembler, BundleAssemblerConfig};
+            use ephemeral_ml_enclave::worker_server::{
+                CandleWorkerHandler, WorkerEvidence, WorkerServer,
+            };
+            use std::sync::Arc;
+
+            let worker_model_hash = model_hash.ok_or(
+                "production worker server requires a loaded model hash for attestation user_data",
+            )?;
+            let handler = Arc::new(CandleWorkerHandler::new(
+                engine,
+                attestation_provider.clone(),
+                receipt_key,
+                boot_attestation_hash,
+                WorkerEvidence {
+                    boot_attestation_bytes: Some(boot_attestation_bytes.clone()),
+                    model_manifest_json: model_manifest_json.clone(),
+                    model_hash: Some(worker_model_hash),
+                    model_hash_scheme: model_hash_scheme.clone(),
+                    model_identity_coverage: model_identity_coverage.clone(),
+                    platform_evidence_hash: Some(platform_evidence_hash),
+                    receipt_issuer: args.receipt_issuer.clone(),
+                },
+            ));
+
+            let transport_provider = Arc::new(
+                confidential_ml_transport::NitroProvider::new().map_err(|err| {
+                    format!("failed to initialize transport Nitro provider: {err}")
+                })?,
+            );
+            let transport_verifier = Arc::new(OneWayHostVerifier::new());
+            let mut server = WorkerServer::with_worker_identity(
+                handler,
+                transport_provider,
+                transport_verifier,
+                receipt_pk,
+                args.model_id.clone(),
+                worker_model_hash,
+                confidential_ml_transport::SessionConfig::default(),
+            )
+            .map_err(|err| format!("failed to construct production worker server: {err}"))?;
+
+            let boot_config = fetch_worker_boot_config(args.worker_config_vsock_port).await?;
+            let evidence_bucket = boot_config
+                .as_ref()
+                .and_then(|config| config.evidence_bucket.clone())
+                .or_else(|| args.evidence_bucket.clone());
+            let evidence_prefix = boot_config
+                .as_ref()
+                .and_then(|config| config.evidence_prefix.clone())
+                .unwrap_or_else(|| args.evidence_prefix.clone());
+            let tenant_id = boot_config
+                .as_ref()
+                .and_then(|config| config.tenant_id.clone())
+                .unwrap_or_else(|| args.tenant_id.clone());
+            let evidence_kms_key_arn = boot_config
+                .as_ref()
+                .and_then(|config| config.evidence_kms_key_arn.clone())
+                .or_else(|| args.evidence_kms_key_arn.clone());
+
+            if let Some(bucket) = evidence_bucket.as_ref() {
+                let policy_json = match boot_config
+                    .as_ref()
+                    .and_then(|config| config.policy_json.as_ref())
+                {
+                    Some(json) => json.as_bytes().to_vec(),
+                    None => read_json_file(&args.bundle_policy_path, "bundle policy")?,
+                };
+                let runtime_passport_json = match boot_config
+                    .as_ref()
+                    .and_then(|config| config.runtime_passport_json.as_ref())
+                {
+                    Some(json) => json.as_bytes().to_vec(),
+                    None => read_json_file(&args.runtime_passport_path, "runtime passport")?,
+                };
+                let egress = build_bundle_egress_client(&args);
+                let assembler = BundleAssembler::new(
+                    egress,
+                    BundleAssemblerConfig {
+                        bucket: bucket.clone(),
+                        key_prefix: Some(evidence_prefix),
+                        tenant_id,
+                        session_id: hex::encode(&receipt_pk[..16]),
+                        policy_json,
+                        runtime_passport_json,
+                        fallback_model_manifest_json: model_manifest_json
+                            .as_ref()
+                            .map(|json| json.as_bytes().to_vec()),
+                        kms_key_arn: evidence_kms_key_arn,
+                    },
+                );
+                server = server.with_bundle_assembler(Arc::new(assembler));
+            } else {
+                warn!(
+                    "CYNTRISEC_EVIDENCE_BUCKET is not set; worker responses will not emit S3 receipt bundles"
+                );
+            }
+
+            run_worker_server_vsock(server, args.worker_vsock_port).await?;
+            return Ok(());
+        }
 
         // Build stage executor and attestation bridge (with AIR v1 receipt support)
         let mut executor = EphemeralStageExecutor::with_air_v1(

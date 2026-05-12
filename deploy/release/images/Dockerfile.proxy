@@ -1,0 +1,24 @@
+FROM rust:1.93-bookworm AS builder
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ca-certificates \
+    g++ \
+    libssl-dev \
+    pkg-config \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /build
+COPY . .
+RUN cargo build --locked --release --no-default-features --features production \
+    -p ephemeralml-gateway --bin cyntrisec-proxy
+
+FROM debian:bookworm-slim
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY --from=builder /build/target/release/cyntrisec-proxy /usr/local/bin/cyntrisec-proxy
+
+EXPOSE 4000
+USER 65532:65532
+ENTRYPOINT ["/usr/local/bin/cyntrisec-proxy"]

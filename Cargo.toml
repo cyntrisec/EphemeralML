@@ -3,6 +3,8 @@ members = [
     "common",
     "client",
     "host",
+    "host/relay",
+    "host/relay-egress",
     "enclave",
     "verifier-api",
     "gateway-api",

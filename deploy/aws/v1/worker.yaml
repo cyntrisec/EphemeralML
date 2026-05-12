@@ -1,0 +1,649 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Cyntrisec AWS Nitro worker stack for Cluster A secure worker deployment.
+
+Metadata:
+  AWS::CloudFormation::Interface:
+    ParameterGroups:
+      - Label:
+          default: Customer inputs
+        Parameters:
+          - AccessCIDR
+          - ModelURI
+          - EvidenceBucketName
+          - RetentionDays
+          - InstanceType
+          - EnableObjectLock
+      - Label:
+          default: Release-pinned parameters
+        Parameters:
+          - ReleaseTag
+          - EnclaveImageSha384
+          - EnclavePcr1Sha384
+          - EnclavePcr2Sha384
+      - Label:
+          default: AMI resolution
+        Parameters:
+          - LatestAmiId
+    ParameterLabels:
+      AccessCIDR:
+        default: Client access CIDR
+      ModelURI:
+        default: Model S3 URI
+      EvidenceBucketName:
+        default: Evidence bucket name
+      RetentionDays:
+        default: Evidence retention days
+      InstanceType:
+        default: EC2 instance type
+      EnableObjectLock:
+        default: Enable S3 Object Lock
+      ReleaseTag:
+        default: Cyntrisec release tag
+      EnclaveImageSha384:
+        default: EnclaveImageSha384
+      EnclavePcr1Sha384:
+        default: PCR1
+      EnclavePcr2Sha384:
+        default: PCR2
+
+Parameters:
+  AccessCIDR:
+    Type: String
+    Default: 0.0.0.0/0
+    AllowedPattern: ^(([0-9]{1,3}\.){3}[0-9]{1,3}/[0-9]{1,2}|::/0)$
+    Description: CIDR allowed to connect to the worker NLB on TCP 443.
+
+  ModelURI:
+    Type: String
+    AllowedPattern: ^s3://[^/]+/.+
+    Description: S3 URI for the model artifact set. v1 MiniLM releases use the bundled smoke model; this pins IAM scope for customer model rollout.
+
+  EvidenceBucketName:
+    Type: String
+    AllowedPattern: ^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$
+    Description: Globally unique S3 bucket name for receipt bundles and policy output.
+
+  RetentionDays:
+    Type: Number
+    Default: 365
+    MinValue: 1
+    MaxValue: 3650
+    Description: Lifecycle retention for receipt bundle objects.
+
+  InstanceType:
+    Type: String
+    Default: m5.xlarge
+    AllowedValues:
+      - m5.xlarge
+      - m5.2xlarge
+      - m6i.xlarge
+      - m6i.2xlarge
+    Description: Nitro Enclaves capable EC2 instance type.
+
+  EnableObjectLock:
+    Type: String
+    Default: 'false'
+    AllowedValues:
+      - 'true'
+      - 'false'
+    Description: Enable S3 Object Lock on the evidence bucket at creation time.
+
+  ReleaseTag:
+    Type: String
+    Default: v1
+    AllowedPattern: ^[A-Za-z0-9_.-]+$
+    Description: Cyntrisec public release tag for relay, relay-egress, proxy, and enclave artifacts.
+
+  EnclaveImageSha384:
+    Type: String
+    AllowedPattern: ^[0-9a-fA-F]{96}$
+    Description: Release-pinned Nitro Enclave image SHA-384. Provided by enclave-measurements.json.
+
+  EnclavePcr1Sha384:
+    Type: String
+    AllowedPattern: ^[0-9a-fA-F]{96}$
+    Description: Release-pinned Nitro Enclave PCR1 SHA-384. Provided by enclave-measurements.json.
+
+  EnclavePcr2Sha384:
+    Type: String
+    AllowedPattern: ^[0-9a-fA-F]{96}$
+    Description: Release-pinned Nitro Enclave PCR2 SHA-384. Provided by enclave-measurements.json.
+
+  LatestAmiId:
+    Type: AWS::SSM::Parameter::Value<AWS::EC2::Image::Id>
+    Default: /aws/service/ami-amazon-linux-latest/al2023-ami-kernel-default-x86_64
+    Description: Latest Amazon Linux 2023 AMI resolved by SSM.
+
+Conditions:
+  UseObjectLock: !Equals [!Ref EnableObjectLock, 'true']
+
+Resources:
+  WorkerVpc:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: 10.73.0.0/16
+      EnableDnsHostnames: true
+      EnableDnsSupport: true
+      Tags:
+        - Key: Name
+          Value: !Sub ${AWS::StackName}-vpc
+
+  WorkerInternetGateway:
+    Type: AWS::EC2::InternetGateway
+
+  WorkerVpcGatewayAttachment:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      InternetGatewayId: !Ref WorkerInternetGateway
+      VpcId: !Ref WorkerVpc
+
+  WorkerSubnet:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref WorkerVpc
+      CidrBlock: 10.73.1.0/24
+      MapPublicIpOnLaunch: true
+      AvailabilityZone: !Select [0, !GetAZs '']
+      Tags:
+        - Key: Name
+          Value: !Sub ${AWS::StackName}-public-a
+
+  WorkerRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref WorkerVpc
+
+  WorkerDefaultRoute:
+    Type: AWS::EC2::Route
+    DependsOn: WorkerVpcGatewayAttachment
+    Properties:
+      RouteTableId: !Ref WorkerRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref WorkerInternetGateway
+
+  WorkerSubnetRouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref WorkerRouteTable
+      SubnetId: !Ref WorkerSubnet
+
+  WorkerSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Allow client worker traffic; no SSH.
+      VpcId: !Ref WorkerVpc
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: !Ref AccessCIDR
+      SecurityGroupEgress:
+        - IpProtocol: -1
+          CidrIp: 0.0.0.0/0
+
+  EvidenceKey:
+    Type: AWS::KMS::Key
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      Description: !Sub ${AWS::StackName} evidence bucket SSE-KMS key
+      EnableKeyRotation: true
+      KeyPolicy:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: EnableRootPermissions
+            Effect: Allow
+            Principal:
+              AWS: !Sub arn:${AWS::Partition}:iam::${AWS::AccountId}:root
+            Action: kms:*
+            Resource: '*'
+
+  EvidenceKeyAlias:
+    Type: AWS::KMS::Alias
+    Properties:
+      AliasName: !Sub alias/${AWS::StackName}-cyntrisec-evidence
+      TargetKeyId: !Ref EvidenceKey
+
+  ModelKey:
+    Type: AWS::KMS::Key
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      Description: !Sub ${AWS::StackName} attestation-gated model key
+      EnableKeyRotation: true
+      KeyPolicy:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: EnableRootPermissions
+            Effect: Allow
+            Principal:
+              AWS: !Sub arn:${AWS::Partition}:iam::${AWS::AccountId}:root
+            Action: kms:*
+            Resource: '*'
+
+  ModelKeyAlias:
+    Type: AWS::KMS::Alias
+    Properties:
+      AliasName: !Sub alias/${AWS::StackName}-cyntrisec-model
+      TargetKeyId: !Ref ModelKey
+
+  EvidenceBucket:
+    Type: AWS::S3::Bucket
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      BucketName: !Ref EvidenceBucketName
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: aws:kms
+              KMSMasterKeyID: !GetAtt EvidenceKey.Arn
+            BucketKeyEnabled: true
+      VersioningConfiguration:
+        Status: Enabled
+      ObjectLockEnabled: !If [UseObjectLock, Enabled, !Ref AWS::NoValue]
+      ObjectLockConfiguration: !If
+        - UseObjectLock
+        - ObjectLockEnabled: Enabled
+          Rule:
+            DefaultRetention:
+              Mode: GOVERNANCE
+              Days: !Ref RetentionDays
+        - !Ref AWS::NoValue
+      LifecycleConfiguration:
+        Rules:
+          - Id: expire-receipt-bundles
+            Status: Enabled
+            ExpirationInDays: !Ref RetentionDays
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+
+  EvidenceBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref EvidenceBucket
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: DenyInsecureTransport
+            Effect: Deny
+            Principal: '*'
+            Action: s3:*
+            Resource:
+              - !GetAtt EvidenceBucket.Arn
+              - !Sub ${EvidenceBucket.Arn}/*
+            Condition:
+              Bool:
+                aws:SecureTransport: 'false'
+          - Sid: DenyUnencryptedPuts
+            Effect: Deny
+            Principal: '*'
+            Action: s3:PutObject
+            Resource: !Sub ${EvidenceBucket.Arn}/*
+            Condition:
+              StringNotEquals:
+                s3:x-amz-server-side-encryption: aws:kms
+          - Sid: DenyWrongEvidenceKey
+            Effect: Deny
+            Principal: '*'
+            Action: s3:PutObject
+            Resource: !Sub ${EvidenceBucket.Arn}/*
+            Condition:
+              StringNotEquals:
+                s3:x-amz-server-side-encryption-aws-kms-key-id: !GetAtt EvidenceKey.Arn
+
+  RelayLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      LogGroupName: !Sub /cyntrisec/${AWS::StackName}/relay
+      RetentionInDays: 30
+
+  RelayEgressLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      LogGroupName: !Sub /cyntrisec/${AWS::StackName}/relay-egress
+      RetentionInDays: 30
+
+  EnclaveLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      LogGroupName: !Sub /cyntrisec/${AWS::StackName}/enclave
+      RetentionInDays: 30
+
+  WorkerRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ec2.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore
+      Policies:
+        - PolicyName: cyntrisec-worker-minimal
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Sid: AttestedModelDecrypt
+                Effect: Allow
+                Action:
+                  - kms:Decrypt
+                Resource: !GetAtt ModelKey.Arn
+                Condition:
+                  StringEquals:
+                    kms:RecipientAttestation:ImageSha384: !Ref EnclaveImageSha384
+                    kms:RecipientAttestation:PCR1: !Ref EnclavePcr1Sha384
+                    kms:RecipientAttestation:PCR2: !Ref EnclavePcr2Sha384
+              - Sid: EvidenceBucketKmsViaS3
+                Effect: Allow
+                Action:
+                  - kms:GenerateDataKey
+                  - kms:Decrypt
+                Resource: !GetAtt EvidenceKey.Arn
+                Condition:
+                  StringEquals:
+                    kms:ViaService: !Sub s3.${AWS::Region}.amazonaws.com
+              - Sid: PutEvidenceObjects
+                Effect: Allow
+                Action:
+                  - s3:PutObject
+                  - s3:PutObjectAcl
+                Resource: !Sub ${EvidenceBucket.Arn}/*
+                Condition:
+                  StringEquals:
+                    s3:x-amz-server-side-encryption: aws:kms
+                    s3:x-amz-server-side-encryption-aws-kms-key-id: !GetAtt EvidenceKey.Arn
+              - Sid: ReadModelArtifacts
+                Effect: Allow
+                Action:
+                  - s3:GetObject
+                Resource: !Sub
+                  - arn:${AWS::Partition}:s3:::${ModelBucket}/*
+                  - ModelBucket: !Select [2, !Split ['/', !Ref ModelURI]]
+              - Sid: PullPublicEcrArtifacts
+                Effect: Allow
+                Action:
+                  - ecr-public:GetAuthorizationToken
+                  - ecr-public:BatchCheckLayerAvailability
+                  - ecr-public:GetDownloadUrlForLayer
+                  - ecr-public:BatchGetImage
+                  - sts:GetServiceBearerToken
+                Resource: '*'
+              - Sid: WriteServiceLogs
+                Effect: Allow
+                Action:
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource:
+                  - !Sub ${RelayLogGroup.Arn}:*
+                  - !Sub ${RelayEgressLogGroup.Arn}:*
+                  - !Sub ${EnclaveLogGroup.Arn}:*
+
+  WorkerInstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      Roles:
+        - !Ref WorkerRole
+
+  WorkerNlb:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties:
+      Type: network
+      Scheme: internet-facing
+      Subnets:
+        - !Ref WorkerSubnet
+      LoadBalancerAttributes:
+        - Key: load_balancing.cross_zone.enabled
+          Value: 'false'
+
+  WorkerTargetGroup:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      TargetType: instance
+      Protocol: TCP
+      Port: 443
+      VpcId: !Ref WorkerVpc
+      HealthCheckProtocol: TCP
+      HealthCheckPort: '443'
+      Targets:
+        - Id: !Ref WorkerInstance
+          Port: 443
+
+  WorkerListener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      LoadBalancerArn: !Ref WorkerNlb
+      Protocol: TCP
+      Port: 443
+      DefaultActions:
+        - Type: forward
+          TargetGroupArn: !Ref WorkerTargetGroup
+
+  WorkerInstance:
+    Type: AWS::EC2::Instance
+    CreationPolicy:
+      ResourceSignal:
+        Count: 1
+        Timeout: PT10M
+    Properties:
+      ImageId: !Ref LatestAmiId
+      InstanceType: !Ref InstanceType
+      IamInstanceProfile: !Ref WorkerInstanceProfile
+      SubnetId: !Ref WorkerSubnet
+      SecurityGroupIds:
+        - !Ref WorkerSecurityGroup
+      EnclaveOptions:
+        Enabled: true
+      Tags:
+        - Key: Name
+          Value: !Sub ${AWS::StackName}-worker
+      UserData:
+        Fn::Base64: !Sub |
+          #!/bin/bash
+          set -euo pipefail
+
+          trap '/opt/aws/bin/cfn-signal --exit-code 1 --stack ${AWS::StackName} --resource WorkerInstance --region ${AWS::Region}' ERR
+
+          dnf update -y
+          dnf install -y aws-cfn-bootstrap awscli jq tar gzip curl openssl aws-nitro-enclaves-cli
+
+          mkdir -p /opt/cyntrisec/bin /opt/cyntrisec/enclave /opt/cyntrisec/etc /var/log/cyntrisec
+
+          cat >/etc/nitro_enclaves/allocator.yaml <<'YAML'
+          ---
+          memory_mib: 4096
+          cpu_count: 2
+          YAML
+          systemctl enable --now nitro-enclaves-allocator.service
+
+          curl -fsSL https://github.com/oras-project/oras/releases/download/v1.2.2/oras_1.2.2_linux_amd64.tar.gz -o /tmp/oras.tar.gz
+          tar -xzf /tmp/oras.tar.gz -C /tmp oras
+          install -m 0755 /tmp/oras /usr/local/bin/oras
+
+          oras pull public.ecr.aws/cyntrisec/relay:${ReleaseTag} -o /tmp/cyntrisec-relay
+          install -m 0755 /tmp/cyntrisec-relay/cyntrisec-relay /opt/cyntrisec/bin/cyntrisec-relay
+
+          oras pull public.ecr.aws/cyntrisec/relay-egress:${ReleaseTag} -o /tmp/cyntrisec-relay-egress
+          install -m 0755 /tmp/cyntrisec-relay-egress/cyntrisec-relay-egress /opt/cyntrisec/bin/cyntrisec-relay-egress
+          install -m 0755 /tmp/cyntrisec-relay-egress/cyntrisec-worker-config /opt/cyntrisec/bin/cyntrisec-worker-config
+
+          oras pull public.ecr.aws/cyntrisec/enclave:${ReleaseTag} -o /tmp/cyntrisec-enclave
+          install -m 0644 /tmp/cyntrisec-enclave/cyntrisec-enclave.eif /opt/cyntrisec/enclave/cyntrisec-enclave.eif
+
+          cat >/opt/cyntrisec/etc/cyntrisec-policy.json <<'JSON'
+          {
+            "schema_version": 1,
+            "enclave_image_sha384": "${EnclaveImageSha384}",
+            "pcr0": "${EnclaveImageSha384}",
+            "pcr1": "${EnclavePcr1Sha384}",
+            "pcr2": "${EnclavePcr2Sha384}",
+            "model_uri": "${ModelURI}",
+            "release_tag": "${ReleaseTag}"
+          }
+          JSON
+
+          cat >/opt/cyntrisec/etc/runtime-passport.json <<'JSON'
+          {
+            "schema_version": 1,
+            "runtime": "aws-nitro-enclave",
+            "stack_id": "${AWS::StackId}",
+            "region": "${AWS::Region}",
+            "instance_id_source": "ec2-instance-metadata",
+            "release_tag": "${ReleaseTag}"
+          }
+          JSON
+
+          jq -n \
+            --arg bucket "${EvidenceBucket}" \
+            --arg prefix "bundles" \
+            --arg tenant "${AWS::AccountId}" \
+            --arg kms "${EvidenceKey.Arn}" \
+            --rawfile policy /opt/cyntrisec/etc/cyntrisec-policy.json \
+            --rawfile passport /opt/cyntrisec/etc/runtime-passport.json \
+            '{schema_version:1,evidence_bucket:$bucket,evidence_prefix:$prefix,tenant_id:$tenant,evidence_kms_key_arn:$kms,policy_json:$policy,runtime_passport_json:$passport}' \
+            >/opt/cyntrisec/etc/worker-config.json
+
+          aws s3 cp /opt/cyntrisec/etc/cyntrisec-policy.json s3://${EvidenceBucket}/policy/cyntrisec-policy.json \
+            --sse aws:kms \
+            --sse-kms-key-id ${EvidenceKey.Arn}
+
+          cat >/opt/cyntrisec/bin/cyntrisec-enclave-watchdog <<'SH'
+          #!/bin/bash
+          set -euo pipefail
+          while true; do
+            if ! nitro-cli describe-enclaves | jq -e 'length == 1 and .[0].State == "RUNNING"' >/dev/null; then
+              systemctl restart cyntrisec-enclave.service
+            fi
+            sleep 15
+          done
+          SH
+          chmod 0755 /opt/cyntrisec/bin/cyntrisec-enclave-watchdog
+
+          cat >/etc/systemd/system/cyntrisec-worker-config.service <<'UNIT'
+          [Unit]
+          Description=Cyntrisec worker boot config vsock service
+          After=network-online.target
+          Wants=network-online.target
+
+          [Service]
+          ExecStart=/opt/cyntrisec/bin/cyntrisec-worker-config --vsock-port 5002 --config-path /opt/cyntrisec/etc/worker-config.json
+          Restart=always
+          RestartSec=2
+
+          [Install]
+          WantedBy=multi-user.target
+          UNIT
+
+          cat >/etc/systemd/system/cyntrisec-relay-egress.service <<'UNIT'
+          [Unit]
+          Description=Cyntrisec parent-side KMS/S3 egress helper
+          After=network-online.target cyntrisec-worker-config.service
+          Wants=network-online.target
+
+          [Service]
+          Environment=CYNTRISEC_EGRESS_VSOCK_PORT=5001
+          Environment=CYNTRISEC_EGRESS_AWS_REGION=${AWS::Region}
+          Environment=CYNTRISEC_EGRESS_ALLOWED_BUCKETS=${EvidenceBucket}
+          Environment=CYNTRISEC_EGRESS_ALLOWED_KMS_KEYS=${EvidenceKey.Arn}
+          ExecStart=/opt/cyntrisec/bin/cyntrisec-relay-egress
+          Restart=always
+          RestartSec=2
+
+          [Install]
+          WantedBy=multi-user.target
+          UNIT
+
+          cat >/etc/systemd/system/cyntrisec-enclave.service <<'UNIT'
+          [Unit]
+          Description=Cyntrisec Nitro enclave
+          After=cyntrisec-worker-config.service cyntrisec-relay-egress.service
+          Requires=cyntrisec-worker-config.service cyntrisec-relay-egress.service
+
+          [Service]
+          Type=oneshot
+          RemainAfterExit=yes
+          ExecStart=/usr/bin/nitro-cli run-enclave --eif-path /opt/cyntrisec/enclave/cyntrisec-enclave.eif --cpu-count 2 --memory 4096 --enclave-cid 16
+          ExecStop=/usr/bin/nitro-cli terminate-enclave --all
+
+          [Install]
+          WantedBy=multi-user.target
+          UNIT
+
+          cat >/etc/systemd/system/cyntrisec-enclave-watchdog.service <<'UNIT'
+          [Unit]
+          Description=Cyntrisec Nitro enclave watchdog
+          After=cyntrisec-enclave.service
+          Requires=cyntrisec-enclave.service
+
+          [Service]
+          ExecStart=/opt/cyntrisec/bin/cyntrisec-enclave-watchdog
+          Restart=always
+          RestartSec=5
+
+          [Install]
+          WantedBy=multi-user.target
+          UNIT
+
+          cat >/etc/systemd/system/cyntrisec-relay.service <<'UNIT'
+          [Unit]
+          Description=Cyntrisec TCP to vsock SecureChannel relay
+          After=cyntrisec-enclave.service
+          Requires=cyntrisec-enclave.service
+
+          [Service]
+          Environment=CYNTRISEC_RELAY_TCP_BIND=0.0.0.0:443
+          Environment=CYNTRISEC_RELAY_VSOCK_CID=16
+          Environment=CYNTRISEC_RELAY_VSOCK_PORT=5000
+          Environment=CYNTRISEC_RELAY_MAX_CONN=1024
+          Environment=CYNTRISEC_RELAY_IDLE_SECS=300
+          ExecStart=/opt/cyntrisec/bin/cyntrisec-relay
+          Restart=always
+          RestartSec=2
+
+          [Install]
+          WantedBy=multi-user.target
+          UNIT
+
+          systemctl daemon-reload
+          systemctl enable --now cyntrisec-worker-config cyntrisec-relay-egress cyntrisec-enclave cyntrisec-enclave-watchdog cyntrisec-relay
+
+          timeout 300 bash -c 'until systemctl is-active --quiet cyntrisec-relay; do sleep 3; done'
+          timeout 300 bash -c 'until systemctl is-active --quiet cyntrisec-relay-egress; do sleep 3; done'
+          timeout 300 bash -c 'until systemctl is-active --quiet cyntrisec-enclave-watchdog; do sleep 3; done'
+          nitro-cli describe-enclaves | jq -e 'length == 1 and .[0].State == "RUNNING"'
+          timeout 60 bash -c 'until ss -ltn sport = :443 | grep -q ":443"; do sleep 2; done'
+
+          /opt/aws/bin/cfn-signal --exit-code 0 --stack ${AWS::StackName} --resource WorkerInstance --region ${AWS::Region}
+
+Outputs:
+  EndpointUrl:
+    Description: Worker endpoint for the local Cyntrisec proxy.
+    Value: !Sub tcp://${WorkerNlb.DNSName}:443
+
+  ProxyCommand:
+    Description: One-line local proxy command.
+    Value: !Sub docker run -p 4000:4000 -e CYNTRISEC_WORKER=tcp://${WorkerNlb.DNSName}:443 -e CYNTRISEC_WORKER_CHANNEL=secure -e CYNTRISEC_POLICY_PATH=/etc/cyntrisec/policy.json -v $(pwd)/cyntrisec-policy.json:/etc/cyntrisec/policy.json:ro public.ecr.aws/cyntrisec/proxy:${ReleaseTag}
+
+  PolicyDownloadCommand:
+    Description: Download the pinned worker policy for the local proxy.
+    Value: !Sub aws s3 cp s3://${EvidenceBucket}/policy/cyntrisec-policy.json ./cyntrisec-policy.json
+
+  EvidenceBucketName:
+    Description: Evidence bucket retaining per-inference bundles.
+    Value: !Ref EvidenceBucket
+
+  ModelKeyArn:
+    Description: Attestation-gated model KMS key ARN.
+    Value: !GetAtt ModelKey.Arn

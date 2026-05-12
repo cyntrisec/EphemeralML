@@ -68,6 +68,10 @@ name = "ephemeralml-verify"
 path = "src/bin/ephemeralml_verify.rs"
 
 [[bin]]
+name = "cyntrisec-verify"
+path = "src/bin/cyntrisec_verify.rs"
+
+[[bin]]
 name = "ephemeralml-report"
 path = "src/bin/ephemeralml_report.rs"
 

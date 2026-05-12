@@ -3,7 +3,7 @@
 #
 # Usage:
 #   bash scripts/gcp/deploy.sh                     # CPU production image (no SSH)
-#   bash scripts/gcp/deploy.sh --gpu                # GPU image (a3-highgpu-1g, H100 CC, Spot)
+#   bash scripts/gcp/deploy.sh --gpu                # GPU image (a3-highgpu-1g, H100 CC, Spot research mode)
 #   bash scripts/gcp/deploy.sh --debug              # debug image (SSH enabled)
 #   bash scripts/gcp/deploy.sh --benchmark          # expose development-only warm-path timing metadata
 #   bash scripts/gcp/deploy.sh --skip-build         # skip Docker build/push (image already in AR)
@@ -38,6 +38,9 @@ DEBUG=false
 TAG=""
 SKIP_BUILD=false
 BENCHMARK=false
+PROFILE="${CYNTRISEC_PROFILE:-${EPHEMERALML_PROFILE:-development}}"
+GPU_PROVISIONING_INPUT="${CYNTRISEC_GCP_GPU_PROVISIONING:-${EPHEMERALML_GCP_GPU_PROVISIONING:-spot}}"
+GPU_PROVISIONING_MODEL=""
 
 # KMS / model configuration — hydrate from env vars (set by init_gcp.sh / setup_kms.sh)
 MODEL_SOURCE="${EPHEMERALML_MODEL_SOURCE:-local}"
@@ -82,6 +85,31 @@ done
 if $GPU; then
     MACHINE_TYPE="a3-highgpu-1g"
     INSTANCE_NAME="ephemeralml-gpu"
+    case "${GPU_PROVISIONING_INPUT,,}" in
+        spot)
+            GPU_PROVISIONING_MODEL="SPOT"
+            ;;
+        flex-start|flex_start|flexstart)
+            GPU_PROVISIONING_MODEL="FLEX_START"
+            ;;
+        *)
+            echo "Invalid CYNTRISEC_GCP_GPU_PROVISIONING='${GPU_PROVISIONING_INPUT}'. Use 'spot' or 'flex-start'." >&2
+            exit 1
+            ;;
+    esac
+
+    if [[ "${PROFILE,,}" == "production" ]]; then
+        echo "ERROR: GCP GPU Confidential VM is blocked for production profiles." >&2
+        echo "A3 H100 Confidential VM currently requires Spot/Flex-start provisioning, and nvtrust#132 makes GPU attestation unstable on Spot." >&2
+        echo "Use CPU TEE for paid pilots, or unset CYNTRISEC_PROFILE=production for research-mode GPU testing." >&2
+        exit 1
+    fi
+
+    if [[ "${GPU_PROVISIONING_MODEL}" == "FLEX_START" ]]; then
+        echo "ERROR: Flex-start GPU Confidential VM requires a MIG resize-request flow." >&2
+        echo "scripts/gcp/deploy.sh uses 'gcloud compute instances create' and currently supports only Spot research runs." >&2
+        exit 1
+    fi
 fi
 
 # Validate metadata-safe values: reject commas and shell metacharacters
@@ -171,12 +199,22 @@ ui_kv "Image" "${IMAGE_URI}"
 ui_kv "CS family" "${CS_IMAGE_FAMILY}"
 ui_kv "Debug" "${DEBUG}"
 ui_kv "GPU" "${GPU}"
+ui_kv "Profile" "${PROFILE}"
+if $GPU; then
+    ui_kv "GPU prov" "${GPU_PROVISIONING_MODEL}"
+fi
 ui_kv "Model src" "${MODEL_SOURCE}"
 ui_kv "Format" "${MODEL_FORMAT}"
 if [[ "${MODEL_SOURCE}" == "gcs" || "${MODEL_SOURCE}" == "gcs-kms" ]]; then
     ui_kv "GCS bucket" "${GCS_BUCKET}"
     ui_kv "Model prefix" "${GCP_MODEL_PREFIX}"
     ui_kv "Model hash" "${EXPECTED_MODEL_HASH}"
+fi
+if $GPU; then
+    ui_blank
+    ui_warn "WARNING: GCP GPU Confidential VM is research-mode only."
+    ui_warn "Google currently requires Spot or Flex-start for a3-highgpu-1g TDX; this script uses Spot."
+    ui_warn "Paid/production GPU pilots stay blocked until the NVIDIA index-9 attestation path is stable."
 fi
 if [[ "${MODEL_SOURCE}" == "gcs-kms" ]]; then
     ui_kv "KMS key" "${KMS_KEY}"
@@ -314,8 +352,9 @@ if [[ -n "${MODEL_SIGNING_PUBKEY}" ]]; then
     METADATA="${METADATA},tee-env-EPHEMERALML_MODEL_SIGNING_PUBKEY=${MODEL_SIGNING_PUBKEY}"
 fi
 
-# Build gcloud create command — GPU requires --provisioning-model=SPOT and
-# larger boot disk (GPU drivers are ~10 GB), and omits --min-cpu-platform
+# Build gcloud create command — this script's GPU path uses Spot and a larger
+# boot disk (GPU drivers are ~10 GB), and omits --min-cpu-platform. Flex-start
+# requires a MIG resize-request flow and is intentionally blocked above.
 # (a3-highgpu-1g already implies Sapphire Rapids).
 GCLOUD_ARGS=(
     --project="${PROJECT}"
@@ -334,7 +373,7 @@ GCLOUD_ARGS=(
 
 if $GPU; then
     # GPU CC requires Spot or Flex-start provisioning (on-demand not available).
-    GCLOUD_ARGS+=(--provisioning-model=SPOT)
+    GCLOUD_ARGS+=(--provisioning-model="${GPU_PROVISIONING_MODEL}")
     GCLOUD_ARGS+=(--boot-disk-size=30GB)
 else
     GCLOUD_ARGS+=(--min-cpu-platform="Intel Sapphire Rapids")

@@ -1,0 +1,20 @@
+[package]
+name = "cyntrisec-relay"
+version = "0.1.0"
+edition = "2021"
+license = "Apache-2.0"
+description = "Byte relay between TCP/NLB and Nitro Enclave vsock"
+
+[[bin]]
+name = "cyntrisec-relay"
+path = "src/main.rs"
+
+[dependencies]
+tokio = { workspace = true }
+tokio-vsock = { workspace = true }
+clap = { version = "4.6", features = ["derive", "env"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
+
+[dev-dependencies]
+tokio = { workspace = true }

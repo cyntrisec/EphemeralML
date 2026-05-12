@@ -19,8 +19,10 @@ compile_error!(
 pub mod attestation;
 pub mod attestation_bridge;
 pub mod audit;
+pub mod bundle_emit;
 pub mod candle_engine;
 pub mod crypto_util;
+pub mod egress_vsock_client;
 pub mod error;
 pub mod kms_client;
 pub mod kms_proxy_client;
@@ -34,6 +36,7 @@ pub mod mock;
 
 pub mod tee_provider;
 pub mod trust_evidence;
+pub mod worker_server;
 
 #[cfg(feature = "gcp")]
 pub mod cs_kms_client;

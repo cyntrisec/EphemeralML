@@ -1,15 +1,16 @@
-//! Standalone EphemeralML receipt verifier.
-//!
-//! Verifies cryptographic receipts produced by EphemeralML inference sessions.
-//! This is the core product artifact — a compliance officer or auditor runs this
-//! to prove what happened inside a confidential workload.
-//!
-//! Usage:
-//!   ephemeralml-verify receipt.cbor --public-key <hex>
-//!   ephemeralml-verify receipt.json --public-key-file key.bin
-//!   ephemeralml-verify receipt.cbor --attestation attestation.cbor
-//!
-//! Exit code 0 = VERIFIED, 1 = INVALID, 2 = ERROR
+// Standalone Cyntrisec/EphemeralML receipt verifier.
+//
+// Verifies cryptographic receipts produced by EphemeralML inference sessions.
+// This is the core product artifact — a compliance officer or auditor runs this
+// to prove what happened inside a confidential workload.
+//
+// Usage:
+//   cyntrisec-verify receipt.cbor --public-key <hex>
+//   ephemeralml-verify receipt.cbor --public-key <hex>
+//   ephemeralml-verify receipt.json --public-key-file key.bin
+//   ephemeralml-verify receipt.cbor --attestation attestation.cbor
+//
+// Exit code 0 = VERIFIED, 1 = INVALID, 2 = ERROR
 
 use anyhow::{bail, Context, Result};
 use clap::Parser;
@@ -25,8 +26,9 @@ use std::path::PathBuf;
 
 #[derive(Parser, Debug)]
 #[command(
-    name = "ephemeralml-verify",
-    about = "Verify EphemeralML Attested Execution Receipts",
+    name = "cyntrisec-verify",
+    visible_alias = "ephemeralml-verify",
+    about = "Verify Cyntrisec Attested Inference Receipts",
     long_about = "Verify an inference receipt signature and caller-supplied policy \
                   bindings. Full TEE provenance additionally requires platform \
                   attestation and signing-key binding checks. Supports AIR v1 and \

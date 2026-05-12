@@ -3,6 +3,9 @@ pub mod air_verify;
 pub mod attest_verify;
 pub mod audit;
 pub mod cbor;
+pub mod cyntrisec_policy;
+pub mod egress_client;
+pub mod egress_protocol;
 pub mod error;
 #[cfg(feature = "inference")]
 pub mod inference;
@@ -19,6 +22,8 @@ pub mod types;
 pub mod ui;
 pub mod validation;
 pub mod verification_report;
+pub mod worker_protocol;
+pub mod worker_user_data;
 
 // Re-export commonly used types and errors
 pub use error::{
@@ -34,7 +39,7 @@ pub use kms_proxy::{
     kms_hpke_info, KmsProxyErrorCode, KmsProxyRequestEnvelope, KmsProxyResponseEnvelope,
     KmsRecipientAttestationEvidence, KmsReleaseEvidence, KmsRequest, KmsResponse,
 };
-pub use model_manifest::ModelManifest;
+pub use model_manifest::{ModelIdentity, ModelManifest};
 pub use platform_evidence::{
     CloudEvidenceSummary, CpuEvidenceSummary, EvidenceBinding, EvidenceVerifierSummary,
     GpuEvidenceHashes, GpuEvidenceSummary, MeasurementEntry, PlatformEvidenceBundle,
@@ -62,7 +67,17 @@ pub use verification_report::{
     VerifierSummary, RUNTIME_PASSPORT_V1, VERIFICATION_REPORT_V1,
 };
 
+pub use cyntrisec_policy::CyntrisecPolicy;
+pub use egress_client::EgressClient;
+pub use egress_protocol::{
+    EgressError, EgressOkResponse, EgressRequest, EgressResponse, KmsDecryptRequest,
+    KmsDecryptResponse, S3PutObjectRequest, S3PutObjectResponse, EGRESS_PROTOCOL_VERSION,
+};
 pub use receipt_verify::{verify_receipt, CheckResults, CheckStatus, VerifyOptions, VerifyResult};
+pub use worker_protocol::{
+    InferenceHandlerInput, InferenceHandlerOutput, WorkerInferenceError, WorkerResponse,
+};
+pub use worker_user_data::{WorkerAttestationUserData, WORKER_ATTESTATION_USER_DATA_V1};
 
 /// Generate a new UUID v4 string
 pub fn generate_id() -> String {

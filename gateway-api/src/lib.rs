@@ -1,18 +1,20 @@
-//! EphemeralML OpenAI-compatible gateway.
+//! Cyntrisec/EphemeralML OpenAI-compatible gateway and local proxy.
 //!
 //! Exposes `/v1/chat/completions`, `/v1/responses`, `/v1/embeddings`, and
 //! `/v1/models` backed by `SecureEnclaveClient`. Attestation metadata is
-//! returned in response headers (`x-ephemeralml-*`) and optionally in the
-//! JSON body.
+//! returned in response headers (`x-cyntrisec-*` plus legacy
+//! `x-ephemeralml-*`) and optionally in the JSON body.
 
 pub mod auth;
 pub mod config;
 pub mod rate_limit;
 pub mod reconnect;
 pub mod routes;
+pub mod runtime;
 pub mod state;
 pub mod streaming;
 pub mod types;
+pub mod worker;
 
 use axum::http::{HeaderMap, HeaderValue, StatusCode};
 use axum::middleware;

@@ -1,0 +1,21 @@
+; Cyntrisec Worker Attestation user_data v1 - CDDL Schema
+; Status: v1.0 FROZEN
+; Date: 2026-05-12
+; References: RFC 8949 (CBOR), RFC 8610 (CDDL)
+;
+; This schema defines the application-level user_data bytes embedded in
+; worker TEE attestation documents. It is adjacent to AIR v1: AIR receipts
+; prove an inference; this user_data binds the attested worker channel to
+; the receipt signing key and model identity.
+
+worker-attestation-user-data-v1 = [
+  schema_version: 1,
+  receipt_signing_pubkey: bstr .size 32, ; Ed25519 raw public key
+  model_id: tstr,
+  model_hash: bstr .size 32              ; SHA-256 over canonical model-manifest.json bytes
+]
+
+; Encoding requirements:
+; - MUST be CBOR array in the field order above.
+; - Verifiers MUST reject any schema_version other than 1.
+; - v1 is frozen. Future changes require a new schema version.

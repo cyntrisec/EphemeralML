@@ -1,0 +1,63 @@
+; Cyntrisec Egress Protocol v1 - CDDL Schema
+; Status: v1.0 FROZEN
+; Date: 2026-05-12
+; References: RFC 8949 (CBOR), RFC 8610 (CDDL)
+
+egress-request-v1 = [
+  schema_version: 1,
+  op: egress-request-op,
+  payload: kms-decrypt-request / s3-put-object-request
+]
+
+egress-response-v1 = [
+  schema_version: 1,
+  result: egress-response-result,
+  payload: egress-ok-response / egress-error
+]
+
+egress-request-op = "kms_decrypt" / "s3_put_object"
+egress-response-result = "ok" / "err"
+
+kms-decrypt-request = {
+  "ciphertext" => bstr,
+  "key_arn" => tstr,
+  ? "encryption_context" => { * tstr => tstr }
+}
+
+s3-put-object-request = {
+  "bucket" => tstr,
+  "key" => tstr,
+  "body" => bstr,
+  ? "content_type" => tstr,
+  ? "kms_key_arn" => tstr,
+  ? "metadata" => { * tstr => tstr }
+}
+
+egress-ok-response = kms-decrypt-ok / s3-put-object-ok
+
+kms-decrypt-ok = {
+  "op" => "kms_decrypt",
+  "data" => {
+    "plaintext" => bstr
+  }
+}
+
+s3-put-object-ok = {
+  "op" => "s3_put_object",
+  "data" => {
+    "etag" => tstr,
+    ? "version_id" => tstr
+  }
+}
+
+egress-error = {
+  "code" => tstr,
+  "message" => tstr,
+  ? "aws_request_id" => tstr
+}
+
+; Encoding requirements:
+; - The outer array MUST use the field order above.
+; - Decoders MUST reject any schema_version other than 1.
+; - Request and response tags are closed in v1.
+; - Binary payloads MUST be CBOR byte strings.

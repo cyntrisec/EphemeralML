@@ -19,7 +19,7 @@ create infrastructure or build a fresh EIF. The stack must already contain:
 - A Nitro-enabled EC2 host managed by SSM.
 - The host binaries under `/opt/cyntrisec/bin/`.
 - The approved EIF under `/opt/cyntrisec/eif/`.
-- KMS policy pinned to the approved `EnclaveImageSha384`.
+- Model KMS policy pinned to the approved EIF image (`EnclaveImageSha384`) plus PCR1/PCR2.
 - The packaged encrypted model object in the stack-owned S3 bucket.
 
 ## Bootstrap Loop
@@ -29,12 +29,12 @@ The high-confidence setup has a real bootstrap loop:
 1. Create or update the stack to get model/evidence KMS keys and buckets.
 2. Package the model with `scripts/aws/package_model.sh`.
 3. Build the AWS PoC EIF that contains the model manifest and wrapped DEK.
-4. Extract the final EIF SHA384/PCR0 from `nitro-cli build-enclave`.
-5. Update the stack parameter `EnclaveImageSha384` so KMS release is pinned to the final EIF.
+4. Extract the final EIF SHA384 plus PCR1/PCR2 from `nitro-cli build-enclave`.
+5. Update the stack parameters `EnclaveImageSha384`, `EnclavePcr1Sha384`, and `EnclavePcr2Sha384` so KMS release is pinned to the final measured runtime.
 6. Run the repeatable PoC runner.
 
-Do not skip step 5. Running with an unpinned or stale EIF hash weakens the proof
-from "KMS released to this measured enclave" to "the code happened to run."
+Do not skip step 5. Running with unpinned or stale PCR values weakens the proof
+from "KMS released to this measured enclave runtime" to "the code happened to run."
 
 ## Repeatable Run
 

@@ -352,6 +352,7 @@ mod tests {
             config_hash: None,
             gcs_uris: Default::default(),
             created_at: String::new(),
+            model_identity: None,
             signature: vec![],
         };
         // ModelManifest::canonical_payload_bytes is private, so replicate:

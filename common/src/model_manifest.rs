@@ -3,6 +3,30 @@ use ed25519_dalek::{Signature, VerifyingKey};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
+/// Rich model identity metadata carried by `model-manifest.json`.
+///
+/// This lives outside AIR v1. AIR receipts keep their frozen `model_hash`
+/// claim and can bind to the canonical manifest bytes when using
+/// `model_hash_scheme = "sha256-manifest"`.
+#[derive(Debug, Serialize, Deserialize, Clone, Default, PartialEq, Eq)]
+pub struct ModelIdentity {
+    /// EROFS root digest for packaged model files, when available.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub erofs_root: Option<String>,
+
+    /// dm-verity root digest for packaged model files, when available.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub dm_verity_root: Option<String>,
+
+    /// Hugging Face commit pinned for source-model provenance, when available.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub hf_commit: Option<String>,
+
+    /// Files intentionally excluded from the model package identity root.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub excluded_files: Vec<String>,
+}
+
 /// Signed Model Manifest
 ///
 /// Represents the integrity and authenticity metadata for a model artifact.
@@ -45,6 +69,10 @@ pub struct ModelManifest {
     #[serde(default)]
     pub created_at: String,
 
+    /// Optional structured identity roots for reproducible model packaging.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub model_identity: Option<ModelIdentity>,
+
     /// Ed25519 signature of the canonical JSON representation of the fields above
     #[serde(with = "serde_bytes")]
     pub signature: Vec<u8>,
@@ -67,6 +95,8 @@ struct ManifestSigningPayload {
     key_id: String,
     #[serde(with = "serde_bytes")]
     model_hash: Vec<u8>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    model_identity: Option<ModelIdentity>,
     model_id: String,
     #[serde(
         default,
@@ -191,6 +221,27 @@ impl ModelManifest {
         coverage.insert("tokenizer", self.tokenizer_hash.is_some());
         coverage.insert("config", self.config_hash.is_some());
         coverage.insert("adapters", false); // Not supported yet
+        coverage.insert(
+            "erofs_root",
+            self.model_identity
+                .as_ref()
+                .and_then(|identity| identity.erofs_root.as_ref())
+                .is_some(),
+        );
+        coverage.insert(
+            "dm_verity_root",
+            self.model_identity
+                .as_ref()
+                .and_then(|identity| identity.dm_verity_root.as_ref())
+                .is_some(),
+        );
+        coverage.insert(
+            "hf_commit",
+            self.model_identity
+                .as_ref()
+                .and_then(|identity| identity.hf_commit.as_ref())
+                .is_some(),
+        );
         coverage
     }
 
@@ -208,6 +259,7 @@ impl ModelManifest {
             hash_algorithm: self.hash_algorithm.clone(),
             key_id: self.key_id.clone(),
             model_hash: self.model_hash.clone(),
+            model_identity: self.model_identity.clone(),
             model_id: self.model_id.clone(),
             tokenizer_hash: self.tokenizer_hash.clone(),
             version: self.version.clone(),
@@ -289,6 +341,7 @@ mod tests {
             config_hash: None,
             gcs_uris,
             created_at: "2026-02-16T00:00:00Z".to_string(),
+            model_identity: None,
             signature: vec![],
         };
 
@@ -332,6 +385,7 @@ mod tests {
         assert_eq!(parsed.model_id, manifest.model_id);
         assert_eq!(parsed.version, manifest.version);
         assert_eq!(parsed.model_hash, manifest.model_hash);
+        assert_eq!(parsed.model_identity, manifest.model_identity);
         assert_eq!(parsed.gcs_uris.len(), 4);
         assert_eq!(parsed.created_at, "2026-02-16T00:00:00Z");
     }
@@ -439,6 +493,20 @@ mod tests {
         assert_eq!(coverage.get("tokenizer"), Some(&true));
         assert_eq!(coverage.get("config"), Some(&false));
         assert_eq!(coverage.get("adapters"), Some(&false));
+        assert_eq!(coverage.get("erofs_root"), Some(&false));
+        assert_eq!(coverage.get("dm_verity_root"), Some(&false));
+        assert_eq!(coverage.get("hf_commit"), Some(&false));
+
+        manifest.model_identity = Some(ModelIdentity {
+            erofs_root: Some("sha256:erofs-root".to_string()),
+            dm_verity_root: Some("sha256:dm-verity-root".to_string()),
+            hf_commit: Some("0123456789abcdef0123456789abcdef01234567".to_string()),
+            excluded_files: vec![],
+        });
+        let coverage = manifest.identity_coverage();
+        assert_eq!(coverage.get("erofs_root"), Some(&true));
+        assert_eq!(coverage.get("dm_verity_root"), Some(&true));
+        assert_eq!(coverage.get("hf_commit"), Some(&true));
     }
 
     #[test]
@@ -453,6 +521,7 @@ mod tests {
             config_hash: None,
             gcs_uris: BTreeMap::new(),
             created_at: "t".to_string(),
+            model_identity: None,
             signature: vec![],
         };
         let bytes = manifest.canonical_payload_bytes().unwrap();
@@ -495,5 +564,63 @@ mod tests {
         assert_eq!(manifest.model_id, "old-model");
         assert!(manifest.gcs_uris.is_empty());
         assert!(manifest.created_at.is_empty());
+        assert!(manifest.model_identity.is_none());
+    }
+
+    #[test]
+    fn test_manifest_model_identity_roundtrip() {
+        let signing_key = SigningKey::generate(&mut OsRng);
+        let mut manifest = create_signed_manifest(&signing_key);
+        manifest.model_identity = Some(ModelIdentity {
+            erofs_root: Some("sha256:erofs-root".to_string()),
+            dm_verity_root: Some("sha256:dm-verity-root".to_string()),
+            hf_commit: Some("0123456789abcdef0123456789abcdef01234567".to_string()),
+            excluded_files: vec!["README.md".to_string(), ".gitattributes".to_string()],
+        });
+        let payload_bytes = manifest.canonical_payload_bytes().unwrap();
+        manifest.signature = signing_key.sign(&payload_bytes).to_bytes().to_vec();
+
+        let json = serde_json::to_vec(&manifest).unwrap();
+        let parsed = ModelManifest::from_json(&json).unwrap();
+        let identity = parsed.model_identity.as_ref().unwrap();
+
+        assert_eq!(identity.erofs_root.as_deref(), Some("sha256:erofs-root"));
+        assert_eq!(
+            identity.dm_verity_root.as_deref(),
+            Some("sha256:dm-verity-root")
+        );
+        assert_eq!(
+            identity.hf_commit.as_deref(),
+            Some("0123456789abcdef0123456789abcdef01234567")
+        );
+        assert_eq!(
+            identity.excluded_files,
+            vec!["README.md".to_string(), ".gitattributes".to_string()]
+        );
+        assert!(parsed
+            .verify(signing_key.verifying_key().as_bytes())
+            .is_ok());
+    }
+
+    #[test]
+    fn test_manifest_signature_covers_model_identity() {
+        let signing_key = SigningKey::generate(&mut OsRng);
+        let mut manifest = create_signed_manifest(&signing_key);
+        manifest.model_identity = Some(ModelIdentity {
+            erofs_root: Some("sha256:erofs-root".to_string()),
+            dm_verity_root: None,
+            hf_commit: None,
+            excluded_files: vec![],
+        });
+        let payload_bytes = manifest.canonical_payload_bytes().unwrap();
+        manifest.signature = signing_key.sign(&payload_bytes).to_bytes().to_vec();
+        assert!(manifest
+            .verify(signing_key.verifying_key().as_bytes())
+            .is_ok());
+
+        manifest.model_identity.as_mut().unwrap().erofs_root = Some("sha256:tampered".to_string());
+        assert!(manifest
+            .verify(signing_key.verifying_key().as_bytes())
+            .is_err());
     }
 }

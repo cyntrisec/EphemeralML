@@ -9,14 +9,22 @@ license = "Apache-2.0"
 name = "ephemeralml-gateway"
 path = "src/main.rs"
 
+[[bin]]
+name = "cyntrisec-proxy"
+path = "src/bin/cyntrisec_proxy.rs"
+
 [dependencies]
 ephemeral-ml-client = { path = "../client" }
+ephemeral-ml-common = { path = "../common" }
+confidential-ml-transport = { workspace = true, features = ["tcp"] }
+bytes = { workspace = true }
 
 # Web framework
 axum = { version = "0.8", features = ["json"] }
 tokio = { version = "1.52", features = ["full"] }
 tower-http = { version = "0.6", features = ["cors", "trace", "limit"] }
 futures = "0.3"
+async-trait = "0.1"
 
 # Serialization
 serde = { version = "1.0", features = ["derive"] }
@@ -41,9 +49,14 @@ dashmap = "6"
 
 [features]
 default = []
-mock = ["ephemeral-ml-client/mock"]
+mock = ["ephemeral-ml-client/mock", "confidential-ml-transport/mock"]
 gcp = ["ephemeral-ml-client/gcp"]
-production = ["ephemeral-ml-client/production"]
+production = ["ephemeral-ml-client/production", "confidential-ml-transport/nitro"]
 
 [dev-dependencies]
 tower = { version = "0.5", features = ["util"] }
+ephemeral-ml-enclave = { path = "../enclave", features = ["mock"] }
+cyntrisec-relay-egress = { path = "../host/relay-egress" }
+base64 = "0.22"
+flate2 = "1.0"
+tar = "0.4"

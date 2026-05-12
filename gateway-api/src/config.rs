@@ -1,14 +1,152 @@
-//! Gateway configuration from environment variables and CLI args.
+//! Gateway/proxy configuration from environment variables and CLI args.
 
-use clap::Parser;
+use clap::{Parser, ValueEnum};
+use serde::Serialize;
+use std::ffi::OsString;
+use std::path::PathBuf;
+
+const ENV_ALIASES: &[(&str, &[&str])] = &[
+    (
+        "EPHEMERALML_BACKEND_ADDR",
+        &[
+            "CYNTRISEC_BACKEND_ADDR",
+            "CYNTRISEC_WORKER_ADDR",
+            "CYNTRISEC_WORKER",
+        ],
+    ),
+    ("EPHEMERALML_DEFAULT_MODEL", &["CYNTRISEC_DEFAULT_MODEL"]),
+    ("EPHEMERALML_API_KEY", &["CYNTRISEC_API_KEY"]),
+    (
+        "EPHEMERALML_GATEWAY_HOST",
+        &["CYNTRISEC_PROXY_HOST", "CYNTRISEC_GATEWAY_HOST"],
+    ),
+    (
+        "EPHEMERALML_GATEWAY_PORT",
+        &["CYNTRISEC_PROXY_PORT", "CYNTRISEC_GATEWAY_PORT"],
+    ),
+    (
+        "EPHEMERALML_REQUEST_TIMEOUT_SECS",
+        &["CYNTRISEC_REQUEST_TIMEOUT_SECS"],
+    ),
+    (
+        "EPHEMERALML_INCLUDE_METADATA_JSON",
+        &["CYNTRISEC_INCLUDE_METADATA_JSON"],
+    ),
+    (
+        "EPHEMERALML_RECEIPT_HEADER_FULL",
+        &["CYNTRISEC_RECEIPT_HEADER_FULL"],
+    ),
+    (
+        "EPHEMERALML_MODEL_CAPABILITIES",
+        &["CYNTRISEC_MODEL_CAPABILITIES"],
+    ),
+    (
+        "EPHEMERALML_EMBEDDING_BACKEND_ADDR",
+        &["CYNTRISEC_EMBEDDING_BACKEND_ADDR"],
+    ),
+    (
+        "EPHEMERALML_EMBEDDING_MODEL",
+        &["CYNTRISEC_EMBEDDING_MODEL"],
+    ),
+    (
+        "EPHEMERALML_MAX_CONCURRENT_REQUESTS",
+        &["CYNTRISEC_MAX_CONCURRENT_REQUESTS"],
+    ),
+    (
+        "EPHEMERALML_RATE_LIMIT_PER_IP",
+        &["CYNTRISEC_RATE_LIMIT_PER_IP"],
+    ),
+    (
+        "EPHEMERALML_RATE_LIMIT_GLOBAL",
+        &["CYNTRISEC_RATE_LIMIT_GLOBAL"],
+    ),
+    (
+        "EPHEMERALML_TRUST_PROXY_HEADERS",
+        &["CYNTRISEC_TRUST_PROXY_HEADERS"],
+    ),
+    (
+        "EPHEMERALML_RECONNECT_ENABLED",
+        &["CYNTRISEC_RECONNECT_ENABLED"],
+    ),
+    (
+        "EPHEMERALML_RECONNECT_BACKOFF_BASE_MS",
+        &["CYNTRISEC_RECONNECT_BACKOFF_BASE_MS"],
+    ),
+    (
+        "EPHEMERALML_RECONNECT_BACKOFF_CAP_MS",
+        &["CYNTRISEC_RECONNECT_BACKOFF_CAP_MS"],
+    ),
+    (
+        "EPHEMERALML_RECONNECT_HEALTH_INTERVAL_SECS",
+        &["CYNTRISEC_RECONNECT_HEALTH_INTERVAL_SECS"],
+    ),
+];
+
+/// Install CYNTRISEC_* environment aliases before clap parses `EPHEMERALML_*`.
+///
+/// Existing EPHEMERALML_* values keep precedence for backward compatibility.
+pub fn install_env_aliases() {
+    for (legacy, aliases) in ENV_ALIASES {
+        if std::env::var_os(legacy).is_some() {
+            continue;
+        }
+        if let Some((alias, value)) = first_env_value(aliases) {
+            let value = normalize_alias_value(legacy, alias, value);
+            std::env::set_var(legacy, value);
+        }
+    }
+}
+
+/// Install local-proxy defaults before Clap parses env vars.
+///
+/// `cyntrisec-proxy` is intentionally localhost-only by default. If a customer
+/// needs another process namespace, they should run the proxy as a sidecar in
+/// the same pod/task/service boundary as the application, not expose it as a
+/// public network service.
+pub fn install_local_proxy_defaults() {
+    set_env_default("EPHEMERALML_GATEWAY_HOST", "127.0.0.1");
+    set_env_default("EPHEMERALML_GATEWAY_PORT", "4000");
+    set_env_default("CYNTRISEC_PREFLIGHT_REQUIRED", "true");
+}
+
+fn set_env_default(name: &str, value: &str) {
+    if std::env::var_os(name).is_none() {
+        std::env::set_var(name, value);
+    }
+}
+
+fn first_env_value<'a>(names: &'a [&'a str]) -> Option<(&'a str, OsString)> {
+    names
+        .iter()
+        .find_map(|name| std::env::var_os(name).map(|value| (*name, value)))
+}
+
+fn normalize_alias_value(legacy: &str, alias: &str, value: OsString) -> OsString {
+    if legacy == "EPHEMERALML_BACKEND_ADDR" && alias == "CYNTRISEC_WORKER" {
+        if let Some(value_str) = value.to_str() {
+            if let Some(stripped) = value_str.strip_prefix("tcp://") {
+                return OsString::from(stripped);
+            }
+        }
+    }
+    value
+}
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Serialize, ValueEnum)]
+#[serde(rename_all = "snake_case")]
+pub enum WorkerChannelKind {
+    Http,
+    Secure,
+}
 
 #[derive(Parser, Clone, Debug)]
 #[command(
-    name = "ephemeralml-gateway",
-    about = "OpenAI-compatible gateway for EphemeralML"
+    name = "cyntrisec-proxy",
+    visible_alias = "ephemeralml-gateway",
+    about = "OpenAI-compatible local proxy/gateway for Cyntrisec confidential inference"
 )]
 pub struct GatewayConfig {
-    /// EphemeralML backend address (host:port) for the secure enclave channel.
+    /// Cyntrisec worker/backend address (host:port) for the secure enclave channel.
     #[arg(long, env = "EPHEMERALML_BACKEND_ADDR")]
     pub backend_addr: String,
 
@@ -39,12 +177,11 @@ pub struct GatewayConfig {
     #[arg(long, env = "EPHEMERALML_INCLUDE_METADATA_JSON")]
     pub include_metadata_json: bool,
 
-    /// Include full AIR v1 receipt in `x-ephemeralml-air-receipt-b64` header.
+    /// Include full AIR v1 receipt in receipt-b64 headers.
     /// Off by default — large receipts can break proxies/load balancers with
     /// header-size limits (typically 4-8 KB). When disabled, only
-    /// `x-ephemeralml-receipt-present` and `x-ephemeralml-receipt-sha256` are
-    /// sent. Full receipt is always available via JSON metadata when
-    /// `EPHEMERALML_INCLUDE_METADATA_JSON=true`.
+    /// receipt presence/hash headers are sent. Full receipt is always
+    /// available via JSON metadata when metadata JSON is enabled.
     #[arg(long, env = "EPHEMERALML_RECEIPT_HEADER_FULL")]
     pub receipt_header_full: bool,
 
@@ -119,6 +256,29 @@ pub struct GatewayConfig {
         default_value = "5"
     )]
     pub reconnect_health_interval_secs: u64,
+
+    /// Worker-channel implementation. Defaults to `http` until the AWS host
+    /// relay and enclave worker direct path are available.
+    #[arg(
+        long,
+        env = "CYNTRISEC_WORKER_CHANNEL",
+        value_enum,
+        default_value = "http"
+    )]
+    pub worker_channel_kind: WorkerChannelKind,
+
+    /// Pinned Cyntrisec policy file loaded by the local proxy preflight.
+    #[arg(long, env = "CYNTRISEC_POLICY_PATH")]
+    pub preflight_policy_path: Option<PathBuf>,
+
+    /// Pinned model manifest loaded by the local proxy preflight.
+    #[arg(long, env = "CYNTRISEC_MANIFEST_PATH")]
+    pub preflight_manifest_path: Option<PathBuf>,
+
+    /// Require local-proxy preflight to load pinned policy/manifest inputs and
+    /// verify worker attestation before accepting prompts.
+    #[arg(long, env = "CYNTRISEC_PREFLIGHT_REQUIRED", default_value = "false")]
+    pub preflight_required: bool,
 }
 
 impl GatewayConfig {
@@ -213,6 +373,46 @@ impl GatewayConfig {
             );
         }
 
+        if self.preflight_required {
+            if self.preflight_policy_path.is_none() {
+                return Err(
+                    "CYNTRISEC_PREFLIGHT_REQUIRED is true but CYNTRISEC_POLICY_PATH is not set"
+                        .to_string(),
+                );
+            }
+            if self.preflight_manifest_path.is_none() {
+                return Err(
+                    "CYNTRISEC_PREFLIGHT_REQUIRED is true but CYNTRISEC_MANIFEST_PATH is not set"
+                        .to_string(),
+                );
+            }
+        }
+
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn normalize_strips_tcp_prefix_for_worker_alias() {
+        let value = normalize_alias_value(
+            "EPHEMERALML_BACKEND_ADDR",
+            "CYNTRISEC_WORKER",
+            OsString::from("tcp://1.2.3.4:443"),
+        );
+        assert_eq!(value, OsString::from("1.2.3.4:443"));
+    }
+
+    #[test]
+    fn normalize_keeps_tcp_prefix_for_other_backend_aliases() {
+        let value = normalize_alias_value(
+            "EPHEMERALML_BACKEND_ADDR",
+            "CYNTRISEC_BACKEND_ADDR",
+            OsString::from("tcp://1.2.3.4:443"),
+        );
+        assert_eq!(value, OsString::from("tcp://1.2.3.4:443"));
     }
 }

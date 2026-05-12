@@ -1,0 +1,443 @@
+name: Cluster A Image Release
+
+on:
+  push:
+    tags:
+      - 'cluster-a-v*'
+      - 'worker-v*'
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: 'OCI tag to publish, for example v1'
+        type: string
+        default: 'v1'
+      push:
+        description: 'Push to ECR Public and cosign-sign published references'
+        type: boolean
+        default: false
+      build_enclave_eif:
+        description: 'Run Nitro EIF build on a self-hosted Nitro runner'
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+  id-token: write
+
+env:
+  AWS_REGION: us-east-1
+  ECR_PUBLIC_REGISTRY: public.ecr.aws
+  ECR_PUBLIC_NAMESPACE: cyntrisec
+
+jobs:
+  release-tag:
+    name: Resolve Release Tag
+    runs-on: ubuntu-22.04
+    outputs:
+      tag: ${{ steps.tag.outputs.tag }}
+      push: ${{ steps.mode.outputs.push }}
+      build_enclave_eif: ${{ steps.mode.outputs.build_enclave_eif }}
+    steps:
+      - name: Resolve tag
+        id: tag
+        run: |
+          if [ "${GITHUB_REF_TYPE}" = "tag" ]; then
+            TAG="${GITHUB_REF_NAME}"
+          else
+            TAG="${{ inputs.release_tag }}"
+          fi
+          case "$TAG" in
+            *[!A-Za-z0-9_.-]*|'')
+              echo "invalid release tag: $TAG" >&2
+              exit 2
+              ;;
+          esac
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+
+      - name: Resolve publish mode
+        id: mode
+        run: |
+          if [ "${GITHUB_REF_TYPE}" = "tag" ] || [ "${{ inputs.push }}" = "true" ]; then
+            echo "push=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "push=false" >> "$GITHUB_OUTPUT"
+          fi
+          if [ "${GITHUB_REF_TYPE}" = "tag" ] || [ "${{ inputs.build_enclave_eif }}" = "true" ]; then
+            echo "build_enclave_eif=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "build_enclave_eif=false" >> "$GITHUB_OUTPUT"
+          fi
+
+  host-binaries:
+    name: Build Host Binary (${{ matrix.repository }})
+    runs-on: ubuntu-22.04
+    needs: release-tag
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - repository: relay
+            package: cyntrisec-relay
+            binaries: cyntrisec-relay
+          - repository: relay-egress
+            package: cyntrisec-relay-egress
+            binaries: cyntrisec-relay-egress cyntrisec-worker-config
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@1.93.0
+
+      - name: Install native build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends pkg-config libssl-dev
+
+      - name: Build binaries
+        run: cargo build --locked --release -p ${{ matrix.package }} --bins
+
+      - name: Stage binary artifact
+        env:
+          BINARIES: ${{ matrix.binaries }}
+        run: |
+          set -euo pipefail
+          mkdir -p "dist/${{ matrix.repository }}"
+          for binary in $BINARIES; do
+            cp "target/release/${binary}" "dist/${{ matrix.repository }}/${binary}"
+            sha256sum "dist/${{ matrix.repository }}/${binary}" > "dist/${{ matrix.repository }}/${binary}.sha256"
+          done
+
+      - name: Configure AWS credentials
+        if: needs.release-tag.outputs.push == 'true'
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_RELEASE_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+          role-session-name: cluster-a-image-release-${{ github.run_id }}
+
+      - name: Login to ECR Public
+        if: needs.release-tag.outputs.push == 'true'
+        uses: aws-actions/amazon-ecr-login@v2
+        with:
+          registry-type: public
+
+      - name: Install ORAS
+        if: needs.release-tag.outputs.push == 'true'
+        uses: oras-project/setup-oras@v1
+
+      - name: Install cosign
+        if: needs.release-tag.outputs.push == 'true'
+        uses: sigstore/cosign-installer@v3
+        with:
+          cosign-release: 'v2.4.1'
+
+      - name: Push and sign host binary OCI artifact
+        id: publish
+        if: needs.release-tag.outputs.push == 'true'
+        env:
+          REF: ${{ env.ECR_PUBLIC_REGISTRY }}/${{ env.ECR_PUBLIC_NAMESPACE }}/${{ matrix.repository }}:${{ needs.release-tag.outputs.tag }}
+          BINARIES: ${{ matrix.binaries }}
+        run: |
+          set -euo pipefail
+          args=()
+          for binary in $BINARIES; do
+            args+=("dist/${{ matrix.repository }}/${binary}:application/vnd.cyntrisec.executable.linux-amd64")
+            args+=("dist/${{ matrix.repository }}/${binary}.sha256:text/plain")
+          done
+          oras push "$REF" "${args[@]}"
+          DIGEST="$(oras resolve "$REF")"
+          cosign sign --yes "$REF@$DIGEST"
+          echo "oci_digest=$DIGEST" >> "$GITHUB_OUTPUT"
+
+      - name: Emit host binary manifest
+        env:
+          REPOSITORY: ${{ matrix.repository }}
+          BINARIES: ${{ matrix.binaries }}
+          TAG: ${{ needs.release-tag.outputs.tag }}
+          PUSHED: ${{ needs.release-tag.outputs.push }}
+          OCI_DIGEST: ${{ steps.publish.outputs.oci_digest }}
+        run: |
+          set -euo pipefail
+          mkdir -p dist/release-manifests
+          checksums_json="$(
+            for binary in $BINARIES; do
+              checksum="$(cut -d ' ' -f1 "dist/${REPOSITORY}/${binary}.sha256")"
+              printf '"%s":"%s"\n' "$binary" "$checksum"
+            done | jq -Rs 'split("\n")[:-1] | map(split(":")) | map({(.[0] | fromjson): (.[1] | fromjson)}) | add'
+          )"
+          binaries_json="$(printf '%s\n' $BINARIES | jq -R . | jq -s .)"
+          cat > "dist/release-manifests/${REPOSITORY}.json" <<JSON
+          {
+            "schema_version": 1,
+            "kind": "host_binary",
+            "repository": "${ECR_PUBLIC_REGISTRY}/${ECR_PUBLIC_NAMESPACE}/${REPOSITORY}",
+            "tag": "${TAG}",
+            "binaries": ${binaries_json},
+            "file_sha256": ${checksums_json},
+            "oci_digest": "${OCI_DIGEST}",
+            "pushed": ${PUSHED}
+          }
+          JSON
+
+      - name: Upload host binary artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: cluster-a-host-binary-${{ matrix.repository }}
+          path: |
+            dist/${{ matrix.repository }}/*
+            dist/release-manifests/${{ matrix.repository }}.json
+          retention-days: 30
+
+  proxy-image:
+    name: Build Proxy OCI Image
+    runs-on: ubuntu-22.04
+    needs: release-tag
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Configure AWS credentials
+        if: needs.release-tag.outputs.push == 'true'
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_RELEASE_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+          role-session-name: cluster-a-proxy-release-${{ github.run_id }}
+
+      - name: Login to ECR Public
+        if: needs.release-tag.outputs.push == 'true'
+        uses: aws-actions/amazon-ecr-login@v2
+        with:
+          registry-type: public
+
+      - name: Build proxy image
+        id: build
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: deploy/release/images/Dockerfile.proxy
+          load: ${{ needs.release-tag.outputs.push != 'true' }}
+          push: ${{ needs.release-tag.outputs.push == 'true' }}
+          provenance: ${{ needs.release-tag.outputs.push == 'true' }}
+          sbom: ${{ needs.release-tag.outputs.push == 'true' }}
+          tags: |
+            ${{ env.ECR_PUBLIC_REGISTRY }}/${{ env.ECR_PUBLIC_NAMESPACE }}/proxy:${{ needs.release-tag.outputs.tag }}
+
+      - name: Resolve proxy image reference
+        id: image
+        env:
+          IMAGE: ${{ env.ECR_PUBLIC_REGISTRY }}/${{ env.ECR_PUBLIC_NAMESPACE }}/proxy:${{ needs.release-tag.outputs.tag }}
+          PUSHED: ${{ needs.release-tag.outputs.push }}
+          PUSHED_DIGEST: ${{ steps.build.outputs.digest }}
+        run: |
+          set -euo pipefail
+          if [ "$PUSHED" = "true" ]; then
+            echo "digest=$PUSHED_DIGEST" >> "$GITHUB_OUTPUT"
+            echo "sign_ref=$IMAGE@$PUSHED_DIGEST" >> "$GITHUB_OUTPUT"
+          else
+            LOCAL_ID="$(docker image inspect --format='{{.Id}}' "$IMAGE")"
+            echo "digest=$LOCAL_ID" >> "$GITHUB_OUTPUT"
+            echo "sign_ref=" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Install cosign
+        if: needs.release-tag.outputs.push == 'true'
+        uses: sigstore/cosign-installer@v3
+        with:
+          cosign-release: 'v2.4.1'
+
+      - name: Cosign-sign pushed proxy image
+        if: needs.release-tag.outputs.push == 'true'
+        env:
+          IMAGE_REF: ${{ steps.image.outputs.sign_ref }}
+        run: cosign sign --yes "$IMAGE_REF"
+
+      - name: Emit proxy image manifest
+        run: |
+          mkdir -p dist/release-manifests
+          cat > "dist/release-manifests/proxy.json" <<JSON
+          {
+            "schema_version": 1,
+            "kind": "oci_image",
+            "repository": "${{ env.ECR_PUBLIC_REGISTRY }}/${{ env.ECR_PUBLIC_NAMESPACE }}/proxy",
+            "tag": "${{ needs.release-tag.outputs.tag }}",
+            "digest": "${{ steps.image.outputs.digest }}",
+            "pushed": ${{ needs.release-tag.outputs.push == 'true' }}
+          }
+          JSON
+
+      - name: Upload proxy image manifest
+        uses: actions/upload-artifact@v4
+        with:
+          name: cluster-a-image-proxy
+          path: dist/release-manifests/proxy.json
+          retention-days: 30
+
+  enclave-eif:
+    name: Build Nitro EIF
+    runs-on: [self-hosted, linux, x64, nitro-enclaves]
+    needs: release-tag
+    if: needs.release-tag.outputs.build_enclave_eif == 'true'
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Verify Nitro build tooling
+        run: |
+          command -v nitro-cli
+          command -v docker
+          nitro-cli --version
+          docker --version
+
+      - name: Configure AWS credentials
+        if: needs.release-tag.outputs.push == 'true'
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_RELEASE_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+          role-session-name: cluster-a-eif-release-${{ github.run_id }}
+
+      - name: Login to ECR Public
+        if: needs.release-tag.outputs.push == 'true'
+        uses: aws-actions/amazon-ecr-login@v2
+        with:
+          registry-type: public
+
+      - name: Build enclave rootfs image
+        env:
+          TAG: ${{ needs.release-tag.outputs.tag }}
+        run: |
+          set -euo pipefail
+          ROOTFS_URI="${ECR_PUBLIC_REGISTRY}/${ECR_PUBLIC_NAMESPACE}/enclave-rootfs:${TAG}"
+          docker buildx build \
+            --load \
+            --build-context minilm=./test_assets/minilm \
+            -f deploy/release/images/Dockerfile.enclave \
+            -t "$ROOTFS_URI" \
+            .
+          echo "ROOTFS_URI=$ROOTFS_URI" >> "$GITHUB_ENV"
+
+      - name: Install cosign
+        if: needs.release-tag.outputs.push == 'true'
+        uses: sigstore/cosign-installer@v3
+        with:
+          cosign-release: 'v2.4.1'
+
+      - name: Push and sign enclave rootfs image
+        if: needs.release-tag.outputs.push == 'true'
+        run: |
+          set -euo pipefail
+          docker push "$ROOTFS_URI"
+          DIGEST="$(docker inspect --format='{{index .RepoDigests 0}}' "$ROOTFS_URI")"
+          echo "ROOTFS_DIGEST=$DIGEST" >> "$GITHUB_ENV"
+          cosign sign --yes "$DIGEST"
+
+      - name: Build EIF and extract measurements
+        env:
+          TAG: ${{ needs.release-tag.outputs.tag }}
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          nitro-cli build-enclave \
+            --docker-uri "$ROOTFS_URI" \
+            --output-file dist/cyntrisec-enclave.eif \
+            | tee dist/nitro-build-output.json
+          python3 scripts/release/nitro_measurements_manifest.py \
+            --nitro-output dist/nitro-build-output.json \
+            --eif dist/cyntrisec-enclave.eif \
+            --release-tag "$TAG" \
+            --rootfs-image "$ROOTFS_URI" \
+            --eif-oci-ref "${ECR_PUBLIC_REGISTRY}/${ECR_PUBLIC_NAMESPACE}/enclave:${TAG}" \
+            --out dist/enclave-measurements.json
+          cat dist/enclave-measurements.json
+
+      - name: Install ORAS
+        if: needs.release-tag.outputs.push == 'true'
+        uses: oras-project/setup-oras@v1
+
+      - name: Sign EIF blob and push EIF OCI artifact
+        if: needs.release-tag.outputs.push == 'true'
+        env:
+          TAG: ${{ needs.release-tag.outputs.tag }}
+          EIF_REF: ${{ env.ECR_PUBLIC_REGISTRY }}/${{ env.ECR_PUBLIC_NAMESPACE }}/enclave:${{ needs.release-tag.outputs.tag }}
+        run: |
+          set -euo pipefail
+          cosign sign-blob \
+            --yes \
+            --bundle dist/cyntrisec-enclave.eif.cosign.bundle \
+            --output-signature dist/cyntrisec-enclave.eif.sig \
+            --output-certificate dist/cyntrisec-enclave.eif.cert \
+            dist/cyntrisec-enclave.eif
+          oras push "$EIF_REF" \
+            dist/cyntrisec-enclave.eif:application/vnd.cyntrisec.eif \
+            dist/enclave-measurements.json:application/vnd.cyntrisec.measurements+json \
+            dist/cyntrisec-enclave.eif.sig:application/vnd.dev.sigstore.bundle.signature \
+            dist/cyntrisec-enclave.eif.cert:application/pem-certificate-chain \
+            dist/cyntrisec-enclave.eif.cosign.bundle:application/vnd.dev.sigstore.bundle+json
+          EIF_DIGEST="$(oras resolve "$EIF_REF")"
+          echo "$EIF_REF@$EIF_DIGEST" > dist/enclave-oci-ref.txt
+          cosign sign --yes "$EIF_REF@$EIF_DIGEST"
+
+      - name: Upload EIF release artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: cluster-a-enclave-eif
+          path: |
+            dist/cyntrisec-enclave.eif
+            dist/enclave-measurements.json
+            dist/nitro-build-output.json
+            dist/enclave-oci-ref.txt
+            dist/cyntrisec-enclave.eif.*
+          retention-days: 30
+
+  release-summary:
+    name: Release Summary
+    runs-on: ubuntu-22.04
+    needs: [release-tag, host-binaries, proxy-image, enclave-eif]
+    if: always() && needs.host-binaries.result == 'success' && needs.proxy-image.result == 'success'
+    steps:
+      - name: Download host binary manifests
+        uses: actions/download-artifact@v4
+        with:
+          pattern: cluster-a-host-binary-*
+          path: release-manifests
+          merge-multiple: true
+
+      - name: Download image manifests
+        uses: actions/download-artifact@v4
+        with:
+          pattern: cluster-a-image-*
+          path: release-manifests
+          merge-multiple: true
+
+      - name: Download enclave measurements
+        if: needs.enclave-eif.result == 'success'
+        uses: actions/download-artifact@v4
+        with:
+          name: cluster-a-enclave-eif
+          path: enclave
+
+      - name: Write summary
+        run: |
+          echo "## Cluster A Image Release" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "Tag: \`${{ needs.release-tag.outputs.tag }}\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "Pushed: \`${{ needs.release-tag.outputs.push }}\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "### Release Artifacts" >> "$GITHUB_STEP_SUMMARY"
+          find release-manifests -name '*.json' -print | sort | while read -r f; do
+            echo "\`\`\`json" >> "$GITHUB_STEP_SUMMARY"
+            cat "$f" >> "$GITHUB_STEP_SUMMARY"
+            echo "\`\`\`" >> "$GITHUB_STEP_SUMMARY"
+          done
+          if [ -f enclave/enclave-measurements.json ]; then
+            echo "### Enclave Measurements" >> "$GITHUB_STEP_SUMMARY"
+            echo "\`\`\`json" >> "$GITHUB_STEP_SUMMARY"
+            cat enclave/enclave-measurements.json >> "$GITHUB_STEP_SUMMARY"
+            echo "\`\`\`" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "### Enclave Measurements" >> "$GITHUB_STEP_SUMMARY"
+            echo "EIF build skipped. Re-run with \`build_enclave_eif=true\` on a Nitro self-hosted runner." >> "$GITHUB_STEP_SUMMARY"
+          fi

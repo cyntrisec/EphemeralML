@@ -65,6 +65,31 @@ pub struct TrustCenterCheck {
     pub detail: Option<String>,
 }
 
+/// Product-level verifier row status for compliance/auditor UX.
+#[derive(Debug, Clone, Serialize)]
+pub struct VerdictMatrixRow {
+    /// Stable row identifier.
+    pub id: &'static str,
+    /// Human-readable label for display.
+    pub label: &'static str,
+    /// Row outcome.
+    pub status: CheckStatus,
+    /// Human-readable explanation for skipped or failed rows.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub detail: Option<String>,
+}
+
+/// Six-row product verdict matrix shown above low-level verification checks.
+#[derive(Debug, Clone, Serialize)]
+pub struct VerdictMatrix {
+    pub receipt_signature: VerdictMatrixRow,
+    pub policy_match: VerdictMatrixRow,
+    pub platform_attestation: VerdictMatrixRow,
+    pub model_identity: VerdictMatrixRow,
+    pub gpu_attestation: VerdictMatrixRow,
+    pub overall_confidential_ai: VerdictMatrixRow,
+}
+
 /// Summary of the receipt artifact for display.
 #[derive(Debug, Clone, Serialize)]
 pub struct ReceiptSummary {
@@ -108,6 +133,8 @@ pub struct TrustCenterResponse {
     /// Explicit assurance level. For AIR v1, `verified=true` can still be
     /// AIR-local unless attestation evidence was supplied and checked.
     pub assurance_level: AssuranceLevel,
+    /// Product-level verdict rows for auditor/compliance surfaces.
+    pub verdict_matrix: VerdictMatrix,
     /// True only when AIR local verification is paired with attestation hash,
     /// signing-key binding, and platform attestation authenticity checks.
     pub tee_provenance_verified: bool,
@@ -150,7 +177,7 @@ impl TrustCenterResponse {
             legacy_check("destroy_evidence", map_status(&c.destroy_evidence)),
         ];
 
-        TrustCenterResponse {
+        let mut response = TrustCenterResponse {
             verdict: if result.verified {
                 Verdict::Verified
             } else {
@@ -159,6 +186,7 @@ impl TrustCenterResponse {
             verified: result.verified,
             format: ReceiptFormat::Legacy,
             assurance_level: AssuranceLevel::LegacyLocal,
+            verdict_matrix: VerdictMatrix::default_for(ReceiptFormat::Legacy),
             tee_provenance_verified: false,
             api_version: "v1",
             verified_at: ephemeral_ml_common::current_timestamp().unwrap_or(0),
@@ -178,7 +206,9 @@ impl TrustCenterResponse {
             checks,
             errors: result.errors,
             warnings: result.warnings,
-        }
+        };
+        response.refresh_verdict_matrix();
+        response
     }
 
     /// Build from an AIR v1 `AirVerifyResult`.
@@ -257,7 +287,7 @@ impl TrustCenterResponse {
             })
             .collect();
 
-        TrustCenterResponse {
+        let mut response = TrustCenterResponse {
             verdict: if result.verified {
                 Verdict::Verified
             } else {
@@ -266,6 +296,7 @@ impl TrustCenterResponse {
             verified: result.verified,
             format: ReceiptFormat::AirV1,
             assurance_level: AssuranceLevel::AirLocal,
+            verdict_matrix: VerdictMatrix::default_for(ReceiptFormat::AirV1),
             tee_provenance_verified: false,
             api_version: "v1",
             verified_at: ephemeral_ml_common::current_timestamp().unwrap_or(0),
@@ -273,12 +304,15 @@ impl TrustCenterResponse {
             checks,
             errors,
             warnings: vec![],
-        }
+        };
+        response.refresh_verdict_matrix();
+        response
     }
 
     pub fn add_check(&mut self, check: TrustCenterCheck) {
         self.checks.push(check);
         self.refresh_verdict_from_checks();
+        self.refresh_verdict_matrix();
     }
 
     pub fn add_warning(&mut self, warning: impl Into<String>) {
@@ -288,11 +322,13 @@ impl TrustCenterResponse {
     pub fn set_tee_provenance_verified(&mut self) {
         self.assurance_level = AssuranceLevel::TeeProvenance;
         self.tee_provenance_verified = true;
+        self.refresh_verdict_matrix();
     }
 
     pub fn set_platform_attested(&mut self) {
         self.assurance_level = AssuranceLevel::PlatformAttested;
         self.tee_provenance_verified = false;
+        self.refresh_verdict_matrix();
     }
 
     pub fn refresh_verdict_from_checks(&mut self) {
@@ -304,6 +340,330 @@ impl TrustCenterResponse {
             self.verified = false;
             self.verdict = Verdict::Invalid;
         }
+    }
+
+    pub fn refresh_verdict_matrix(&mut self) {
+        self.verdict_matrix = VerdictMatrix::from_response(self);
+    }
+}
+
+impl VerdictMatrix {
+    fn default_for(format: ReceiptFormat) -> Self {
+        Self {
+            receipt_signature: matrix_row(
+                "receipt_signature",
+                "Receipt signature",
+                CheckStatus::Skip,
+                Some("receipt has not been evaluated".to_string()),
+            ),
+            policy_match: matrix_row(
+                "policy_match",
+                "Policy match",
+                CheckStatus::Skip,
+                Some("no policy checks evaluated".to_string()),
+            ),
+            platform_attestation: matrix_row(
+                "platform_attestation",
+                "Platform attestation",
+                CheckStatus::Skip,
+                Some(match format {
+                    ReceiptFormat::AirV1 => "no attestation evidence supplied".to_string(),
+                    ReceiptFormat::Legacy => {
+                        "legacy receipt path does not expose AIR platform provenance".to_string()
+                    }
+                }),
+            ),
+            model_identity: matrix_row(
+                "model_identity",
+                "Model identity",
+                CheckStatus::Skip,
+                Some("model identity has not been evaluated".to_string()),
+            ),
+            gpu_attestation: matrix_row(
+                "gpu_attestation",
+                "GPU attestation",
+                CheckStatus::Skip,
+                Some("GPU evidence is not required for this verification policy".to_string()),
+            ),
+            overall_confidential_ai: matrix_row(
+                "overall_confidential_ai",
+                "Overall confidential AI",
+                CheckStatus::Fail,
+                Some("not enough evidence for confidential AI provenance".to_string()),
+            ),
+        }
+    }
+
+    fn from_response(response: &TrustCenterResponse) -> Self {
+        let receipt_signature = receipt_signature_row(response);
+        let policy_match = policy_match_row(response);
+        let platform_attestation = platform_attestation_row(response);
+        let model_identity = model_identity_row(response);
+        let gpu_attestation = gpu_attestation_row(response);
+        let overall_confidential_ai = overall_confidential_ai_row(
+            response,
+            &receipt_signature,
+            &policy_match,
+            &platform_attestation,
+            &model_identity,
+            &gpu_attestation,
+        );
+
+        Self {
+            receipt_signature,
+            policy_match,
+            platform_attestation,
+            model_identity,
+            gpu_attestation,
+            overall_confidential_ai,
+        }
+    }
+}
+
+fn receipt_signature_row(response: &TrustCenterResponse) -> VerdictMatrixRow {
+    let ids = match response.format {
+        ReceiptFormat::AirV1 => &[
+            "SIZE",
+            "COSE_DECODE",
+            "ALG",
+            "CONTENT_TYPE",
+            "PAYLOAD",
+            "CLAIMS_DECODE",
+            "EAT_PROFILE",
+            "SIG",
+            "CTI",
+            "MEAS",
+            "MTYPE",
+            "SECURITY_MODE",
+        ][..],
+        ReceiptFormat::Legacy => &["signature", "measurements_present"][..],
+    };
+    aggregate_row(
+        response,
+        "receipt_signature",
+        "Receipt signature",
+        ids,
+        None,
+    )
+}
+
+fn policy_match_row(response: &TrustCenterResponse) -> VerdictMatrixRow {
+    let ids = match response.format {
+        ReceiptFormat::AirV1 => &[
+            "FRESH",
+            "MHASH",
+            "RHASH",
+            "OHASH",
+            "MODEL",
+            "SECURITY_MODE_POLICY",
+            "PLATFORM",
+            "NONCE",
+            "REPLAY",
+        ][..],
+        ReceiptFormat::Legacy => &[
+            "model_match",
+            "measurement_type",
+            "timestamp_fresh",
+            "attestation_source",
+            "image_digest",
+            "destroy_evidence",
+        ][..],
+    };
+    aggregate_row(
+        response,
+        "policy_match",
+        "Policy match",
+        ids,
+        Some("no expected policy fields were supplied".to_string()),
+    )
+}
+
+fn platform_attestation_row(response: &TrustCenterResponse) -> VerdictMatrixRow {
+    let row = aggregate_row(
+        response,
+        "platform_attestation",
+        "Platform attestation",
+        &[
+            "attestation_doc_hash",
+            "platform_attestation",
+            "signing_key_binding",
+            "runtime_measurement_policy",
+        ],
+        Some("no attestation evidence supplied".to_string()),
+    );
+
+    if matches!(row.status, CheckStatus::Pass)
+        && matches!(response.assurance_level, AssuranceLevel::PlatformAttested)
+    {
+        return matrix_row(
+            "platform_attestation",
+            "Platform attestation",
+            CheckStatus::Pass,
+            Some(
+                "platform evidence is authentic, but no runtime PCR allowlist was supplied"
+                    .to_string(),
+            ),
+        );
+    }
+
+    row
+}
+
+fn model_identity_row(response: &TrustCenterResponse) -> VerdictMatrixRow {
+    let ids = match response.format {
+        ReceiptFormat::AirV1 => &["MHASH_PRESENT", "MHASH_SCHEME", "MHASH", "MODEL"][..],
+        ReceiptFormat::Legacy => &["model_match"][..],
+    };
+    aggregate_row(
+        response,
+        "model_identity",
+        "Model identity",
+        ids,
+        Some("no model identity evidence was evaluated".to_string()),
+    )
+}
+
+fn gpu_attestation_row(response: &TrustCenterResponse) -> VerdictMatrixRow {
+    aggregate_row(
+        response,
+        "gpu_attestation",
+        "GPU attestation",
+        &["gpu_attestation"],
+        Some("GPU evidence is not required for this verification policy".to_string()),
+    )
+}
+
+fn overall_confidential_ai_row(
+    response: &TrustCenterResponse,
+    receipt_signature: &VerdictMatrixRow,
+    policy_match: &VerdictMatrixRow,
+    platform_attestation: &VerdictMatrixRow,
+    model_identity: &VerdictMatrixRow,
+    gpu_attestation: &VerdictMatrixRow,
+) -> VerdictMatrixRow {
+    let required_pass = matches!(receipt_signature.status, CheckStatus::Pass)
+        && matches!(platform_attestation.status, CheckStatus::Pass)
+        && matches!(model_identity.status, CheckStatus::Pass)
+        && matches!(response.assurance_level, AssuranceLevel::TeeProvenance)
+        && response.verified;
+
+    let optional_fail = matches!(policy_match.status, CheckStatus::Fail)
+        || matches!(gpu_attestation.status, CheckStatus::Fail);
+
+    if required_pass && !optional_fail {
+        matrix_row(
+            "overall_confidential_ai",
+            "Overall confidential AI",
+            CheckStatus::Pass,
+            None,
+        )
+    } else {
+        matrix_row(
+            "overall_confidential_ai",
+            "Overall confidential AI",
+            CheckStatus::Fail,
+            Some(overall_detail(
+                response,
+                receipt_signature,
+                platform_attestation,
+                model_identity,
+                optional_fail,
+            )),
+        )
+    }
+}
+
+fn overall_detail(
+    response: &TrustCenterResponse,
+    receipt_signature: &VerdictMatrixRow,
+    platform_attestation: &VerdictMatrixRow,
+    model_identity: &VerdictMatrixRow,
+    optional_fail: bool,
+) -> String {
+    if !response.verified {
+        return "receipt verification failed".to_string();
+    }
+    if !matches!(receipt_signature.status, CheckStatus::Pass) {
+        return "receipt signature or claim structure was not proven".to_string();
+    }
+    if !matches!(platform_attestation.status, CheckStatus::Pass) {
+        return "platform attestation was not proven; AIR-local is not confidential AI proof"
+            .to_string();
+    }
+    if !matches!(model_identity.status, CheckStatus::Pass) {
+        return "model identity was not proven".to_string();
+    }
+    if !matches!(response.assurance_level, AssuranceLevel::TeeProvenance) {
+        return "runtime PCR policy was not supplied; assurance level is not tee_provenance"
+            .to_string();
+    }
+    if optional_fail {
+        return "one optional policy or GPU evidence row failed".to_string();
+    }
+    "not enough evidence for confidential AI provenance".to_string()
+}
+
+fn aggregate_row(
+    response: &TrustCenterResponse,
+    id: &'static str,
+    label: &'static str,
+    check_ids: &[&str],
+    skip_detail: Option<String>,
+) -> VerdictMatrixRow {
+    let mut saw_pass = false;
+    let mut saw_skip = false;
+    let mut skip_details = Vec::new();
+
+    for check_id in check_ids {
+        for check in response.checks.iter().filter(|check| check.id == *check_id) {
+            match check.status {
+                CheckStatus::Fail => {
+                    return matrix_row(
+                        id,
+                        label,
+                        CheckStatus::Fail,
+                        check
+                            .detail
+                            .clone()
+                            .or_else(|| Some(format!("{} failed", check.label))),
+                    );
+                }
+                CheckStatus::Pass => saw_pass = true,
+                CheckStatus::Skip => {
+                    saw_skip = true;
+                    if let Some(detail) = &check.detail {
+                        skip_details.push(detail.clone());
+                    }
+                }
+            }
+        }
+    }
+
+    if saw_pass {
+        matrix_row(id, label, CheckStatus::Pass, None)
+    } else if saw_skip {
+        matrix_row(
+            id,
+            label,
+            CheckStatus::Skip,
+            skip_details.into_iter().next().or(skip_detail),
+        )
+    } else {
+        matrix_row(id, label, CheckStatus::Skip, skip_detail)
+    }
+}
+
+fn matrix_row(
+    id: &'static str,
+    label: &'static str,
+    status: CheckStatus,
+    detail: Option<String>,
+) -> VerdictMatrixRow {
+    VerdictMatrixRow {
+        id,
+        label,
+        status,
+        detail,
     }
 }
 
@@ -350,6 +710,7 @@ mod tests {
             verified: true,
             format: ReceiptFormat::AirV1,
             assurance_level: AssuranceLevel::AirLocal,
+            verdict_matrix: VerdictMatrix::default_for(ReceiptFormat::AirV1),
             tee_provenance_verified: false,
             api_version: "v1",
             verified_at: 0,
@@ -394,5 +755,52 @@ mod tests {
             AssuranceLevel::TeeProvenance
         ));
         assert!(response.tee_provenance_verified);
+    }
+
+    #[test]
+    fn verdict_matrix_keeps_air_local_from_overall_confidential_ai() {
+        let mut response = sample_air_response();
+        response.add_check(test_check("SIG", CheckStatus::Pass));
+        response.add_check(test_check("MHASH_PRESENT", CheckStatus::Pass));
+
+        assert!(matches!(
+            response.verdict_matrix.receipt_signature.status,
+            CheckStatus::Pass
+        ));
+        assert!(matches!(
+            response.verdict_matrix.platform_attestation.status,
+            CheckStatus::Skip
+        ));
+        assert!(matches!(
+            response.verdict_matrix.overall_confidential_ai.status,
+            CheckStatus::Fail
+        ));
+    }
+
+    #[test]
+    fn verdict_matrix_marks_tee_provenance_as_overall_pass() {
+        let mut response = sample_air_response();
+        response.add_check(test_check("SIG", CheckStatus::Pass));
+        response.add_check(test_check("MHASH_PRESENT", CheckStatus::Pass));
+        response.add_check(test_check("attestation_doc_hash", CheckStatus::Pass));
+        response.add_check(test_check("platform_attestation", CheckStatus::Pass));
+        response.add_check(test_check("signing_key_binding", CheckStatus::Pass));
+        response.add_check(test_check("runtime_measurement_policy", CheckStatus::Pass));
+        response.set_tee_provenance_verified();
+
+        assert!(matches!(
+            response.verdict_matrix.overall_confidential_ai.status,
+            CheckStatus::Pass
+        ));
+    }
+
+    fn test_check(id: &'static str, status: CheckStatus) -> TrustCenterCheck {
+        TrustCenterCheck {
+            id,
+            label: id,
+            status,
+            layer: None,
+            detail: None,
+        }
     }
 }

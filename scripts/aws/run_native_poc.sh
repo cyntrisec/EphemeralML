@@ -77,8 +77,9 @@ Options:
 
 Notes:
   This script intentionally does not solve the EIF/KMS bootstrap loop. Build the
-  EIF and update the stack's EnclaveImageSha384 parameter first, then use this
-  runner for repeatable evidence and benchmark capture.
+  EIF and update the stack's EnclaveImageSha384, EnclavePcr1Sha384, and
+  EnclavePcr2Sha384 parameters first, then use this runner for repeatable
+  evidence and benchmark capture.
 EOF
 }
 

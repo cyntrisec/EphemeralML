@@ -1,0 +1,31 @@
+FROM rust:1.93-bookworm AS builder
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ca-certificates \
+    g++ \
+    libssl-dev \
+    pkg-config \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /build
+COPY . .
+RUN cargo build --locked --release --no-default-features --features production \
+    -p ephemeral-ml-enclave --bin ephemeral-ml-enclave
+
+FROM ubuntu:22.04
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ca-certificates \
+    libssl3 \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+COPY --from=builder /build/target/release/ephemeral-ml-enclave /app/enclave_app
+COPY --from=minilm config.json /app/test_assets/minilm/config.json
+COPY --from=minilm tokenizer.json /app/test_assets/minilm/tokenizer.json
+COPY --from=minilm model.safetensors /app/test_assets/minilm/model.safetensors
+
+# Nitro EIFs bake their Docker entrypoint. The first public v1 image carries
+# the deterministic MiniLM smoke model so release measurements are stable.
+# Customer-model boot configuration moves to the worker.yaml/user-data slice.
+ENTRYPOINT ["/app/enclave_app", "--worker-server", "--worker-vsock-port", "5000", "--model-source", "local", "--model-dir", "/app/test_assets/minilm"]

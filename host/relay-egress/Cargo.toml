@@ -1,0 +1,26 @@
+[package]
+name = "cyntrisec-relay-egress"
+version = "0.1.0"
+edition = "2021"
+license = "Apache-2.0"
+description = "Nitro parent-side KMS and S3 egress helper for Cyntrisec workers"
+
+[[bin]]
+name = "cyntrisec-relay-egress"
+path = "src/main.rs"
+
+[[bin]]
+name = "cyntrisec-worker-config"
+path = "src/bin/cyntrisec_worker_config.rs"
+
+[dependencies]
+tokio = { workspace = true }
+tokio-vsock = { workspace = true }
+clap = { version = "4.6", features = ["derive", "env"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
+serde_json = { workspace = true }
+aws-config = { version = "1.8.15", default-features = false, features = ["behavior-version-latest", "rt-tokio", "default-https-client", "credentials-process", "sso"] }
+aws-sdk-kms = { version = "1.103.0", default-features = false, features = ["behavior-version-latest", "rt-tokio", "default-https-client"] }
+aws-sdk-s3 = { version = "1.122.0", default-features = false, features = ["behavior-version-latest", "rt-tokio", "default-https-client", "http-1x", "sigv4a"] }
+ephemeral-ml-common = { path = "../../common" }

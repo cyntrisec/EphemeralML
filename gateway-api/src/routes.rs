@@ -7,11 +7,13 @@ use axum::response::{IntoResponse, Json, Response};
 use sha2::{Digest, Sha256};
 use std::time::Instant;
 
-use ephemeral_ml_client::{InferenceResult, SecureClient};
+use ephemeral_ml_client::secure_client::{InferenceHandlerInput, InferenceHandlerOutput};
+use ephemeral_ml_client::InferenceResult;
 
 use crate::state::AppState;
 use crate::streaming;
 use crate::types::*;
+use crate::worker::{WorkerChannelError, WorkerErrorKind};
 
 // ---------------------------------------------------------------------------
 // Custom JSON extractor — normalises parse/body-limit errors to OpenAI shape
@@ -286,74 +288,39 @@ pub async fn chat_completions(
         );
     }
 
-    // Ensure backend channel
-    if let Err(e) = state.ensure_connected().await {
-        tracing::error!(request_id = %request_id, error = %e, "Backend connection failed");
-        return error_response_with_id(
-            StatusCode::BAD_GATEWAY,
-            ErrorResponse::server_error(format!("Backend unavailable: {e}")),
-            &request_id,
-        );
-    }
-
     // Build prompt from messages (concatenate role: content pairs)
     let prompt = messages_to_prompt(&req.messages);
     let max_tokens = req.max_tokens.unwrap_or(256);
     let model_id = &state.config.default_model;
 
     // Call backend
-    let result = {
-        let timeout = tokio::time::Duration::from_secs(state.config.request_timeout_secs);
-        let mut client = state.client.lock().await;
-        tokio::time::timeout(
-            timeout,
-            client.execute_inference_generate(model_id, &prompt, max_tokens),
-        )
-        .await
-    };
+    let result = state
+        .worker_channel
+        .inference(InferenceHandlerInput {
+            model_id: model_id.to_string(),
+            input_data: prompt.as_bytes().to_vec(),
+            input_shape: None,
+            generate: true,
+            max_tokens: Some(max_tokens),
+            temperature: req.temperature,
+            top_p: req.top_p,
+            benchmark_mode: benchmark_request_mode(),
+        })
+        .await;
 
     let elapsed_ms = start.elapsed().as_millis();
 
     let inference_result = match result {
-        Ok(Ok(r)) => r,
-        Ok(Err(e)) => {
-            let err_str = e.to_string();
+        Ok(r) => inference_result_from_worker_output(r),
+        Err(e) => {
             tracing::warn!(
                 request_id = %request_id,
                 model = %model_id,
                 latency_ms = %elapsed_ms,
-                "Inference failed"
+                error = %e,
+                "Worker inference failed"
             );
-            // Only mark disconnected for transport/network errors (channel broken).
-            // Inference logic errors (e.g. wrong model type) leave the channel intact.
-            if is_transport_error(&err_str) {
-                state
-                    .connected
-                    .store(false, std::sync::atomic::Ordering::Release);
-                state.reconnect_notify.notify_one();
-            }
-            return error_response_with_id(
-                StatusCode::BAD_GATEWAY,
-                ErrorResponse::server_error(format!("Inference error: {e}")),
-                &request_id,
-            );
-        }
-        Err(_) => {
-            tracing::warn!(
-                request_id = %request_id,
-                model = %model_id,
-                latency_ms = %elapsed_ms,
-                "Inference timed out"
-            );
-            state
-                .connected
-                .store(false, std::sync::atomic::Ordering::Release);
-            state.reconnect_notify.notify_one();
-            return error_response_with_id(
-                StatusCode::GATEWAY_TIMEOUT,
-                ErrorResponse::server_error("Backend inference timed out."),
-                &request_id,
-            );
+            return worker_error_response_with_id(e, &request_id);
         }
     };
 
@@ -555,69 +522,36 @@ pub async fn responses(
         }
     };
 
-    // Ensure backend channel
-    if let Err(e) = state.ensure_connected().await {
-        tracing::error!(request_id = %request_id, error = %e, "Backend connection failed");
-        return error_response_with_id(
-            StatusCode::BAD_GATEWAY,
-            ErrorResponse::server_error(format!("Backend unavailable: {e}")),
-            &request_id,
-        );
-    }
-
     let max_tokens = req.max_output_tokens.unwrap_or(256);
     let model_id = &state.config.default_model;
 
-    let result = {
-        let timeout = tokio::time::Duration::from_secs(state.config.request_timeout_secs);
-        let mut client = state.client.lock().await;
-        tokio::time::timeout(
-            timeout,
-            client.execute_inference_generate(model_id, &prompt, max_tokens),
-        )
-        .await
-    };
+    let result = state
+        .worker_channel
+        .inference(InferenceHandlerInput {
+            model_id: model_id.to_string(),
+            input_data: prompt.as_bytes().to_vec(),
+            input_shape: None,
+            generate: true,
+            max_tokens: Some(max_tokens),
+            temperature: req.temperature,
+            top_p: req.top_p,
+            benchmark_mode: benchmark_request_mode(),
+        })
+        .await;
 
     let elapsed_ms = start.elapsed().as_millis();
 
     let inference_result = match result {
-        Ok(Ok(r)) => r,
-        Ok(Err(e)) => {
-            let err_str = e.to_string();
+        Ok(r) => inference_result_from_worker_output(r),
+        Err(e) => {
             tracing::warn!(
                 request_id = %request_id,
                 model = %model_id,
                 latency_ms = %elapsed_ms,
-                "Responses inference failed"
+                error = %e,
+                "Responses worker inference failed"
             );
-            if is_transport_error(&err_str) {
-                state
-                    .connected
-                    .store(false, std::sync::atomic::Ordering::Release);
-                state.reconnect_notify.notify_one();
-            }
-            return error_response_with_id(
-                StatusCode::BAD_GATEWAY,
-                ErrorResponse::server_error(format!("Inference error: {e}")),
-                &request_id,
-            );
-        }
-        Err(_) => {
-            tracing::warn!(
-                request_id = %request_id,
-                model = %model_id,
-                latency_ms = %elapsed_ms,
-                "Responses inference timed out"
-            );
-            state
-                .connected
-                .store(false, std::sync::atomic::Ordering::Release);
-            state.reconnect_notify.notify_one();
-            return error_response_with_id(
-                StatusCode::GATEWAY_TIMEOUT,
-                ErrorResponse::server_error("Backend inference timed out."),
-                &request_id,
-            );
+            return worker_error_response_with_id(e, &request_id);
         }
     };
 
@@ -746,25 +680,12 @@ pub async fn embeddings(
     }
 
     // Determine which client + model to use for embeddings.
-    let use_separate = state.embedding_client.is_some();
-
-    if use_separate {
-        if let Err(e) = state.ensure_embedding_connected().await {
-            tracing::error!(request_id = %request_id, error = %e, "Embedding backend connection failed");
-            return error_response_with_id(
-                StatusCode::BAD_GATEWAY,
-                ErrorResponse::server_error(format!("Embedding backend unavailable: {e}")),
-                &request_id,
-            );
-        }
-    } else if let Err(e) = state.ensure_connected().await {
-        tracing::error!(request_id = %request_id, error = %e, "Backend connection failed");
-        return error_response_with_id(
-            StatusCode::BAD_GATEWAY,
-            ErrorResponse::server_error(format!("Backend unavailable: {e}")),
-            &request_id,
-        );
-    }
+    let use_separate = state.embedding_worker_channel.is_some();
+    let worker = if use_separate {
+        state.embedding_worker_channel.as_ref().unwrap().clone()
+    } else {
+        state.worker_channel.clone()
+    };
 
     let model_id = if use_separate {
         state
@@ -775,76 +696,38 @@ pub async fn embeddings(
     } else {
         &state.config.default_model
     };
-    let timeout = tokio::time::Duration::from_secs(state.config.request_timeout_secs);
 
     let mut data = Vec::with_capacity(texts.len());
     let mut total_tokens: u32 = 0;
     let mut last_result: Option<InferenceResult> = None;
 
     for (i, text) in texts.iter().enumerate() {
-        let result = if use_separate {
-            let emb = state.embedding_client.as_ref().unwrap();
-            let mut client = emb.lock().await;
-            tokio::time::timeout(timeout, client.execute_inference_text(model_id, text)).await
-        } else {
-            let mut client = state.client.lock().await;
-            tokio::time::timeout(timeout, client.execute_inference_text(model_id, text)).await
-        };
+        let result = worker
+            .inference(InferenceHandlerInput {
+                model_id: model_id.to_string(),
+                input_data: text.as_bytes().to_vec(),
+                input_shape: None,
+                generate: false,
+                max_tokens: None,
+                temperature: None,
+                top_p: None,
+                benchmark_mode: benchmark_request_mode(),
+            })
+            .await;
 
         let elapsed_ms = start.elapsed().as_millis();
 
         let inference_result = match result {
-            Ok(Ok(r)) => r,
-            Ok(Err(e)) => {
-                let err_str = e.to_string();
+            Ok(r) => inference_result_from_worker_output(r),
+            Err(e) => {
                 tracing::warn!(
                     request_id = %request_id,
                     model = %model_id,
                     latency_ms = %elapsed_ms,
-                    "Embedding inference failed"
+                    error = %e,
+                    "Embedding worker inference failed"
                 );
-                if is_transport_error(&err_str) {
-                    if use_separate {
-                        state
-                            .embedding_connected
-                            .store(false, std::sync::atomic::Ordering::Release);
-                        state.embedding_reconnect_notify.notify_one();
-                    } else {
-                        state
-                            .connected
-                            .store(false, std::sync::atomic::Ordering::Release);
-                        state.reconnect_notify.notify_one();
-                    }
-                }
-                return error_response_with_id(
-                    StatusCode::BAD_GATEWAY,
-                    ErrorResponse::server_error(format!("Inference error: {e}")),
-                    &request_id,
-                );
-            }
-            Err(_) => {
-                tracing::warn!(
-                    request_id = %request_id,
-                    model = %model_id,
-                    latency_ms = %elapsed_ms,
-                    "Embedding timed out"
-                );
-                if use_separate {
-                    state
-                        .embedding_connected
-                        .store(false, std::sync::atomic::Ordering::Release);
-                    state.embedding_reconnect_notify.notify_one();
-                } else {
-                    state
-                        .connected
-                        .store(false, std::sync::atomic::Ordering::Release);
-                    state.reconnect_notify.notify_one();
-                }
-                return error_response_with_id(
-                    StatusCode::GATEWAY_TIMEOUT,
-                    ErrorResponse::server_error("Backend inference timed out."),
-                    &request_id,
-                );
+                return worker_error_response_with_id(e, &request_id);
             }
         };
 
@@ -931,18 +814,50 @@ fn estimate_tokens(text: &str) -> u32 {
     }
 }
 
-/// Returns true if the error string indicates a transport/channel failure
-/// (broken connection, send/recv failure) vs. a logical inference error
-/// (wrong model type, serialization mismatch). Only transport errors
-/// should mark the channel as disconnected.
-fn is_transport_error(err: &str) -> bool {
-    err.contains("Transport error")
-        || err.contains("Network error")
-        || err.contains("Send failed")
-        || err.contains("Recv failed")
-        || err.contains("Channel not established")
-        || err.contains("connection reset")
-        || err.contains("broken pipe")
+fn benchmark_request_mode() -> Option<String> {
+    match std::env::var("EPHEMERALML_BENCHMARK_MODE").ok().as_deref() {
+        Some("development") => Some("development".to_string()),
+        _ => None,
+    }
+}
+
+fn inference_result_from_worker_output(output: InferenceHandlerOutput) -> InferenceResult {
+    InferenceResult {
+        output_tensor: output.output_tensor,
+        receipt: output.receipt,
+        generated_text: output.generated_text,
+        boot_attestation_b64: output.boot_attestation_b64,
+        model_manifest_json: output.model_manifest_json,
+        air_v1_receipt_b64: output.air_v1_receipt_b64,
+        air_v1_model_hash_scheme: output.air_v1_model_hash_scheme,
+        model_identity_coverage: output.model_identity_coverage,
+        bundle_url: output.bundle_url,
+        bundle_sha256: output.bundle_sha256,
+        benchmark: output.benchmark,
+        transport_timings: None,
+    }
+}
+
+fn worker_error_response_with_id(err: WorkerChannelError, request_id: &str) -> Response {
+    let (status, body) = match err.kind {
+        WorkerErrorKind::Timeout => (
+            StatusCode::GATEWAY_TIMEOUT,
+            ErrorResponse::server_error("Backend inference timed out."),
+        ),
+        WorkerErrorKind::Unavailable => (
+            StatusCode::BAD_GATEWAY,
+            ErrorResponse::server_error(format!("Backend unavailable: {}", err.message)),
+        ),
+        WorkerErrorKind::Inference => (
+            StatusCode::BAD_GATEWAY,
+            ErrorResponse::server_error(format!("Inference error: {}", err.message)),
+        ),
+        WorkerErrorKind::InvalidInput => (
+            StatusCode::BAD_REQUEST,
+            ErrorResponse::invalid_request(err.message),
+        ),
+    };
+    error_response_with_id(status, body, request_id)
 }
 
 /// Concatenate chat messages into a single prompt string for the backend.
@@ -1048,6 +963,8 @@ fn build_metadata(
         receipt_sha256,
         air_v1_receipt_b64: result.air_v1_receipt_b64.clone(),
         model_manifest_sha256: manifest_sha256,
+        bundle_url: result.bundle_url.clone(),
+        bundle_sha256: result.bundle_sha256.clone(),
         benchmark: result.benchmark.clone(),
     })
 }
@@ -1065,12 +982,21 @@ fn infer_attestation_mode_from_measurements(measurement_type: &str) -> Option<&'
 ///
 /// Default headers (always safe, small):
 ///   - `x-ephemeralml-attestation-mode`
+///   - `x-cyntrisec-attestation-mode`
 ///   - `x-ephemeralml-receipt-present: true|false`
+///   - `x-cyntrisec-receipt-present: true|false`
 ///   - `x-ephemeralml-receipt-sha256` (when receipt exists)
+///   - `x-cyntrisec-receipt-sha256` (when receipt exists)
 ///   - `x-ephemeralml-model-manifest-sha256` (when available)
+///   - `x-cyntrisec-model-manifest-sha256` (when available)
+///   - `x-ephemeralml-bundle-url` (when bundle delivery succeeds)
+///   - `x-cyntrisec-bundle-url` (when bundle delivery succeeds)
+///   - `x-ephemeralml-bundle-sha256` (when bundle delivery succeeds)
+///   - `x-cyntrisec-bundle-sha256` (when bundle delivery succeeds)
 ///
 /// Full receipt header (opt-in via `EPHEMERALML_RECEIPT_HEADER_FULL`):
 ///   - `x-ephemeralml-air-receipt-b64` (truncated to 8 KB)
+///   - `x-cyntrisec-air-receipt-b64` (truncated to 8 KB)
 fn attach_metadata_headers(
     headers: &mut HeaderMap,
     metadata: &Option<EphemeralMetadata>,
@@ -1078,24 +1004,63 @@ fn attach_metadata_headers(
 ) {
     if let Some(meta) = metadata {
         if let Ok(v) = HeaderValue::from_str(&meta.attestation_mode) {
-            headers.insert("x-ephemeralml-attestation-mode", v);
+            insert_dual_header(
+                headers,
+                "x-ephemeralml-attestation-mode",
+                "x-cyntrisec-attestation-mode",
+                v,
+            );
         }
 
         let has_receipt = meta.air_v1_receipt_b64.is_some();
-        headers.insert(
+        insert_dual_header(
+            headers,
             "x-ephemeralml-receipt-present",
+            "x-cyntrisec-receipt-present",
             HeaderValue::from_static(if has_receipt { "true" } else { "false" }),
         );
 
         if let Some(ref sha) = meta.receipt_sha256 {
             if let Ok(v) = HeaderValue::from_str(sha) {
-                headers.insert("x-ephemeralml-receipt-sha256", v);
+                insert_dual_header(
+                    headers,
+                    "x-ephemeralml-receipt-sha256",
+                    "x-cyntrisec-receipt-sha256",
+                    v,
+                );
             }
         }
 
         if let Some(ref sha) = meta.model_manifest_sha256 {
             if let Ok(v) = HeaderValue::from_str(sha) {
-                headers.insert("x-ephemeralml-model-manifest-sha256", v);
+                insert_dual_header(
+                    headers,
+                    "x-ephemeralml-model-manifest-sha256",
+                    "x-cyntrisec-model-manifest-sha256",
+                    v,
+                );
+            }
+        }
+
+        if let Some(ref url) = meta.bundle_url {
+            if let Ok(v) = HeaderValue::from_str(url) {
+                insert_dual_header(
+                    headers,
+                    "x-ephemeralml-bundle-url",
+                    "x-cyntrisec-bundle-url",
+                    v,
+                );
+            }
+        }
+
+        if let Some(ref sha) = meta.bundle_sha256 {
+            if let Ok(v) = HeaderValue::from_str(sha) {
+                insert_dual_header(
+                    headers,
+                    "x-ephemeralml-bundle-sha256",
+                    "x-cyntrisec-bundle-sha256",
+                    v,
+                );
             }
         }
 
@@ -1108,11 +1073,26 @@ fn attach_metadata_headers(
                     receipt_b64
                 };
                 if let Ok(v) = HeaderValue::from_str(truncated) {
-                    headers.insert("x-ephemeralml-air-receipt-b64", v);
+                    insert_dual_header(
+                        headers,
+                        "x-ephemeralml-air-receipt-b64",
+                        "x-cyntrisec-air-receipt-b64",
+                        v,
+                    );
                 }
             }
         }
     }
+}
+
+fn insert_dual_header(
+    headers: &mut HeaderMap,
+    legacy_name: &'static str,
+    public_name: &'static str,
+    value: HeaderValue,
+) {
+    headers.insert(legacy_name, value.clone());
+    headers.insert(public_name, value);
 }
 
 /// Build an OpenAI-style error response with x-request-id header.
@@ -1194,6 +1174,8 @@ mod tests {
             receipt_sha256: Some("abc123".into()),
             air_v1_receipt_b64: None,
             model_manifest_sha256: None,
+            bundle_url: None,
+            bundle_sha256: None,
             benchmark: None,
         };
         let json = serde_json::to_value(&meta).unwrap();
@@ -1223,12 +1205,59 @@ mod tests {
                 receipt_sha256: Some("deadbeef".into()),
                 air_v1_receipt_b64: Some("base64data".into()),
                 model_manifest_sha256: None,
+                bundle_url: Some("s3://bucket/path.bundle.tar.gz".into()),
+                bundle_sha256: Some("f".repeat(64)),
                 benchmark: None,
             }),
         };
         let json = serde_json::to_value(&resp).unwrap();
         assert_eq!(json["_ephemeralml"]["receipt_sha256"], "deadbeef");
         assert_eq!(json["_ephemeralml"]["air_v1_receipt_b64"], "base64data");
+    }
+
+    #[test]
+    fn insert_dual_header_sets_legacy_and_cyntrisec_names() {
+        let mut headers = HeaderMap::new();
+        insert_dual_header(
+            &mut headers,
+            "x-ephemeralml-receipt-present",
+            "x-cyntrisec-receipt-present",
+            HeaderValue::from_static("true"),
+        );
+        insert_dual_header(
+            &mut headers,
+            "x-ephemeralml-bundle-sha256",
+            "x-cyntrisec-bundle-sha256",
+            HeaderValue::from_str(&"f".repeat(64)).unwrap(),
+        );
+        insert_dual_header(
+            &mut headers,
+            "x-ephemeralml-bundle-url",
+            "x-cyntrisec-bundle-url",
+            HeaderValue::from_static("s3://bucket/path.bundle.tar.gz"),
+        );
+
+        assert_eq!(
+            headers.get("x-ephemeralml-receipt-present").unwrap(),
+            "true"
+        );
+        assert_eq!(headers.get("x-cyntrisec-receipt-present").unwrap(), "true");
+        assert_eq!(
+            headers.get("x-ephemeralml-bundle-sha256").unwrap(),
+            &HeaderValue::from_str(&"f".repeat(64)).unwrap()
+        );
+        assert_eq!(
+            headers.get("x-cyntrisec-bundle-sha256").unwrap(),
+            &HeaderValue::from_str(&"f".repeat(64)).unwrap()
+        );
+        assert_eq!(
+            headers.get("x-ephemeralml-bundle-url").unwrap(),
+            &HeaderValue::from_static("s3://bucket/path.bundle.tar.gz")
+        );
+        assert_eq!(
+            headers.get("x-cyntrisec-bundle-url").unwrap(),
+            &HeaderValue::from_static("s3://bucket/path.bundle.tar.gz")
+        );
     }
 
     #[test]

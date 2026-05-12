@@ -686,6 +686,8 @@ pub const LANDING_HTML: &str = r##"<!DOCTYPE html>
           <div class="print-header" id="printHeader"></div>
           <div id="verdictBanner" class="verdict"></div>
           <table class="meta-tbl" id="meta"></table>
+          <div class="checks-hd">Confidential AI verdict</div>
+          <div id="verdictMatrix"></div>
           <div class="checks-hd">Verification checks</div>
           <div id="checks"></div>
           <div id="issues" class="issues-section"></div>
@@ -859,6 +861,25 @@ function showResult(data) {
     add('Model coverage', coverage);
   }
   meta.innerHTML = rows;
+
+  const matrixEl = document.getElementById('verdictMatrix');
+  const matrix = data.verdict_matrix || {};
+  const matrixRows = [
+    matrix.receipt_signature,
+    matrix.policy_match,
+    matrix.platform_attestation,
+    matrix.model_identity,
+    matrix.gpu_attestation,
+    matrix.overall_confidential_ai,
+  ].filter(Boolean);
+  let mh = '';
+  matrixRows.forEach(c => {
+    const s = (c.status||'skip').toLowerCase();
+    const cls = s === 'pass' ? 'tag-pass' : s === 'fail' ? 'tag-fail' : 'tag-skip';
+    const detail = c.detail && (s === 'fail' || s === 'skip') ? `<span class="ck-detail">${esc(c.detail)}</span>` : '';
+    mh += `<div class="ck"><div class="ck-info"><span class="ck-name">${esc(c.label||c.id)}</span>${detail}</div><span class="tag ${cls}">${s}</span></div>`;
+  });
+  matrixEl.innerHTML = mh || '<div style="color:var(--ink-faint);font-size:12px">No verdict matrix returned.</div>';
 
   const checksEl = document.getElementById('checks');
   const arr = Array.isArray(data.checks) ? data.checks : [];
