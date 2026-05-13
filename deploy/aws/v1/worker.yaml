@@ -91,8 +91,8 @@ Parameters:
   ReleaseTag:
     Type: String
     Default: v1.1
-    AllowedPattern: ^[A-Za-z0-9_.-]+$
-    Description: Cyntrisec public release tag for relay, relay-egress, proxy, and enclave artifacts.
+    AllowedPattern: ^v[0-9]+(\.[0-9]+)*$
+    Description: Semantic Cyntrisec public release tag for relay, relay-egress, proxy, and enclave artifacts.
 
   EnclaveImageSha384:
     Type: String
@@ -471,7 +471,7 @@ Resources:
 
           ORAS_SHA256=bff970346470e5ef888e9f2c0bf7f8ee47283f5a45207d6e7a037da1fb0eae0d
           COSIGN_SHA256=8b24b946dd5809c6bd93de08033bcf6bc0ed7d336b7785787c080f574b89249b
-          COSIGN_CERT_IDENTITY='https://github.com/cyntrisec/EphemeralML/.github/workflows/cluster-a-image-release.yml@refs/tags/cluster-a-v.*'
+          COSIGN_CERT_IDENTITY='https://github.com/cyntrisec/EphemeralML/.github/workflows/cluster-a-image-release.yml@refs/tags/cluster-a-v[0-9]+(\.[0-9]+)*$'
           COSIGN_OIDC_ISSUER='https://token.actions.githubusercontent.com'
 
           curl -fsSL https://github.com/oras-project/oras/releases/download/v1.2.2/oras_1.2.2_linux_amd64.tar.gz -o /tmp/oras.tar.gz

@@ -7,13 +7,17 @@ on:
   workflow_dispatch:
     inputs:
       release_tag:
-        description: 'OCI tag to publish, for example v1'
+        description: 'OCI tag to publish, for example v1.1'
         type: string
-        default: 'v1'
+        default: 'v1.1'
       push:
         description: 'Push to ECR Public and cosign-sign published references'
         type: boolean
         default: false
+      publish_oci_artifacts:
+        description: 'Build and publish OCI artifacts; disable for template-only signing'
+        type: boolean
+        default: true
       build_enclave_eif:
         description: 'Run Nitro EIF build on a self-hosted Nitro runner'
         type: boolean
@@ -35,6 +39,7 @@ jobs:
     outputs:
       tag: ${{ steps.tag.outputs.tag }}
       push: ${{ steps.mode.outputs.push }}
+      publish_oci_artifacts: ${{ steps.mode.outputs.publish_oci_artifacts }}
       build_enclave_eif: ${{ steps.mode.outputs.build_enclave_eif }}
     steps:
       - name: Resolve tag
@@ -49,12 +54,10 @@ jobs:
             cluster-a-*) TAG="${RAW_TAG#cluster-a-}" ;;
             *) TAG="$RAW_TAG" ;;
           esac
-          case "$TAG" in
-            *[!A-Za-z0-9_.-]*|'')
-              echo "invalid release tag: $TAG" >&2
-              exit 2
-              ;;
-          esac
+          if ! printf '%s\n' "$TAG" | grep -Eq '^v[0-9]+(\.[0-9]+)*$'; then
+            echo "invalid release tag: $TAG (expected v<major>[.<minor>...], e.g. v1 or v1.1)" >&2
+            exit 2
+          fi
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
 
       - name: Resolve publish mode
@@ -64,6 +67,11 @@ jobs:
             echo "push=true" >> "$GITHUB_OUTPUT"
           else
             echo "push=false" >> "$GITHUB_OUTPUT"
+          fi
+          if [ "${GITHUB_REF_TYPE}" = "tag" ] || [ "${{ inputs.publish_oci_artifacts }}" != "false" ]; then
+            echo "publish_oci_artifacts=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "publish_oci_artifacts=false" >> "$GITHUB_OUTPUT"
           fi
           if [ "${GITHUB_REF_TYPE}" = "tag" ] || [ "${{ inputs.build_enclave_eif }}" = "true" ]; then
             echo "build_enclave_eif=true" >> "$GITHUB_OUTPUT"
@@ -75,6 +83,7 @@ jobs:
     name: Build Host Binary (${{ matrix.repository }})
     runs-on: ubuntu-22.04
     needs: release-tag
+    if: needs.release-tag.outputs.publish_oci_artifacts == 'true'
     environment: production-release
     strategy:
       fail-fast: false
@@ -214,6 +223,7 @@ jobs:
     name: Build Proxy OCI Image
     runs-on: ubuntu-22.04
     needs: release-tag
+    if: needs.release-tag.outputs.publish_oci_artifacts == 'true'
     environment: production-release
     steps:
       - uses: actions/checkout@v4
@@ -313,11 +323,83 @@ jobs:
           path: dist/release-manifests/proxy.json
           retention-days: 30
 
+  worker-template:
+    name: Sign Worker CloudFormation Template
+    runs-on: ubuntu-22.04
+    needs: release-tag
+    environment: production-release
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Verify template pins the release tag
+        env:
+          TAG: ${{ needs.release-tag.outputs.tag }}
+        run: |
+          set -euo pipefail
+          template_default="$(
+            awk '
+              /^  ReleaseTag:/ { in_release_tag = 1 }
+              in_release_tag && /Default:/ { print $2; exit }
+            ' deploy/aws/v1/worker.yaml
+          )"
+          if [ "$template_default" != "$TAG" ]; then
+            printf 'worker.yaml ReleaseTag default mismatch: expected %s, got %s\n' "$TAG" "$template_default" >&2
+            exit 1
+          fi
+
+      - name: Stage worker template
+        env:
+          TAG: ${{ needs.release-tag.outputs.tag }}
+          PUSHED: ${{ needs.release-tag.outputs.push }}
+        run: |
+          set -euo pipefail
+          mkdir -p dist/worker-template dist/release-manifests
+          cp deploy/aws/v1/worker.yaml dist/worker-template/worker.yaml
+          (cd dist/worker-template && sha256sum worker.yaml > worker.yaml.sha256)
+          template_sha256="$(cut -d ' ' -f1 dist/worker-template/worker.yaml.sha256)"
+          cat > dist/release-manifests/worker-template.json <<JSON
+          {
+            "schema_version": 1,
+            "kind": "cloudformation_template",
+            "release_tag": "${TAG}",
+            "versioned_path": "aws/${TAG}/worker.yaml",
+            "latest_path": "aws/latest/worker.yaml",
+            "sha256": "${template_sha256}",
+            "signed": ${PUSHED}
+          }
+          JSON
+
+      - name: Install cosign
+        if: needs.release-tag.outputs.push == 'true'
+        uses: sigstore/cosign-installer@v3
+        with:
+          cosign-release: 'v2.4.1'
+
+      - name: Sign worker template blob
+        if: needs.release-tag.outputs.push == 'true'
+        run: |
+          set -euo pipefail
+          cosign sign-blob \
+            --yes \
+            --bundle dist/worker-template/worker.yaml.cosign.bundle \
+            --output-signature dist/worker-template/worker.yaml.sig \
+            --output-certificate dist/worker-template/worker.yaml.cert \
+            dist/worker-template/worker.yaml
+
+      - name: Upload worker template artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: cluster-a-worker-template
+          path: |
+            dist/worker-template/*
+            dist/release-manifests/worker-template.json
+          retention-days: 30
+
   enclave-eif:
     name: Build Nitro EIF
     runs-on: [self-hosted, linux, x64, nitro-enclaves]
     needs: release-tag
-    if: needs.release-tag.outputs.build_enclave_eif == 'true'
+    if: needs.release-tag.outputs.publish_oci_artifacts == 'true' && needs.release-tag.outputs.build_enclave_eif == 'true'
     environment: production-release
     steps:
       - uses: actions/checkout@v4
@@ -473,8 +555,8 @@ jobs:
   release-summary:
     name: Release Summary
     runs-on: ubuntu-22.04
-    needs: [release-tag, host-binaries, proxy-image, enclave-eif]
-    if: always() && needs.host-binaries.result == 'success' && needs.proxy-image.result == 'success'
+    needs: [release-tag, host-binaries, proxy-image, worker-template, enclave-eif]
+    if: always() && needs.host-binaries.result == 'success' && needs.proxy-image.result == 'success' && needs.worker-template.result == 'success'
     steps:
       - name: Download host binary manifests
         uses: actions/download-artifact@v4
@@ -489,6 +571,12 @@ jobs:
           pattern: cluster-a-image-*
           path: release-manifests
           merge-multiple: true
+
+      - name: Download worker template artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: cluster-a-worker-template
+          path: release-manifests
 
       - name: Download enclave measurements
         if: needs.enclave-eif.result == 'success'

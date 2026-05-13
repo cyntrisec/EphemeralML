@@ -1,23 +1,45 @@
 # Cyntrisec Pilot Deployment Runbook
 
 This runbook validates the AWS worker stack after the Cluster A release
-artifacts have been published and `deploy/aws/v1/worker.yaml` has been uploaded
-to `https://templates.cyntrisec.com/aws/v1/worker.yaml`.
+artifacts have been published and the signed worker template has been uploaded
+to `https://templates.cyntrisec.com/aws/v1.1/worker.yaml`.
 
 ## Prerequisites
 
 - AWS CLI authenticated into the pilot account.
-- A released tag such as `v1`.
+- A released tag such as `v1.1`.
 - `enclave-measurements.json` from the Cluster A image release workflow.
+- `cosign` installed locally for template verification.
 - Docker installed locally for the customer-side proxy.
 - `cyntrisec-verify` available locally.
+
+## Verify Template Before Deploy
+
+Download the versioned worker template and verify it before opening the
+CloudFormation launch URL. This validates the template itself, not only the OCI
+artifacts that the template later pulls during instance boot.
+
+```bash
+TEMPLATE_BASE=https://templates.cyntrisec.com/aws/v1.1
+curl -fsSLO "$TEMPLATE_BASE/worker.yaml"
+curl -fsSLO "$TEMPLATE_BASE/worker.yaml.sha256"
+curl -fsSLO "$TEMPLATE_BASE/worker.yaml.cosign.bundle"
+
+sha256sum -c worker.yaml.sha256
+cosign verify-blob \
+  --certificate-identity-regexp 'https://github.com/cyntrisec/EphemeralML/.github/workflows/cluster-a-image-release.yml@refs/tags/cluster-a-v[0-9]+(\.[0-9]+)*$' \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+  --bundle worker.yaml.cosign.bundle \
+  worker.yaml
+aws cloudformation validate-template --template-body file://worker.yaml
+```
 
 ## Deploy
 
 1. Open the CloudFormation launch URL produced by the website's Deploy to AWS
    button.
 2. Confirm the URL includes:
-   - `templateURL=https://templates.cyntrisec.com/aws/v1/worker.yaml`
+   - `templateURL=https://templates.cyntrisec.com/aws/v1.1/worker.yaml`
    - `param_EnclaveImageSha384=<from enclave-measurements.json>`
    - `param_EnclavePcr1Sha384=<from enclave-measurements.json>`
    - `param_EnclavePcr2Sha384=<from enclave-measurements.json>`
@@ -35,6 +57,24 @@ the customer proxy's egress IP, VPN CIDR, or office CIDR. Do not use
 resource-abuse risk.
 
 4. Create the stack and wait for `CREATE_COMPLETE`.
+
+Security-sensitive operators can launch without the website redirect by using
+the verified local template:
+
+```bash
+aws cloudformation create-stack \
+  --stack-name cyntrisec-worker-v11 \
+  --template-body file://worker.yaml \
+  --capabilities CAPABILITY_NAMED_IAM \
+  --parameters \
+    ParameterKey=AccessCIDR,ParameterValue=<customer-egress-cidr> \
+    ParameterKey=ModelURI,ParameterValue=local://minilm-smoke \
+    ParameterKey=EvidenceBucketName,ParameterValue=<unique-evidence-bucket> \
+    ParameterKey=RetentionDays,ParameterValue=90 \
+    ParameterKey=EnclaveImageSha384,ParameterValue=<from enclave-measurements.json> \
+    ParameterKey=EnclavePcr1Sha384,ParameterValue=<from enclave-measurements.json> \
+    ParameterKey=EnclavePcr2Sha384,ParameterValue=<from enclave-measurements.json>
+```
 
 The stack smoke test only checks service liveness: both relay services active,
 the enclave watchdog active, one running enclave, and TCP 443 listening.

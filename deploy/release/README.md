@@ -12,10 +12,14 @@ the AWS worker CloudFormation template:
   customer-specific worker boot config to the prebuilt EIF.
 - `public.ecr.aws/f4z4g3i5/proxy:<tag>`: local customer proxy image
 - `public.ecr.aws/f4z4g3i5/enclave:<tag>`: Nitro EIF OCI artifact
+- `cluster-a-worker-template`: signed CloudFormation worker template artifact
 
 The workflow also pushes `public.ecr.aws/f4z4g3i5/enclave-rootfs:<tag>` as the
 Docker rootfs image used to build the EIF. The customer-facing artifact remains
-the signed EIF OCI artifact plus `enclave-measurements.json`.
+the signed EIF OCI artifact plus `enclave-measurements.json`. The worker
+template artifact contains `worker.yaml`, `worker.yaml.sha256`,
+`worker.yaml.sig`, `worker.yaml.cert`, and `worker.yaml.cosign.bundle` when
+publish mode is enabled.
 
 `f4z4g3i5` is the AWS-assigned ECR Public registry alias for the current
 release account. If AWS later grants the branded `cyntrisec` alias, update the
@@ -34,12 +38,19 @@ CloudFormation URL parameters:
 - `param_EnclavePcr2Sha384`
 
 For a CI dry run, start the workflow manually with `push=false`. That builds the
-relay executables and proxy image without publishing or signing them. Set
-`build_enclave_eif=true` only on the Nitro runner. A tag push to
-`cluster-a-v*` enables publish mode and signs pushed artifacts with keyless
-cosign via GitHub OIDC after pushing with the release AWS role. The workflow
+relay executables, proxy image, and unsigned worker template artifact without
+publishing them. Set `build_enclave_eif=true` only on the Nitro runner. A
+semantic tag push such as `cluster-a-v1.1` enables publish mode and signs pushed
+artifacts with keyless cosign via GitHub OIDC after pushing with the release AWS
+role. The workflow rejects non-semantic release tags before publishing and
 strips the `cluster-a-` prefix for OCI tags, so
 `cluster-a-v1.1` publishes `public.ecr.aws/f4z4g3i5/...:v1.1`.
+
+If only the CloudFormation template needs to be signed for an already-published
+release, run the workflow manually with `release_tag=v1.1`, `push=true`,
+`publish_oci_artifacts=false`, and `build_enclave_eif=false`. That signs and
+uploads only the `cluster-a-worker-template` artifact and avoids republishing
+the immutable OCI tags.
 
 The first public v1 EIF uses the bundled MiniLM smoke model so the release has
 stable measurements. Customer model selection and the final worker boot
@@ -71,10 +82,11 @@ environment, and release tag namespace. The intended GitHub OIDC conditions are:
 }
 ```
 
-Do not broaden the `sub` condition to all tags or branches. If the legacy
-`worker-v*` tag family is used for an internal dry run, do it in a separate
-workflow; this customer-facing release workflow and deploy-time cosign policy
-intentionally accept only `cluster-a-v*`.
+Do not broaden the `sub` condition to all tags or branches. AWS IAM wildcard
+conditions cannot express the full semantic-version regex, so this trust policy
+uses the `cluster-a-v*` namespace while the workflow and deploy-time cosign
+policy enforce `cluster-a-v[0-9]+(\.[0-9]+)*$`. If the legacy `worker-v*` tag
+family is used for an internal dry run, do it in a separate workflow.
 
 The role's ECR Public permissions must allow publishing and first-time
 repository bootstrap for the five release repositories (`relay`,
@@ -82,7 +94,34 @@ repository bootstrap for the five release repositories (`relay`,
 upload and image-read actions, include `ecr-public:CreateRepository` so a
 fresh release account can publish without a manual repository pre-create step,
 and `ecr-public:DescribeRegistries` so CI can fail early if the account's
-public alias is not `cyntrisec`.
+public alias is not `f4z4g3i5`.
+
+## Worker template hosting
+
+Publish the signed worker template under immutable versioned paths:
+
+- `https://templates.cyntrisec.com/aws/v1.1/worker.yaml`
+- `https://templates.cyntrisec.com/aws/v1.1/worker.yaml.sha256`
+- `https://templates.cyntrisec.com/aws/v1.1/worker.yaml.sig`
+- `https://templates.cyntrisec.com/aws/v1.1/worker.yaml.cert`
+- `https://templates.cyntrisec.com/aws/v1.1/worker.yaml.cosign.bundle`
+
+The customer-facing Deploy to AWS URL must pin the template URL and
+`ReleaseTag` to the same release, for example `v1.1`. Do not use
+`/aws/v1/worker.yaml` as a mutable major-version path. A rolling
+`/aws/latest/worker.yaml` alias is acceptable only as a convenience link, not as
+the URL embedded in customer launch buttons or runbooks.
+
+Use immutable cache headers on versioned paths. If `/aws/latest/` is published,
+serve it with `Cache-Control: no-cache, must-revalidate` or a short
+`s-maxage`. Enable S3 Object Lock on the templates bucket where available and
+restrict writes to the release role. For the public hostname, enable DNSSEC and
+CAA records if the DNS provider supports them, and monitor Certificate
+Transparency logs for unexpected certificates.
+
+Before a customer pilot, run the hosted-template smoke from a fresh AWS account
+that has never used Cyntrisec. This catches IAM, region, and public-account
+assumptions that a founder dogfood account can mask.
 
 ## Release public keys
 
