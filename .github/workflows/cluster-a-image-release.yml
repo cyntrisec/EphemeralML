@@ -4,7 +4,6 @@ on:
   push:
     tags:
       - 'cluster-a-v*'
-      - 'worker-v*'
   workflow_dispatch:
     inputs:
       release_tag:
@@ -48,7 +47,6 @@ jobs:
           fi
           case "$RAW_TAG" in
             cluster-a-*) TAG="${RAW_TAG#cluster-a-}" ;;
-            worker-*) TAG="${RAW_TAG#worker-}" ;;
             *) TAG="$RAW_TAG" ;;
           esac
           case "$TAG" in
@@ -126,6 +124,14 @@ jobs:
         uses: aws-actions/amazon-ecr-login@v2
         with:
           registry-type: public
+
+      - name: Verify ECR Public namespace
+        if: needs.release-tag.outputs.push == 'true'
+        run: |
+          set -euo pipefail
+          aliases="$(aws ecr-public describe-registries --query 'registries[].aliases[].name' --output text)"
+          printf 'ECR Public aliases: %s\n' "$aliases"
+          printf '%s\n' "$aliases" | tr '\t' '\n' | grep -Fx "$ECR_PUBLIC_NAMESPACE" >/dev/null
 
       - name: Install ORAS
         if: needs.release-tag.outputs.push == 'true'
@@ -227,6 +233,14 @@ jobs:
         uses: aws-actions/amazon-ecr-login@v2
         with:
           registry-type: public
+
+      - name: Verify ECR Public namespace
+        if: needs.release-tag.outputs.push == 'true'
+        run: |
+          set -euo pipefail
+          aliases="$(aws ecr-public describe-registries --query 'registries[].aliases[].name' --output text)"
+          printf 'ECR Public aliases: %s\n' "$aliases"
+          printf '%s\n' "$aliases" | tr '\t' '\n' | grep -Fx "$ECR_PUBLIC_NAMESPACE" >/dev/null
 
       - name: Ensure ECR Public repository exists
         if: needs.release-tag.outputs.push == 'true'
@@ -330,6 +344,14 @@ jobs:
         uses: aws-actions/amazon-ecr-login@v2
         with:
           registry-type: public
+
+      - name: Verify ECR Public namespace
+        if: needs.release-tag.outputs.push == 'true'
+        run: |
+          set -euo pipefail
+          aliases="$(aws ecr-public describe-registries --query 'registries[].aliases[].name' --output text)"
+          printf 'ECR Public aliases: %s\n' "$aliases"
+          printf '%s\n' "$aliases" | tr '\t' '\n' | grep -Fx "$ECR_PUBLIC_NAMESPACE" >/dev/null
 
       - name: Ensure ECR Public repositories exist
         if: needs.release-tag.outputs.push == 'true'

@@ -1159,10 +1159,12 @@ impl SecureClient for SecureEnclaveClient {
 mod tests {
     use super::*;
     use crate::attestation_bridge::MockVerifierBridge;
+    use base64::Engine as _;
     use bytes::Bytes;
     use confidential_ml_transport::session::channel::Message;
     use confidential_ml_transport::session::SecurityProfile;
     use confidential_ml_transport::{SecureChannel, SessionConfig};
+    use ephemeral_ml_common::air_receipt::{build_air_v1, AirReceiptClaims};
     use ephemeral_ml_common::{EnclaveMeasurements, ReceiptSigningKey, SecurityMode};
 
     #[test]
@@ -1178,6 +1180,97 @@ mod tests {
         assert_eq!(client.server_worker_model_id(), Some("stage-0"));
         assert_eq!(client.server_worker_model_hash(), Some([0x22; 32]));
         assert_eq!(client.server_platform_evidence_hash(), None);
+    }
+
+    fn sample_worker_bound_output(
+        receipt_model_id: &str,
+        air_model_hash: Option<[u8; 32]>,
+    ) -> InferenceHandlerOutput {
+        let key = ReceiptSigningKey::generate().unwrap();
+        let mut receipt = AttestationReceipt::new(
+            uuid::Uuid::new_v4().to_string(),
+            1,
+            SecurityMode::GatewayOnly,
+            EnclaveMeasurements::new(vec![0x01; 48], vec![0x02; 48], vec![0x03; 48]),
+            [0x04; 32],
+            [0x05; 32],
+            [0x06; 32],
+            "v1".to_string(),
+            1,
+            receipt_model_id.to_string(),
+            "v1".to_string(),
+            7,
+            128,
+        );
+        receipt.sign(&key).unwrap();
+
+        let air_v1_receipt_b64 = air_model_hash.map(|model_hash| {
+            let claims = AirReceiptClaims::from_legacy_with_scheme(
+                &receipt,
+                "issuer.test".to_string(),
+                model_hash,
+                Some("sha256-manifest".to_string()),
+            )
+            .unwrap();
+            base64::engine::general_purpose::STANDARD.encode(build_air_v1(&claims, &key).unwrap())
+        });
+
+        InferenceHandlerOutput {
+            output_tensor: vec![1.0],
+            receipt,
+            generated_text: Some("ok".to_string()),
+            boot_attestation_b64: None,
+            model_manifest_json: None,
+            air_v1_receipt_b64,
+            air_v1_model_hash_scheme: Some("sha256-manifest".to_string()),
+            model_identity_coverage: None,
+            bundle_url: None,
+            bundle_sha256: None,
+            benchmark: None,
+        }
+    }
+
+    fn assert_validation_error_contains(err: ClientError, expected: &str) {
+        let msg = format!("{}", err);
+        assert!(
+            msg.contains(expected),
+            "expected error to contain '{expected}', got: {msg}"
+        );
+    }
+
+    #[test]
+    fn worker_identity_binding_rejects_receipt_model_id_mismatch() {
+        let mut client = SecureEnclaveClient::new("test-client".to_string());
+        client.server_worker_model_id = Some("attested-model".to_string());
+
+        let output = sample_worker_bound_output("different-model", None);
+        let err = client.verify_worker_identity_binding(&output).unwrap_err();
+
+        assert_validation_error_contains(err, "does not match attested worker model_id");
+    }
+
+    #[test]
+    fn worker_identity_binding_requires_air_when_model_hash_attested() {
+        let mut client = SecureEnclaveClient::new("test-client".to_string());
+        client.server_worker_model_id = Some("attested-model".to_string());
+        client.server_worker_model_hash = Some([0xAA; 32]);
+
+        let output = sample_worker_bound_output("attested-model", None);
+        let err = client.verify_worker_identity_binding(&output).unwrap_err();
+
+        assert_validation_error_contains(err, "did not include AIR v1 receipt claims");
+    }
+
+    #[test]
+    fn worker_identity_binding_rejects_air_model_hash_mismatch() {
+        let mut client = SecureEnclaveClient::new("test-client".to_string());
+        client.server_worker_model_id = Some("attested-model".to_string());
+        client.server_worker_model_hash = Some([0xAA; 32]);
+
+        let output = sample_worker_bound_output("attested-model", Some([0xBB; 32]));
+        let err = client.verify_worker_identity_binding(&output).unwrap_err();
+
+        assert_validation_error_contains(err, "does not match attested worker model_hash");
     }
 
     #[tokio::test]

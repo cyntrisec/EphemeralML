@@ -32,9 +32,9 @@ CloudFormation URL parameters:
 For a CI dry run, start the workflow manually with `push=false`. That builds the
 relay executables and proxy image without publishing or signing them. Set
 `build_enclave_eif=true` only on the Nitro runner. A tag push to
-`cluster-a-v*` or `worker-v*` enables publish mode and signs pushed artifacts with
-keyless cosign via GitHub OIDC after pushing with the release AWS role. The
-workflow strips the `cluster-a-` / `worker-` prefix for OCI tags, so
+`cluster-a-v*` enables publish mode and signs pushed artifacts with keyless
+cosign via GitHub OIDC after pushing with the release AWS role. The workflow
+strips the `cluster-a-` prefix for OCI tags, so
 `cluster-a-v1` publishes `public.ecr.aws/cyntrisec/...:v1`.
 
 The first public v1 EIF uses the bundled MiniLM smoke model so the release has
@@ -65,14 +65,17 @@ environment, and release tag namespace. The intended GitHub OIDC conditions are:
 ```
 
 Do not broaden the `sub` condition to all tags or branches. If the legacy
-`worker-v*` tag family is used for an internal dry run, add that ref pattern
-explicitly and remove it again before a customer-facing release.
+`worker-v*` tag family is used for an internal dry run, do it in a separate
+workflow; this customer-facing release workflow and deploy-time cosign policy
+intentionally accept only `cluster-a-v*`.
 
 The role's ECR Public permissions must allow publishing and first-time
 repository bootstrap for the five release repositories (`relay`,
 `relay-egress`, `proxy`, `enclave-rootfs`, `enclave`). In addition to the
 upload and image-read actions, include `ecr-public:CreateRepository` so a
-fresh release account can publish without a manual repository pre-create step.
+fresh release account can publish without a manual repository pre-create step,
+and `ecr-public:DescribeRegistries` so CI can fail early if the account's
+public alias is not `cyntrisec`.
 
 ## Release public keys
 
