@@ -455,9 +455,10 @@ Resources:
           set -euo pipefail
 
           trap '/opt/aws/bin/cfn-signal --exit-code 1 --stack ${AWS::StackName} --resource WorkerInstance --region ${AWS::Region}' ERR
+          export HOME=/root
 
           dnf update -y
-          dnf install -y aws-cfn-bootstrap awscli jq tar gzip curl openssl aws-nitro-enclaves-cli
+          dnf install -y aws-cfn-bootstrap awscli jq tar gzip openssl aws-nitro-enclaves-cli
 
           mkdir -p /opt/cyntrisec/bin /opt/cyntrisec/enclave /opt/cyntrisec/etc /var/log/cyntrisec
 
@@ -492,28 +493,79 @@ Resources:
 
           verify_release_ref public.ecr.aws/f4z4g3i5/relay:${ReleaseTag}
           oras pull public.ecr.aws/f4z4g3i5/relay:${ReleaseTag} -o /tmp/cyntrisec-relay
-          (cd /tmp/cyntrisec-relay && sha256sum -c cyntrisec-relay.sha256)
-          install -m 0755 /tmp/cyntrisec-relay/cyntrisec-relay /opt/cyntrisec/bin/cyntrisec-relay
+          (cd /tmp/cyntrisec-relay/dist/relay && sha256sum -c cyntrisec-relay.sha256)
+          install -m 0755 /tmp/cyntrisec-relay/dist/relay/cyntrisec-relay /opt/cyntrisec/bin/cyntrisec-relay
 
           verify_release_ref public.ecr.aws/f4z4g3i5/relay-egress:${ReleaseTag}
           oras pull public.ecr.aws/f4z4g3i5/relay-egress:${ReleaseTag} -o /tmp/cyntrisec-relay-egress
-          (cd /tmp/cyntrisec-relay-egress && sha256sum -c cyntrisec-relay-egress.sha256 && sha256sum -c cyntrisec-worker-config.sha256)
-          install -m 0755 /tmp/cyntrisec-relay-egress/cyntrisec-relay-egress /opt/cyntrisec/bin/cyntrisec-relay-egress
-          install -m 0755 /tmp/cyntrisec-relay-egress/cyntrisec-worker-config /opt/cyntrisec/bin/cyntrisec-worker-config
+          (cd /tmp/cyntrisec-relay-egress/dist/relay-egress && sha256sum -c cyntrisec-relay-egress.sha256 && sha256sum -c cyntrisec-worker-config.sha256)
+          install -m 0755 /tmp/cyntrisec-relay-egress/dist/relay-egress/cyntrisec-relay-egress /opt/cyntrisec/bin/cyntrisec-relay-egress
+          install -m 0755 /tmp/cyntrisec-relay-egress/dist/relay-egress/cyntrisec-worker-config /opt/cyntrisec/bin/cyntrisec-worker-config
 
           verify_release_ref public.ecr.aws/f4z4g3i5/enclave:${ReleaseTag}
           oras pull public.ecr.aws/f4z4g3i5/enclave:${ReleaseTag} -o /tmp/cyntrisec-enclave
-          install -m 0644 /tmp/cyntrisec-enclave/cyntrisec-enclave.eif /opt/cyntrisec/enclave/cyntrisec-enclave.eif
+          install -m 0644 /tmp/cyntrisec-enclave/dist/cyntrisec-enclave.eif /opt/cyntrisec/enclave/cyntrisec-enclave.eif
 
           cat >/opt/cyntrisec/etc/cyntrisec-policy.json <<'JSON'
           {
             "schema_version": 1,
             "enclave_image_sha384": "${EnclaveImageSha384}",
-            "pcr0": "${EnclaveImageSha384}",
             "pcr1": "${EnclavePcr1Sha384}",
             "pcr2": "${EnclavePcr2Sha384}",
             "model_uri": "${ModelURI}",
             "release_tag": "${ReleaseTag}"
+          }
+          JSON
+
+          cat >/opt/cyntrisec/etc/model-manifest.json <<'JSON'
+          {
+            "model_id": "stage-0",
+            "version": "1.0",
+            "model_hash": [
+              83,
+              170,
+              81,
+              23,
+              45,
+              20,
+              44,
+              137,
+              217,
+              1,
+              44,
+              206,
+              21,
+              174,
+              77,
+              108,
+              192,
+              202,
+              104,
+              149,
+              137,
+              81,
+              20,
+              55,
+              156,
+              172,
+              180,
+              250,
+              177,
+              40,
+              217,
+              219
+            ],
+            "hash_algorithm": "sha256",
+            "key_id": "local-bundled-model",
+            "tokenizer_hash": null,
+            "config_hash": null,
+            "gcs_uris": {},
+            "created_at": "release-build",
+            "model_identity": {
+              "packaging_format": "safetensors",
+              "source": "bundled-in-eif"
+            },
+            "signature": []
           }
           JSON
 
@@ -539,6 +591,9 @@ Resources:
             >/opt/cyntrisec/etc/worker-config.json
 
           aws s3 cp /opt/cyntrisec/etc/cyntrisec-policy.json s3://${EvidenceBucket}/policy/cyntrisec-policy.json \
+            --sse aws:kms \
+            --sse-kms-key-id ${EvidenceKey.Arn}
+          aws s3 cp /opt/cyntrisec/etc/model-manifest.json s3://${EvidenceBucket}/policy/model-manifest.json \
             --sse aws:kms \
             --sse-kms-key-id ${EvidenceKey.Arn}
 
@@ -657,11 +712,15 @@ Outputs:
 
   ProxyCommand:
     Description: One-line local proxy command.
-    Value: !Sub docker run -p 4000:4000 -e CYNTRISEC_WORKER=tcp://${WorkerNlb.DNSName}:443 -e CYNTRISEC_WORKER_CHANNEL=secure -e CYNTRISEC_POLICY_PATH=/etc/cyntrisec/policy.json -v $(pwd)/cyntrisec-policy.json:/etc/cyntrisec/policy.json:ro public.ecr.aws/f4z4g3i5/proxy:${ReleaseTag}
+    Value: !Sub docker run -p 4000:4000 -e CYNTRISEC_PROXY_HOST=0.0.0.0 -e CYNTRISEC_MODEL_CAPABILITIES=embeddings -e CYNTRISEC_WORKER=tcp://${WorkerNlb.DNSName}:443 -e CYNTRISEC_WORKER_CHANNEL=secure -e CYNTRISEC_POLICY_PATH=/etc/cyntrisec/policy.json -e CYNTRISEC_MANIFEST_PATH=/etc/cyntrisec/model-manifest.json -v $(pwd)/cyntrisec-policy.json:/etc/cyntrisec/policy.json:ro -v $(pwd)/model-manifest.json:/etc/cyntrisec/model-manifest.json:ro public.ecr.aws/f4z4g3i5/proxy:${ReleaseTag}
 
   PolicyDownloadCommand:
     Description: Download the pinned worker policy for the local proxy.
     Value: !Sub aws s3 cp s3://${EvidenceBucket}/policy/cyntrisec-policy.json ./cyntrisec-policy.json
+
+  ModelManifestDownloadCommand:
+    Description: Download the v1 MiniLM model manifest for local proxy preflight.
+    Value: !Sub aws s3 cp s3://${EvidenceBucket}/policy/model-manifest.json ./model-manifest.json
 
   EvidenceBucketName:
     Description: Evidence bucket retaining per-inference bundles.

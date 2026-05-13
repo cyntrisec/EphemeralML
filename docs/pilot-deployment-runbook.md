@@ -50,7 +50,7 @@ sudo journalctl -u cyntrisec-worker-config -u cyntrisec-relay-egress -u cyntrise
 
 ## Run Proxy
 
-From the stack outputs, run `PolicyDownloadCommand`, then run `ProxyCommand`.
+From the stack outputs, run `PolicyDownloadCommand`, `ModelManifestDownloadCommand`, then `ProxyCommand`.
 
 Expected local listener:
 
@@ -60,12 +60,12 @@ curl -fsS http://127.0.0.1:4000/health
 
 ## Inference Smoke
 
-Send one OpenAI-compatible request:
+The `cluster-a-v1.1` release image bundles MiniLM for stable first-release measurements, so the smoke uses the OpenAI-compatible embeddings endpoint:
 
 ```bash
-curl -fsS http://127.0.0.1:4000/v1/chat/completions \
+curl -fsS http://127.0.0.1:4000/v1/embeddings \
   -H 'content-type: application/json' \
-  -d '{"model":"stage-0","messages":[{"role":"user","content":"local pilot smoke"}]}' \
+  -d '{"model":"stage-0","input":"local pilot smoke"}' \
   -D /tmp/cyntrisec-headers.txt \
   -o /tmp/cyntrisec-response.json
 ```
@@ -85,7 +85,14 @@ BUNDLE_URL="$(awk 'tolower($1)=="x-cyntrisec-bundle-url:" {print $2}' /tmp/cyntr
 BUNDLE_SHA256="$(awk 'tolower($1)=="x-cyntrisec-bundle-sha256:" {print $2}' /tmp/cyntrisec-headers.txt | tr -d '\r')"
 aws s3 cp "$BUNDLE_URL" /tmp/cyntrisec.bundle.tar.gz
 echo "$BUNDLE_SHA256  /tmp/cyntrisec.bundle.tar.gz" | sha256sum -c -
-cyntrisec-verify /tmp/cyntrisec.bundle.tar.gz
+mkdir -p /tmp/cyntrisec-bundle
+tar -xzf /tmp/cyntrisec.bundle.tar.gz -C /tmp/cyntrisec-bundle
+(cd /tmp/cyntrisec-bundle && sha256sum -c SHA256SUMS)
+cyntrisec-verify /tmp/cyntrisec-bundle/air.cbor \
+  --attestation /tmp/cyntrisec-bundle/attestation.cbor \
+  --expected-model stage-0 \
+  --expected-security-mode production \
+  --max-age 0
 ```
 
 Expected verifier matrix:
