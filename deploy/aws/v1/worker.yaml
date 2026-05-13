@@ -241,7 +241,7 @@ Resources:
             BucketKeyEnabled: true
       VersioningConfiguration:
         Status: Enabled
-      ObjectLockEnabled: !If [UseObjectLock, Enabled, !Ref AWS::NoValue]
+      ObjectLockEnabled: !If [UseObjectLock, true, !Ref AWS::NoValue]
       ObjectLockConfiguration: !If
         - UseObjectLock
         - ObjectLockEnabled: Enabled

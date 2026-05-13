@@ -48,9 +48,10 @@ strips the `cluster-a-` prefix for OCI tags, so
 
 If only the CloudFormation template needs to be signed for an already-published
 release, run the workflow manually with `release_tag=v1.1`, `push=true`,
-`publish_oci_artifacts=false`, and `build_enclave_eif=false`. That signs and
-uploads only the `cluster-a-worker-template` artifact and avoids republishing
-the immutable OCI tags.
+`publish_oci_artifacts=false`, `build_enclave_eif=false`, and
+`publish_template_to_s3=true`. That signs and publishes only the
+`cluster-a-worker-template` artifact and avoids republishing the immutable OCI
+tags.
 
 The first public v1 EIF uses the bundled MiniLM smoke model so the release has
 stable measurements. Customer model selection and the final worker boot
@@ -96,28 +97,45 @@ fresh release account can publish without a manual repository pre-create step,
 and `ecr-public:DescribeRegistries` so CI can fail early if the account's
 public alias is not `f4z4g3i5`.
 
+The same release role also publishes the signed worker template bundle to the
+template bucket. Scope its S3 permissions tightly: `s3:PutObject`,
+`s3:GetObject`, and `s3:GetObjectVersion` on
+`arn:aws:s3:::cyntrisec-public-templates-us-east-1/aws/*`, plus
+`s3:ListBucket` on `arn:aws:s3:::cyntrisec-public-templates-us-east-1` with
+`s3:prefix` constrained to `aws/*`.
+
 ## Worker template hosting
 
-Publish the signed worker template under immutable versioned paths:
+Publish the signed worker template under immutable versioned S3 paths:
 
-- `https://templates.cyntrisec.com/aws/v1.1/worker.yaml`
-- `https://templates.cyntrisec.com/aws/v1.1/worker.yaml.sha256`
-- `https://templates.cyntrisec.com/aws/v1.1/worker.yaml.sig`
-- `https://templates.cyntrisec.com/aws/v1.1/worker.yaml.cert`
-- `https://templates.cyntrisec.com/aws/v1.1/worker.yaml.cosign.bundle`
+- `https://s3.us-east-1.amazonaws.com/cyntrisec-public-templates-us-east-1/aws/v1.1/worker.yaml`
+- `https://s3.us-east-1.amazonaws.com/cyntrisec-public-templates-us-east-1/aws/v1.1/worker.yaml.sha256`
+- `https://s3.us-east-1.amazonaws.com/cyntrisec-public-templates-us-east-1/aws/v1.1/worker.yaml.sig`
+- `https://s3.us-east-1.amazonaws.com/cyntrisec-public-templates-us-east-1/aws/v1.1/worker.yaml.cert`
+- `https://s3.us-east-1.amazonaws.com/cyntrisec-public-templates-us-east-1/aws/v1.1/worker.yaml.cosign.bundle`
+
+`templates.cyntrisec.com` may mirror the same objects for human-friendly
+downloads, but CloudFormation launch URLs should use the regional S3 URL. Keep
+the branded mirror out of the `templateURL` parameter.
 
 The customer-facing Deploy to AWS URL must pin the template URL and
-`ReleaseTag` to the same release, for example `v1.1`. Do not use
-`/aws/v1/worker.yaml` as a mutable major-version path. A rolling
+`ReleaseTag` to the same release, for example `v1.1`. Prefer
+non-null `s3_url_with_version` from `worker-template.json` when S3 Versioning is
+enabled; that pins the S3 object version as well as the release path. URL-encode
+that nested URL when embedding it as the CloudFormation Quick Create
+`templateURL` query parameter. Do not use `/aws/v1/worker.yaml` as a mutable
+major-version path. A rolling
 `/aws/latest/worker.yaml` alias is acceptable only as a convenience link, not as
 the URL embedded in customer launch buttons or runbooks.
 
 Use immutable cache headers on versioned paths. If `/aws/latest/` is published,
 serve it with `Cache-Control: no-cache, must-revalidate` or a short
-`s-maxage`. Enable S3 Object Lock on the templates bucket where available and
-restrict writes to the release role. For the public hostname, enable DNSSEC and
-CAA records if the DNS provider supports them, and monitor Certificate
-Transparency logs for unexpected certificates.
+`s-maxage`. Enable S3 Versioning and Object Lock on the templates bucket where
+available, disable ACLs with bucket-owner-enforced ownership, allow public
+`GetObject` only on the release prefixes, and restrict writes to the release
+role. For the public hostname, enable DNSSEC and CAA records if the DNS provider
+supports them, and monitor Certificate Transparency logs for unexpected
+certificates.
 
 Before a customer pilot, run the hosted-template smoke from a fresh AWS account
 that has never used Cyntrisec. This catches IAM, region, and public-account

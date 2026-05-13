@@ -2,13 +2,16 @@
 
 This runbook validates the AWS worker stack after the Cluster A release
 artifacts have been published and the signed worker template has been uploaded
-to `https://templates.cyntrisec.com/aws/v1.1/worker.yaml`.
+to the release S3 bucket. CloudFormation launches from the S3 regional URL, not
+from the branded `templates.cyntrisec.com` mirror.
 
 ## Prerequisites
 
 - AWS CLI authenticated into the pilot account.
 - A released tag such as `v1.1`.
 - `enclave-measurements.json` from the Cluster A image release workflow.
+- `worker-template.json` from the same release workflow, containing the S3
+  template URL and optional S3 `versionId`.
 - `cosign` installed locally for template verification.
 - Docker installed locally for the customer-side proxy.
 - `cyntrisec-verify` available locally.
@@ -20,7 +23,7 @@ CloudFormation launch URL. This validates the template itself, not only the OCI
 artifacts that the template later pulls during instance boot.
 
 ```bash
-TEMPLATE_BASE=https://templates.cyntrisec.com/aws/v1.1
+TEMPLATE_BASE=https://s3.us-east-1.amazonaws.com/cyntrisec-public-templates-us-east-1/aws/v1.1
 curl -fsSLO "$TEMPLATE_BASE/worker.yaml"
 curl -fsSLO "$TEMPLATE_BASE/worker.yaml.sha256"
 curl -fsSLO "$TEMPLATE_BASE/worker.yaml.cosign.bundle"
@@ -39,10 +42,15 @@ aws cloudformation validate-template --template-body file://worker.yaml
 1. Open the CloudFormation launch URL produced by the website's Deploy to AWS
    button.
 2. Confirm the URL includes:
-   - `templateURL=https://templates.cyntrisec.com/aws/v1.1/worker.yaml`
+   - `templateURL=https://s3.us-east-1.amazonaws.com/cyntrisec-public-templates-us-east-1/aws/v1.1/worker.yaml`
    - `param_EnclaveImageSha384=<from enclave-measurements.json>`
    - `param_EnclavePcr1Sha384=<from enclave-measurements.json>`
    - `param_EnclavePcr2Sha384=<from enclave-measurements.json>`
+
+If `worker-template.json` includes a non-null `s3_url_with_version`, prefer that
+exact URL for `templateURL`. It pins the S3 object version in addition to the
+immutable release path. When putting that URL into a CloudFormation Quick Create
+link, URL-encode the nested `?versionId=...` query string inside `templateURL`.
 3. Fill the visible parameters:
    - `AccessCIDR`
    - `ModelURI`
@@ -68,7 +76,7 @@ aws cloudformation create-stack \
   --capabilities CAPABILITY_NAMED_IAM \
   --parameters \
     ParameterKey=AccessCIDR,ParameterValue=<customer-egress-cidr> \
-    ParameterKey=ModelURI,ParameterValue=local://minilm-smoke \
+    ParameterKey=ModelURI,ParameterValue=s3://<model-bucket>/<model-prefix> \
     ParameterKey=EvidenceBucketName,ParameterValue=<unique-evidence-bucket> \
     ParameterKey=RetentionDays,ParameterValue=90 \
     ParameterKey=EnclaveImageSha384,ParameterValue=<from enclave-measurements.json> \

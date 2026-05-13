@@ -22,6 +22,10 @@ on:
         description: 'Run Nitro EIF build on a self-hosted Nitro runner'
         type: boolean
         default: false
+      publish_template_to_s3:
+        description: 'Upload the signed worker template bundle to the release S3 bucket'
+        type: boolean
+        default: true
 
 permissions:
   contents: read
@@ -31,6 +35,8 @@ env:
   AWS_REGION: us-east-1
   ECR_PUBLIC_REGISTRY: public.ecr.aws
   ECR_PUBLIC_NAMESPACE: f4z4g3i5
+  TEMPLATE_BUCKET: cyntrisec-public-templates-us-east-1
+  TEMPLATE_PREFIX: aws
 
 jobs:
   release-tag:
@@ -41,6 +47,7 @@ jobs:
       push: ${{ steps.mode.outputs.push }}
       publish_oci_artifacts: ${{ steps.mode.outputs.publish_oci_artifacts }}
       build_enclave_eif: ${{ steps.mode.outputs.build_enclave_eif }}
+      publish_template_to_s3: ${{ steps.mode.outputs.publish_template_to_s3 }}
     steps:
       - name: Resolve tag
         id: tag
@@ -72,6 +79,11 @@ jobs:
             echo "publish_oci_artifacts=true" >> "$GITHUB_OUTPUT"
           else
             echo "publish_oci_artifacts=false" >> "$GITHUB_OUTPUT"
+          fi
+          if [ "${GITHUB_REF_TYPE}" = "tag" ] || [ "${{ inputs.publish_template_to_s3 }}" != "false" ]; then
+            echo "publish_template_to_s3=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "publish_template_to_s3=false" >> "$GITHUB_OUTPUT"
           fi
           if [ "${GITHUB_REF_TYPE}" = "tag" ] || [ "${{ inputs.build_enclave_eif }}" = "true" ]; then
             echo "build_enclave_eif=true" >> "$GITHUB_OUTPUT"
@@ -331,6 +343,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Install cfn-lint
+        run: python -m pip install --user cfn-lint==1.49.3
+
       - name: Verify template pins the release tag
         env:
           TAG: ${{ needs.release-tag.outputs.tag }}
@@ -346,28 +361,32 @@ jobs:
             printf 'worker.yaml ReleaseTag default mismatch: expected %s, got %s\n' "$TAG" "$template_default" >&2
             exit 1
           fi
+          # cfn-lint's IAM action table can lag ECR Public pull actions used by
+          # ORAS/cosign on AL2023. Keep structural linting strict and ignore
+          # only that known action-list warning.
+          "$HOME/.local/bin/cfn-lint" -i W3037 -- deploy/aws/v1/worker.yaml
 
       - name: Stage worker template
+        id: stage-template
         env:
           TAG: ${{ needs.release-tag.outputs.tag }}
-          PUSHED: ${{ needs.release-tag.outputs.push }}
         run: |
           set -euo pipefail
           mkdir -p dist/worker-template dist/release-manifests
           cp deploy/aws/v1/worker.yaml dist/worker-template/worker.yaml
           (cd dist/worker-template && sha256sum worker.yaml > worker.yaml.sha256)
           template_sha256="$(cut -d ' ' -f1 dist/worker-template/worker.yaml.sha256)"
-          cat > dist/release-manifests/worker-template.json <<JSON
+          versioned_key="${TEMPLATE_PREFIX}/${TAG}/worker.yaml"
+          latest_key="${TEMPLATE_PREFIX}/latest/worker.yaml"
+          s3_url="https://s3.${AWS_REGION}.amazonaws.com/${TEMPLATE_BUCKET}/${versioned_key}"
+          mirror_url="https://templates.cyntrisec.com/${versioned_key}"
           {
-            "schema_version": 1,
-            "kind": "cloudformation_template",
-            "release_tag": "${TAG}",
-            "versioned_path": "aws/${TAG}/worker.yaml",
-            "latest_path": "aws/latest/worker.yaml",
-            "sha256": "${template_sha256}",
-            "signed": ${PUSHED}
-          }
-          JSON
+            echo "sha256=${template_sha256}"
+            echo "versioned_key=${versioned_key}"
+            echo "latest_key=${latest_key}"
+            echo "s3_url=${s3_url}"
+            echo "mirror_url=${mirror_url}"
+          } >> "$GITHUB_OUTPUT"
 
       - name: Install cosign
         if: needs.release-tag.outputs.push == 'true'
@@ -385,6 +404,108 @@ jobs:
             --output-signature dist/worker-template/worker.yaml.sig \
             --output-certificate dist/worker-template/worker.yaml.cert \
             dist/worker-template/worker.yaml
+
+      - name: Configure AWS credentials for template publish
+        if: needs.release-tag.outputs.push == 'true' && needs.release-tag.outputs.publish_template_to_s3 == 'true'
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_RELEASE_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+          role-session-name: cluster-a-template-release-${{ github.run_id }}
+
+      - name: Publish worker template bundle to S3
+        id: publish-template
+        if: needs.release-tag.outputs.push == 'true' && needs.release-tag.outputs.publish_template_to_s3 == 'true'
+        env:
+          TAG: ${{ needs.release-tag.outputs.tag }}
+          TEMPLATE_SHA256: ${{ steps.stage-template.outputs.sha256 }}
+          VERSIONED_KEY: ${{ steps.stage-template.outputs.versioned_key }}
+          LATEST_KEY: ${{ steps.stage-template.outputs.latest_key }}
+        run: |
+          set -euo pipefail
+          aws --version
+          immutable_cache='public, max-age=31536000, immutable'
+          latest_cache='no-cache, must-revalidate'
+          metadata="release-tag=${TAG},sha256=${TEMPLATE_SHA256}"
+
+          put_pair() {
+            local label="$1"
+            local file="$2"
+            local suffix="$3"
+            local content_type="$4"
+            local versioned_id latest_id
+            versioned_id="$(
+              aws s3api put-object \
+                --bucket "$TEMPLATE_BUCKET" \
+                --key "${VERSIONED_KEY}${suffix}" \
+                --body "$file" \
+                --content-type "$content_type" \
+                --cache-control "$immutable_cache" \
+                --metadata "$metadata" \
+                --query VersionId \
+                --output text
+            )"
+            latest_id="$(
+              aws s3api put-object \
+                --bucket "$TEMPLATE_BUCKET" \
+                --key "${LATEST_KEY}${suffix}" \
+                --body "$file" \
+                --content-type "$content_type" \
+                --cache-control "$latest_cache" \
+                --metadata "$metadata" \
+                --query VersionId \
+                --output text
+            )"
+            printf '%s\t%s\t%s\n' "$label" "$versioned_id" "$latest_id" >> dist/worker-template/s3-version-ids.tsv
+          }
+
+          put_pair worker_yaml dist/worker-template/worker.yaml '' 'application/x-yaml'
+          put_pair worker_yaml_sha256 dist/worker-template/worker.yaml.sha256 '.sha256' 'text/plain'
+          put_pair worker_yaml_cosign_bundle dist/worker-template/worker.yaml.cosign.bundle '.cosign.bundle' 'application/vnd.dev.sigstore.bundle+json'
+          put_pair worker_yaml_sig dist/worker-template/worker.yaml.sig '.sig' 'text/plain'
+          put_pair worker_yaml_cert dist/worker-template/worker.yaml.cert '.cert' 'application/pem-certificate-chain'
+
+          worker_version_id="$(awk '$1 == "worker_yaml" { print $2 }' dist/worker-template/s3-version-ids.tsv)"
+          echo "worker_version_id=${worker_version_id}" >> "$GITHUB_OUTPUT"
+
+      - name: Emit worker template manifest
+        env:
+          TAG: ${{ needs.release-tag.outputs.tag }}
+          PUSHED: ${{ needs.release-tag.outputs.push }}
+          PUBLISHED_TO_S3: ${{ needs.release-tag.outputs.push == 'true' && needs.release-tag.outputs.publish_template_to_s3 == 'true' }}
+          TEMPLATE_SHA256: ${{ steps.stage-template.outputs.sha256 }}
+          VERSIONED_KEY: ${{ steps.stage-template.outputs.versioned_key }}
+          LATEST_KEY: ${{ steps.stage-template.outputs.latest_key }}
+          S3_URL: ${{ steps.stage-template.outputs.s3_url }}
+          MIRROR_URL: ${{ steps.stage-template.outputs.mirror_url }}
+          WORKER_VERSION_ID: ${{ steps.publish-template.outputs.worker_version_id }}
+        run: |
+          set -euo pipefail
+          s3_url_with_version_json="null"
+          worker_version_id_json="null"
+          if [ -n "${WORKER_VERSION_ID}" ] && [ "${WORKER_VERSION_ID}" != "None" ]; then
+            encoded_version_id="$(WORKER_VERSION_ID="$WORKER_VERSION_ID" python3 -c 'import os, urllib.parse; print(urllib.parse.quote(os.environ["WORKER_VERSION_ID"], safe=""))')"
+            s3_url_with_version_json="$(printf '%s?versionId=%s' "$S3_URL" "$encoded_version_id" | jq -R .)"
+            worker_version_id_json="$(printf '%s' "$WORKER_VERSION_ID" | jq -R .)"
+          fi
+          cat > dist/release-manifests/worker-template.json <<JSON
+          {
+            "schema_version": 1,
+            "kind": "cloudformation_template",
+            "release_tag": "${TAG}",
+            "template_bucket": "${TEMPLATE_BUCKET}",
+            "template_region": "${AWS_REGION}",
+            "versioned_key": "${VERSIONED_KEY}",
+            "latest_key": "${LATEST_KEY}",
+            "s3_url": "${S3_URL}",
+            "s3_url_with_version": ${s3_url_with_version_json},
+            "mirror_url": "${MIRROR_URL}",
+            "sha256": "${TEMPLATE_SHA256}",
+            "signed": ${PUSHED},
+            "published_to_s3": ${PUBLISHED_TO_S3},
+            "worker_template_version_id": ${worker_version_id_json}
+          }
+          JSON
 
       - name: Upload worker template artifact
         uses: actions/upload-artifact@v4
@@ -556,9 +677,10 @@ jobs:
     name: Release Summary
     runs-on: ubuntu-22.04
     needs: [release-tag, host-binaries, proxy-image, worker-template, enclave-eif]
-    if: always() && needs.host-binaries.result == 'success' && needs.proxy-image.result == 'success' && needs.worker-template.result == 'success'
+    if: always() && needs.worker-template.result == 'success' && (needs.release-tag.outputs.publish_oci_artifacts != 'true' || (needs.host-binaries.result == 'success' && needs.proxy-image.result == 'success'))
     steps:
       - name: Download host binary manifests
+        if: needs.release-tag.outputs.publish_oci_artifacts == 'true'
         uses: actions/download-artifact@v4
         with:
           pattern: cluster-a-host-binary-*
@@ -566,6 +688,7 @@ jobs:
           merge-multiple: true
 
       - name: Download image manifests
+        if: needs.release-tag.outputs.publish_oci_artifacts == 'true'
         uses: actions/download-artifact@v4
         with:
           pattern: cluster-a-image-*
