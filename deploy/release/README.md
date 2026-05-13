@@ -5,17 +5,21 @@
 `.github/workflows/cluster-a-image-release.yml` builds the artifacts consumed by
 the AWS worker CloudFormation template:
 
-- `public.ecr.aws/cyntrisec/relay:<tag>`: host byte-relay executable OCI artifact
-- `public.ecr.aws/cyntrisec/relay-egress:<tag>`: host KMS/S3 egress helper
+- `public.ecr.aws/f4z4g3i5/relay:<tag>`: host byte-relay executable OCI artifact
+- `public.ecr.aws/f4z4g3i5/relay-egress:<tag>`: host KMS/S3 egress helper
   executable OCI artifact. This artifact also contains
   `cyntrisec-worker-config`, the tiny parent-side vsock service that serves
   customer-specific worker boot config to the prebuilt EIF.
-- `public.ecr.aws/cyntrisec/proxy:<tag>`: local customer proxy image
-- `public.ecr.aws/cyntrisec/enclave:<tag>`: Nitro EIF OCI artifact
+- `public.ecr.aws/f4z4g3i5/proxy:<tag>`: local customer proxy image
+- `public.ecr.aws/f4z4g3i5/enclave:<tag>`: Nitro EIF OCI artifact
 
-The workflow also pushes `public.ecr.aws/cyntrisec/enclave-rootfs:<tag>` as the
+The workflow also pushes `public.ecr.aws/f4z4g3i5/enclave-rootfs:<tag>` as the
 Docker rootfs image used to build the EIF. The customer-facing artifact remains
 the signed EIF OCI artifact plus `enclave-measurements.json`.
+
+`f4z4g3i5` is the AWS-assigned ECR Public registry alias for the current
+release account. If AWS later grants the branded `cyntrisec` alias, update the
+workflow namespace and the CloudFormation installer references together.
 
 The host executable artifacts are release packaging artifacts for native
 systemd services; the EC2 host does not need Docker for the relay processes.
@@ -35,7 +39,7 @@ relay executables and proxy image without publishing or signing them. Set
 `cluster-a-v*` enables publish mode and signs pushed artifacts with keyless
 cosign via GitHub OIDC after pushing with the release AWS role. The workflow
 strips the `cluster-a-` prefix for OCI tags, so
-`cluster-a-v1` publishes `public.ecr.aws/cyntrisec/...:v1`.
+`cluster-a-v1` publishes `public.ecr.aws/f4z4g3i5/...:v1`.
 
 The first public v1 EIF uses the bundled MiniLM smoke model so the release has
 stable measurements. Customer model selection and the final worker boot

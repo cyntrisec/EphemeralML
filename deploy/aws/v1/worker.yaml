@@ -490,19 +490,19 @@ Resources:
               "$ref" >/tmp/cosign-verify.log
           }
 
-          verify_release_ref public.ecr.aws/cyntrisec/relay:${ReleaseTag}
-          oras pull public.ecr.aws/cyntrisec/relay:${ReleaseTag} -o /tmp/cyntrisec-relay
+          verify_release_ref public.ecr.aws/f4z4g3i5/relay:${ReleaseTag}
+          oras pull public.ecr.aws/f4z4g3i5/relay:${ReleaseTag} -o /tmp/cyntrisec-relay
           (cd /tmp/cyntrisec-relay && sha256sum -c cyntrisec-relay.sha256)
           install -m 0755 /tmp/cyntrisec-relay/cyntrisec-relay /opt/cyntrisec/bin/cyntrisec-relay
 
-          verify_release_ref public.ecr.aws/cyntrisec/relay-egress:${ReleaseTag}
-          oras pull public.ecr.aws/cyntrisec/relay-egress:${ReleaseTag} -o /tmp/cyntrisec-relay-egress
+          verify_release_ref public.ecr.aws/f4z4g3i5/relay-egress:${ReleaseTag}
+          oras pull public.ecr.aws/f4z4g3i5/relay-egress:${ReleaseTag} -o /tmp/cyntrisec-relay-egress
           (cd /tmp/cyntrisec-relay-egress && sha256sum -c cyntrisec-relay-egress.sha256 && sha256sum -c cyntrisec-worker-config.sha256)
           install -m 0755 /tmp/cyntrisec-relay-egress/cyntrisec-relay-egress /opt/cyntrisec/bin/cyntrisec-relay-egress
           install -m 0755 /tmp/cyntrisec-relay-egress/cyntrisec-worker-config /opt/cyntrisec/bin/cyntrisec-worker-config
 
-          verify_release_ref public.ecr.aws/cyntrisec/enclave:${ReleaseTag}
-          oras pull public.ecr.aws/cyntrisec/enclave:${ReleaseTag} -o /tmp/cyntrisec-enclave
+          verify_release_ref public.ecr.aws/f4z4g3i5/enclave:${ReleaseTag}
+          oras pull public.ecr.aws/f4z4g3i5/enclave:${ReleaseTag} -o /tmp/cyntrisec-enclave
           install -m 0644 /tmp/cyntrisec-enclave/cyntrisec-enclave.eif /opt/cyntrisec/enclave/cyntrisec-enclave.eif
 
           cat >/opt/cyntrisec/etc/cyntrisec-policy.json <<'JSON'
@@ -657,7 +657,7 @@ Outputs:
 
   ProxyCommand:
     Description: One-line local proxy command.
-    Value: !Sub docker run -p 4000:4000 -e CYNTRISEC_WORKER=tcp://${WorkerNlb.DNSName}:443 -e CYNTRISEC_WORKER_CHANNEL=secure -e CYNTRISEC_POLICY_PATH=/etc/cyntrisec/policy.json -v $(pwd)/cyntrisec-policy.json:/etc/cyntrisec/policy.json:ro public.ecr.aws/cyntrisec/proxy:${ReleaseTag}
+    Value: !Sub docker run -p 4000:4000 -e CYNTRISEC_WORKER=tcp://${WorkerNlb.DNSName}:443 -e CYNTRISEC_WORKER_CHANNEL=secure -e CYNTRISEC_POLICY_PATH=/etc/cyntrisec/policy.json -v $(pwd)/cyntrisec-policy.json:/etc/cyntrisec/policy.json:ro public.ecr.aws/f4z4g3i5/proxy:${ReleaseTag}
 
   PolicyDownloadCommand:
     Description: Download the pinned worker policy for the local proxy.

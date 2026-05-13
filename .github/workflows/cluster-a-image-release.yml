@@ -26,7 +26,7 @@ permissions:
 env:
   AWS_REGION: us-east-1
   ECR_PUBLIC_REGISTRY: public.ecr.aws
-  ECR_PUBLIC_NAMESPACE: cyntrisec
+  ECR_PUBLIC_NAMESPACE: f4z4g3i5
 
 jobs:
   release-tag:
