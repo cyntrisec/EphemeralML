@@ -39,11 +39,14 @@ relay executables and proxy image without publishing or signing them. Set
 `cluster-a-v*` enables publish mode and signs pushed artifacts with keyless
 cosign via GitHub OIDC after pushing with the release AWS role. The workflow
 strips the `cluster-a-` prefix for OCI tags, so
-`cluster-a-v1` publishes `public.ecr.aws/f4z4g3i5/...:v1`.
+`cluster-a-v1.1` publishes `public.ecr.aws/f4z4g3i5/...:v1.1`.
 
 The first public v1 EIF uses the bundled MiniLM smoke model so the release has
 stable measurements. Customer model selection and the final worker boot
 configuration are owned by the AWS `worker.yaml` deployment slice.
+The release workflow restores the public MiniLM `model.safetensors` file during
+the EIF job and verifies its pinned SHA-256 before building the rootfs; the
+weight file remains gitignored and is not committed to the repository.
 
 ## Release gates
 

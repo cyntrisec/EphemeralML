@@ -363,6 +363,26 @@ jobs:
             fi
           done
 
+      - name: Restore MiniLM release weights
+        run: |
+          set -euo pipefail
+          MODEL_URL="https://huggingface.co/sentence-transformers/all-MiniLM-L6-v2/resolve/main/model.safetensors"
+          MODEL_PATH="test_assets/minilm/model.safetensors"
+          MODEL_SHA256="53aa51172d142c89d9012cce15ae4d6cc0ca6895895114379cacb4fab128d9db"
+
+          mkdir -p "$(dirname "$MODEL_PATH")"
+          curl --fail --location --retry 3 --retry-delay 5 \
+            --output "$MODEL_PATH" \
+            "$MODEL_URL"
+
+          actual_sha256="$(sha256sum "$MODEL_PATH" | awk '{print $1}')"
+          if [ "$actual_sha256" != "$MODEL_SHA256" ]; then
+            printf 'MiniLM model SHA-256 mismatch: expected %s, got %s\n' \
+              "$MODEL_SHA256" \
+              "$actual_sha256" >&2
+            exit 1
+          fi
+
       - name: Build enclave rootfs image
         env:
           TAG: ${{ needs.release-tag.outputs.tag }}
