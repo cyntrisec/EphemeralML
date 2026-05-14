@@ -47,11 +47,13 @@ strips the `cluster-a-` prefix for OCI tags, so
 `cluster-a-v1.1` publishes `public.ecr.aws/f4z4g3i5/...:v1.1`.
 
 If only the CloudFormation template needs to be signed for an already-published
-release, run the workflow manually with `release_tag=v1.1`, `push=true`,
-`publish_oci_artifacts=false`, `build_enclave_eif=false`, and
-`publish_template_to_s3=true`. That signs and publishes only the
-`cluster-a-worker-template` artifact and avoids republishing the immutable OCI
-tags.
+release, create a new semantic template tag at the current workflow commit,
+then push that tag. Patch-level release tags, for example
+`cluster-a-v1.1.1`, are treated as template hotfixes: the workflow signs and
+publishes only the `cluster-a-worker-template` artifact under `/aws/v1.1.1/`
+while the template continues to pull the already-published OCI artifacts from
+the parent release tag `v1.1`. Full OCI releases use major/minor tags such as
+`cluster-a-v1.2`.
 
 The first public v1 EIF uses the bundled MiniLM smoke model so the release has
 stable measurements. Customer model selection and the final worker boot
@@ -108,18 +110,19 @@ template bucket. Scope its S3 permissions tightly: `s3:PutObject`,
 
 Publish the signed worker template under immutable versioned S3 paths:
 
-- `https://s3.us-east-1.amazonaws.com/cyntrisec-public-templates-us-east-1/aws/v1.1/worker.yaml`
-- `https://s3.us-east-1.amazonaws.com/cyntrisec-public-templates-us-east-1/aws/v1.1/worker.yaml.sha256`
-- `https://s3.us-east-1.amazonaws.com/cyntrisec-public-templates-us-east-1/aws/v1.1/worker.yaml.sig`
-- `https://s3.us-east-1.amazonaws.com/cyntrisec-public-templates-us-east-1/aws/v1.1/worker.yaml.cert`
-- `https://s3.us-east-1.amazonaws.com/cyntrisec-public-templates-us-east-1/aws/v1.1/worker.yaml.cosign.bundle`
+- `https://s3.us-east-1.amazonaws.com/cyntrisec-public-templates-us-east-1/aws/v1.1.1/worker.yaml`
+- `https://s3.us-east-1.amazonaws.com/cyntrisec-public-templates-us-east-1/aws/v1.1.1/worker.yaml.sha256`
+- `https://s3.us-east-1.amazonaws.com/cyntrisec-public-templates-us-east-1/aws/v1.1.1/worker.yaml.sig`
+- `https://s3.us-east-1.amazonaws.com/cyntrisec-public-templates-us-east-1/aws/v1.1.1/worker.yaml.cert`
+- `https://s3.us-east-1.amazonaws.com/cyntrisec-public-templates-us-east-1/aws/v1.1.1/worker.yaml.cosign.bundle`
 
 `templates.cyntrisec.com` may mirror the same objects for human-friendly
 downloads, but CloudFormation launch URLs should use the regional S3 URL. Keep
 the branded mirror out of the `templateURL` parameter.
 
-The customer-facing Deploy to AWS URL must pin the template URL and
-`ReleaseTag` to the same release, for example `v1.1`. Prefer
+The customer-facing Deploy to AWS URL must pin the template URL and OCI
+`ReleaseTag` to a coherent release set, for example template `v1.1.1` with
+OCI `ReleaseTag=v1.1` for a template-only hotfix. Prefer
 non-null `s3_url_with_version` from `worker-template.json` when S3 Versioning is
 enabled; that pins the S3 object version as well as the release path. URL-encode
 that nested URL when embedding it as the CloudFormation Quick Create

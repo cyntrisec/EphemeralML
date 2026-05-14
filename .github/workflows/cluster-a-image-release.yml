@@ -44,6 +44,7 @@ jobs:
     runs-on: ubuntu-22.04
     outputs:
       tag: ${{ steps.tag.outputs.tag }}
+      template_tag: ${{ steps.tag.outputs.template_tag }}
       push: ${{ steps.mode.outputs.push }}
       publish_oci_artifacts: ${{ steps.mode.outputs.publish_oci_artifacts }}
       build_enclave_eif: ${{ steps.mode.outputs.build_enclave_eif }}
@@ -53,39 +54,78 @@ jobs:
         id: tag
         run: |
           if [ "${GITHUB_REF_TYPE}" = "tag" ]; then
-            RAW_TAG="${GITHUB_REF_NAME}"
+            RAW_TEMPLATE_TAG="${GITHUB_REF_NAME}"
+          else
+            RAW_TEMPLATE_TAG="${{ inputs.release_tag }}"
+          fi
+
+          case "$RAW_TEMPLATE_TAG" in
+            cluster-a-*) TEMPLATE_TAG="${RAW_TEMPLATE_TAG#cluster-a-}" ;;
+            *) TEMPLATE_TAG="$RAW_TEMPLATE_TAG" ;;
+          esac
+          if ! printf '%s\n' "$TEMPLATE_TAG" | grep -Eq '^v[0-9]+(\.[0-9]+)*$'; then
+            echo "invalid template tag: $TEMPLATE_TAG (expected v<major>[.<minor>...], e.g. v1.1.1)" >&2
+            exit 2
+          fi
+
+          if [ "${GITHUB_EVENT_NAME}" = "push" ] && [ "${GITHUB_REF_TYPE}" = "tag" ]; then
+            if printf '%s\n' "$TEMPLATE_TAG" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+$'; then
+              TAG="$(printf '%s\n' "$TEMPLATE_TAG" | sed -E 's/^v([0-9]+\.[0-9]+)\.[0-9]+$/v\1/')"
+            else
+              TAG="$TEMPLATE_TAG"
+            fi
           else
             RAW_TAG="${{ inputs.release_tag }}"
+            case "$RAW_TAG" in
+              cluster-a-*) TAG="${RAW_TAG#cluster-a-}" ;;
+              *) TAG="$RAW_TAG" ;;
+            esac
           fi
-          case "$RAW_TAG" in
-            cluster-a-*) TAG="${RAW_TAG#cluster-a-}" ;;
-            *) TAG="$RAW_TAG" ;;
-          esac
           if ! printf '%s\n' "$TAG" | grep -Eq '^v[0-9]+(\.[0-9]+)*$'; then
             echo "invalid release tag: $TAG (expected v<major>[.<minor>...], e.g. v1 or v1.1)" >&2
             exit 2
           fi
+          if [ "${GITHUB_EVENT_NAME}" = "workflow_dispatch" ] && [ "${{ inputs.push }}" = "true" ] && [ "${{ inputs.publish_template_to_s3 }}" != "false" ] && [ "${GITHUB_REF_TYPE}" != "tag" ]; then
+            echo "publishing a signed template requires dispatching from a release tag ref, e.g. --ref cluster-a-v1.1.1" >&2
+            exit 2
+          fi
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "template_tag=$TEMPLATE_TAG" >> "$GITHUB_OUTPUT"
 
       - name: Resolve publish mode
         id: mode
+        env:
+          TEMPLATE_TAG: ${{ steps.tag.outputs.template_tag }}
         run: |
-          if [ "${GITHUB_REF_TYPE}" = "tag" ] || [ "${{ inputs.push }}" = "true" ]; then
+          if [ "${GITHUB_EVENT_NAME}" = "push" ] && [ "${GITHUB_REF_TYPE}" = "tag" ]; then
+            echo "push=true" >> "$GITHUB_OUTPUT"
+            echo "publish_template_to_s3=true" >> "$GITHUB_OUTPUT"
+            if printf '%s\n' "$TEMPLATE_TAG" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+$'; then
+              echo "publish_oci_artifacts=false" >> "$GITHUB_OUTPUT"
+              echo "build_enclave_eif=false" >> "$GITHUB_OUTPUT"
+            else
+              echo "publish_oci_artifacts=true" >> "$GITHUB_OUTPUT"
+              echo "build_enclave_eif=true" >> "$GITHUB_OUTPUT"
+            fi
+            exit 0
+          fi
+
+          if [ "${{ inputs.push }}" = "true" ]; then
             echo "push=true" >> "$GITHUB_OUTPUT"
           else
             echo "push=false" >> "$GITHUB_OUTPUT"
           fi
-          if [ "${GITHUB_REF_TYPE}" = "tag" ] || [ "${{ inputs.publish_oci_artifacts }}" != "false" ]; then
+          if [ "${{ inputs.publish_oci_artifacts }}" != "false" ]; then
             echo "publish_oci_artifacts=true" >> "$GITHUB_OUTPUT"
           else
             echo "publish_oci_artifacts=false" >> "$GITHUB_OUTPUT"
           fi
-          if [ "${GITHUB_REF_TYPE}" = "tag" ] || [ "${{ inputs.publish_template_to_s3 }}" != "false" ]; then
+          if [ "${{ inputs.publish_template_to_s3 }}" != "false" ]; then
             echo "publish_template_to_s3=true" >> "$GITHUB_OUTPUT"
           else
             echo "publish_template_to_s3=false" >> "$GITHUB_OUTPUT"
           fi
-          if [ "${GITHUB_REF_TYPE}" = "tag" ] || [ "${{ inputs.build_enclave_eif }}" = "true" ]; then
+          if [ "${{ inputs.build_enclave_eif }}" = "true" ]; then
             echo "build_enclave_eif=true" >> "$GITHUB_OUTPUT"
           else
             echo "build_enclave_eif=false" >> "$GITHUB_OUTPUT"
@@ -369,14 +409,14 @@ jobs:
       - name: Stage worker template
         id: stage-template
         env:
-          TAG: ${{ needs.release-tag.outputs.tag }}
+          TEMPLATE_TAG: ${{ needs.release-tag.outputs.template_tag }}
         run: |
           set -euo pipefail
           mkdir -p dist/worker-template dist/release-manifests
           cp deploy/aws/v1/worker.yaml dist/worker-template/worker.yaml
           (cd dist/worker-template && sha256sum worker.yaml > worker.yaml.sha256)
           template_sha256="$(cut -d ' ' -f1 dist/worker-template/worker.yaml.sha256)"
-          versioned_key="${TEMPLATE_PREFIX}/${TAG}/worker.yaml"
+          versioned_key="${TEMPLATE_PREFIX}/${TEMPLATE_TAG}/worker.yaml"
           latest_key="${TEMPLATE_PREFIX}/latest/worker.yaml"
           s3_url="https://s3.${AWS_REGION}.amazonaws.com/${TEMPLATE_BUCKET}/${versioned_key}"
           mirror_url="https://templates.cyntrisec.com/${versioned_key}"
@@ -417,7 +457,8 @@ jobs:
         id: publish-template
         if: needs.release-tag.outputs.push == 'true' && needs.release-tag.outputs.publish_template_to_s3 == 'true'
         env:
-          TAG: ${{ needs.release-tag.outputs.tag }}
+          RELEASE_TAG: ${{ needs.release-tag.outputs.tag }}
+          TEMPLATE_TAG: ${{ needs.release-tag.outputs.template_tag }}
           TEMPLATE_SHA256: ${{ steps.stage-template.outputs.sha256 }}
           VERSIONED_KEY: ${{ steps.stage-template.outputs.versioned_key }}
           LATEST_KEY: ${{ steps.stage-template.outputs.latest_key }}
@@ -426,7 +467,7 @@ jobs:
           aws --version
           immutable_cache='public, max-age=31536000, immutable'
           latest_cache='no-cache, must-revalidate'
-          metadata="release-tag=${TAG},sha256=${TEMPLATE_SHA256}"
+          metadata="release-tag=${RELEASE_TAG},template-tag=${TEMPLATE_TAG},sha256=${TEMPLATE_SHA256}"
 
           put_pair() {
             local label="$1"
@@ -471,6 +512,7 @@ jobs:
       - name: Emit worker template manifest
         env:
           TAG: ${{ needs.release-tag.outputs.tag }}
+          TEMPLATE_TAG: ${{ needs.release-tag.outputs.template_tag }}
           PUSHED: ${{ needs.release-tag.outputs.push }}
           PUBLISHED_TO_S3: ${{ needs.release-tag.outputs.push == 'true' && needs.release-tag.outputs.publish_template_to_s3 == 'true' }}
           TEMPLATE_SHA256: ${{ steps.stage-template.outputs.sha256 }}
@@ -493,6 +535,7 @@ jobs:
             "schema_version": 1,
             "kind": "cloudformation_template",
             "release_tag": "${TAG}",
+            "template_tag": "${TEMPLATE_TAG}",
             "template_bucket": "${TEMPLATE_BUCKET}",
             "template_region": "${AWS_REGION}",
             "versioned_key": "${VERSIONED_KEY}",
@@ -713,6 +756,7 @@ jobs:
           echo "## Cluster A Image Release" >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"
           echo "Tag: \`${{ needs.release-tag.outputs.tag }}\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "Template tag: \`${{ needs.release-tag.outputs.template_tag }}\`" >> "$GITHUB_STEP_SUMMARY"
           echo "Pushed: \`${{ needs.release-tag.outputs.push }}\`" >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"
           echo "### Release Artifacts" >> "$GITHUB_STEP_SUMMARY"
