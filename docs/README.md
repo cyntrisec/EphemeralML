@@ -17,6 +17,7 @@ This repository serves multiple audiences: developers integrating the product, r
 
 - [`build-matrix.md`](build-matrix.md) — feature flags, deployment modes, and build commands
 - [`pilot-deployment-runbook.md`](pilot-deployment-runbook.md) — current Cluster A AWS BYOC pilot runbook
+- [`../scripts/aws/customer_openai_e2e.sh`](../scripts/aws/customer_openai_e2e.sh) — customer-style OpenAI-format batch smoke with offline bundle verification
 - [`AWS_NATIVE_POC_RUNBOOK.md`](AWS_NATIVE_POC_RUNBOOK.md) — historical AWS-native Nitro PoC, benchmark, and redacted evidence workflow
 - [`AWS_NITRO_E2E_RUNBOOK.md`](AWS_NITRO_E2E_RUNBOOK.md) — historical hand-built Nitro E2E runbook
 - [`AWS_NITRO_E2E_REPORT.md`](AWS_NITRO_E2E_REPORT.md) — historical Nitro E2E report

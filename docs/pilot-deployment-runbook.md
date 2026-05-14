@@ -128,6 +128,31 @@ Assert:
 - `x-cyntrisec-bundle-url` is present.
 - `x-cyntrisec-bundle-sha256` is a 64-character lowercase hex string.
 
+## Customer-Style Batch E2E
+
+After the single smoke passes, run the batch harness from a customer laptop or
+operator workstation while the local proxy is still listening on `127.0.0.1:4000`:
+
+```bash
+bash scripts/aws/customer_openai_e2e.sh \
+  --url http://127.0.0.1:4000 \
+  --model stage-0 \
+  --expected-model stage-0 \
+  --include-chat
+```
+
+The script sends a batch of OpenAI-format embedding requests, saves every
+request/response/header set under `/tmp/cyntrisec-customer-openai-e2e-*` by
+default, downloads each emitted S3 bundle, checks the bundle SHA-256 from the
+response header, extracts the tarball, verifies `SHA256SUMS`, and runs
+`cyntrisec-verify` offline against `air.cbor` + `attestation.cbor`. Pass
+`--out-dir evidence/customer-openai-e2e-<date>` only when you intentionally
+want a redacted pilot record in the repository.
+
+`--include-chat` is optional. The current `cluster-a-v1.1` image is
+embeddings-first, so an unsupported `/v1/chat/completions` response is accepted
+unless `--require-chat` is passed.
+
 ## Verify Bundle
 
 Fetch the bundle:
