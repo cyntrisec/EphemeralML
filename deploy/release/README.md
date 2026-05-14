@@ -132,10 +132,11 @@ Use immutable cache headers on versioned paths. If `/aws/latest/` is published,
 serve it with `Cache-Control: no-cache, must-revalidate` or a short
 `s-maxage`. Enable S3 Versioning and Object Lock on the templates bucket where
 available, disable ACLs with bucket-owner-enforced ownership, allow public
-`GetObject` only on the release prefixes, and restrict writes to the release
-role. For the public hostname, enable DNSSEC and CAA records if the DNS provider
-supports them, and monitor Certificate Transparency logs for unexpected
-certificates.
+`GetObject` and `GetObjectVersion` only on the release prefixes, and restrict
+writes to the release role. `GetObjectVersion` is required for the preferred
+`s3_url_with_version` launch path. For the public hostname, enable DNSSEC and
+CAA records if the DNS provider supports them, and monitor Certificate
+Transparency logs for unexpected certificates.
 
 Before a customer pilot, run the hosted-template smoke from a fresh AWS account
 that has never used Cyntrisec. This catches IAM, region, and public-account
