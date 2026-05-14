@@ -42,6 +42,7 @@ The following are in scope for security reports:
 | Version | Supported |
 |---------|-----------|
 | `main`  | Yes       |
+| Cluster A `v1.1.1` signed worker template + `v1.1` OCI artifacts | Yes |
 | 0.2.x   | Yes       |
 | 0.1.x gateway/operator crates | Yes, only as shipped on current `main` |
 | < 0.2   | No        |

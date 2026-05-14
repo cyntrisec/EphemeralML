@@ -1,20 +1,35 @@
-# EphemeralML Quick Start Guide
+# Cyntrisec / EphemeralML Quick Start
 
-## Install (one command)
+## Current Customer Pilot
+
+The current customer-facing proof path is the AWS BYOC pilot stack, not the older GitHub `releases/latest` installer.
+
+- Canonical runbook: [`docs/pilot-deployment-runbook.md`](docs/pilot-deployment-runbook.md)
+- Sample receipt verification without AWS: [`examples/sample-receipt/README.md`](examples/sample-receipt/README.md)
+- Current AWS demo model: bundled MiniLM embeddings for stable first-release measurements
+- Customer-facing verifier command: `cyntrisec-verify`
+
+Do not use a `curl .../releases/latest/download/install.sh | bash` flow for the Cluster A pilot. The AWS BYOC path is distributed through signed OCI artifacts plus the signed CloudFormation template described in the runbook.
+
+## Verify a Sample Receipt
+
+Requires `jq` and `xxd`.
 
 ```bash
-curl -fsSL https://github.com/cyntrisec/EphemeralML/releases/latest/download/install.sh | bash
+VECTOR=spec/v1/vectors/valid/v1-nitro-no-nonce.json
+jq -r .receipt_hex "$VECTOR" | xxd -r -p > /tmp/cyntrisec-air-v1.cbor
+PUBLIC_KEY="$(jq -r .public_key_hex "$VECTOR")"
+cargo run -p ephemeral-ml-client --bin cyntrisec-verify -- \
+  /tmp/cyntrisec-air-v1.cbor \
+  --public-key "$PUBLIC_KEY" \
+  --expected-model minilm-l6-v2 \
+  --expected-security-mode production \
+  --max-age 0
 ```
 
-This installs `ephemeralml`, `ephemeralml-verify`, `ephemeralml-compliance`, and `ephemeralml-orchestrator` to `~/.ephemeralml/bin/`. Set `EPHEMERALML_INSTALL_DIR` to override the install location.
+The sample is an AIR v1 conformance vector. It proves the receipt verifier path without requiring an AWS account. A full Cluster A bundle sample will be published from the real-AWS smoke run.
 
-## Verify a Receipt
-
-```bash
-ephemeralml-verify receipt.json --public-key-file receipt.pubkey
-```
-
-## 5-Minute Local Demo (build from source)
+## 5-Minute Local Demo
 
 ```bash
 git clone https://github.com/cyntrisec/EphemeralML && cd EphemeralML
@@ -23,7 +38,7 @@ bash scripts/demo.sh
 
 This builds everything in mock mode, loads MiniLM-L6-v2 (22.7M params), runs inference, and returns a signed receipt. It is a local mock-mode proof path, not real hardware attestation.
 
-## Full GCP GPU Deployment (one command)
+## Advanced: GCP GPU Deployment
 
 ```bash
 # Via CLI (recommended):
@@ -34,7 +49,7 @@ export EPHEMERALML_GCP_PROJECT=your-project
 bash scripts/gcp/mvp_gpu_e2e.sh --project $EPHEMERALML_GCP_PROJECT
 ```
 
-This runs the complete 10-step golden path: KMS setup, model packaging, GPU deployment (a3-highgpu-1g + H100 CC), inference, receipt verification, compliance bundle, negative tests, and teardown. Add `--cpu-only` for c3-standard-4 (no GPU).
+This is an advanced multi-cloud validation path, not the current AWS BYOC pilot. It runs the complete 10-step golden path: KMS setup, model packaging, GPU deployment (a3-highgpu-1g + H100 CC), inference, receipt verification, compliance bundle, negative tests, and teardown. Add `--cpu-only` for c3-standard-4 (no GPU).
 
 GPU note: the AIR receipt path verifies the EphemeralML/TDX/Confidential Space evidence. NVIDIA NRAS/vendor appraisement for tested GCP A3 evidence is a separate chain and is not implied by a green AIR receipt.
 

@@ -1,6 +1,6 @@
 # Open-Source Boundary
 
-Last updated: 2026-03-26
+Last updated: 2026-05-14
 
 This repository is intentionally public for the verification ecosystem, developer UX, and reproducible product artifacts around EphemeralML and AIR v1.
 
@@ -10,13 +10,14 @@ This repository is intentionally public for the verification ecosystem, develope
 - Verifier / trust-center code and public API surface
 - CLI tooling and generic developer documentation
 - Sample receipts, vectors, and generic demo scripts
+- Signed public release templates, public deploy runbooks, and reproducible customer launch instructions
 - Public benchmark summaries and publication-ready evidence bundles, preferably redacted or packaged as stable release assets
 - High-level architecture and security-model documentation
 
 ## Keep Private
 
 - Live account inventories, IAM mappings, DNS inventories, and certificate inventories
-- Production deployment runbooks tied to current cloud accounts or routing topology
+- Live production deployment runbooks tied to current cloud accounts, private routing topology, or customer accounts
 - Raw ad-hoc cloud run artifacts with live project IDs, bucket names, instance IDs, IAM names, or account-specific logs
 - Customer-specific artifacts, pilot data, and operator/admin workflows
 - Billing, tenancy, abuse tooling, and managed-service operational code

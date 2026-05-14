@@ -1,4 +1,17 @@
-# EphemeralML Security Model
+# Cyntrisec / EphemeralML Security Model
+
+## Current AWS BYOC Pilot Model
+
+The current customer-facing deployment path is the AWS Cluster A BYOC stack:
+
+- the customer launches a signed CloudFormation template in their own AWS account
+- inference runs inside an AWS Nitro Enclave
+- AWS KMS releases model material only to the pinned enclave measurements
+- the host relays bytes and AWS egress, but does not terminate the SecureChannel
+- each inference can emit an AIR receipt and an S3 evidence bundle for offline verification
+
+The older GCP TDX / H100 CC paths below remain validated engineering paths, but
+the AWS BYOC stack is the pilot deployment surface.
 
 ## Trust Model
 
@@ -6,16 +19,20 @@
 
 | Component | Trust Basis |
 |-----------|-------------|
+| AWS Nitro Enclaves hardware | CPU-enforced enclave isolation and NSM attestation document binding |
+| AWS KMS | Trusted to enforce attested key-release policy against pinned EIF image and PCR measurements |
+| Customer AWS account | The worker stack, evidence bucket, KMS keys, and IAM role live in the customer's account |
 | Intel TDX hardware | Physical security of the CPU, correct implementation of memory encryption and attestation |
 | Google Confidential Space image | dm-verity, measured boot, operator lockout — maintained by Google |
 | Google Cloud Attestation | Issues OIDC tokens based on TDX quotes; trusted to verify hardware attestation correctly |
-| Cloud KMS | Trusted to enforce key release policy (WIP binding) and not release keys to unauthorized workloads |
+| Google Cloud KMS | Trusted to enforce key release policy (WIP binding) and not release keys to unauthorized workloads |
 | Ed25519 cryptography | Trusted for receipt signing and manifest verification (standard, well-audited) |
 
 ### What We Reduce Trust In
 
 | Component | Constraint |
 |-----------|------------|
+| AWS host instance | SecureChannel terminates inside the enclave; host-side relays are byte-forwarding and egress helpers constrained by IAM, KMS, S3 bucket policy, and allowlists |
 | Cloud operator | Cannot access workload memory (TDX), cannot modify the CS image (dm-verity), constrained by CS trust model |
 | Host OS | TDX provides hardware memory encryption; the host OS cannot read CVM memory |
 | Network | End-to-end encrypted channel (HPKE + ChaCha20-Poly1305) between client and enclave |

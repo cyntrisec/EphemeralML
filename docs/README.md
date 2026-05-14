@@ -5,7 +5,9 @@ This repository serves multiple audiences: developers integrating the product, r
 ## Start Here
 
 - [`../README.md`](../README.md) — top-level product and diligence summary
-- [`../QUICKSTART.md`](../QUICKSTART.md) — fastest product proof path
+- [`pilot-deployment-runbook.md`](pilot-deployment-runbook.md) — canonical AWS BYOC pilot deployment and smoke-test path
+- [`../examples/sample-receipt/README.md`](../examples/sample-receipt/README.md) — verify a sample AIR receipt without deploying AWS
+- [`../QUICKSTART.md`](../QUICKSTART.md) — local developer proof paths and build commands
 - [`design.md`](design.md) — architecture and threat model
 - [`benchmarks.md`](benchmarks.md) — benchmark methodology and measured results
 - [`BENCHMARK_SCHEMA.md`](BENCHMARK_SCHEMA.md) — shared JSON shape for reproducible benchmark outputs
@@ -14,7 +16,10 @@ This repository serves multiple audiences: developers integrating the product, r
 ## Product and Deployment
 
 - [`build-matrix.md`](build-matrix.md) — feature flags, deployment modes, and build commands
-- [`AWS_NATIVE_POC_RUNBOOK.md`](AWS_NATIVE_POC_RUNBOOK.md) — repeatable AWS-native Nitro PoC, benchmark, and redacted evidence workflow
+- [`pilot-deployment-runbook.md`](pilot-deployment-runbook.md) — current Cluster A AWS BYOC pilot runbook
+- [`AWS_NATIVE_POC_RUNBOOK.md`](AWS_NATIVE_POC_RUNBOOK.md) — historical AWS-native Nitro PoC, benchmark, and redacted evidence workflow
+- [`AWS_NITRO_E2E_RUNBOOK.md`](AWS_NITRO_E2E_RUNBOOK.md) — historical hand-built Nitro E2E runbook
+- [`AWS_NITRO_E2E_REPORT.md`](AWS_NITRO_E2E_REPORT.md) — historical Nitro E2E report
 - [`verifier-api.md`](verifier-api.md) — verifier service surface
 - [`cli-ux.md`](cli-ux.md) — operator and developer CLI ergonomics
 - [`REPO_MAINTENANCE_SCOPE.md`](REPO_MAINTENANCE_SCOPE.md) — active vs frozen areas and local disk hygiene

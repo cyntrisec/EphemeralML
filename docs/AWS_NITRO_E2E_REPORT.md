@@ -3,6 +3,10 @@
 **Date:** 2026-04-10/11
 **Status:** SUCCESS — Full pipeline inference with PCR-pinned attestation on real Nitro hardware, plus offline AIR v1 verification and trust-center upload verification.
 
+> **Historical report:** This is retained as public engineering evidence for an
+> earlier Nitro path. The current customer-facing AWS BYOC pilot is documented
+> in [`pilot-deployment-runbook.md`](pilot-deployment-runbook.md).
+
 > **Current-status note (2026-05-07):** This report is historical for the
 > bundled-model Nitro E2E path. The AWS-native KMS/S3 BYOC PoC path was later
 > exercised with model key release gated by AWS KMS and a public Verification

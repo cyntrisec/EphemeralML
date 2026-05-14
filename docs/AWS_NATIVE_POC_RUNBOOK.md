@@ -1,5 +1,9 @@
 # AWS-Native Nitro PoC Runbook
 
+> **Historical PoC note:** This document describes the pre-Cluster-A AWS-native
+> Nitro PoC workflow. For the current customer-facing AWS BYOC pilot, use
+> [`pilot-deployment-runbook.md`](pilot-deployment-runbook.md).
+
 This runbook covers the repeatable AWS-native PoC path:
 
 1. AWS KMS releases model material only to a Nitro Enclave measurement accepted by policy.

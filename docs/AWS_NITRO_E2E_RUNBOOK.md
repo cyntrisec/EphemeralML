@@ -1,5 +1,11 @@
 # AWS Nitro Enclaves E2E Runbook
 
+> **Historical manual runbook:** This hand-built Nitro E2E path predates the
+> Cluster A AWS BYOC stack. It remains as engineering evidence, not as the
+> current pilot deployment path. Use
+> [`pilot-deployment-runbook.md`](pilot-deployment-runbook.md) for customer
+> pilots.
+
 End-to-end inference on AWS Nitro Enclaves with PCR-pinned attestation.
 
 ## Prerequisites

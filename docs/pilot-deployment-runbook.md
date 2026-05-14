@@ -1,5 +1,8 @@
 # Cyntrisec Pilot Deployment Runbook
 
+This is the canonical customer-facing AWS BYOC runbook for the Cluster A
+`v1.1.1` template distribution.
+
 This runbook validates the AWS worker stack after the Cluster A release
 artifacts have been published and the signed worker template has been uploaded
 to the release S3 bucket. CloudFormation launches from the S3 regional URL, not

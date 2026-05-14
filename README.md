@@ -1,8 +1,10 @@
 [![CI](https://github.com/cyntrisec/EphemeralML/actions/workflows/ci.yml/badge.svg)](https://github.com/cyntrisec/EphemeralML/actions/workflows/ci.yml)
 
-# EphemeralML
+# Cyntrisec / EphemeralML
 
-Confidential AI inference with per-inference cryptographic receipts.
+Cyntrisec is an AWS BYOC confidential AI stack with per-inference cryptographic receipts.
+
+EphemeralML is the open-source runtime and crate family behind the stack: the gateway, enclave worker, verifier, AIR v1 receipt implementation, and deployment tooling.
 
 In production hardware deployments, inference runs inside a hardware-isolated TEE. Every inference can produce a signed receipt with model identity, data hashes, and attestation linkage that can be verified offline. Local mock mode is only a developer proof path and does not provide hardware attestation.
 
@@ -14,21 +16,45 @@ In production hardware deployments, inference runs inside a hardware-isolated TE
 
 ---
 
-## What exists
+## Current Pilot Path
+
+The current customer-facing path is the **AWS BYOC pilot stack**:
+
+1. Customer launches a signed CloudFormation template in their own AWS account.
+2. The stack starts a Nitro Enclave worker, host relays, KMS keys, and an S3 evidence bucket.
+3. The local `cyntrisec-proxy` exposes an OpenAI-compatible endpoint.
+4. Each inference returns response metadata plus an S3 evidence bundle that can be verified offline.
+
+Start with [`docs/pilot-deployment-runbook.md`](docs/pilot-deployment-runbook.md).
+
+Current demo scope:
+
+| | |
+|---|---|
+| Release | Cluster A `v1.1.1` template distribution and `v1.1` OCI artifacts |
+| Model | Bundled MiniLM embeddings model for stable first-release measurements |
+| Deployment | Single AWS Nitro Enclave worker stack in the customer's AWS account |
+| Evidence | AIR receipt + Nitro attestation + policy/model metadata bundle in customer S3 |
+| Next model work | Customer-selected model packaging and update flow |
+
+Customer-facing binaries use the `cyntrisec-*` names. Older developer docs and scripts may still reference `ephemeralml-*`; those names are legacy aliases for the same runtime family.
+
+## What Exists
 
 | | |
 |---|---|
 | Runtime | Multi-cloud E2E paths, OpenAI-compatible gateway, per-inference AIR receipts |
-| Validated | AWS Nitro, GCP TDX, and GCP H100 CC functional paths; 752 workspace test cases listed locally on 2026-05-07 |
+| Validated | AWS Nitro worker path, GCP TDX, and GCP H100 CC functional paths; CI covers the current Rust workspace |
 | Moat | Receipt format + verifier + compliance layer — not raw TEE infra |
-| Missing | External AIR implementors, design-partner revenue, pipeline-proof chaining |
+| Missing | General customer model update flow, external AIR implementors, design-partner revenue, pipeline-proof chaining |
 
 Start here:
 
-1. [`spec/v1/README.md`](spec/v1/README.md) — AIR v1 frozen spec
-2. [`QUICKSTART.md`](QUICKSTART.md) — fastest proof path
-3. [`docs/benchmarks.md`](docs/benchmarks.md) — performance
-4. [`docs/design.md`](docs/design.md) — threat model
+1. [`docs/pilot-deployment-runbook.md`](docs/pilot-deployment-runbook.md) — canonical AWS BYOC pilot runbook
+2. [`QUICKSTART.md`](QUICKSTART.md) — local developer proof paths and build commands
+3. [`examples/sample-receipt/README.md`](examples/sample-receipt/README.md) — verify a sample AIR receipt without deploying AWS
+4. [`docs/SECURITY_MODEL.md`](docs/SECURITY_MODEL.md) — trust model and proof boundaries
+5. [`spec/v1/README.md`](spec/v1/README.md) — AIR v1 frozen spec
 
 ## Repository Layout
 
@@ -76,6 +102,13 @@ For what to actively maintain versus freeze, see [`docs/REPO_MAINTENANCE_SCOPE.m
 | No audit trail | Per-inference receipts — signed proof of what ran and what it touched |
 
 Built for: healthcare, finance, legal — anywhere audit evidence matters more than promises.
+
+## What Makes Cyntrisec Different
+
+- **Customer-deployed AWS BYOC:** the worker stack runs in the customer's AWS account, with customer-owned KMS keys and S3 evidence bucket.
+- **Per-inference evidence:** the core artifact is a receipt and bundle for one inference, not a coarse deployment attestation.
+- **Portable receipt format:** AIR v1 is specified under `spec/v1/` with CDDL and conformance vectors.
+- **Verifier-first workflow:** the receipt is useful only if an external reviewer can recompute the checks from the raw evidence.
 
 ---
 
@@ -455,11 +488,17 @@ See [`QUICKSTART.md`](QUICKSTART.md) and [`docs/build-matrix.md`](docs/build-mat
 ## Documentation
 
 - [`docs/README.md`](docs/README.md) — Documentation index and audience-oriented entry points
+- [`docs/pilot-deployment-runbook.md`](docs/pilot-deployment-runbook.md) — current AWS BYOC pilot deployment runbook
+- [`examples/sample-receipt/README.md`](examples/sample-receipt/README.md) — verify a sample AIR receipt locally
 - [`docs/design.md`](docs/design.md) — Architecture & threat model
+- [`docs/SECURITY_MODEL.md`](docs/SECURITY_MODEL.md) — Security assumptions and proof boundaries
 - [`docs/build-matrix.md`](docs/build-matrix.md) — Deployment modes, feature flags & build commands (AWS, GCP, mock)
 - [`docs/benchmarks.md`](docs/benchmarks.md) — Benchmark methodology, results & competitive analysis
 - [`docs/BENCHMARK_SPEC.md`](docs/BENCHMARK_SPEC.md) — Benchmark specification (11-paper literature review)
-- [`QUICKSTART.md`](QUICKSTART.md) — Deployment guide
+- [`QUICKSTART.md`](QUICKSTART.md) — Local developer proof paths and build commands
+- [`CHANGELOG.md`](CHANGELOG.md) — Release notes
+- [`SECURITY.md`](SECURITY.md) — Responsible disclosure and supported versions
+- [`CONTRIBUTING.md`](CONTRIBUTING.md) / [`CODE_OF_CONDUCT.md`](CODE_OF_CONDUCT.md) — Contribution norms
 - [`docs/OPEN_SOURCE_BOUNDARY.md`](docs/OPEN_SOURCE_BOUNDARY.md) — What stays public vs private in this repo
 - [`docs/security-demo.md`](docs/security-demo.md) — Security walkthrough
 - [`scripts/run_final_kms_validation.sh`](scripts/run_final_kms_validation.sh) — Multi-run KMS-enforced benchmark validation
