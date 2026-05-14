@@ -952,10 +952,10 @@ fn build_metadata(
         })
         .unwrap_or_else(|| "unknown".to_string());
 
-    let receipt_sha256 = result.air_v1_receipt_b64.as_ref().map(|b64| {
-        let hash = Sha256::digest(b64.as_bytes());
-        hex::encode(hash)
-    });
+    let receipt_sha256 = result
+        .air_v1_receipt_b64
+        .as_deref()
+        .and_then(air_receipt_sha256_from_b64);
 
     Some(EphemeralMetadata {
         receipt_id: result.receipt.receipt_id.clone(),
@@ -969,6 +969,18 @@ fn build_metadata(
         bundle_sha256: result.bundle_sha256.clone(),
         benchmark: result.benchmark.clone(),
     })
+}
+
+fn air_receipt_sha256_from_b64(receipt_b64: &str) -> Option<String> {
+    use base64::Engine as _;
+
+    match base64::engine::general_purpose::STANDARD.decode(receipt_b64) {
+        Ok(bytes) => Some(hex::encode(Sha256::digest(bytes))),
+        Err(err) => {
+            tracing::warn!(error = %err, "failed to decode AIR v1 receipt for SHA-256 metadata");
+            None
+        }
+    }
 }
 
 fn infer_attestation_mode_from_measurements(measurement_type: &str) -> Option<&'static str> {
@@ -1184,6 +1196,25 @@ mod tests {
         assert_eq!(json["executed_model"], "stage-0");
         assert_eq!(json["requested_model"], "gpt-4");
         assert_eq!(json["receipt_sha256"], "abc123");
+    }
+
+    #[test]
+    fn air_receipt_sha256_hashes_decoded_receipt_bytes() {
+        use base64::Engine as _;
+
+        let receipt_bytes = b"cbor-air-receipt";
+        let receipt_b64 = base64::engine::general_purpose::STANDARD.encode(receipt_bytes);
+        let actual = air_receipt_sha256_from_b64(&receipt_b64).unwrap();
+        let expected = hex::encode(Sha256::digest(receipt_bytes));
+        let wrong_base64_text_hash = hex::encode(Sha256::digest(receipt_b64.as_bytes()));
+
+        assert_eq!(actual, expected);
+        assert_ne!(actual, wrong_base64_text_hash);
+    }
+
+    #[test]
+    fn air_receipt_sha256_rejects_invalid_base64() {
+        assert!(air_receipt_sha256_from_b64("not base64!!!").is_none());
     }
 
     #[test]
