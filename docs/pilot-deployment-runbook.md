@@ -1,7 +1,7 @@
 # Cyntrisec Pilot Deployment Runbook
 
 This is the canonical customer-facing AWS BYOC runbook for the Cluster A
-`v1.1.1` template distribution.
+`v1.1.2` template distribution.
 
 This runbook validates the AWS worker stack after the Cluster A release
 artifacts have been published and the signed worker template has been uploaded
@@ -26,7 +26,7 @@ CloudFormation launch URL. This validates the template itself, not only the OCI
 artifacts that the template later pulls during instance boot.
 
 ```bash
-TEMPLATE_BASE=https://s3.us-east-1.amazonaws.com/cyntrisec-public-templates-us-east-1/aws/v1.1.1
+TEMPLATE_BASE=https://s3.us-east-1.amazonaws.com/cyntrisec-public-templates-us-east-1/aws/v1.1.2
 curl -fsSLO "$TEMPLATE_BASE/worker.yaml"
 curl -fsSLO "$TEMPLATE_BASE/worker.yaml.sha256"
 curl -fsSLO "$TEMPLATE_BASE/worker.yaml.cosign.bundle"
@@ -45,7 +45,7 @@ aws cloudformation validate-template --template-body file://worker.yaml
 1. Open the CloudFormation launch URL produced by the website's Deploy to AWS
    button.
 2. Confirm the URL includes:
-   - `templateURL=https://s3.us-east-1.amazonaws.com/cyntrisec-public-templates-us-east-1/aws/v1.1.1/worker.yaml`
+   - `templateURL=https://s3.us-east-1.amazonaws.com/cyntrisec-public-templates-us-east-1/aws/v1.1.2/worker.yaml`
    - `param_ReleaseTag=v1.1` or the template default `ReleaseTag=v1.1`
    - `param_EnclaveImageSha384=<from enclave-measurements.json>`
    - `param_EnclavePcr1Sha384=<from enclave-measurements.json>`
