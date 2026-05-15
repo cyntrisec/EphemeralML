@@ -104,6 +104,35 @@ sudo journalctl -u cyntrisec-worker-config -u cyntrisec-relay-egress -u cyntrise
 
 From the stack outputs, run `PolicyDownloadCommand`, `ModelManifestDownloadCommand`, then `ProxyCommand`.
 
+`PolicyDownloadCommand` and `ModelManifestDownloadCommand` use direct
+`aws s3 cp`. If the local operator identity can create the stack but does not
+have `kms:Decrypt` on the stack EvidenceKey, direct download fails with
+`AccessDenied`. In that case use the SSM fallback outputs instead:
+
+```bash
+# From CloudFormation Outputs:
+#   PolicySsmDownloadCommand
+#   ModelManifestSsmDownloadCommand
+POLICY_SSM_DOWNLOAD_COMMAND="$(aws cloudformation describe-stacks \
+  --stack-name <stack-name> \
+  --query 'Stacks[0].Outputs[?OutputKey==`PolicySsmDownloadCommand`].OutputValue' \
+  --output text)"
+MODEL_MANIFEST_SSM_DOWNLOAD_COMMAND="$(aws cloudformation describe-stacks \
+  --stack-name <stack-name> \
+  --query 'Stacks[0].Outputs[?OutputKey==`ModelManifestSsmDownloadCommand`].OutputValue' \
+  --output text)"
+
+printf '%s\n' "$POLICY_SSM_DOWNLOAD_COMMAND"
+bash -lc "$POLICY_SSM_DOWNLOAD_COMMAND"
+printf '%s\n' "$MODEL_MANIFEST_SSM_DOWNLOAD_COMMAND"
+bash -lc "$MODEL_MANIFEST_SSM_DOWNLOAD_COMMAND"
+```
+
+The SSM fallback asks the worker instance role to stream the policy/manifest
+back through AWS Systems Manager. It avoids granting broad local KMS decrypt
+permission to every operator workstation while preserving SSE-KMS on the
+evidence bucket.
+
 Expected local listener:
 
 ```bash
@@ -137,8 +166,7 @@ operator workstation while the local proxy is still listening on `127.0.0.1:4000
 bash scripts/aws/customer_openai_e2e.sh \
   --url http://127.0.0.1:4000 \
   --model stage-0 \
-  --expected-model stage-0 \
-  --include-chat
+  --expected-model stage-0
 ```
 
 The script sends a batch of OpenAI-format embedding requests, saves every
@@ -148,6 +176,25 @@ response header, extracts the tarball, verifies `SHA256SUMS`, and runs
 `cyntrisec-verify` offline against `air.cbor` + `attestation.cbor`. Pass
 `--out-dir evidence/customer-openai-e2e-<date>` only when you intentionally
 want a redacted pilot record in the repository.
+
+If direct `aws s3 cp` bundle download fails because the local operator lacks
+EvidenceKey decrypt permission, pass the stack `WorkerInstanceId` output:
+
+```bash
+WORKER_INSTANCE_ID="$(aws cloudformation describe-stacks \
+  --stack-name <stack-name> \
+  --query 'Stacks[0].Outputs[?OutputKey==`WorkerInstanceId`].OutputValue' \
+  --output text)"
+
+bash scripts/aws/customer_openai_e2e.sh \
+  --url http://127.0.0.1:4000 \
+  --model stage-0 \
+  --expected-model stage-0 \
+  --s3-presign-ssm-instance-id "$WORKER_INSTANCE_ID"
+```
+
+This generates short-lived HTTPS bundle URLs through SSM and still performs the
+offline verification locally.
 
 `--include-chat` is optional. The current `cluster-a-v1.1` image is
 embeddings-first, so an unsupported `/v1/chat/completions` response is accepted
@@ -171,6 +218,10 @@ cyntrisec-verify /tmp/cyntrisec-bundle/air.cbor \
   --expected-security-mode production \
   --max-age 0
 ```
+
+If direct `aws s3 cp "$BUNDLE_URL"` fails on KMS permissions, use the
+`BundlePresignCommandTemplate` output or the batch harness option
+`--s3-presign-ssm-instance-id`.
 
 Expected verifier matrix:
 

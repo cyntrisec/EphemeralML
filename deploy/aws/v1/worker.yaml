@@ -365,6 +365,13 @@ Resources:
                   StringEquals:
                     s3:x-amz-server-side-encryption: aws:kms
                     s3:x-amz-server-side-encryption-aws-kms-key-id: !GetAtt EvidenceKey.Arn
+              - Sid: ReadEvidenceObjectsForOperatorPresign
+                Effect: Allow
+                Action:
+                  - s3:GetObject
+                Resource:
+                  - !Sub ${EvidenceBucket.Arn}/policy/*
+                  - !Sub ${EvidenceBucket.Arn}/bundles/*
               - Sid: ReadModelArtifacts
                 Effect: Allow
                 Action:
@@ -721,6 +728,22 @@ Outputs:
   ModelManifestDownloadCommand:
     Description: Download the v1 MiniLM model manifest for local proxy preflight.
     Value: !Sub aws s3 cp s3://${EvidenceBucket}/policy/model-manifest.json ./model-manifest.json
+
+  WorkerInstanceId:
+    Description: EC2 instance ID for SSM-based operator diagnostics and pre-signed evidence downloads.
+    Value: !Ref WorkerInstance
+
+  PolicySsmDownloadCommand:
+    Description: Download the pinned worker policy through SSM using the worker instance role when the local operator lacks EvidenceKey kms:Decrypt.
+    Value: !Sub bash -lc 'cmd=$(aws ssm send-command --region ${AWS::Region} --instance-ids ${WorkerInstance} --document-name AWS-RunShellScript --comment cyntrisec-policy-download --parameters "commands=aws s3 cp s3://${EvidenceBucket}/policy/cyntrisec-policy.json -" --query Command.CommandId --output text); aws ssm wait command-executed --region ${AWS::Region} --command-id "$cmd" --instance-id ${WorkerInstance}; aws ssm get-command-invocation --region ${AWS::Region} --command-id "$cmd" --instance-id ${WorkerInstance} --query StandardOutputContent --output text > cyntrisec-policy.json'
+
+  ModelManifestSsmDownloadCommand:
+    Description: Download the v1 MiniLM model manifest through SSM using the worker instance role when the local operator lacks EvidenceKey kms:Decrypt.
+    Value: !Sub bash -lc 'cmd=$(aws ssm send-command --region ${AWS::Region} --instance-ids ${WorkerInstance} --document-name AWS-RunShellScript --comment cyntrisec-manifest-download --parameters "commands=aws s3 cp s3://${EvidenceBucket}/policy/model-manifest.json -" --query Command.CommandId --output text); aws ssm wait command-executed --region ${AWS::Region} --command-id "$cmd" --instance-id ${WorkerInstance}; aws ssm get-command-invocation --region ${AWS::Region} --command-id "$cmd" --instance-id ${WorkerInstance} --query StandardOutputContent --output text > model-manifest.json'
+
+  BundlePresignCommandTemplate:
+    Description: Template command for converting an x-cyntrisec-bundle-url s3:// URI into a short-lived HTTPS URL through the worker instance role.
+    Value: !Sub bash -lc 'bundle_url="s3://REPLACE_WITH_X_CYNTRISEC_BUNDLE_URL"; cmd=$(aws ssm send-command --region ${AWS::Region} --instance-ids ${WorkerInstance} --document-name AWS-RunShellScript --comment cyntrisec-bundle-presign --parameters "commands=aws s3 presign $bundle_url --expires-in 600" --query Command.CommandId --output text); aws ssm wait command-executed --region ${AWS::Region} --command-id "$cmd" --instance-id ${WorkerInstance}; aws ssm get-command-invocation --region ${AWS::Region} --command-id "$cmd" --instance-id ${WorkerInstance} --query StandardOutputContent --output text'
 
   EvidenceBucketName:
     Description: Evidence bucket retaining per-inference bundles.

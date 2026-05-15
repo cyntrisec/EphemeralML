@@ -520,9 +520,30 @@ impl SecureChannelTransport {
         &self,
         req: InferenceHandlerInput,
     ) -> Result<InferenceHandlerOutput, WorkerChannelError> {
-        self.ensure_attested_channel().await?;
         let req_bytes = serde_json::to_vec(&req)
             .map_err(|e| WorkerChannelError::invalid_input(format!("serialize: {e}")))?;
+        let req_bytes = Bytes::from(req_bytes);
+
+        match self.send_worker_request_once(req_bytes.clone()).await {
+            Ok(output) => Ok(output),
+            Err(err) if should_retry_secure_worker_request(&err) => {
+                tracing::warn!(
+                    error = %err,
+                    backend = %self.backend_addr,
+                    "secure worker channel failed; reconnecting and retrying request once"
+                );
+                self.clear_attested_state().await;
+                self.send_worker_request_once(req_bytes).await
+            }
+            Err(err) => Err(err),
+        }
+    }
+
+    async fn send_worker_request_once(
+        &self,
+        req_bytes: Bytes,
+    ) -> Result<InferenceHandlerOutput, WorkerChannelError> {
+        self.ensure_attested_channel().await?;
 
         let mut channel_guard = self.channel.lock().await;
         let send_result = {
@@ -532,7 +553,7 @@ impl SecureChannelTransport {
                     "channel missing after preflight",
                 )
             })?;
-            channel.send(Bytes::from(req_bytes)).await
+            channel.send(req_bytes).await
         };
         if let Err(err) = send_result {
             *channel_guard = None;
@@ -604,6 +625,10 @@ impl SecureChannelTransport {
             ))),
         }
     }
+}
+
+fn should_retry_secure_worker_request(err: &WorkerChannelError) -> bool {
+    matches!(err.code, WorkerChannelErrorCode::TransportUnreachable)
 }
 
 impl SecureChannelWorker {
@@ -1195,6 +1220,24 @@ mod tests {
             transport.attestation_status(),
             AttestationStatus::Unverified
         );
+    }
+
+    #[test]
+    fn secure_worker_retries_only_transport_unreachable() {
+        let stale_channel = WorkerChannelError::transport_unreachable("127.0.0.1:443", "closed");
+        assert!(should_retry_secure_worker_request(&stale_channel));
+
+        let inference = WorkerChannelError::inference("model.failed: no capacity");
+        assert!(!should_retry_secure_worker_request(&inference));
+
+        let protocol = WorkerChannelError::protocol("unexpected worker message");
+        assert!(!should_retry_secure_worker_request(&protocol));
+
+        let attestation = WorkerChannelError::attestation_mismatch("PCR mismatch");
+        assert!(!should_retry_secure_worker_request(&attestation));
+
+        let timeout = WorkerChannelError::timeout("worker inference timed out");
+        assert!(!should_retry_secure_worker_request(&timeout));
     }
 
     #[tokio::test]
