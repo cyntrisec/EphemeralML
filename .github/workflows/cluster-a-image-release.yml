@@ -7,9 +7,9 @@ on:
   workflow_dispatch:
     inputs:
       release_tag:
-        description: 'OCI tag to publish, for example v1.4'
+        description: 'OCI tag to publish, for example v1.5'
         type: string
-        default: 'v1.4'
+        default: 'v1.5'
       push:
         description: 'Push to ECR Public and cosign-sign published references'
         type: boolean
@@ -64,7 +64,7 @@ jobs:
             *) TEMPLATE_TAG="$RAW_TEMPLATE_TAG" ;;
           esac
           if ! printf '%s\n' "$TEMPLATE_TAG" | grep -Eq '^v[0-9]+(\.[0-9]+)*$'; then
-            echo "invalid template tag: $TEMPLATE_TAG (expected v<major>[.<minor>...], e.g. v1.4.1)" >&2
+            echo "invalid template tag: $TEMPLATE_TAG (expected v<major>[.<minor>...], e.g. v1.5.1)" >&2
             exit 2
           fi
 
@@ -82,11 +82,11 @@ jobs:
             esac
           fi
           if ! printf '%s\n' "$TAG" | grep -Eq '^v[0-9]+(\.[0-9]+)*$'; then
-            echo "invalid release tag: $TAG (expected v<major>[.<minor>...], e.g. v1 or v1.4)" >&2
+            echo "invalid release tag: $TAG (expected v<major>[.<minor>...], e.g. v1 or v1.5)" >&2
             exit 2
           fi
           if [ "${GITHUB_EVENT_NAME}" = "workflow_dispatch" ] && [ "${{ inputs.push }}" = "true" ] && [ "${{ inputs.publish_template_to_s3 }}" != "false" ] && [ "${GITHUB_REF_TYPE}" != "tag" ]; then
-            echo "publishing a signed template requires dispatching from a release tag ref, e.g. --ref cluster-a-v1.4.1" >&2
+            echo "publishing a signed template requires dispatching from a release tag ref, e.g. --ref cluster-a-v1.5.1" >&2
             exit 2
           fi
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
@@ -667,10 +667,14 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p dist "$NITRO_CLI_ARTIFACTS"
-          nitro-cli build-enclave \
+          sudo env \
+            NITRO_CLI_BLOBS="$NITRO_CLI_BLOBS" \
+            NITRO_CLI_ARTIFACTS="$NITRO_CLI_ARTIFACTS" \
+            nitro-cli build-enclave \
             --docker-uri "$ROOTFS_URI" \
             --output-file dist/cyntrisec-enclave.eif \
             | tee dist/nitro-build-output.json
+          sudo chown "$(id -u):$(id -g)" dist/cyntrisec-enclave.eif
           python3 scripts/release/nitro_measurements_manifest.py \
             --nitro-output dist/nitro-build-output.json \
             --eif dist/cyntrisec-enclave.eif \

@@ -31,7 +31,7 @@ Current demo scope:
 
 | | |
 |---|---|
-| Release | Cluster A `v1.4` template distribution and `v1.4` OCI artifacts |
+| Release | Cluster A `v1.5` template distribution and `v1.5` OCI artifacts |
 | Model | Bundled MiniLM embeddings model for stable first-release measurements |
 | Deployment | Single AWS Nitro Enclave worker stack in the customer's AWS account |
 | Evidence | AIR receipt + Nitro attestation + policy/model metadata bundle in customer S3 |
