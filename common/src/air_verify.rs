@@ -26,6 +26,8 @@ pub enum AirCheckCode {
     ReceiptTooLarge,
     /// Non-empty unprotected header (AIR v1 requires all headers in protected bucket)
     NonEmptyUnprotectedHeader,
+    /// Unsupported critical protected header (AIR v1 does not define `crit`)
+    UnsupportedCriticalHeader,
     /// COSE_Sign1 envelope could not be decoded
     CoseDecodeFailed,
     /// Missing or wrong `alg` in protected header
@@ -101,6 +103,7 @@ impl std::fmt::Display for AirCheckCode {
         match self {
             Self::ReceiptTooLarge => write!(f, "RECEIPT_TOO_LARGE"),
             Self::NonEmptyUnprotectedHeader => write!(f, "NON_EMPTY_UNPROTECTED"),
+            Self::UnsupportedCriticalHeader => write!(f, "UNSUPPORTED_CRITICAL_HEADER"),
             Self::CoseDecodeFailed => write!(f, "COSE_DECODE_FAILED"),
             Self::BadAlg => write!(f, "BAD_ALG"),
             Self::BadContentType => write!(f, "BAD_CONTENT_TYPE"),
@@ -380,6 +383,14 @@ fn layer1_parse(data: &[u8], checks: &mut Vec<AirCheck>) -> Option<ParsedAirRece
             "UNPROTECTED",
             AirCheckCode::NonEmptyUnprotectedHeader,
             "unprotected header must be empty for AIR v1",
+        ));
+        return None;
+    }
+    if !cose.protected.header.crit.is_empty() {
+        checks.push(AirCheck::fail(
+            "CRIT",
+            AirCheckCode::UnsupportedCriticalHeader,
+            "critical protected headers are unsupported in AIR v1",
         ));
         return None;
     }
@@ -947,6 +958,30 @@ mod tests {
         let result = verify_air_v1_receipt(&bytes, &key.public_key, &AirVerifyPolicy::default());
         assert!(!result.verified);
         assert!(result.has_failure(&AirCheckCode::BadAlg));
+    }
+
+    #[test]
+    fn test_critical_protected_header_fails() {
+        let key = ReceiptSigningKey::generate().unwrap();
+        let claims = fixture_claims();
+
+        let payload = crate::air_receipt::encode_claims_exported(&claims).unwrap();
+        let protected = coset::HeaderBuilder::new()
+            .algorithm(coset::iana::Algorithm::EdDSA)
+            .content_format(coset::iana::CoapContentFormat::Cwt)
+            .add_critical_label(coset::RegisteredLabelWithPrivate::PrivateUse(-70_000))
+            .build();
+        let sign1 = coset::CoseSign1Builder::new()
+            .protected(protected)
+            .payload(payload)
+            .try_create_signature(b"", |tbs| Ok::<_, String>(key.raw_sign(tbs)))
+            .unwrap()
+            .build();
+        let bytes = sign1.to_tagged_vec().unwrap();
+
+        let result = verify_air_v1_receipt(&bytes, &key.public_key, &AirVerifyPolicy::default());
+        assert!(!result.verified);
+        assert!(result.has_failure(&AirCheckCode::UnsupportedCriticalHeader));
     }
 
     // ── Layer 4: stale timestamp ────────────────────────────────────

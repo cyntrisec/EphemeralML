@@ -543,6 +543,11 @@ pub fn parse_air_v1(data: &[u8]) -> Result<ParsedAirReceipt> {
                 .to_string(),
         ));
     }
+    if !cose.protected.header.crit.is_empty() {
+        return Err(EphemeralError::ValidationError(
+            "unsupported critical protected header (AIR v1 does not define crit)".to_string(),
+        ));
+    }
 
     // Check protected header
     let alg = cose.protected.header.alg.as_ref().ok_or_else(|| {
@@ -1788,6 +1793,34 @@ mod tests {
             .unwrap_err()
             .to_string()
             .contains("non-empty unprotected header"));
+    }
+
+    #[test]
+    fn test_critical_protected_header_rejected() {
+        // AIR v1 does not define any critical headers, so fail closed.
+        let key = super::golden::key();
+        let claims = fixture_claims();
+        let payload_bytes = encode_claims(&claims).unwrap();
+
+        let protected = coset::HeaderBuilder::new()
+            .algorithm(coset::iana::Algorithm::EdDSA)
+            .content_format(coset::iana::CoapContentFormat::Cwt)
+            .add_critical_label(coset::RegisteredLabelWithPrivate::PrivateUse(-70_000))
+            .build();
+        let sign1 = coset::CoseSign1Builder::new()
+            .protected(protected)
+            .payload(payload_bytes)
+            .try_create_signature(b"", |tbs| Ok::<_, String>(key.raw_sign(tbs)))
+            .unwrap()
+            .build();
+        let bytes = sign1.to_tagged_vec().unwrap();
+
+        let result = parse_air_v1(&bytes);
+        assert!(result.is_err());
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("unsupported critical protected header"));
     }
 
     #[test]
