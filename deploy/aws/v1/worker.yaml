@@ -90,7 +90,7 @@ Parameters:
 
   ReleaseTag:
     Type: String
-    Default: v1.3
+    Default: v1.4
     AllowedPattern: ^v[0-9]+(\.[0-9]+)*$
     Description: Semantic Cyntrisec public release tag for relay, relay-egress, proxy, and enclave artifacts.
 

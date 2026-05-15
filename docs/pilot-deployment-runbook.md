@@ -1,7 +1,7 @@
 # Cyntrisec Pilot Deployment Runbook
 
 This is the canonical customer-facing AWS BYOC runbook for the Cluster A
-`v1.3` template distribution.
+`v1.4` template distribution.
 
 This runbook validates the AWS worker stack after the Cluster A release
 artifacts have been published and the signed worker template has been uploaded
@@ -11,7 +11,7 @@ from the branded `templates.cyntrisec.com` mirror.
 ## Prerequisites
 
 - AWS CLI authenticated into the pilot account.
-- A released tag such as `v1.3`.
+- A released tag such as `v1.4`.
 - `enclave-measurements.json` from the Cluster A image release workflow.
 - `worker-template.json` from the same release workflow, containing the S3
   template URL and optional S3 `versionId`.
@@ -26,7 +26,7 @@ CloudFormation launch URL. This validates the template itself, not only the OCI
 artifacts that the template later pulls during instance boot.
 
 ```bash
-TEMPLATE_BASE=https://s3.us-east-1.amazonaws.com/cyntrisec-public-templates-us-east-1/aws/v1.3
+TEMPLATE_BASE=https://s3.us-east-1.amazonaws.com/cyntrisec-public-templates-us-east-1/aws/v1.4
 curl -fsSLO "$TEMPLATE_BASE/worker.yaml"
 curl -fsSLO "$TEMPLATE_BASE/worker.yaml.sha256"
 curl -fsSLO "$TEMPLATE_BASE/worker.yaml.cosign.bundle"
@@ -45,8 +45,8 @@ aws cloudformation validate-template --template-body file://worker.yaml
 1. Open the CloudFormation launch URL produced by the website's Deploy to AWS
    button.
 2. Confirm the URL includes:
-   - `templateURL=https://s3.us-east-1.amazonaws.com/cyntrisec-public-templates-us-east-1/aws/v1.3/worker.yaml`
-   - `param_ReleaseTag=v1.3` or the template default `ReleaseTag=v1.3`
+   - `templateURL=https://s3.us-east-1.amazonaws.com/cyntrisec-public-templates-us-east-1/aws/v1.4/worker.yaml`
+   - `param_ReleaseTag=v1.4` or the template default `ReleaseTag=v1.4`
    - `param_EnclaveImageSha384=<from enclave-measurements.json>`
    - `param_EnclavePcr1Sha384=<from enclave-measurements.json>`
    - `param_EnclavePcr2Sha384=<from enclave-measurements.json>`
@@ -141,7 +141,7 @@ curl -fsS http://127.0.0.1:4000/health
 
 ## Inference Smoke
 
-The `cluster-a-v1.3` release image bundles MiniLM for stable first-release measurements, so the smoke uses the OpenAI-compatible embeddings endpoint:
+The `cluster-a-v1.4` release image bundles MiniLM for stable first-release measurements, so the smoke uses the OpenAI-compatible embeddings endpoint:
 
 ```bash
 curl -fsS http://127.0.0.1:4000/v1/embeddings \
@@ -196,7 +196,7 @@ bash scripts/aws/customer_openai_e2e.sh \
 This generates short-lived HTTPS bundle URLs through SSM and still performs the
 offline verification locally.
 
-`--include-chat` is optional. The current `cluster-a-v1.3` image is
+`--include-chat` is optional. The current `cluster-a-v1.4` image is
 embeddings-first, so an unsupported `/v1/chat/completions` response is accepted
 unless `--require-chat` is passed.
 
