@@ -320,6 +320,7 @@ fn test_router(worker_addr: SocketAddr) -> axum::Router {
         rate_limit_per_ip: 0,
         rate_limit_global: 0,
         trust_proxy_headers: false,
+        cors_origins: vec![],
     };
     let client = SecureEnclaveClient::new("local-e2e".to_string());
     let state = AppState::new(client, config, None);
