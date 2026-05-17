@@ -21,30 +21,30 @@ bytes = { workspace = true }
 
 # Web framework
 axum = { version = "0.8", features = ["json"] }
-tokio = { version = "1.52", features = ["full"] }
+tokio = { workspace = true }
 tower-http = { version = "0.6", features = ["cors", "trace", "limit"] }
 futures = "0.3"
-async-trait = "0.1"
+async-trait = { workspace = true }
 
 # Serialization
-serde = { version = "1.0", features = ["derive"] }
-serde_json = "1.0"
+serde = { workspace = true }
+serde_json = { workspace = true }
 
 # Crypto / hashing
-sha2 = "0.10"
-hex = "0.4"
+sha2 = { workspace = true }
+hex = { workspace = true }
 
 # Logging
-tracing = "0.1"
-tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true, features = ["env-filter"] }
 
 # CLI
-clap = { version = "4.6", features = ["derive", "env"] }
+clap = { workspace = true, features = ["derive", "env"] }
 
 # Utilities
-uuid = { version = "1.22", features = ["v4"] }
-anyhow = "1.0"
-rand = "0.8"
+uuid = { workspace = true }
+anyhow = { workspace = true }
+rand = { workspace = true }
 dashmap = "6"
 base64 = "0.22"
 

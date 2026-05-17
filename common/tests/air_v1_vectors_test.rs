@@ -222,7 +222,7 @@ fn cv_v1_nitro_verifier_pass() {
     let receipt = decode_hex(&v, "receipt_hex");
     let pubkey = pubkey_from_hex(v["public_key_hex"].as_str().unwrap());
 
-    let result = verify_air_v1_receipt(&receipt, &pubkey, &AirVerifyPolicy::default());
+    let result = verify_air_v1_receipt(&receipt, &pubkey, &AirVerifyPolicy::unbounded());
     assert!(
         result.verified,
         "V1 Nitro vector failed: {:?}",
@@ -277,7 +277,7 @@ fn cv_v2_tdx_verifier_pass_with_nonce() {
         expected_platform: Some("tdx-mrtd-rtmr".to_string()),
         expected_model_hash: Some([0x55; 32]),
         expected_model_id: Some("llama-7b".to_string()),
-        ..Default::default()
+        ..AirVerifyPolicy::unbounded()
     };
 
     let result = verify_air_v1_receipt(&receipt, &pubkey, &policy);
@@ -486,7 +486,7 @@ fn cv_all_valid_vectors_verify() {
         let receipt = decode_hex(&v, "receipt_hex");
         let pubkey = pubkey_from_hex(v["public_key_hex"].as_str().unwrap());
 
-        let result = verify_air_v1_receipt(&receipt, &pubkey, &AirVerifyPolicy::default());
+        let result = verify_air_v1_receipt(&receipt, &pubkey, &AirVerifyPolicy::unbounded());
         assert!(
             result.verified,
             "valid vector {} failed: {:?}",

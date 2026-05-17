@@ -90,36 +90,10 @@ main() {
     GIT_COMMIT=$(git rev-parse --short HEAD)
     log "Commit: $GIT_COMMIT"
 
-    # ── Prepare model artifacts ──
-    log "Preparing benchmark model artifacts..."
-    bash scripts/prepare_benchmark_model.sh 2>&1 | tail -10
-
-    # ── Build binaries ──
-    log "Building baseline binary..."
-    cargo build --release --bin benchmark_baseline 2>&1 | tail -5
-
-    log "Building kms_proxy_host..."
-    cargo build --release --bin kms_proxy_host --features production 2>&1 | tail -5
-
-    log "Building vsock-pingpong enclave (benchmark mode)..."
-    (cd enclaves/vsock-pingpong && \
-        sudo docker build \
-            --build-arg MODE=benchmark \
-            --build-arg GIT_COMMIT="$GIT_COMMIT" \
-            -t vsock-pingpong-benchmark:latest \
-            . 2>&1 | tail -10)
-
-    log "Building EIF..."
-    sudo nitro-cli build-enclave \
-        --docker-uri vsock-pingpong-benchmark:latest \
-        --output-file "$OUT_BASE/benchmark.eif" \
-        2>&1 | tee "$OUT_BASE/eif_build.log" | tail -5
-
     # ── Run benchmark suite ──
-    log "Running benchmark suite..."
+    log "Running modern benchmark suite..."
     export OUTPUT_DIR="$OUT_BASE"
-    bash scripts/run_benchmark.sh \
-        --skip-build \
+    bash scripts/run_benchmark_modern.sh \
         --output-dir "$OUT_BASE" \
         2>&1 | tee "$OUT_BASE/run_benchmark.log"
 

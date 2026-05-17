@@ -24,6 +24,9 @@ pub mod model_validation;
 pub mod policy;
 pub mod receipt_key;
 pub mod secure_client;
+#[deprecated(
+    note = "use ephemeral_ml_common directly; this re-export module is kept for compatibility"
+)]
 pub mod types;
 
 #[cfg(feature = "mock")]
@@ -41,6 +44,5 @@ pub use model_validation::{
 };
 pub use policy::{
     KeyReleasePolicy, MeasurementAllowlist, PolicyBundle, PolicyError, PolicyManager,
-    PolicyUpdateManager, PolicyVersionHistory,
 };
 pub use secure_client::{InferenceResult, SecureClient, SecureEnclaveClient};

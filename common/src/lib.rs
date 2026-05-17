@@ -1,6 +1,5 @@
 pub mod air_receipt;
 pub mod air_verify;
-pub mod attest_verify;
 pub mod audit;
 pub mod cbor;
 pub mod cyntrisec_policy;
@@ -20,6 +19,7 @@ pub mod storage_protocol;
 pub mod transport_types;
 pub mod types;
 pub mod ui;
+pub mod util;
 pub mod validation;
 pub mod verification_report;
 pub mod worker_protocol;
@@ -48,7 +48,7 @@ pub use platform_evidence::{
 
 pub use receipt_signing::{
     AttestationReceipt, AttestationUserData, DestroyAction, DestroyEvidence, EnclaveMeasurements,
-    ReceiptBinding, ReceiptSigningKey, ReceiptVerifier, SecurityMode,
+    ReceiptBinding, ReceiptSigningKey, SecurityMode,
 };
 
 pub use transport_types::{
@@ -56,6 +56,7 @@ pub use transport_types::{
     EphemeralUserData, CS_TDX_PLATFORM,
 };
 
+pub use util::{api_key_matches, compute_full_jitter_backoff, constant_time_eq, estimate_tokens};
 pub use validation::{InputValidator, ValidationError, ValidationLimits};
 
 pub use verification_report::{

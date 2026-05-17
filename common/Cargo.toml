@@ -5,43 +5,42 @@ edition = "2021"
 license = "Apache-2.0"
 
 [dependencies]
-# Pin explicit versions so this crate can build outside the workspace (e.g. inside enclave Docker builds)
-serde = { version = "1.0", features = ["derive"] }
-serde_json = "1.0"
-async-trait = "0.1"
-thiserror = "1.0"
-uuid = { version = "1.22", features = ["v4"] }
-sha2 = "0.10"
-hex = "0.4"
+serde = { workspace = true }
+serde_json = { workspace = true }
+async-trait = { workspace = true }
+thiserror = { workspace = true }
+uuid = { workspace = true }
+sha2 = { workspace = true }
+hex = { workspace = true }
 
 # Cryptographic dependencies
-ed25519-dalek = { version = "2.0", features = ["rand_core"] }
-rand = "0.8"
-zeroize = { version = "1.7", features = ["zeroize_derive"] }
+ed25519-dalek = { workspace = true }
+rand = { workspace = true }
+zeroize = { workspace = true }
 
 # CBOR serialization
-ciborium = "0.2"
+ciborium = { workspace = true }
 coset = { workspace = true }
 
 # Confidential ML transport
 confidential-ml-transport = { workspace = true, features = ["tcp"] }
 bytes = { workspace = true }
-tokio = { version = "1.52", features = ["io-util"] }
+tokio = { workspace = true, features = ["io-util"] }
 
 # Lazy initialization
 lazy_static = "1.4"
 
 # Serde bytes for efficient byte array serialization
-serde_bytes = "0.11"
+serde_bytes = { workspace = true }
 
 # Optional ML dependencies (only for benchmark binaries via "inference" feature)
-candle-core = { version = "0.9", optional = true }
-candle-nn = { version = "0.9", optional = true }
-candle-transformers = { version = "0.9", optional = true }
-tokenizers = { version = "0.22", optional = true }
+candle-core = { workspace = true, optional = true }
+candle-nn = { workspace = true, optional = true }
+candle-transformers = { workspace = true, optional = true }
+tokenizers = { workspace = true, optional = true }
 
 [dev-dependencies]
-proptest = "1.10"
+proptest = { workspace = true }
 
 [features]
 default = []

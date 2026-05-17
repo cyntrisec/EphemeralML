@@ -15,27 +15,28 @@ ephemeral-ml-client = { path = "../client" }
 
 # Web framework
 axum = { version = "0.8", features = ["json", "multipart"] }
-tokio = { version = "1.52", features = ["full"] }
+tokio = { workspace = true }
 tower-http = { version = "0.6", features = ["cors", "trace", "limit", "set-header"] }
 
 # Serialization
-serde = { version = "1.0", features = ["derive"] }
-serde_json = "1.0"
+serde = { workspace = true }
+serde_json = { workspace = true }
 
 # Crypto
-ed25519-dalek = { version = "2.0", features = ["rand_core"] }
-hex = "0.4"
+ed25519-dalek = { workspace = true }
+hex = { workspace = true }
 base64 = "0.22"
 sha2 = { workspace = true }
+uuid = { workspace = true }
 
 # Logging
-tracing = "0.1"
-tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true, features = ["env-filter"] }
 
 # CLI
-clap = { version = "4.6", features = ["derive", "env"] }
+clap = { workspace = true, features = ["derive", "env"] }
 
 [dev-dependencies]
 reqwest = { version = "0.13", features = ["json", "multipart"] }
-rand = "0.8"
-tokio = { version = "1.52", features = ["full", "test-util"] }
+rand = { workspace = true }
+tokio = { workspace = true, features = ["test-util"] }

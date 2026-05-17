@@ -19,13 +19,47 @@ use clap::Parser;
 #[cfg(feature = "production")]
 use confidential_ml_pipeline::vsock::init_orchestrator_vsock;
 #[cfg(feature = "production")]
-use confidential_ml_transport::{
-    ExpectedMeasurements, MockProvider as HostMockProvider, NitroVerifier,
-};
+use confidential_ml_transport::{AttestationDocument, ExpectedMeasurements, NitroVerifier};
 #[cfg(feature = "production")]
 use tokio_vsock::{VsockAddr, VsockListener, VMADDR_CID_ANY};
 #[cfg(feature = "production")]
 use tracing::{error, info, warn};
+
+#[cfg(feature = "production")]
+struct HostControlPlaneProvider;
+
+#[cfg(feature = "production")]
+impl HostControlPlaneProvider {
+    fn new() -> Self {
+        Self
+    }
+}
+
+#[cfg(feature = "production")]
+#[async_trait::async_trait]
+impl confidential_ml_transport::AttestationProvider for HostControlPlaneProvider {
+    async fn attest(
+        &self,
+        user_data: Option<&[u8]>,
+        nonce: Option<&[u8]>,
+        public_key: Option<&[u8]>,
+    ) -> Result<AttestationDocument, confidential_ml_transport::error::AttestError> {
+        let mut raw = Vec::new();
+        raw.extend_from_slice(b"MOCK_ATT_V1\0");
+
+        for field in [user_data, nonce, public_key] {
+            match field {
+                Some(data) => {
+                    raw.extend_from_slice(&(data.len() as u32).to_le_bytes());
+                    raw.extend_from_slice(data);
+                }
+                None => raw.extend_from_slice(&0u32.to_le_bytes()),
+            }
+        }
+
+        Ok(AttestationDocument::new(raw))
+    }
+}
 
 /// Save receipt JSON to disk. Returns Ok(()) if path is None (no-op).
 fn save_receipt(receipt: &AttestationReceipt, path: Option<&str>) -> Result<(), std::io::Error> {
@@ -455,10 +489,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         let expected_stage_measurements = ExpectedMeasurements::new(expected_pcrs.clone());
         let verifier = NitroVerifier::new(expected_pcrs)?;
 
-        // Host is not inside a TEE — use MockProvider for the mutual handshake.
-        // The enclave uses MockVerifier for the host side (one-way attestation model:
-        // only the enclave is cryptographically attested; host is trusted as same EC2 instance).
-        let provider = HostMockProvider::new();
+        // Host is not inside a TEE; send the minimal host-control-plane
+        // transcript-binding envelope accepted by the enclave's one-way verifier.
+        // The enclave uses a one-way verifier for the host side: only the
+        // enclave is cryptographically attested; host trust is scoped to the
+        // same EC2 instance/control plane.
+        let provider = HostControlPlaneProvider::new();
 
         // 2. Build single-stage VSock manifest.
         //    The enclave binds control/data_in on VSock. The orchestrator binds data_out

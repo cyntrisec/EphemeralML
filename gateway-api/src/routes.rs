@@ -9,6 +9,7 @@ use std::time::Instant;
 
 use ephemeral_ml_client::secure_client::{InferenceHandlerInput, InferenceHandlerOutput};
 use ephemeral_ml_client::InferenceResult;
+use ephemeral_ml_common::estimate_tokens;
 
 use crate::state::AppState;
 use crate::streaming;
@@ -797,22 +798,6 @@ pub async fn embeddings(
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
-
-/// Estimate token count from text using chars/4 heuristic.
-///
-/// GPT-style tokenizers average roughly 4 characters per token for English
-/// text. This is more accurate than whitespace splitting (which undercounts
-/// tokens in short or punctuation-heavy text). For exact counts, a proper
-/// tokenizer (e.g. tiktoken) would be needed, but that adds a heavy dependency.
-fn estimate_tokens(text: &str) -> u32 {
-    let char_count = text.len();
-    // Ensure at least 1 token for non-empty text.
-    if char_count == 0 {
-        0
-    } else {
-        ((char_count as f64 / 4.0).ceil() as u32).max(1)
-    }
-}
 
 fn benchmark_request_mode() -> Option<String> {
     match std::env::var("EPHEMERALML_BENCHMARK_MODE").ok().as_deref() {

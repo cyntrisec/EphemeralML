@@ -237,7 +237,11 @@ pub async fn run_direct_tcp<A: crate::AttestationProvider + Send + Sync>(
                         confidential_ml_transport::session::SecurityProfile::Development,
                     )
                     .build()
-                    .expect("session config");
+                    .map_err(|err| {
+                        ephemeral_ml_common::EphemeralError::ConfigurationError(format!(
+                            "failed to build direct server session config: {err}"
+                        ))
+                    })?;
                 match SecureChannel::accept_with_attestation(
                     stream,
                     transport_provider,

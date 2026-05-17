@@ -42,6 +42,19 @@ aws cloudformation validate-template --template-body file://worker.yaml
 
 ## Deploy
 
+For a local self-test that automates deploy + policy/manifest download + local
+proxy startup, use the helper script instead of the manual Deploy and Run Proxy
+sections:
+
+```bash
+bash scripts/aws/start_customer_proxy_v16.sh
+```
+
+On success, it writes state to `/tmp/<stack-name>/env.sh`, starts the local
+proxy, waits for `/health`, and prints the exact
+`scripts/aws/customer_openai_e2e.sh` command to run next. You still need to run
+the batch E2E command and the cleanup steps below.
+
 1. Open the CloudFormation launch URL produced by the website's Deploy to AWS
    button.
 2. Confirm the URL includes:

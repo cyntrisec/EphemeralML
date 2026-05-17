@@ -13,30 +13,20 @@ name = "ephemeralml-smoke-test"
 path = "src/main.rs"
 
 [dependencies]
-clap = { version = "4.6", features = ["derive"] }
+clap = { workspace = true, features = ["derive"] }
 serde = { workspace = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }
 tokio = { workspace = true }
 async-trait = { workspace = true }
-chrono = { version = "0.4", features = ["serde"] }
+chrono = { workspace = true, features = ["serde"] }
 sha2 = { workspace = true }
 uuid = { workspace = true }
-hex = "0.4"
-
-# In-process AIR v1 receipt verification library API (Stage 4). This is the
-# same verifier code path shipped to customers as `ephemeralml-verify`, so
-# the smoke-test exercises the exact trust chain a compliance auditor walks.
-ephemeral-ml-common = { path = "../common" }
-ciborium = { workspace = true }
-
-# Stage 2 enclave launch uses nitro-cli via subprocess; Stage 3 inference
-# uses the production host orchestrator to talk to the enclave.
-tokio-vsock = { workspace = true }
+hex = { workspace = true }
 
 # Stage 5 S3 upload for the evidence bundle.
-aws-config = { version = "1.5", default-features = false, features = ["behavior-version-latest", "rt-tokio", "default-https-client", "credentials-process", "sso"] }
-aws-sdk-s3 = { version = "1.70", default-features = false, features = ["behavior-version-latest", "rt-tokio", "default-https-client", "http-1x", "sigv4a"] }
+aws-config = { workspace = true }
+aws-sdk-s3 = { version = "1.132.0", default-features = false, features = ["behavior-version-latest", "rt-tokio", "default-https-client", "http-1x", "sigv4a"] }
 aws-sdk-ssm = { version = "1.55", default-features = false, features = ["behavior-version-latest", "rt-tokio", "default-https-client"] }
 
 [dev-dependencies]

@@ -23,6 +23,7 @@ ENCLAVE_MEMORY=4096
 ENCLAVE_CPUS=2
 ENCLAVE_CID=16
 KMS_PROXY_PORT=8082
+LEGACY_ENCLAVE_DOCKERFILE="${REPO_ROOT}/enclaves/vsock-pingpong/Dockerfile"
 
 # Parse args
 while [[ $# -gt 0 ]]; do
@@ -39,6 +40,13 @@ echo "=== KMS Attestation Audit ==="
 echo "Output dir: $OUTPUT_DIR"
 echo "Timestamp:  $(date -u +%Y-%m-%dT%H:%M:%SZ)"
 echo ""
+
+if [[ ! -f "$LEGACY_ENCLAVE_DOCKERFILE" ]]; then
+    echo "ERROR: legacy KMS audit pipeline is not available in this checkout."
+    echo "Missing: ${LEGACY_ENCLAVE_DOCKERFILE#$REPO_ROOT/}"
+    echo "Use the current AWS pilot/smoke-test evidence flow instead of vsock-pingpong."
+    exit 2
+fi
 
 # ── Step 1: Get instance metadata ──
 echo "Step 1: Getting instance metadata..."
@@ -61,7 +69,7 @@ echo "  Commit:   $GIT_COMMIT"
 echo ""
 echo "Step 2: Building kms-audit EIF..."
 docker build \
-    -f "${REPO_ROOT}/enclaves/vsock-pingpong/Dockerfile" \
+    -f "$LEGACY_ENCLAVE_DOCKERFILE" \
     --build-arg MODE=kms-audit \
     --build-arg GIT_COMMIT="$GIT_COMMIT" \
     --build-arg INSTANCE_TYPE="$INSTANCE_TYPE" \
@@ -202,7 +210,7 @@ if [ "$RUN_WRONG_PCR" = true ]; then
     sleep 1
 
     docker build \
-        -f "${REPO_ROOT}/enclaves/vsock-pingpong/Dockerfile" \
+        -f "$LEGACY_ENCLAVE_DOCKERFILE" \
         --build-arg MODE=kms-audit \
         --build-arg GIT_COMMIT="$GIT_COMMIT" \
         --build-arg INSTANCE_TYPE="$INSTANCE_TYPE" \

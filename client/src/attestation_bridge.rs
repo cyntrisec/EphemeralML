@@ -94,9 +94,8 @@ impl CmlAttestationVerifier for CoseVerifierBridge {
             nonce: None,
         };
 
-        // Use verify_attestation_no_pcr_policy to skip PCR allowlist check
-        // for now, since the bridge is used during handshake where we may
-        // not have the nonce yet. PCR policy can be enforced at app level.
+        // The transport handshake validates nonce binding. PCR policy remains
+        // enforced whenever the client loaded an attestation policy.
         //
         // Pass an empty nonce — cml-transport handles nonce verification.
         // We skip freshness validation since it's handled by the handshake.
@@ -110,8 +109,9 @@ impl CmlAttestationVerifier for CoseVerifierBridge {
 /// Internal helper that performs COSE verification without nonce checks.
 ///
 /// In mock mode, this parses the CBOR map directly.
-/// In production mode, this verifies COSE_Sign1 + cert chain but skips nonce
-/// validation (cml-transport's handshake handles nonce verification).
+/// In production mode, this verifies COSE_Sign1 + cert chain, skips nonce
+/// validation (cml-transport's handshake handles nonce verification), and
+/// enforces PCR allowlist policy when one is loaded.
 fn verify_attestation_for_bridge(
     verifier: &mut AttestationVerifier,
     doc: &ephemeral_ml_common::AttestationDocument,

@@ -10,6 +10,7 @@ use axum::http::HeaderValue;
 use axum::middleware;
 use axum::routing::{get, post};
 use axum::Router;
+use std::fmt;
 use tower_http::cors::{AllowOrigin, CorsLayer};
 use tower_http::limit::RequestBodyLimitLayer;
 use tower_http::set_header::SetResponseHeaderLayer;
@@ -45,6 +46,35 @@ pub struct ServerConfig {
     pub cors_origins: Vec<String>,
 }
 
+/// Router construction failed because service configuration violates a
+/// deployment invariant.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ConfigError {
+    PublicModeWithApiKey,
+    PublicModeWithoutRateLimit,
+    SecuredModeWithoutApiKey,
+    InvalidCorsOrigin(String),
+}
+
+impl fmt::Display for ConfigError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::PublicModeWithApiKey => {
+                f.write_str("PublicTrustCenter mode must not have an API key")
+            }
+            Self::PublicModeWithoutRateLimit => {
+                f.write_str("PublicTrustCenter mode requires a positive rate limit")
+            }
+            Self::SecuredModeWithoutApiKey => f.write_str("SecuredApi mode requires an API key"),
+            Self::InvalidCorsOrigin(origin) => {
+                write!(f, "invalid CORS origin: {origin}")
+            }
+        }
+    }
+}
+
+impl std::error::Error for ConfigError {}
+
 /// Build the router with permissive defaults (for local dev / tests).
 ///
 /// No auth, no rate limiting, permissive CORS. **Not for production.**
@@ -61,33 +91,25 @@ pub fn build_router() -> Router {
 /// Enforces mode invariants:
 /// - `PublicTrustCenter`: api_key must be None, rate limiting must be active.
 /// - `SecuredApi`: api_key must be Some.
-///
-/// # Panics
-///
-/// Panics if the config violates mode invariants. Callers (main.rs, tests)
-/// are expected to construct valid configs.
-pub fn build_router_with_config(config: &ServerConfig) -> Router {
+pub fn build_router_with_config(config: &ServerConfig) -> Result<Router, ConfigError> {
     // Enforce mode invariants so programmatic callers cannot bypass guardrails.
     match config.mode {
         ServiceMode::PublicTrustCenter => {
-            assert!(
-                config.api_key.is_none(),
-                "PublicTrustCenter mode must not have an API key"
-            );
-            assert!(
-                config.requests_per_minute > 0,
-                "PublicTrustCenter mode requires a positive rate limit (got 0)"
-            );
+            if config.api_key.is_some() {
+                return Err(ConfigError::PublicModeWithApiKey);
+            }
+            if config.requests_per_minute == 0 {
+                return Err(ConfigError::PublicModeWithoutRateLimit);
+            }
         }
         ServiceMode::SecuredApi => {
-            assert!(
-                config.api_key.is_some(),
-                "SecuredApi mode requires an API key"
-            );
+            if config.api_key.is_none() {
+                return Err(ConfigError::SecuredModeWithoutApiKey);
+            }
         }
     }
 
-    let cors = make_cors_layer(&config.cors_origins);
+    let cors = make_cors_layer(&config.cors_origins)?;
     let rate_limiter = if config.requests_per_minute > 0 {
         let limiter = RateLimiter::new(config.requests_per_minute);
         limiter.spawn_cleanup_task();
@@ -99,18 +121,28 @@ pub fn build_router_with_config(config: &ServerConfig) -> Router {
         api_key: config.api_key.clone(),
         rate_limiter,
     };
-    build_router_inner(cors, state)
+    Ok(build_router_inner(cors, state))
 }
 
-fn make_cors_layer(origins: &[String]) -> CorsLayer {
+fn make_cors_layer(origins: &[String]) -> Result<CorsLayer, ConfigError> {
     if origins.is_empty() {
-        CorsLayer::permissive()
+        Ok(CorsLayer::permissive())
     } else {
-        let parsed: Vec<_> = origins.iter().filter_map(|o| o.parse().ok()).collect();
-        CorsLayer::new()
+        let parsed: Vec<_> = origins
+            .iter()
+            .map(|origin| {
+                if origin == "*" {
+                    return Err(ConfigError::InvalidCorsOrigin(origin.clone()));
+                }
+                origin
+                    .parse::<HeaderValue>()
+                    .map_err(|_| ConfigError::InvalidCorsOrigin(origin.clone()))
+            })
+            .collect::<Result<_, _>>()?;
+        Ok(CorsLayer::new()
             .allow_origin(AllowOrigin::list(parsed))
             .allow_methods(tower_http::cors::Any)
-            .allow_headers(tower_http::cors::Any)
+            .allow_headers(tower_http::cors::Any))
     }
 }
 

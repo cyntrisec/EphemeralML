@@ -206,8 +206,8 @@ flagged.
 |-----------|-------|----------|
 | TDX DCAP (cml-transport) | 43 | `cml-transport/src/attestation/tdx.rs` |
 | CS JWT runtime (client) | 26 | `client/src/attestation_bridge.rs` (requires `--features gcp`) |
-| Error taxonomy + mapping (common) | 27 | `common/src/attest_verify.rs` |
-| **Total** | **96** | Across 3 files |
+| Error taxonomy + mapping (common) | Retired | The unused `common/src/attest_verify.rs` compatibility module was removed after M2 |
+| **Total** | **69 active** | Across active TDX and CS JWT files |
 
 **By trust layer (M2-specific tests only):**
 
@@ -253,7 +253,7 @@ are backlog items for M3+ and do not block M2 closure.
 |------|---------|
 | `cml-transport/src/attestation/tdx.rs` | `TdxVerifyError` enum (17 variants), `.code()/.layer()`, `verify_pck_chain()`, `build_test_crl()`, 43 tests |
 | `cml-transport/Cargo.toml` | `openssl-sys` optional dep for TDX, `foreign-types-shared` dev-dep |
-| `common/src/attest_verify.rs` | `AttestCheckCode` (36 variants), `CsJwtVerifyError` (10 variants), `from_code_str()`, `from_tdx_error()`, `from_csjwt_error()`, builders, 27 tests |
+| `common/src/attest_verify.rs` | Removed after M2 because no production code consumed it |
 | `client/src/attestation_bridge.rs` | 3 strict-mode enforcement tests |
 
 ---

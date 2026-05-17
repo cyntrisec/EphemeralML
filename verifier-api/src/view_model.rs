@@ -684,20 +684,7 @@ fn legacy_check(id: &'static str, status: CheckStatus) -> TrustCenterCheck {
 
 /// Format a 16-byte UUID as standard hyphenated string.
 fn format_uuid(bytes: &[u8; 16]) -> String {
-    format!(
-        "{:08x}-{:04x}-{:04x}-{:04x}-{:012x}",
-        u32::from_be_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]),
-        u16::from_be_bytes([bytes[4], bytes[5]]),
-        u16::from_be_bytes([bytes[6], bytes[7]]),
-        u16::from_be_bytes([bytes[8], bytes[9]]),
-        // Last 6 bytes as a single hex string
-        ((bytes[10] as u64) << 40)
-            | ((bytes[11] as u64) << 32)
-            | ((bytes[12] as u64) << 24)
-            | ((bytes[13] as u64) << 16)
-            | ((bytes[14] as u64) << 8)
-            | (bytes[15] as u64),
-    )
+    uuid::Uuid::from_bytes(*bytes).to_string()
 }
 
 #[cfg(test)]

@@ -36,12 +36,19 @@ tokenizers = "0.22"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 tokio = { version = "1.52", features = ["full"] }
+clap = "4.6"
+tracing = "0.1"
+tracing-subscriber = "0.3"
+chrono = "0.4"
+hex = "0.4"
+serde_bytes = "0.11"
 
 # VSock communication
 tokio-vsock = "0.7"
 
 # AWS Nitro Enclaves (only for real enclave builds)
 aws-nitro-enclaves-nsm-api = "0.5"
+aws-config = { version = "1.8.15", default-features = false, features = ["behavior-version-latest", "rt-tokio", "default-https-client", "credentials-process", "sso"] }
 
 # Error handling and utilities
 anyhow = "1.0"

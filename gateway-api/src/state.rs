@@ -4,11 +4,10 @@ use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::{Mutex, Notify, Semaphore};
 
-use ephemeral_ml_client::{SecureClient, SecureEnclaveClient};
+use ephemeral_ml_client::SecureEnclaveClient;
 
 use crate::config::{GatewayConfig, WorkerChannelKind};
 use crate::rate_limit::RateLimiter;
-use crate::reconnect::CONNECT_TIMEOUT;
 use crate::worker::{
     expected_measurements_from_policy_path, HttpBackendChannel, SecureChannelWorker, WorkerChannel,
 };
@@ -90,77 +89,6 @@ impl AppState {
             concurrency_semaphore: Arc::new(Semaphore::new(max_concurrent)),
             rate_limiter: Arc::new(RateLimiter::new(rate_limit_per_ip, rate_limit_global)),
         }
-    }
-
-    /// Ensure the backend channel is established. Connects lazily on first call.
-    /// Subsequent calls are no-ops if already connected. The connect attempt is
-    /// bounded by `CONNECT_TIMEOUT` to avoid holding the mutex indefinitely.
-    pub async fn ensure_connected(&self) -> Result<(), String> {
-        use std::sync::atomic::Ordering;
-        if self.connected.load(Ordering::Acquire) {
-            return Ok(());
-        }
-        let mut client = self.client.lock().await;
-        // Double-check after acquiring lock
-        if self.connected.load(Ordering::Acquire) {
-            return Ok(());
-        }
-        tokio::time::timeout(
-            CONNECT_TIMEOUT,
-            client.establish_channel(&self.config.backend_addr),
-        )
-        .await
-        .map_err(|_| {
-            format!(
-                "Backend handshake timed out after {}s",
-                CONNECT_TIMEOUT.as_secs()
-            )
-        })?
-        .map_err(|e| format!("Backend handshake failed: {e}"))?;
-        self.connected.store(true, Ordering::Release);
-        tracing::info!(
-            backend = %self.config.backend_addr,
-            "Secure channel established with backend"
-        );
-        Ok(())
-    }
-
-    /// Ensure the embedding backend channel is established (when a dedicated
-    /// embedding backend is configured). Mirrors `ensure_connected()`.
-    pub async fn ensure_embedding_connected(&self) -> Result<(), String> {
-        use std::sync::atomic::Ordering;
-        let emb_client = self
-            .embedding_client
-            .as_ref()
-            .ok_or_else(|| "No embedding backend configured".to_string())?;
-        let emb_addr = self
-            .config
-            .embedding_backend_addr
-            .as_deref()
-            .ok_or_else(|| "No embedding backend address configured".to_string())?;
-
-        if self.embedding_connected.load(Ordering::Acquire) {
-            return Ok(());
-        }
-        let mut client = emb_client.lock().await;
-        if self.embedding_connected.load(Ordering::Acquire) {
-            return Ok(());
-        }
-        tokio::time::timeout(CONNECT_TIMEOUT, client.establish_channel(emb_addr))
-            .await
-            .map_err(|_| {
-                format!(
-                    "Embedding backend handshake timed out after {}s",
-                    CONNECT_TIMEOUT.as_secs()
-                )
-            })?
-            .map_err(|e| format!("Embedding backend handshake failed: {e}"))?;
-        self.embedding_connected.store(true, Ordering::Release);
-        tracing::info!(
-            backend = %emb_addr,
-            "Secure channel established with embedding backend"
-        );
-        Ok(())
     }
 }
 

@@ -9,7 +9,6 @@ use ephemeral_ml_common::{
 use hpke::{aead::ChaCha20Poly1305, kem::X25519HkdfSha256, Deserializable, OpModeS, Serializable};
 use rand::rngs::OsRng;
 use rand::RngCore;
-use std::collections::HashMap;
 use std::time::Instant;
 use tokio::time::Duration;
 
@@ -20,8 +19,6 @@ use tokio::time::{sleep, timeout};
 
 /// KMS Proxy Server
 pub struct KmsProxyServer {
-    // Mock key storage
-    _keys: HashMap<String, Vec<u8>>,
     retry: RetryPolicy,
     limiter: ConcurrencyLimiter,
     rate_limiter: RateLimiter,
@@ -34,7 +31,6 @@ pub struct KmsProxyServer {
 impl Clone for KmsProxyServer {
     fn clone(&self) -> Self {
         Self {
-            _keys: self._keys.clone(),
             retry: self.retry,
             limiter: self.limiter.clone(),
             rate_limiter: self.rate_limiter.clone(),
@@ -55,7 +51,6 @@ impl Default for KmsProxyServer {
 impl KmsProxyServer {
     pub fn new() -> Self {
         Self {
-            _keys: HashMap::new(),
             retry: RetryPolicy::default(),
             limiter: ConcurrencyLimiter::new(DEFAULT_MAX_IN_FLIGHT),
             rate_limiter: RateLimiter::new(RateLimitConfig::default()),

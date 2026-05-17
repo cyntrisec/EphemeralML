@@ -619,35 +619,37 @@ fn parse_expected_security_mode(
 /// - `format`: "air_v1"
 ///
 /// Uses a deterministic key seed so the key is stable across calls.
-pub async fn sample_valid() -> Json<serde_json::Value> {
+pub async fn sample_valid() -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorResponse>)> {
     use ephemeral_ml_common::air_receipt::build_air_v1;
 
-    let (key, claims) = sample_key_and_claims();
-    let receipt_bytes = build_air_v1(&claims, &key).unwrap();
+    let (key, claims) = sample_key_and_claims()?;
+    let receipt_bytes = build_air_v1(&claims, &key)
+        .map_err(|err| internal_error(format!("failed to build AIR v1 sample: {err}")))?;
     let receipt_b64 =
         base64::Engine::encode(&base64::engine::general_purpose::STANDARD, &receipt_bytes);
 
-    Json(serde_json::json!({
+    Ok(Json(serde_json::json!({
         "receipt_base64": receipt_b64,
         "public_key": hex::encode(key.public_key_bytes()),
         "format": "air_v1",
-    }))
+    })))
 }
 
 /// `GET /api/v1/samples/legacy` — generate a fresh signed legacy sample receipt.
 ///
 /// Returns a JSON object with `receipt` (JSON object) and `public_key` (hex).
-pub async fn sample_legacy() -> Json<serde_json::Value> {
+pub async fn sample_legacy() -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorResponse>)> {
     use ephemeral_ml_common::receipt_signing::{
         AttestationReceipt, EnclaveMeasurements, ReceiptSigningKey, SecurityMode,
     };
 
     let signing_key = ed25519_dalek::SigningKey::from_bytes(&[0x42u8; 32]);
     let verifying_key = signing_key.verifying_key();
-    let key = ReceiptSigningKey::from_parts(signing_key, verifying_key);
+    let key = ReceiptSigningKey::try_from_parts(signing_key, verifying_key)
+        .map_err(|err| internal_error(format!("failed to create sample signing key: {err}")))?;
 
     let measurements = EnclaveMeasurements::new(vec![1u8; 48], vec![2u8; 48], vec![3u8; 48]);
-    let mut receipt = AttestationReceipt::new(
+    let mut receipt = AttestationReceipt::try_new(
         "sample-legacy-receipt".to_string(),
         1,
         SecurityMode::GatewayOnly,
@@ -661,32 +663,40 @@ pub async fn sample_legacy() -> Json<serde_json::Value> {
         "v1.0".to_string(),
         95,
         64,
-    );
-    receipt.sign(&key).unwrap();
+    )
+    .map_err(|err| internal_error(format!("failed to create legacy sample: {err}")))?;
+    receipt
+        .sign(&key)
+        .map_err(|err| internal_error(format!("failed to sign legacy sample: {err}")))?;
 
-    Json(serde_json::json!({
-        "receipt": serde_json::to_value(&receipt).unwrap(),
+    let receipt_json = serde_json::to_value(&receipt)
+        .map_err(|err| internal_error(format!("failed to serialize legacy sample: {err}")))?;
+
+    Ok(Json(serde_json::json!({
+        "receipt": receipt_json,
         "public_key": hex::encode(key.public_key_bytes()),
         "format": "legacy",
-    }))
+    })))
 }
 
 /// Shared deterministic key and AIR v1 claims for sample endpoints.
-fn sample_key_and_claims() -> (
-    ephemeral_ml_common::receipt_signing::ReceiptSigningKey,
-    ephemeral_ml_common::air_receipt::AirReceiptClaims,
-) {
+fn sample_key_and_claims() -> Result<
+    (
+        ephemeral_ml_common::receipt_signing::ReceiptSigningKey,
+        ephemeral_ml_common::air_receipt::AirReceiptClaims,
+    ),
+    (StatusCode, Json<ErrorResponse>),
+> {
     use ephemeral_ml_common::air_receipt::AirReceiptClaims;
     use ephemeral_ml_common::receipt_signing::{EnclaveMeasurements, ReceiptSigningKey};
 
     let signing_key = ed25519_dalek::SigningKey::from_bytes(&[0x42u8; 32]);
     let verifying_key = signing_key.verifying_key();
-    let key = ReceiptSigningKey::from_parts(signing_key, verifying_key);
+    let key = ReceiptSigningKey::try_from_parts(signing_key, verifying_key)
+        .map_err(|err| internal_error(format!("failed to create sample signing key: {err}")))?;
 
-    let now = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap()
-        .as_secs();
+    let now = ephemeral_ml_common::current_timestamp()
+        .map_err(|err| internal_error(format!("failed to read system clock: {err}")))?;
 
     let claims = AirReceiptClaims {
         iss: "cyntrisec.com".to_string(),
@@ -711,7 +721,7 @@ fn sample_key_and_claims() -> (
         model_hash_scheme: None,
     };
 
-    (key, claims)
+    Ok((key, claims))
 }
 
 /// Parse a hex-encoded Ed25519 public key.
@@ -732,6 +742,13 @@ fn parse_hex_public_key(hex_str: &str) -> Result<VerifyingKey, (StatusCode, Json
 fn bad_request(msg: impl Into<String>) -> (StatusCode, Json<ErrorResponse>) {
     (
         StatusCode::BAD_REQUEST,
+        Json(ErrorResponse { error: msg.into() }),
+    )
+}
+
+fn internal_error(msg: impl Into<String>) -> (StatusCode, Json<ErrorResponse>) {
+    (
+        StatusCode::INTERNAL_SERVER_ERROR,
         Json(ErrorResponse { error: msg.into() }),
     )
 }

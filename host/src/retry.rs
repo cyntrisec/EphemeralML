@@ -1,4 +1,3 @@
-use rand::RngCore;
 use std::time::Duration;
 
 /// Retry/backoff policy for upstream calls (e.g., AWS KMS).
@@ -23,25 +22,13 @@ impl Default for RetryPolicy {
 }
 
 impl RetryPolicy {
-    pub fn compute_backoff(&self, attempt: u32, rng: &mut impl RngCore) -> Duration {
-        // attempt is 1-based. Backoff starts after a failed attempt.
-        let exp = attempt.saturating_sub(1);
-        let mut ms = self.backoff_base.as_millis() as u64;
-        let shift = exp.min(16);
-        let factor = 1u64.checked_shl(shift).unwrap_or(u64::MAX);
-        ms = ms.saturating_mul(factor); // avoid overflow
-        let cap_ms = self.backoff_cap.as_millis() as u64;
-        let capped = ms.min(cap_ms);
-
-        // Full jitter: random in [0, capped]
-        // gen_range() is on Rng (not RngCore); implement manually.
-        // Avoid modulo bias? Here jitter is cosmetic; keep it simple but safe.
-        let jittered = if capped == 0 {
-            0
-        } else {
-            rng.next_u64() % (capped + 1)
-        };
-        Duration::from_millis(jittered)
+    pub fn compute_backoff(&self, attempt: u32, rng: &mut impl rand::RngCore) -> Duration {
+        ephemeral_ml_common::compute_full_jitter_backoff(
+            attempt,
+            self.backoff_base.as_millis() as u64,
+            self.backoff_cap.as_millis() as u64,
+            rng,
+        )
     }
 }
 

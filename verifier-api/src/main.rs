@@ -129,18 +129,33 @@ async fn main() {
         cors_origins: args.cors_origins,
     };
 
-    let app = ephemeralml_verifier_api::build_router_with_config(&config);
+    let app = match ephemeralml_verifier_api::build_router_with_config(&config) {
+        Ok(app) => app,
+        Err(err) => {
+            eprintln!("Configuration error: {err}");
+            std::process::exit(2);
+        }
+    };
 
     let addr = format!("{}:{}", args.host, args.port);
     tracing::info!("Listening on {}", addr);
 
-    let listener = tokio::net::TcpListener::bind(&addr).await.unwrap();
-    axum::serve(
+    let listener = match tokio::net::TcpListener::bind(&addr).await {
+        Ok(listener) => listener,
+        Err(err) => {
+            eprintln!("Failed to bind {addr}: {err}");
+            std::process::exit(1);
+        }
+    };
+    if let Err(err) = axum::serve(
         listener,
         app.into_make_service_with_connect_info::<std::net::SocketAddr>(),
     )
     .await
-    .unwrap();
+    {
+        eprintln!("Verifier API server failed: {err}");
+        std::process::exit(1);
+    }
 }
 
 /// Resolve the service mode from CLI args.

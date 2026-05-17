@@ -233,9 +233,8 @@ pub type SeenCtiFn = Box<dyn Fn(&[u8; 16]) -> bool + Send + Sync>;
 /// Most fields are optional. Absent fields cause the corresponding policy
 /// check to be skipped, except security_mode: `evaluation` is rejected unless
 /// explicitly allowed.
-#[derive(Default)]
 pub struct AirVerifyPolicy {
-    /// Maximum receipt age in seconds. 0 = skip freshness check.
+    /// Maximum receipt age in seconds. Use [`Self::unbounded`] to skip freshness.
     pub max_age_secs: u64,
     /// Clock skew tolerance in seconds for future timestamp rejection.
     pub clock_skew_secs: u64,
@@ -265,6 +264,40 @@ pub struct AirVerifyPolicy {
     /// Seen-cti cache hook. If provided, called with the receipt's cti.
     /// Return `true` if the cti has been seen before (replay).
     pub seen_cti: Option<SeenCtiFn>,
+}
+
+impl Default for AirVerifyPolicy {
+    fn default() -> Self {
+        Self {
+            max_age_secs: 3600,
+            clock_skew_secs: 300,
+            expected_model_hash: None,
+            expected_request_hash: None,
+            expected_response_hash: None,
+            expected_attestation_doc_hash: None,
+            expected_model_id: None,
+            expected_security_mode: None,
+            allow_evaluation_mode: false,
+            expected_platform: None,
+            expected_nonce: None,
+            require_nonce: false,
+            seen_cti: None,
+        }
+    }
+}
+
+impl AirVerifyPolicy {
+    /// Build an explicit policy with the freshness check disabled.
+    ///
+    /// This is intended for static conformance vectors and historical evidence
+    /// bundles. Production-oriented callers should use [`Self::default`] or set
+    /// a positive `max_age_secs`.
+    pub fn unbounded() -> Self {
+        Self {
+            max_age_secs: 0,
+            ..Self::default()
+        }
+    }
 }
 
 // ── Top-level verify ────────────────────────────────────────────────
@@ -464,10 +497,7 @@ fn layer1_parse(data: &[u8], checks: &mut Vec<AirCheck>) -> Option<ParsedAirRece
         // but return None to signal parse failure.
         // Try decoding claims anyway for the result.
         if let Ok(claims) = air_receipt::decode_claims_from_bytes(payload_bytes) {
-            let profile_ok = claims_profile_check(&claims, checks);
-            if !profile_ok {
-                return None;
-            }
+            claims_profile_check(checks);
             return Some(ParsedAirReceipt { claims, cose });
         }
         return None;
@@ -487,17 +517,16 @@ fn layer1_parse(data: &[u8], checks: &mut Vec<AirCheck>) -> Option<ParsedAirRece
     };
 
     // eat_profile
-    claims_profile_check(&claims, checks);
+    claims_profile_check(checks);
 
     Some(ParsedAirReceipt { claims, cose })
 }
 
-fn claims_profile_check(_claims: &AirReceiptClaims, checks: &mut Vec<AirCheck>) -> bool {
+fn claims_profile_check(checks: &mut Vec<AirCheck>) {
     // eat_profile is already decoded into the claims struct, but we
     // verify the parse succeeded (decode_claims rejects unknown profiles).
     // If we got here, the profile is correct.
     checks.push(AirCheck::pass("EAT_PROFILE"));
-    true
 }
 
 // ── Layer 2: Crypto ─────────────────────────────────────────────────
@@ -1415,8 +1444,8 @@ mod tests {
         let claims = fixture_claims();
         let bytes = build_receipt(&claims, &key);
 
-        // All policy fields default → all policy checks skip
-        let result = verify_air_v1_receipt(&bytes, &key.public_key, &AirVerifyPolicy::default());
+        // Explicitly unbounded policy → freshness and optional policy checks skip.
+        let result = verify_air_v1_receipt(&bytes, &key.public_key, &AirVerifyPolicy::unbounded());
         assert!(result.verified);
 
         let skipped: Vec<_> = result
@@ -1516,7 +1545,7 @@ mod tests {
         let receipt = hex::decode(GOLDEN_V1_RECEIPT).unwrap();
         let pubkey = golden_pubkey();
 
-        let result = verify_air_v1_receipt(&receipt, &pubkey, &AirVerifyPolicy::default());
+        let result = verify_air_v1_receipt(&receipt, &pubkey, &AirVerifyPolicy::unbounded());
         assert!(result.verified, "golden v1 failed: {:?}", result.failures());
 
         // Verify parsed claims
@@ -1554,7 +1583,7 @@ mod tests {
             expected_platform: Some("tdx-mrtd-rtmr".to_string()),
             expected_model_hash: Some([0x55; 32]),
             expected_model_id: Some("llama-7b".to_string()),
-            ..Default::default()
+            ..AirVerifyPolicy::unbounded()
         };
         let result = verify_air_v1_receipt(&receipt, &pubkey, &policy);
         assert!(result.verified, "golden v2 failed: {:?}", result.failures());
@@ -1583,7 +1612,7 @@ mod tests {
         let receipt = hex::decode(GOLDEN_V1_RECEIPT).unwrap();
         let pubkey = wrong_pubkey();
 
-        let result = verify_air_v1_receipt(&receipt, &pubkey, &AirVerifyPolicy::default());
+        let result = verify_air_v1_receipt(&receipt, &pubkey, &AirVerifyPolicy::unbounded());
         assert!(!result.verified);
         assert!(result.has_failure(&AirCheckCode::SignatureFailed));
         // Claims should still parse successfully
@@ -1597,7 +1626,7 @@ mod tests {
         let receipt = hex::decode(GOLDEN_WRONG_ALG_RECEIPT).unwrap();
         let pubkey = golden_pubkey();
 
-        let result = verify_air_v1_receipt(&receipt, &pubkey, &AirVerifyPolicy::default());
+        let result = verify_air_v1_receipt(&receipt, &pubkey, &AirVerifyPolicy::unbounded());
         assert!(!result.verified);
         assert!(result.has_failure(&AirCheckCode::BadAlg));
     }

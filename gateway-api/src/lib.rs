@@ -16,13 +16,13 @@ pub mod streaming;
 pub mod types;
 pub mod worker;
 
-use axum::http::{HeaderMap, HeaderValue, StatusCode};
+use axum::http::{HeaderMap, HeaderValue, Method, StatusCode};
 use axum::middleware;
 use axum::response::{IntoResponse, Json};
 use axum::routing::{get, post};
 use axum::Router;
 use std::net::SocketAddr;
-use tower_http::cors::CorsLayer;
+use tower_http::cors::{AllowOrigin, CorsLayer};
 use tower_http::limit::RequestBodyLimitLayer;
 use tower_http::trace::TraceLayer;
 
@@ -48,9 +48,30 @@ pub fn build_router(state: AppState) -> Router {
             auth::auth_middleware,
         ))
         .layer(RequestBodyLimitLayer::new(2 * 1024 * 1024)) // 2 MB
-        .layer(CorsLayer::permissive())
+        .layer(cors_layer(&state))
         .layer(TraceLayer::new_for_http())
         .with_state(state)
+}
+
+fn cors_layer(state: &AppState) -> CorsLayer {
+    if state.config.cors_origins.is_empty() {
+        return CorsLayer::new();
+    }
+
+    let origins = state
+        .config
+        .cors_origins
+        .iter()
+        .filter_map(|origin| origin.parse::<HeaderValue>().ok())
+        .collect::<Vec<_>>();
+
+    CorsLayer::new()
+        .allow_origin(AllowOrigin::list(origins))
+        .allow_methods([Method::GET, Method::POST, Method::OPTIONS])
+        .allow_headers([
+            axum::http::header::AUTHORIZATION,
+            axum::http::header::CONTENT_TYPE,
+        ])
 }
 
 /// Rate limiting and concurrency middleware.

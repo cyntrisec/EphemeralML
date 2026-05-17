@@ -31,7 +31,17 @@ pub fn check_sig_001(receipt: &AttestationReceipt, public_key: &VerifyingKey) ->
 
 /// SIG-002: CBOR canonical encoding round-trip determinism.
 pub fn check_sig_002(receipt: &AttestationReceipt) -> RuleResult {
-    let (passed, reason) = match (receipt.canonical_encoding(), receipt.canonical_encoding()) {
+    let (passed, reason) = canonical_encoding_determinism(receipt);
+    RuleResult {
+        rule_id: "SIG-002".to_string(),
+        rule_name: "CBOR canonical round-trip determinism".to_string(),
+        passed,
+        reason,
+    }
+}
+
+fn canonical_encoding_determinism(receipt: &AttestationReceipt) -> (bool, String) {
+    match (receipt.canonical_encoding(), receipt.canonical_encoding()) {
         (Ok(enc1), Ok(enc2)) => {
             if enc1 == enc2 {
                 (true, "Canonical encoding is deterministic".to_string())
@@ -43,12 +53,6 @@ pub fn check_sig_002(receipt: &AttestationReceipt) -> RuleResult {
             }
         }
         (Err(e), _) | (_, Err(e)) => (false, format!("Canonical encoding failed: {}", e)),
-    };
-    RuleResult {
-        rule_id: "SIG-002".to_string(),
-        rule_name: "CBOR canonical round-trip determinism".to_string(),
-        passed,
-        reason,
     }
 }
 
@@ -295,25 +299,7 @@ pub fn check_chain_001(receipt: &AttestationReceipt) -> RuleResult {
 /// CBOR-001: CBOR deterministic round-trip (identical to SIG-002 but
 /// semantically distinct for the CBOR encoding guarantee).
 pub fn check_cbor_001(receipt: &AttestationReceipt) -> RuleResult {
-    let (passed, reason) = match receipt.canonical_encoding() {
-        Ok(enc1) => match receipt.canonical_encoding() {
-            Ok(enc2) => {
-                if enc1 == enc2 {
-                    (
-                        true,
-                        "CBOR canonical round-trip produces identical bytes".to_string(),
-                    )
-                } else {
-                    (
-                        false,
-                        "CBOR canonical encoding is not deterministic".to_string(),
-                    )
-                }
-            }
-            Err(e) => (false, format!("Second canonical encoding failed: {}", e)),
-        },
-        Err(e) => (false, format!("Canonical encoding failed: {}", e)),
-    };
+    let (passed, reason) = canonical_encoding_determinism(receipt);
     RuleResult {
         rule_id: "CBOR-001".to_string(),
         rule_name: "CBOR deterministic encoding".to_string(),

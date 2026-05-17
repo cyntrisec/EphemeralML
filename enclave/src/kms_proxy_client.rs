@@ -317,7 +317,7 @@ impl KmsProxyClient {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, not(feature = "production")))]
 mod tests {
     use super::*;
     use ephemeral_ml_common::KmsResponse;

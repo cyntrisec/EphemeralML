@@ -25,7 +25,9 @@ use ephemeral_ml_client::secure_client::{InferenceHandlerInput, InferenceHandler
 use ephemeral_ml_client::{
     InferenceResult, ModelIdentity, ModelManifest, SecureClient, SecureEnclaveClient,
 };
-use ephemeral_ml_common::{CyntrisecPolicy, WorkerAttestationUserData, WorkerResponse};
+use ephemeral_ml_common::{
+    estimate_tokens, CyntrisecPolicy, WorkerAttestationUserData, WorkerResponse,
+};
 use serde::Serialize;
 use sha2::{Digest, Sha256};
 use tokio::net::TcpStream;
@@ -914,14 +916,6 @@ fn f32_tensor_from_le_bytes(bytes: &[u8]) -> Result<Vec<f32>, WorkerChannelError
         .collect())
 }
 
-fn estimate_tokens(text: &str) -> u32 {
-    if text.is_empty() {
-        0
-    } else {
-        ((text.len() as f64 / 4.0).ceil() as u32).max(1)
-    }
-}
-
 fn is_transport_error(err: &str) -> bool {
     err.contains("Transport error")
         || err.contains("Network error")
@@ -1387,6 +1381,7 @@ mod tests {
             rate_limit_per_ip: 60,
             rate_limit_global: 0,
             trust_proxy_headers: false,
+            cors_origins: vec![],
             reconnect_enabled: true,
             reconnect_backoff_base_ms: 100,
             reconnect_backoff_cap_ms: 30000,

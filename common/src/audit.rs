@@ -2,6 +2,20 @@ use crate::{current_timestamp, generate_id, AuditEventType, AuditLogEntry, Audit
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
+fn timestamp_with_details() -> (u64, HashMap<String, serde_json::Value>) {
+    match current_timestamp() {
+        Ok(timestamp) => (timestamp, HashMap::new()),
+        Err(err) => {
+            let mut details = HashMap::new();
+            details.insert(
+                "timestamp_error".to_string(),
+                serde_json::json!(err.to_string()),
+            );
+            (0, details)
+        }
+    }
+}
+
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 pub struct AuditLogRequest {
     pub entry: AuditLogEntry,
@@ -21,28 +35,30 @@ impl AuditLogEntry {
         client_id: Option<String>,
         model_id: Option<String>,
     ) -> Self {
+        let (timestamp, details) = timestamp_with_details();
         Self {
             entry_id: generate_id(),
-            timestamp: current_timestamp().unwrap_or(0),
+            timestamp,
             event_type,
             session_id,
             client_id,
             model_id,
-            details: HashMap::new(),
+            details,
             severity,
             is_metric: false,
         }
     }
 
     pub fn metric(event_type: AuditEventType, session_id: Option<String>) -> Self {
+        let (timestamp, details) = timestamp_with_details();
         Self {
             entry_id: generate_id(),
-            timestamp: current_timestamp().unwrap_or(0),
+            timestamp,
             event_type,
             session_id,
             client_id: None,
             model_id: None,
-            details: HashMap::new(),
+            details,
             severity: AuditSeverity::Info,
             is_metric: true,
         }

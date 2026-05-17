@@ -173,28 +173,13 @@ async fn tcp_probe(addr: &str, timeout: Duration) -> bool {
     }
 }
 
-/// Exponential backoff with full jitter.
-///
-/// Returns a duration in `[0, min(base * 2^(attempt-1), cap)]`.
-/// Same algorithm as `host/src/retry.rs` — duplicated to avoid cross-crate dep.
 pub fn compute_backoff(
     attempt: u32,
     base_ms: u64,
     cap_ms: u64,
     rng: &mut impl RngCore,
 ) -> Duration {
-    let exp = attempt.saturating_sub(1);
-    let shift = exp.min(16);
-    let factor = 1u64.checked_shl(shift).unwrap_or(u64::MAX);
-    let ms = base_ms.saturating_mul(factor);
-    let capped = ms.min(cap_ms);
-
-    let jittered = if capped == 0 {
-        0
-    } else {
-        rng.next_u64() % (capped + 1)
-    };
-    Duration::from_millis(jittered)
+    ephemeral_ml_common::compute_full_jitter_backoff(attempt, base_ms, cap_ms, rng)
 }
 
 #[cfg(test)]

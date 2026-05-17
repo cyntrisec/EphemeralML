@@ -121,7 +121,7 @@ struct Args {
     require_destroy_event: bool,
 }
 
-fn main() -> Result<()> {
+pub fn main() -> Result<()> {
     let args = Args::parse();
 
     let format_json = args.format == "json";

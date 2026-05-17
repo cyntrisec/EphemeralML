@@ -15,6 +15,7 @@ use confidential_ml_transport::MockVerifier;
 use ephemeral_ml_common::ReceiptSigningKey;
 
 use clap::Parser;
+use std::error::Error as StdError;
 use std::path::PathBuf;
 #[allow(unused_imports)]
 use tracing::{error, info, warn};
@@ -25,18 +26,22 @@ use ephemeral_ml_enclave::attestation_bridge::AttestationBridge;
 use ephemeral_ml_enclave::DefaultAttestationProvider;
 
 #[cfg(any(feature = "mock", feature = "gcp", feature = "production"))]
-fn host_control_plane_stage_config() -> StageConfig {
+fn host_control_plane_stage_config() -> Result<StageConfig, ephemeral_ml_common::EphemeralError> {
     // The stage peer is the host/orchestrator control plane, not another TEE.
     // This permits an unmeasured host peer by design. Do not use this channel
     // as evidence of peer TEE identity; AIR TEE provenance is established by
     // the receipt signing key's binding to platform attestation.
-    StageConfig {
+    Ok(StageConfig {
         session_config: confidential_ml_transport::session::SessionConfig::builder()
             .allow_empty_measurements()
             .build()
-            .expect("host-control-plane stage config must be valid"),
+            .map_err(|err| {
+                ephemeral_ml_common::EphemeralError::ConfigurationError(format!(
+                    "failed to build host control-plane stage config: {err}"
+                ))
+            })?,
         ..StageConfig::default()
-    }
+    })
 }
 
 /// MockProvider wrapper that injects fixed user_data (EphemeralUserData CBOR)
@@ -494,7 +499,7 @@ async fn run_worker_server_vsock(
         .map_err(|err| Box::new(err) as Box<dyn std::error::Error>)
 }
 
-/// Classify an error message into a structured exit code for CI/script parsing.
+/// Classify structured errors into exit codes for CI/script parsing.
 ///
 /// Exit codes:
 ///   1  — general/unknown error
@@ -502,61 +507,78 @@ async fn run_worker_server_vsock(
 ///   11 — model loading error (hash mismatch, fetch failure, manifest error)
 ///   12 — attestation/KMS error (TEE unavailable, KMS decrypt failure, DEK error)
 ///   13 — network/bind error (address in use, connection refused)
-fn classify_exit_code(err: &str) -> i32 {
-    let e = err.to_lowercase();
-
-    // Configuration errors (exit 10)
-    if e.contains("--model-source is required")
-        || e.contains("requires --gcp-kms-key")
-        || e.contains("requires --gcp-wip-audience")
-        || e.contains("unknown --model-source")
-        || e.contains("--synthetic is not allowed")
-        || e.contains("--expected-mrtd")
-        || e.contains("requires the `tdx` feature")
-        || e.contains("requires the `gcp` feature")
-        || e.contains("model signing key must be")
-        || e.contains("ephemeralml_model_signing_pubkey")
-        || e.contains("unknown --model-format")
-        || e.contains("aws-s3-kms currently supports")
-    {
-        return 10;
+fn classify_exit_code(err: &(dyn StdError + 'static)) -> i32 {
+    let mut current = Some(err);
+    while let Some(error) = current {
+        if let Some(common) = error.downcast_ref::<ephemeral_ml_common::EphemeralError>() {
+            return classify_common_error(common);
+        }
+        if error
+            .downcast_ref::<confidential_ml_transport::error::AttestError>()
+            .is_some()
+        {
+            return 12;
+        }
+        if let Some(io) = error.downcast_ref::<std::io::Error>() {
+            return classify_io_error(io);
+        }
+        current = error.source();
     }
-
-    // Model loading errors (exit 11)
-    if e.contains("model hash mismatch")
-        || e.contains("failed to read config.json")
-        || e.contains("failed to read tokenizer.json")
-        || e.contains("failed to read model.safetensors")
-        || e.contains("failed to read model.gguf")
-        || e.contains("model directory does not exist")
-        || e.contains("manifest")
-        || e.contains("--expected-model-hash")
-        || e.contains("model decomposition")
-        || e.contains("register_model")
-    {
-        return 11;
-    }
-
-    // Attestation/KMS errors (exit 12)
-    if e.contains("attestation")
-        || e.contains("kms")
-        || e.contains("invalid dek length")
-        || e.contains("no tdx attestation source")
-        || e.contains("configfs-tsm")
-    {
-        return 12;
-    }
-
-    // Network/bind errors (exit 13)
-    if e.contains("address already in use")
-        || e.contains("connection refused")
-        || e.contains("addr")
-        || e.contains("bind")
-    {
-        return 13;
-    }
-
     1
+}
+
+fn classify_common_error(err: &ephemeral_ml_common::EphemeralError) -> i32 {
+    use ephemeral_ml_common::EphemeralError;
+
+    match err {
+        EphemeralError::ConfigurationError(_)
+        | EphemeralError::InvalidInput(_)
+        | EphemeralError::Validation(_)
+        | EphemeralError::ValidationError(_) => 10,
+
+        EphemeralError::DecompositionError(_)
+        | EphemeralError::UnsupportedOperatorError(_)
+        | EphemeralError::AssemblyError(_)
+        | EphemeralError::InferenceError(_)
+        | EphemeralError::StorageError(_) => 11,
+
+        EphemeralError::AttestationError(_)
+        | EphemeralError::EncryptionError(_)
+        | EphemeralError::DecryptionError(_)
+        | EphemeralError::KmsError(_) => 12,
+
+        EphemeralError::CommunicationError(_)
+        | EphemeralError::VSockError(_)
+        | EphemeralError::NetworkError(_)
+        | EphemeralError::TransportError(_)
+        | EphemeralError::Timeout(_)
+        | EphemeralError::ResourceExhausted(_) => 13,
+
+        EphemeralError::IoError(_)
+        | EphemeralError::ProxyError(_)
+        | EphemeralError::ProtocolError(_)
+        | EphemeralError::SerializationError(_)
+        | EphemeralError::MemorySecurityError(_)
+        | EphemeralError::Internal(_) => 1,
+    }
+}
+
+fn classify_io_error(err: &std::io::Error) -> i32 {
+    use std::io::ErrorKind;
+
+    match err.kind() {
+        ErrorKind::AddrInUse
+        | ErrorKind::AddrNotAvailable
+        | ErrorKind::AlreadyExists
+        | ErrorKind::BrokenPipe
+        | ErrorKind::ConnectionAborted
+        | ErrorKind::ConnectionRefused
+        | ErrorKind::ConnectionReset
+        | ErrorKind::NotConnected
+        | ErrorKind::TimedOut => 13,
+        ErrorKind::NotFound | ErrorKind::PermissionDenied => 11,
+        _ => 1,
+    }
 }
 
 /// Default filesystem path for exporting the platform-evidence bundle.
@@ -616,7 +638,7 @@ async fn main() {
 
     if let Err(e) = run().await {
         let msg = e.to_string();
-        let exit_code = classify_exit_code(&msg);
+        let exit_code = classify_exit_code(e.as_ref());
         error!(exit_code = exit_code, "Fatal: {}", msg);
         std::process::exit(exit_code);
     }
@@ -1089,7 +1111,12 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
                         .into());
                     }
 
-                    let dek_array: [u8; 32] = dek.try_into().unwrap();
+                    let dek_array: [u8; 32] = dek.try_into().map_err(|dek: Vec<u8>| {
+                        format!(
+                            "Invalid DEK length from KMS: expected 32, got {}",
+                            dek.len()
+                        )
+                    })?;
                     let weights_bytes = decrypt_artifact(&encrypted_weights, &dek_array)?;
 
                     // Verify hash (required for remote sources)
@@ -1688,22 +1715,11 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
                 args.receipt_issuer.clone(),
             );
 
-            // Use configurable addresses (default: 0.0.0.0:9000/9001/9002 for GCP)
-            let gcp_control = if args.control_addr == "127.0.0.1:9000" {
-                "0.0.0.0:9000".to_string()
-            } else {
-                args.control_addr.clone()
-            };
-            let gcp_data_in = if args.data_in_addr == "127.0.0.1:9001" {
-                "0.0.0.0:9001".to_string()
-            } else {
-                args.data_in_addr.clone()
-            };
-            let gcp_data_out = if args.data_out_target == "127.0.0.1:9002" {
-                "0.0.0.0:9002".to_string()
-            } else {
-                args.data_out_target.clone()
-            };
+            // Honor the CLI addresses exactly. GCP deployments that need
+            // externally reachable listeners must pass 0.0.0.0 explicitly.
+            let gcp_control = args.control_addr.clone();
+            let gcp_data_in = args.data_in_addr.clone();
+            let gcp_data_out = args.data_out_target.clone();
 
             info!(
                 step = "pipeline",
@@ -1715,7 +1731,7 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
 
             run_stage_tcp(
                 executor,
-                host_control_plane_stage_config(),
+                host_control_plane_stage_config()?,
                 &gcp_control,
                 &gcp_data_in,
                 gcp_data_out.parse()?,
@@ -1827,7 +1843,7 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
                 1,
                 vec!["gateway".to_string()],
             );
-            let ud_cbor = ud.to_cbor().expect("CBOR encode");
+            let ud_cbor = ud.to_cbor()?;
             let mock_transport = MockProviderWithUserData(ud_cbor);
 
             let client_verifier = MockVerifier::new();
@@ -1880,7 +1896,7 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
 
             run_stage_tcp(
                 executor,
-                host_control_plane_stage_config(),
+                host_control_plane_stage_config()?,
                 &args.control_addr,
                 &args.data_in_addr,
                 args.data_out_target.parse()?,
@@ -2421,7 +2437,7 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
 
         confidential_ml_pipeline::vsock::run_stage_with_listeners_vsock(
             executor,
-            host_control_plane_stage_config(),
+            host_control_plane_stage_config()?,
             ctrl_listener,
             din_listener,
             HOST_CID,

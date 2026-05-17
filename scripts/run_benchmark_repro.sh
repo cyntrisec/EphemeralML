@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# run_benchmark_repro.sh — Run the full benchmark suite N times for reproducibility analysis.
+# run_benchmark_repro.sh — Run the maintained benchmark suite N times for reproducibility analysis.
 #
 # Each run gets a timestamped subdirectory. After all runs complete,
 # run analyze_repro.py to compute variance statistics.
@@ -18,7 +18,6 @@ PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 NUM_RUNS=3
 OUTPUT_BASE="${OUTPUT_BASE:-$PROJECT_ROOT/benchmark_results}"
 SKIP_BUILD=false
-EIF_PATH="${EIF_PATH:-}"
 
 # Parse arguments
 while [[ $# -gt 0 ]]; do
@@ -39,15 +38,7 @@ log "Starting reproducibility suite: $NUM_RUNS runs"
 log "Output directory: $REPRO_DIR"
 
 if $SKIP_BUILD; then
-    if [[ -z "$EIF_PATH" ]]; then
-        EIF_PATH="$OUTPUT_BASE/benchmark.eif"
-    fi
-    if [[ ! -f "$EIF_PATH" ]]; then
-        echo "ERROR: --skip-build requires an existing EIF. Set EIF_PATH or place benchmark.eif at $EIF_PATH" >&2
-        exit 1
-    fi
-    cp -f "$EIF_PATH" "$REPRO_DIR/benchmark.eif"
-    log "Using existing EIF: $EIF_PATH"
+    log "Reusing existing modern benchmark build artifacts where available"
 fi
 
 for i in $(seq -w 1 "$NUM_RUNS"); do
@@ -56,21 +47,12 @@ for i in $(seq -w 1 "$NUM_RUNS"); do
     log "=== Run $i/$NUM_RUNS ==="
 
     if [[ "$i" == "01" && "$SKIP_BUILD" == "false" ]]; then
-        # First run builds everything and produces the reference EIF.
-        "$SCRIPT_DIR/run_benchmark.sh" \
+        # First run builds current-architecture benchmark artifacts.
+        "$SCRIPT_DIR/run_benchmark_modern.sh" \
             --output-dir "$RUN_DIR"
-        if [[ -f "$RUN_DIR/benchmark.eif" ]]; then
-            cp -f "$RUN_DIR/benchmark.eif" "$REPRO_DIR/benchmark.eif"
-            log "  Saved reference EIF to $REPRO_DIR/benchmark.eif"
-        else
-            log "  WARNING: benchmark.eif not found in first run output"
-        fi
     else
-        # Subsequent runs reuse the EIF to avoid rebuild noise/time.
-        if [[ -f "$REPRO_DIR/benchmark.eif" ]]; then
-            cp -f "$REPRO_DIR/benchmark.eif" "$RUN_DIR/benchmark.eif"
-        fi
-        "$SCRIPT_DIR/run_benchmark.sh" \
+        # Subsequent runs reuse build artifacts where the modern path supports it.
+        "$SCRIPT_DIR/run_benchmark_modern.sh" \
             --skip-build \
             --output-dir "$RUN_DIR"
     fi

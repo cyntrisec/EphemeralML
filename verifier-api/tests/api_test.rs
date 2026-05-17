@@ -22,7 +22,8 @@ async fn start_server_with_auth(api_key: &str) -> std::io::Result<String> {
         requests_per_minute: 0,
         cors_origins: vec![],
     };
-    let app = ephemeralml_verifier_api::build_router_with_config(&config);
+    let app = ephemeralml_verifier_api::build_router_with_config(&config)
+        .expect("secured API test config should be valid");
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await?;
     let addr = listener.local_addr().unwrap();
     tokio::spawn(async move {
@@ -39,7 +40,8 @@ async fn start_server_with_rate_limit(rpm: u32) -> std::io::Result<String> {
         requests_per_minute: rpm,
         cors_origins: vec![],
     };
-    let app = ephemeralml_verifier_api::build_router_with_config(&config);
+    let app = ephemeralml_verifier_api::build_router_with_config(&config)
+        .expect("rate limit test config should be valid");
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await?;
     let addr = listener.local_addr().unwrap();
     tokio::spawn(async move {

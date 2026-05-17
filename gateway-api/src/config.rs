@@ -225,6 +225,17 @@ pub struct GatewayConfig {
     #[arg(long, env = "EPHEMERALML_TRUST_PROXY_HEADERS", default_value = "false")]
     pub trust_proxy_headers: bool,
 
+    /// Allowed browser CORS origins for the gateway.
+    ///
+    /// Empty means no cross-origin browser access. Repeat the flag or use a
+    /// comma-separated EPHEMERALML_CORS_ORIGINS value for browser clients.
+    #[arg(
+        long = "cors-origin",
+        env = "EPHEMERALML_CORS_ORIGINS",
+        value_delimiter = ','
+    )]
+    pub cors_origins: Vec<String>,
+
     /// Enable background reconnect loop with exponential backoff.
     /// When true, a background task monitors connectivity and reconnects
     /// automatically when a backend disconnects.
@@ -371,6 +382,21 @@ impl GatewayConfig {
                 "EPHEMERALML_TRUST_PROXY_HEADERS is enabled -- only do this behind a trusted \
                  proxy/load balancer that overwrites forwarding headers"
             );
+        }
+
+        for origin in &self.cors_origins {
+            if origin == "*" {
+                return Err(
+                    "EPHEMERALML_CORS_ORIGINS does not accept '*'. Use concrete browser origins."
+                        .to_string(),
+                );
+            }
+            axum::http::HeaderValue::from_str(origin).map_err(|_| {
+                format!(
+                    "Invalid CORS origin '{origin}'. Use a concrete origin such as \
+                     https://app.example.com; wildcards are not accepted."
+                )
+            })?;
         }
 
         if self.preflight_required {

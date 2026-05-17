@@ -223,15 +223,15 @@ impl AttestationVerifier {
         self.parse_and_validate_payload(payload, expected_nonce, doc)
     }
 
-    /// Verify attestation document without nonce or PCR policy enforcement.
+    /// Verify attestation document without nonce enforcement.
     ///
     /// Performs full COSE_Sign1 signature verification and certificate chain
-    /// validation, but skips nonce comparison (caller handles nonce separately)
-    /// and does NOT check PCR values against the policy allowlist.
+    /// validation, but skips nonce comparison because the transport handshake
+    /// handles nonce binding. If a policy is loaded, PCR values are still checked
+    /// against the policy allowlist.
     ///
     /// This is intended for use by the attestation bridge, where cml-transport's
-    /// handshake already validates the nonce and PCR policy is enforced at
-    /// the application layer.
+    /// handshake already validates the nonce.
     pub fn verify_attestation_skip_nonce(
         &mut self,
         doc: &AttestationDocument,
@@ -249,9 +249,14 @@ impl AttestationVerifier {
         // 2. Validate certificate chain against AWS Nitro root
         self.validate_certificate_chain(&cert_chain)?;
 
-        // 3. Parse payload — skip nonce, skip PCR policy
+        // 3. Parse payload — skip nonce; enforce PCR policy when one is loaded.
         let attestation_hash = self.calculate_attestation_hash(doc)?;
-        self.parse_payload_core(payload, None, attestation_hash, false)
+        self.parse_payload_core(
+            payload,
+            None,
+            attestation_hash,
+            self.policy_manager.current_policy().is_some(),
+        )
     }
 
     /// Verify raw Nitro attestation COSE bytes without constructing a partial
@@ -263,7 +268,12 @@ impl AttestationVerifier {
         let (payload, cert_chain) = self.verify_cose_signature(attestation_bytes)?;
         self.validate_certificate_chain(&cert_chain)?;
         let attestation_hash = self.calculate_attestation_hash_bytes(attestation_bytes);
-        self.parse_payload_core(payload, None, attestation_hash, false)
+        self.parse_payload_core(
+            payload,
+            None,
+            attestation_hash,
+            self.policy_manager.current_policy().is_some(),
+        )
     }
 
     /// Verify attestation document without enforcing PCR policy.

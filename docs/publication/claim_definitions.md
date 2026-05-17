@@ -44,7 +44,7 @@
 | **Commit** | `f1ba30d` |
 | **Date** | 2026-02-25 |
 | **Script** | `scripts/run_benchmark_modern.sh` |
-| **Reproducibility** | Reproducible on current `main`. Run `scripts/run_benchmark.sh` on a Nitro-enabled m6i.xlarge. |
+| **Reproducibility** | Reproducible on current `main`. Run `scripts/run_benchmark_modern.sh` on a Nitro-enabled m6i.xlarge. |
 | **Caveats** | Enclave memory RSS not reported (memory_peak_mb=0 in current host path). VSock RTT and cold-start stage breakdown unavailable. Lower iteration count than C-1. |
 
 ### C-3: Nitro Host E2E Latency

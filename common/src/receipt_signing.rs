@@ -9,6 +9,12 @@ use ed25519_dalek::Signer;
 use serde::{Deserialize, Serialize};
 use zeroize::ZeroizeOnDrop;
 
+fn fail_closed_timestamp() -> u64 {
+    // A zero timestamp is intentionally old, so age-aware verifiers reject it
+    // instead of accepting an unchecked "current" time after a clock failure.
+    crate::current_timestamp().unwrap_or(0)
+}
+
 /// Ed25519 receipt signing keypair with secure memory management
 #[derive(ZeroizeOnDrop)]
 pub struct ReceiptSigningKey {
@@ -43,11 +49,26 @@ impl ReceiptSigningKey {
     /// Generate new Ed25519 keypair with expiration (for per-session keys)
     pub fn generate_with_expiry(ttl_seconds: u64) -> Result<Self> {
         let mut key = Self::generate()?;
-        key.expires_at = Some(key.created_at + ttl_seconds);
+        key.expires_at = Some(key.created_at.checked_add(ttl_seconds).ok_or_else(|| {
+            EphemeralError::Internal("receipt signing key expiry overflow".to_string())
+        })?);
         Ok(key)
     }
 
-    /// Create from existing keys (for testing)
+    /// Create from existing keys and propagate clock failures.
+    pub fn try_from_parts(
+        private_key: ed25519_dalek::SigningKey,
+        public_key: ed25519_dalek::VerifyingKey,
+    ) -> Result<Self> {
+        Ok(Self {
+            private_key,
+            public_key,
+            created_at: crate::current_timestamp()?,
+            expires_at: None,
+        })
+    }
+
+    /// Create from existing keys for deterministic fixtures.
     pub fn from_parts(
         private_key: ed25519_dalek::SigningKey,
         public_key: ed25519_dalek::VerifyingKey,
@@ -55,8 +76,7 @@ impl ReceiptSigningKey {
         Self {
             private_key,
             public_key,
-            created_at: crate::current_timestamp()
-                .expect("system clock must be available to create signing key metadata"),
+            created_at: fail_closed_timestamp(),
             expires_at: None,
         }
     }
@@ -115,6 +135,22 @@ pub struct AttestationUserData {
 }
 
 impl AttestationUserData {
+    /// Create new attestation user data and propagate clock failures.
+    pub fn try_new(
+        hpke_public_key: [u8; 32],
+        receipt_signing_key: [u8; 32],
+        protocol_version: u32,
+        supported_features: Vec<String>,
+    ) -> Result<Self> {
+        Ok(Self {
+            hpke_public_key,
+            receipt_signing_key,
+            protocol_version,
+            supported_features,
+            key_generation_timestamp: crate::current_timestamp()?,
+        })
+    }
+
     /// Create new attestation user data with both key types
     pub fn new(
         hpke_public_key: [u8; 32],
@@ -127,8 +163,7 @@ impl AttestationUserData {
             receipt_signing_key,
             protocol_version,
             supported_features,
-            key_generation_timestamp: crate::current_timestamp()
-                .expect("system clock must be available for attestation user data"),
+            key_generation_timestamp: fail_closed_timestamp(),
         }
     }
 
@@ -142,18 +177,6 @@ impl AttestationUserData {
     pub fn from_cbor(data: &[u8]) -> Result<Self> {
         crate::cbor::from_slice(data)
             .map_err(|e| EphemeralError::SerializationError(format!("CBOR decoding failed: {}", e)))
-    }
-
-    /// Validate user data constraints (≤ 1KB for Nitro)
-    pub fn validate_size(&self) -> Result<()> {
-        let cbor_data = self.to_cbor()?;
-        if cbor_data.len() > 1024 {
-            return Err(EphemeralError::ValidationError(format!(
-                "User data too large: {} bytes (max 1024)",
-                cbor_data.len()
-            )));
-        }
-        Ok(())
     }
 }
 
@@ -323,6 +346,47 @@ impl EnclaveMeasurements {
 }
 
 impl AttestationReceipt {
+    /// Create new attestation receipt and propagate clock failures.
+    #[allow(clippy::too_many_arguments)]
+    pub fn try_new(
+        receipt_id: String,
+        protocol_version: u32,
+        security_mode: SecurityMode,
+        enclave_measurements: EnclaveMeasurements,
+        attestation_doc_hash: [u8; 32],
+        request_hash: [u8; 32],
+        response_hash: [u8; 32],
+        policy_version: String,
+        sequence_number: u64,
+        model_id: String,
+        model_version: String,
+        execution_time_ms: u64,
+        memory_peak_mb: u64,
+    ) -> Result<Self> {
+        Ok(Self {
+            receipt_id,
+            protocol_version,
+            security_mode,
+            enclave_measurements,
+            attestation_doc_hash,
+            request_hash,
+            response_hash,
+            policy_version,
+            sequence_number,
+            execution_timestamp: crate::current_timestamp()?,
+            model_id,
+            model_version,
+            execution_time_ms,
+            memory_peak_mb,
+            signature: None,
+            previous_receipt_hash: None,
+            attestation_source: None,
+            cs_image_digest: None,
+            cs_claims_hash: None,
+            destroy_evidence: None,
+        })
+    }
+
     /// Create new attestation receipt
     #[allow(clippy::too_many_arguments)]
     pub fn new(
@@ -350,8 +414,7 @@ impl AttestationReceipt {
             response_hash,
             policy_version,
             sequence_number,
-            execution_timestamp: crate::current_timestamp()
-                .expect("system clock must be available when creating a receipt"),
+            execution_timestamp: fail_closed_timestamp(),
             model_id,
             model_version,
             execution_time_ms,
@@ -496,118 +559,6 @@ impl ReceiptBinding {
     }
 }
 
-/// Receipt verifier for client-side verification
-pub struct ReceiptVerifier {
-    /// Trusted attestation root certificates
-    _trusted_roots: Vec<Vec<u8>>,
-}
-
-impl ReceiptVerifier {
-    /// Create new receipt verifier with trusted roots
-    pub fn new(trusted_roots: Vec<Vec<u8>>) -> Self {
-        Self {
-            _trusted_roots: trusted_roots,
-        }
-    }
-
-    /// Verify receipt authenticity and binding
-    pub fn verify_receipt(
-        &self,
-        receipt: &AttestationReceipt,
-        attestation_doc: &[u8],
-    ) -> Result<bool> {
-        // Parse user data from attestation document
-        let user_data = self.extract_user_data(attestation_doc)?;
-
-        // Create Ed25519 verifying key from user data
-        let public_key_bytes = user_data.receipt_signing_key;
-        let public_key = ed25519_dalek::VerifyingKey::from_bytes(&public_key_bytes)
-            .map_err(|e| EphemeralError::ValidationError(format!("Invalid public key: {}", e)))?;
-
-        // Verify receipt signature
-        let signature_valid = receipt.verify_signature(&public_key)?;
-        if !signature_valid {
-            return Ok(false);
-        }
-
-        // Verify receipt binding to attestation
-        let binding = ReceiptBinding::from_attestation(
-            attestation_doc,
-            &user_data,
-            "session".to_string(), // Session ID not available in this context
-        )?;
-
-        binding.verify_receipt_binding(receipt)
-    }
-
-    /// Extract user data from an attestation document.
-    ///
-    /// Handles both COSE_Sign1 (production: CBOR array with payload at index 2)
-    /// and plain CBOR map (mock) formats.
-    fn extract_user_data(&self, attestation_doc: &[u8]) -> Result<AttestationUserData> {
-        use ciborium::Value;
-
-        let doc: Value = crate::cbor::from_slice(attestation_doc)
-            .map_err(|e| EphemeralError::ValidationError(format!("Invalid CBOR: {}", e)))?;
-
-        let map = match &doc {
-            // COSE_Sign1: [protected, unprotected, payload, signature]
-            Value::Array(arr) if arr.len() == 4 => {
-                let payload_bytes = match &arr[2] {
-                    Value::Bytes(b) => b,
-                    _ => {
-                        return Err(EphemeralError::ValidationError(
-                            "COSE_Sign1 payload is not bytes".to_string(),
-                        ))
-                    }
-                };
-                let inner: Value = crate::cbor::from_slice(payload_bytes).map_err(|e| {
-                    EphemeralError::ValidationError(format!("Invalid COSE_Sign1 payload: {}", e))
-                })?;
-                match inner {
-                    Value::Map(m) => m,
-                    _ => {
-                        return Err(EphemeralError::ValidationError(
-                            "COSE_Sign1 payload is not a CBOR map".to_string(),
-                        ))
-                    }
-                }
-            }
-            Value::Map(m) => m.clone(),
-            _ => {
-                return Err(EphemeralError::ValidationError(
-                    "Attestation document is neither COSE_Sign1 nor CBOR map".to_string(),
-                ))
-            }
-        };
-
-        let user_data_key = Value::Text("user_data".to_string());
-        let user_data_bytes = match crate::cbor::map_get(&map, &user_data_key) {
-            Some(Value::Bytes(b)) => b,
-            Some(_) => {
-                return Err(EphemeralError::ValidationError(
-                    "user_data field is not bytes".to_string(),
-                ))
-            }
-            None => {
-                return Err(EphemeralError::ValidationError(
-                    "user_data field not found in attestation".to_string(),
-                ))
-            }
-        };
-
-        serde_json::from_slice(user_data_bytes)
-            .or_else(|_| {
-                crate::cbor::from_slice(user_data_bytes).map_err(|e| {
-                    EphemeralError::ValidationError(format!("Invalid user_data: {}", e))
-                })
-            })
-            .map_err(|e| {
-                EphemeralError::ValidationError(format!("Failed to parse user_data: {}", e))
-            })
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -743,69 +694,6 @@ mod tests {
 
         // Canonical encoding should be deterministic
         assert_eq!(encoding1, encoding2);
-    }
-
-    #[test]
-    fn test_extract_user_data_from_cbor_map() {
-        use ciborium::Value;
-
-        let user_data = AttestationUserData::new([1u8; 32], [2u8; 32], 1, vec![]);
-        let user_data_json = serde_json::to_vec(&user_data).unwrap();
-
-        // Build a plain CBOR map with a user_data field (mock format)
-        let map = vec![(
-            Value::Text("user_data".to_string()),
-            Value::Bytes(user_data_json),
-        )];
-        let doc_bytes = crate::cbor::to_vec(&Value::Map(map)).unwrap();
-
-        let verifier = ReceiptVerifier::new(vec![]);
-        let extracted = verifier.extract_user_data(&doc_bytes).unwrap();
-        assert_eq!(extracted.hpke_public_key, [1u8; 32]);
-        assert_eq!(extracted.receipt_signing_key, [2u8; 32]);
-    }
-
-    #[test]
-    fn test_extract_user_data_from_cose_sign1() {
-        use ciborium::Value;
-
-        let user_data = AttestationUserData::new([3u8; 32], [4u8; 32], 1, vec![]);
-        let user_data_json = serde_json::to_vec(&user_data).unwrap();
-
-        // Build a CBOR map payload with user_data
-        let map = vec![(
-            Value::Text("user_data".to_string()),
-            Value::Bytes(user_data_json),
-        )];
-        let payload_bytes = crate::cbor::to_vec(&Value::Map(map)).unwrap();
-
-        // Wrap in COSE_Sign1 array: [protected, unprotected, payload, signature]
-        let cose = Value::Array(vec![
-            Value::Bytes(vec![]),        // protected
-            Value::Map(vec![]),          // unprotected
-            Value::Bytes(payload_bytes), // payload
-            Value::Bytes(vec![0u8; 64]), // signature
-        ]);
-        let doc_bytes = crate::cbor::to_vec(&cose).unwrap();
-
-        let verifier = ReceiptVerifier::new(vec![]);
-        let extracted = verifier.extract_user_data(&doc_bytes).unwrap();
-        assert_eq!(extracted.hpke_public_key, [3u8; 32]);
-        assert_eq!(extracted.receipt_signing_key, [4u8; 32]);
-    }
-
-    #[test]
-    fn test_extract_user_data_rejects_invalid_format() {
-        use ciborium::Value;
-
-        let verifier = ReceiptVerifier::new(vec![]);
-
-        // A CBOR integer is neither a map nor COSE_Sign1
-        let bad_bytes = crate::cbor::to_vec(&Value::Integer(42.into())).unwrap();
-        assert!(verifier.extract_user_data(&bad_bytes).is_err());
-
-        // Totally invalid CBOR
-        assert!(verifier.extract_user_data(&[0xff, 0xff]).is_err());
     }
 
     /// Backward compatibility: receipts without `previous_receipt_hash` still

@@ -396,14 +396,11 @@ pub struct ReceiptBinding {
     pub session_id: SessionId,            // Links receipt to specific session
 }
 
-impl ReceiptVerifier {
-    pub fn verify_receipt(&self, receipt: &AttestationReceipt, attestation_doc: &AttestationDocument) -> Result<bool, VerificationError> {
-        // Extract receipt signing key from attestation document user data
-        let user_data: AttestationUserData = self.parse_user_data(attestation_doc)?;
-        
-        // Verify receipt signature using the Ed25519 key
-        self.verify_ed25519_signature(&receipt.signature, &receipt.canonical_encoding(), &user_data.receipt_signing_key)
-    }
+fn verify_receipt_binding(
+    receipt: &AttestationReceipt,
+    attested_receipt_key: &ed25519_dalek::VerifyingKey,
+) -> Result<bool, VerificationError> {
+    receipt.verify_signature(attested_receipt_key)
 }
 ```
 

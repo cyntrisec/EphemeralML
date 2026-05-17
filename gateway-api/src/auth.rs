@@ -7,19 +7,7 @@ use axum::response::{IntoResponse, Json, Response};
 
 use crate::state::AppState;
 use crate::types::ErrorResponse;
-
-fn api_key_matches(expected: &str, provided: &str) -> bool {
-    let expected_bytes = expected.as_bytes();
-    let provided_bytes = provided.as_bytes();
-    let mut diff = expected_bytes.len() ^ provided_bytes.len();
-
-    for (index, expected_byte) in expected_bytes.iter().enumerate() {
-        let provided_byte = provided_bytes.get(index).copied().unwrap_or(0);
-        diff |= usize::from(*expected_byte ^ provided_byte);
-    }
-
-    diff == 0
-}
+use ephemeral_ml_common::api_key_matches;
 
 /// Axum middleware that checks `Authorization: Bearer <token>` when
 /// `EPHEMERALML_API_KEY` is configured. Skips auth for `/health` and `/readyz`.

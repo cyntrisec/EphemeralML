@@ -5,7 +5,7 @@ use confidential_ml_transport::{
     ChannelTiming, ChannelTimingOperation, SecureChannel, SessionConfig,
 };
 use ephemeral_ml_common::transport_types::EphemeralUserData;
-use ephemeral_ml_common::{AttestationReceipt, ReceiptVerifier, WorkerAttestationUserData};
+use ephemeral_ml_common::{AttestationReceipt, WorkerAttestationUserData};
 pub use ephemeral_ml_common::{InferenceHandlerInput, InferenceHandlerOutput};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
@@ -152,7 +152,6 @@ pub trait SecureClient {
 pub struct SecureEnclaveClient {
     channel: Option<SecureChannel<TcpStream>>,
     policy_manager: PolicyManager,
-    pub receipt_verifier: ReceiptVerifier,
     server_receipt_signing_key: Option<[u8; 32]>,
     server_attestation_hash: Option<[u8; 32]>,
     server_platform_evidence_hash: Option<[u8; 32]>,
@@ -169,7 +168,6 @@ impl SecureEnclaveClient {
         Self {
             channel: None,
             policy_manager: PolicyManager::new(),
-            receipt_verifier: ReceiptVerifier::new(vec![]),
             server_receipt_signing_key: None,
             server_attestation_hash: None,
             server_platform_evidence_hash: None,
@@ -188,7 +186,6 @@ impl SecureEnclaveClient {
         Self {
             channel: None,
             policy_manager,
-            receipt_verifier: ReceiptVerifier::new(vec![]),
             server_receipt_signing_key: None,
             server_attestation_hash: None,
             server_platform_evidence_hash: None,

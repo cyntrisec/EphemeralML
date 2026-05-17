@@ -53,7 +53,7 @@ impl ReceiptBuilder {
 
         // 3. Create Receipt
         let sequence = state.next_seq();
-        let mut receipt = AttestationReceipt::new(
+        let mut receipt = AttestationReceipt::try_new(
             uuid::Uuid::new_v4().to_string(),
             state.protocol_version,
             SecurityMode::GatewayOnly,
@@ -67,7 +67,7 @@ impl ReceiptBuilder {
             model_version,
             execution_time_ms,
             memory_peak_mb,
-        );
+        )?;
 
         if let Some(source) = provider.attestation_source() {
             receipt = receipt.with_attestation_source(source.to_string());

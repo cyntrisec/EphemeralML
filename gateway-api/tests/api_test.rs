@@ -51,6 +51,7 @@ fn test_router_with_capabilities(
         rate_limit_per_ip: 0,
         rate_limit_global: 0,
         trust_proxy_headers: false,
+        cors_origins: vec![],
     };
     let client = SecureEnclaveClient::new("test-gateway".to_string());
     let state = AppState::new(client, config, None);
@@ -83,6 +84,7 @@ fn test_router_with_embedding_backend(model_capabilities: &str, embedding_model:
         rate_limit_per_ip: 0,
         rate_limit_global: 0,
         trust_proxy_headers: false,
+        cors_origins: vec![],
     };
     let client = SecureEnclaveClient::new("test-gateway".to_string());
     let emb_client = SecureEnclaveClient::new("test-gateway-embedding".to_string());
@@ -178,6 +180,7 @@ async fn health_shows_reconnecting_when_enabled() {
         rate_limit_per_ip: 0,
         rate_limit_global: 0,
         trust_proxy_headers: false,
+        cors_origins: vec![],
     };
     let client = SecureEnclaveClient::new("test".to_string());
     let state = AppState::new(client, config, None);
@@ -308,6 +311,7 @@ async fn readyz_returns_200_when_connected() {
         rate_limit_per_ip: 0,
         rate_limit_global: 0,
         trust_proxy_headers: false,
+        cors_origins: vec![],
     };
     let client = SecureEnclaveClient::new("test".to_string());
     let state = AppState::new(client, config, None);
@@ -353,6 +357,7 @@ async fn readyz_embedding_both_connected_returns_200() {
         rate_limit_per_ip: 0,
         rate_limit_global: 0,
         trust_proxy_headers: false,
+        cors_origins: vec![],
     };
     let client = SecureEnclaveClient::new("test".to_string());
     let emb_client = SecureEnclaveClient::new("test-emb".to_string());
@@ -407,6 +412,7 @@ async fn health_embedding_partial_reconnecting() {
         rate_limit_per_ip: 0,
         rate_limit_global: 0,
         trust_proxy_headers: false,
+        cors_origins: vec![],
     };
     let client = SecureEnclaveClient::new("test".to_string());
     let emb_client = SecureEnclaveClient::new("test-emb".to_string());
@@ -456,6 +462,7 @@ async fn health_embedding_partial_degraded() {
         rate_limit_per_ip: 0,
         rate_limit_global: 0,
         trust_proxy_headers: false,
+        cors_origins: vec![],
     };
     let client = SecureEnclaveClient::new("test".to_string());
     let emb_client = SecureEnclaveClient::new("test-emb".to_string());
@@ -1070,6 +1077,7 @@ fn config_rejects_embedding_backend_without_model() {
         rate_limit_per_ip: 0,
         rate_limit_global: 0,
         trust_proxy_headers: false,
+        cors_origins: vec![],
     };
     let result = config.validate();
     assert!(result.is_err());
@@ -1102,6 +1110,7 @@ fn config_rejects_unknown_capability() {
         rate_limit_per_ip: 0,
         rate_limit_global: 0,
         trust_proxy_headers: false,
+        cors_origins: vec![],
     };
     let result = config.validate();
     assert!(result.is_err());
@@ -1134,6 +1143,7 @@ fn config_rejects_duplicate_model_ids() {
         rate_limit_per_ip: 0,
         rate_limit_global: 0,
         trust_proxy_headers: false,
+        cors_origins: vec![],
     };
     let result = config.validate();
     assert!(result.is_err());
@@ -1166,6 +1176,7 @@ fn config_accepts_valid_dual_backend() {
         rate_limit_per_ip: 0,
         rate_limit_global: 0,
         trust_proxy_headers: false,
+        cors_origins: vec![],
     };
     assert!(config.validate().is_ok());
 }
@@ -1213,157 +1224,6 @@ async fn missing_content_type_returns_openai_error() {
 }
 
 // ---------------------------------------------------------------------------
-// Request-path connect timeout (ensure_connected / ensure_embedding_connected)
-// ---------------------------------------------------------------------------
-
-/// Spawn a TCP listener that accepts connections but never sends data,
-/// causing the handshake to hang indefinitely. Returns the bound address.
-#[cfg(feature = "mock")]
-async fn stalling_listener() -> std::io::Result<(tokio::net::TcpListener, String)> {
-    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await?;
-    let addr = listener.local_addr().unwrap().to_string();
-    Ok((listener, addr))
-}
-
-#[cfg(feature = "mock")]
-#[tokio::test]
-async fn ensure_connected_times_out_on_hanging_backend() {
-    let (listener, addr) = match stalling_listener().await {
-        Ok(listener) => listener,
-        Err(err) if err.kind() == std::io::ErrorKind::PermissionDenied => {
-            eprintln!(
-                "skipping ensure_connected_times_out_on_hanging_backend: loopback bind not permitted: {}",
-                err
-            );
-            return;
-        }
-        Err(err) => panic!(
-            "ensure_connected_times_out_on_hanging_backend failed to bind loopback listener: {}",
-            err
-        ),
-    };
-    // Accept connections in background but never write — hangs the handshake.
-    tokio::spawn(async move {
-        loop {
-            let (_stream, _) = listener.accept().await.unwrap();
-            // Hold stream open, never send handshake.
-            std::future::pending::<()>().await;
-        }
-    });
-
-    let config = GatewayConfig {
-        backend_addr: addr,
-        default_model: "test-model".to_string(),
-        api_key: None,
-        host: "127.0.0.1".to_string(),
-        port: 0,
-        request_timeout_secs: 5,
-        include_metadata_json: false,
-        receipt_header_full: false,
-        model_capabilities: "chat".to_string(),
-        embedding_backend_addr: None,
-        embedding_model: None,
-        reconnect_enabled: false,
-        reconnect_backoff_base_ms: 100,
-        reconnect_backoff_cap_ms: 30_000,
-        reconnect_health_interval_secs: 5,
-        worker_channel_kind: WorkerChannelKind::Http,
-        preflight_policy_path: None,
-        preflight_manifest_path: None,
-        preflight_required: false,
-        max_concurrent_requests: 50,
-        rate_limit_per_ip: 0,
-        rate_limit_global: 0,
-        trust_proxy_headers: false,
-    };
-    let client = SecureEnclaveClient::new("test".to_string());
-    let state = AppState::new(client, config, None);
-
-    let start = std::time::Instant::now();
-    let result = state.ensure_connected().await;
-    let elapsed = start.elapsed();
-
-    assert!(result.is_err());
-    assert!(
-        result.unwrap_err().contains("timed out"),
-        "Expected timeout error message"
-    );
-    // Should complete near CONNECT_TIMEOUT (5 s), not hang forever.
-    assert!(
-        elapsed.as_secs() <= 10,
-        "ensure_connected took too long: {elapsed:?}"
-    );
-}
-
-#[cfg(feature = "mock")]
-#[tokio::test]
-async fn ensure_embedding_connected_times_out_on_hanging_backend() {
-    let (listener, addr) = match stalling_listener().await {
-        Ok(listener) => listener,
-        Err(err) if err.kind() == std::io::ErrorKind::PermissionDenied => {
-            eprintln!(
-                "skipping ensure_embedding_connected_times_out_on_hanging_backend: loopback bind not permitted: {}",
-                err
-            );
-            return;
-        }
-        Err(err) => panic!(
-            "ensure_embedding_connected_times_out_on_hanging_backend failed to bind loopback listener: {}",
-            err
-        ),
-    };
-    tokio::spawn(async move {
-        loop {
-            let (_stream, _) = listener.accept().await.unwrap();
-            std::future::pending::<()>().await;
-        }
-    });
-
-    let config = GatewayConfig {
-        backend_addr: "127.0.0.1:0".to_string(),
-        default_model: "test-model".to_string(),
-        api_key: None,
-        host: "127.0.0.1".to_string(),
-        port: 0,
-        request_timeout_secs: 5,
-        include_metadata_json: false,
-        receipt_header_full: false,
-        model_capabilities: "chat,embeddings".to_string(),
-        embedding_backend_addr: Some(addr),
-        embedding_model: Some("emb-model".to_string()),
-        reconnect_enabled: false,
-        reconnect_backoff_base_ms: 100,
-        reconnect_backoff_cap_ms: 30_000,
-        reconnect_health_interval_secs: 5,
-        worker_channel_kind: WorkerChannelKind::Http,
-        preflight_policy_path: None,
-        preflight_manifest_path: None,
-        preflight_required: false,
-        max_concurrent_requests: 50,
-        rate_limit_per_ip: 0,
-        rate_limit_global: 0,
-        trust_proxy_headers: false,
-    };
-    let client = SecureEnclaveClient::new("test".to_string());
-    let emb_client = SecureEnclaveClient::new("test-emb".to_string());
-    let state = AppState::new(client, config, Some(emb_client));
-
-    let start = std::time::Instant::now();
-    let result = state.ensure_embedding_connected().await;
-    let elapsed = start.elapsed();
-
-    assert!(result.is_err());
-    assert!(
-        result.unwrap_err().contains("timed out"),
-        "Expected timeout error message"
-    );
-    assert!(
-        elapsed.as_secs() <= 10,
-        "ensure_embedding_connected took too long: {elapsed:?}"
-    );
-}
-
-// ---------------------------------------------------------------------------
 // Rate limiting
 // ---------------------------------------------------------------------------
 
@@ -1392,6 +1252,7 @@ fn test_router_with_rate_limit(per_ip: u32, global: u32) -> Router {
         rate_limit_per_ip: per_ip,
         rate_limit_global: global,
         trust_proxy_headers: false,
+        cors_origins: vec![],
     };
     let client = SecureEnclaveClient::new("test-gateway".to_string());
     let state = AppState::new(client, config, None);
@@ -1509,6 +1370,7 @@ async fn concurrency_limit_returns_503_when_all_slots_full() {
         rate_limit_per_ip: 0,
         rate_limit_global: 0,
         trust_proxy_headers: false,
+        cors_origins: vec![],
     };
     let client = SecureEnclaveClient::new("test-gateway".to_string());
     let state = AppState::new(client, config, None);
@@ -1555,6 +1417,7 @@ async fn concurrency_limit_skips_health_endpoint() {
         rate_limit_per_ip: 0,
         rate_limit_global: 0,
         trust_proxy_headers: false,
+        cors_origins: vec![],
     };
     let client = SecureEnclaveClient::new("test-gateway".to_string());
     let state = AppState::new(client, config, None);

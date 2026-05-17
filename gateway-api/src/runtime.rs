@@ -42,6 +42,7 @@ async fn run(local_proxy_mode: bool) -> anyhow::Result<()> {
         capabilities = %config.model_capabilities,
         auth = config.api_key.as_ref().is_some_and(|k| !k.is_empty()),
         trust_proxy_headers = config.trust_proxy_headers,
+        cors_origins = ?config.cors_origins,
         embedding_backend = ?config.embedding_backend_addr,
         embedding_model = ?config.embedding_model,
         worker_channel = ?config.worker_channel_kind,

@@ -133,7 +133,7 @@ impl Check for Eif {
         let bundle_path = self.bundle_path();
         if !matches!(tokio::fs::try_exists(&bundle_path).await, Ok(true)) {
             if allow_unsigned_internal_poc() {
-                return pass_unsigned_internal_poc(start, &self.eif_path, size_bytes, &bundle_path)
+                return fail_unsigned_internal_poc(start, &self.eif_path, size_bytes, &bundle_path)
                     .await;
             }
             return fail(
@@ -226,7 +226,7 @@ fn allow_unsigned_internal_poc() -> bool {
         .unwrap_or(false)
 }
 
-async fn pass_unsigned_internal_poc(
+async fn fail_unsigned_internal_poc(
     start: Instant,
     eif_path: &std::path::Path,
     size_bytes: u64,
@@ -235,14 +235,16 @@ async fn pass_unsigned_internal_poc(
     let pcr0 = extract_pcr0(eif_path).await.ok();
     CheckResult {
         name: "eif".to_string(),
-        status: CheckStatus::Ok,
+        status: CheckStatus::Fail,
         duration_ms: start.elapsed().as_millis() as u64,
         summary: match pcr0.as_deref() {
             Some(p) => format!(
-                "EIF image present; cosign bundle skipped for internal PoC only (PCR0: {})",
+                "EIF image present but unsigned internal PoC override is fail-closed (PCR0: {})",
                 truncate_hex(p, 16)
             ),
-            None => "EIF image present; cosign bundle skipped for internal PoC only".to_string(),
+            None => {
+                "EIF image present but unsigned internal PoC override is fail-closed".to_string()
+            }
         },
         details: json!({
             "eif_path": eif_path.display().to_string(),
@@ -252,8 +254,12 @@ async fn pass_unsigned_internal_poc(
             "unsigned_internal_poc": true,
             "pcr0": pcr0,
         }),
-        check_code: None,
-        remediation: None,
+        check_code: Some("EIF_UNSIGNED_INTERNAL_POC".to_string()),
+        remediation: Some(
+            "This doctor build fails closed when the EIF cosign bundle is missing. \
+             Place <eif>.cosign.bundle beside the EIF or re-run the installer refresh path."
+                .to_string(),
+        ),
     }
 }
 

@@ -33,7 +33,7 @@ Usage:
 
 Options:
   --runs N              Number of benchmark runs (default: 3)
-  --model-id MODEL      Model ID passed to run_benchmark.sh (default: minilm-l6)
+  --model-id MODEL      Model ID passed to run_benchmark_modern.sh (default: minilm-l6)
   --output-dir DIR      Root output directory (default: benchmark_results_final/kms_validation_<timestamp>)
   --require-kms         Enforce fail-closed KMS path (default)
   --allow-kms-bypass    Allow fallback DEK path (not for final artifact runs)
@@ -121,7 +121,7 @@ for run_idx in $(seq 1 "$NUM_RUNS"); do
         fi
     fi
 
-    "$SCRIPT_DIR/run_benchmark.sh" "${RUN_ARGS[@]}"
+    "$SCRIPT_DIR/run_benchmark_modern.sh" "${RUN_ARGS[@]}"
 
     for required in baseline_results.json enclave_results.json run_metadata.json; do
         if [[ ! -f "$RUN_DIR/$required" ]]; then
