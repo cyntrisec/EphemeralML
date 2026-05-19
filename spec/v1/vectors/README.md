@@ -33,6 +33,11 @@ All vectors use a deterministic Ed25519 keypair derived from seed `[0x2A; 32]`:
 |------|-----------------|-------|
 | `invalid/v1-wrong-key.json` | SIG_FAILED | 2 (crypto) |
 | `invalid/v1-wrong-alg.json` | BAD_ALG | 1 (parse) |
+| `invalid/v1-cose-trailing-bytes.json` | COSE_DECODE_FAILED | 1 (parse) |
+| `invalid/v1-protected-trailing-bytes.json` | COSE_DECODE_FAILED | 1 (parse) |
+| `invalid/v1-payload-trailing-bytes.json` | PAYLOAD_NOT_MAP | 1 (parse) |
+| `invalid/v1-duplicate-protected-alg.json` | COSE_DECODE_FAILED | 1 (parse) |
+| `invalid/v1-duplicate-payload-claim.json` | PAYLOAD_NOT_MAP | 1 (parse) |
 | `invalid/v1-zero-model-hash.json` | ZERO_MODEL_HASH | 3 (claim validation) |
 | `invalid/v1-bad-measurement-length.json` | BAD_MEASUREMENT_LENGTH | 3 (claim validation) |
 
@@ -113,5 +118,6 @@ fail — update vectors only after spec review.
 
 Golden vectors regenerated after Tier 1+2 parse hardening (commit `0da2611`).
 All `receipt_hex` values are **byte-identical** to the v1.0 frozen vectors.
-The hardening changes (size limits, duplicate key checks, text bounds, iat≠0,
-TDX+pcr8 cross-check) affect only rejection paths and do not alter encoding.
+The hardening changes (size limits, duplicate key checks, strict single-item CBOR
+decoding, text bounds, iat≠0, TDX+pcr8 cross-check) affect only rejection paths
+and do not alter valid-vector encoding.

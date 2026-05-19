@@ -18,6 +18,7 @@ Dependencies:
 from __future__ import annotations
 
 import argparse
+import io
 import json
 import sys
 import time
@@ -112,6 +113,113 @@ def fail(layer: int, check: str, code: str, reason: str) -> None:
     raise AirVerifyError(layer=layer, check=check, code=code, reason=reason)
 
 
+def _read_uint(data: bytes, offset: int, additional: int) -> tuple[int, int]:
+    if additional < 24:
+        return additional, offset
+    if additional == 24:
+        return data[offset], offset + 1
+    if additional == 25:
+        return int.from_bytes(data[offset : offset + 2], "big"), offset + 2
+    if additional == 26:
+        return int.from_bytes(data[offset : offset + 4], "big"), offset + 4
+    if additional == 27:
+        return int.from_bytes(data[offset : offset + 8], "big"), offset + 8
+    raise ValueError("indefinite-length CBOR is not allowed in AIR v1")
+
+
+def _hashable_key(value: Any) -> Any:
+    if isinstance(value, (int, str, bytes, bool, type(None))):
+        return (type(value).__name__, value)
+    if isinstance(value, list):
+        return ("list", tuple(_hashable_key(v) for v in value))
+    if isinstance(value, dict):
+        return (
+            "dict",
+            tuple(sorted((_hashable_key(k), _hashable_key(v)) for k, v in value.items())),
+        )
+    return (type(value).__name__, repr(value))
+
+
+def reject_duplicate_map_keys(data: bytes, layer: int, check: str, code: str) -> None:
+    """Reject duplicate keys in definite-length CBOR maps.
+
+    cbor2 materializes maps as Python dicts, so duplicate keys are otherwise
+    lost before claim validation can see them.
+    """
+
+    def scan(offset: int) -> int:
+        if offset >= len(data):
+            raise ValueError("truncated CBOR item")
+        initial = data[offset]
+        offset += 1
+        major = initial >> 5
+        additional = initial & 0x1F
+
+        if major in (0, 1):
+            _value, offset = _read_uint(data, offset, additional)
+            return offset
+        if major in (2, 3):
+            length, offset = _read_uint(data, offset, additional)
+            return offset + length
+        if major == 4:
+            length, offset = _read_uint(data, offset, additional)
+            for _ in range(length):
+                offset = scan(offset)
+            return offset
+        if major == 5:
+            length, offset = _read_uint(data, offset, additional)
+            seen: set[Any] = set()
+            for _ in range(length):
+                key_start = offset
+                offset = scan(offset)
+                key = _hashable_key(cbor2.loads(data[key_start:offset]))
+                if key in seen:
+                    fail(layer, check, code, "duplicate CBOR map key")
+                seen.add(key)
+                offset = scan(offset)
+            return offset
+        if major == 6:
+            _tag, offset = _read_uint(data, offset, additional)
+            return scan(offset)
+        if major == 7:
+            if additional < 24:
+                return offset
+            if additional == 24:
+                return offset + 1
+            if additional == 25:
+                return offset + 2
+            if additional == 26:
+                return offset + 4
+            if additional == 27:
+                return offset + 8
+        raise ValueError("unsupported CBOR item")
+
+    try:
+        scan(0)
+    except AirVerifyError:
+        raise
+    except Exception as exc:
+        fail(layer, check, code, f"CBOR duplicate-key scan failed: {exc}")
+
+
+def strict_cbor_loads(data: bytes, layer: int, check: str, code: str) -> Any:
+    stream = io.BytesIO(data)
+    decoder = cbor2.CBORDecoder(stream)
+    try:
+        value = decoder.decode()
+    except Exception as exc:
+        fail(layer, check, code, f"CBOR decode failed: {exc}")
+
+    try:
+        decoder.decode()
+    except Exception as exc:
+        if exc.__class__.__name__ in ("CBORDecodeEOF", "EOFError"):
+            return value
+        fail(layer, check, code, f"CBOR trailing-byte check failed: {exc}")
+
+    fail(layer, check, code, "trailing bytes after CBOR item")
+
+
 def hex_to_bytes(s: str, field: str) -> bytes:
     try:
         return bytes.fromhex(s)
@@ -138,8 +246,11 @@ def load_json(path: Path) -> dict[str, Any]:
 
 def parse_receipt_cose(receipt_bytes: bytes) -> tuple[bytes, dict[Any, Any], bytes, bytes]:
     try:
-        decoded = cbor2.loads(receipt_bytes)
+        reject_duplicate_map_keys(receipt_bytes, 1, "COSE", "COSE_DECODE_FAILED")
+        decoded = strict_cbor_loads(receipt_bytes, 1, "COSE", "COSE_DECODE_FAILED")
     except Exception as exc:
+        if isinstance(exc, AirVerifyError):
+            raise
         fail(1, "COSE", "COSE_DECODE_FAILED", f"failed to decode CBOR: {exc}")
 
     if not isinstance(decoded, cbor2.CBORTag):
@@ -168,8 +279,11 @@ def decode_protected_header(protected_bstr: bytes) -> dict[Any, Any]:
     if protected_bstr == b"":
         return {}
     try:
-        hdr = cbor2.loads(protected_bstr)
+        reject_duplicate_map_keys(protected_bstr, 1, "COSE", "COSE_DECODE_FAILED")
+        hdr = strict_cbor_loads(protected_bstr, 1, "COSE", "COSE_DECODE_FAILED")
     except Exception as exc:
+        if isinstance(exc, AirVerifyError):
+            raise
         fail(1, "COSE", "COSE_DECODE_FAILED", f"protected header decode failed: {exc}")
     if not isinstance(hdr, dict):
         fail(1, "COSE", "COSE_DECODE_FAILED", "protected header is not a map")
@@ -211,8 +325,11 @@ def ensure_bstr_len(value: Any, expected_len: int, layer: int, check: str, code:
 
 def decode_and_validate_claims(payload: bytes) -> dict[Any, Any]:
     try:
-        claims = cbor2.loads(payload)
+        reject_duplicate_map_keys(payload, 1, "CLAIMS_DECODE", "PAYLOAD_NOT_MAP")
+        claims = strict_cbor_loads(payload, 1, "CLAIMS_DECODE", "PAYLOAD_NOT_MAP")
     except Exception as exc:
+        if isinstance(exc, AirVerifyError):
+            raise
         fail(1, "CLAIMS_DECODE", "PAYLOAD_NOT_MAP", f"claims decode failed: {exc}")
     if not isinstance(claims, dict):
         fail(1, "CLAIMS_DECODE", "PAYLOAD_NOT_MAP", "payload is not a CBOR map")

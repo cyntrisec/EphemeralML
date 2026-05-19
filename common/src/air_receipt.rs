@@ -633,7 +633,7 @@ const KNOWN_CLAIM_KEYS: &[i64] = &[
 ];
 
 fn decode_claims(payload: &[u8]) -> Result<AirReceiptClaims> {
-    let value: Value = crate::cbor::from_slice(payload)
+    let value: Value = crate::cbor::from_slice_exact(payload)
         .map_err(|e| EphemeralError::SerializationError(format!("payload CBOR decode: {e}")))?;
 
     let entries = match &value {
@@ -1865,6 +1865,33 @@ mod tests {
             .unwrap_err()
             .to_string()
             .contains("duplicate claim key"));
+    }
+
+    #[test]
+    fn test_payload_trailing_bytes_rejected() {
+        let claims = fixture_claims();
+        let mut payload = encode_claims(&claims).unwrap();
+        payload.push(0x00);
+
+        let key = super::golden::key();
+        let protected = coset::HeaderBuilder::new()
+            .algorithm(coset::iana::Algorithm::EdDSA)
+            .content_format(coset::iana::CoapContentFormat::Cwt)
+            .build();
+        let sign1 = coset::CoseSign1Builder::new()
+            .protected(protected)
+            .payload(payload)
+            .try_create_signature(b"", |tbs| Ok::<_, String>(key.raw_sign(tbs)))
+            .unwrap()
+            .build();
+        let bytes = sign1.to_tagged_vec().unwrap();
+
+        let result = parse_air_v1(&bytes);
+        assert!(result.is_err());
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("trailing bytes after CBOR item"));
     }
 
     #[test]

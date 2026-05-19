@@ -461,6 +461,13 @@ fn cv_vector_directory_complete() {
     // Invalid vectors — structural (layers 1-3)
     assert!(dir.join("invalid/v1-wrong-key.json").exists());
     assert!(dir.join("invalid/v1-wrong-alg.json").exists());
+    assert!(dir.join("invalid/v1-cose-trailing-bytes.json").exists());
+    assert!(dir
+        .join("invalid/v1-protected-trailing-bytes.json")
+        .exists());
+    assert!(dir.join("invalid/v1-payload-trailing-bytes.json").exists());
+    assert!(dir.join("invalid/v1-duplicate-protected-alg.json").exists());
+    assert!(dir.join("invalid/v1-duplicate-payload-claim.json").exists());
     assert!(dir.join("invalid/v1-zero-model-hash.json").exists());
     assert!(dir.join("invalid/v1-bad-measurement-length.json").exists());
     // Invalid vectors — policy (layer 4)

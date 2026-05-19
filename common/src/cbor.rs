@@ -7,6 +7,7 @@ pub use ciborium::Value;
 
 use serde::{de::DeserializeOwned, Serialize};
 use std::cmp::Ordering;
+use std::io::Cursor;
 
 /// Unified CBOR error type covering both serialization and deserialization.
 #[derive(Debug)]
@@ -42,6 +43,23 @@ pub fn to_vec<T: Serialize>(val: &T) -> Result<Vec<u8>, CborError> {
 /// Deserialize a value from CBOR bytes (replacement for `serde_cbor::from_slice`).
 pub fn from_slice<T: DeserializeOwned>(bytes: &[u8]) -> Result<T, CborError> {
     ciborium::from_reader(bytes).map_err(CborError::from)
+}
+
+/// Deserialize exactly one CBOR item from a byte slice.
+///
+/// Generic CBOR decoders may successfully return the first item while leaving
+/// trailing bytes unread. AIR verifier-critical fields (notably the CWT payload
+/// bstr) require the byte string to contain exactly one CBOR item.
+pub fn from_slice_exact<T: DeserializeOwned>(bytes: &[u8]) -> Result<T, CborError> {
+    let mut cursor = Cursor::new(bytes);
+    let value = ciborium::from_reader(&mut cursor).map_err(CborError::from)?;
+    if cursor.position() != bytes.len() as u64 {
+        return Err(CborError(format!(
+            "trailing bytes after CBOR item: {} byte(s)",
+            bytes.len() as u64 - cursor.position()
+        )));
+    }
+    Ok(value)
 }
 
 /// Convert a serializable value to `ciborium::Value` with recursively sorted map keys.
