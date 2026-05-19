@@ -39,5 +39,5 @@ ureq = { version = "2.10", default-features = false, features = ["tls", "json"] 
 [dev-dependencies]
 assert_cmd = "2.0"
 predicates = "3.1"
-tempfile = "3.13"
+tempfile = "3.27"
 tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
