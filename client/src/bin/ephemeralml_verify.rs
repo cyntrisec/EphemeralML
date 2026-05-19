@@ -9,20 +9,26 @@
 //   ephemeralml-verify receipt.cbor --public-key <hex>
 //   ephemeralml-verify receipt.json --public-key-file key.bin
 //   ephemeralml-verify receipt.cbor --attestation attestation.cbor
+//   ephemeralml-verify receipt.cbor --public-key <hex> --format cyntrisec-event-v1 \
+//     --tenant-id acme --receipt-uri gs://bucket/receipt.cbor
 //
 // Exit code 0 = VERIFIED, 1 = INVALID, 2 = ERROR
 
 use anyhow::{bail, Context, Result};
 use clap::Parser;
 use ed25519_dalek::VerifyingKey;
+use ephemeral_ml_client::evidence_event::{
+    build_air_evidence_event, build_legacy_evidence_event, EvidenceEventExportOptions,
+};
 use ephemeral_ml_common::air_verify::{AirCheckStatus, AirVerifyPolicy, AirVerifyResult};
 use ephemeral_ml_common::receipt_verify::{VerifyOptions, VerifyResult};
 use ephemeral_ml_common::ui::{air_check_meta, legacy_check_meta, GhostState, Ui, UiConfig};
 use ephemeral_ml_common::AttestationReceipt;
 use sha2::{Digest, Sha256};
+use std::env;
 use std::fs;
 use std::io::IsTerminal;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 #[derive(Parser, Debug)]
 #[command(
@@ -88,9 +94,49 @@ struct Args {
     #[arg(long)]
     expected_image_digest: Option<String>,
 
-    /// Output format: text or json
+    /// Output format: text, json, or cyntrisec-event-v1
     #[arg(long, default_value = "text")]
     format: String,
+
+    /// Tenant/customer identifier for --format cyntrisec-event-v1.
+    /// Can also be supplied with CYNTRISEC_TENANT_ID.
+    #[arg(long)]
+    tenant_id: Option<String>,
+
+    /// Customer-controlled URI for the raw receipt bytes.
+    /// Required for cyntrisec-event-v1 unless --inline-receipt is used.
+    #[arg(long)]
+    receipt_uri: Option<String>,
+
+    /// Inline the receipt bytes as base64 in cyntrisec-event-v1 output.
+    /// Prefer --receipt-uri in production to avoid large SIEM events.
+    #[arg(long)]
+    inline_receipt: bool,
+
+    /// Optional customer-controlled URI for a larger evidence bundle.
+    #[arg(long)]
+    evidence_bundle_uri: Option<String>,
+
+    /// Optional SHA-256 hex digest for --evidence-bundle-uri.
+    #[arg(long)]
+    evidence_bundle_sha256: Option<String>,
+
+    /// Optional cloud provider for cyntrisec-event-v1 environment metadata.
+    /// Allowed values: aws, gcp, azure, local, unknown.
+    #[arg(long)]
+    cloud_provider: Option<String>,
+
+    /// Optional cloud region for cyntrisec-event-v1 environment metadata.
+    #[arg(long)]
+    region: Option<String>,
+
+    /// Optional instance/workload identifier for cyntrisec-event-v1 environment metadata.
+    #[arg(long)]
+    instance_id: Option<String>,
+
+    /// Override verifier version in cyntrisec-event-v1 output.
+    #[arg(long)]
+    verifier_version: Option<String>,
 
     /// Show verbose details (hashes, measurements, timestamps)
     #[arg(short, long)]
@@ -121,10 +167,30 @@ struct Args {
     require_destroy_event: bool,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum OutputFormat {
+    Text,
+    Json,
+    CyntrisecEventV1,
+}
+
+fn parse_output_format(value: &str) -> Result<OutputFormat> {
+    match value {
+        "text" => Ok(OutputFormat::Text),
+        "json" => Ok(OutputFormat::Json),
+        "cyntrisec-event-v1" => Ok(OutputFormat::CyntrisecEventV1),
+        other => bail!("--format must be one of: text, json, cyntrisec-event-v1 (got {other})"),
+    }
+}
+
 pub fn main() -> Result<()> {
     let args = Args::parse();
+    let output_format = parse_output_format(&args.format)?;
 
-    let format_json = args.format == "json";
+    let format_json = matches!(
+        output_format,
+        OutputFormat::Json | OutputFormat::CyntrisecEventV1
+    );
     let ui_config = UiConfig::resolve(
         std::io::stdout().is_terminal(),
         args.plain,
@@ -142,7 +208,7 @@ pub fn main() -> Result<()> {
     // 2. Auto-detect format: CBOR tag 18 (0xD2) = AIR v1 COSE_Sign1
     if receipt_bytes.first() == Some(&0xD2) {
         let public_key = resolve_public_key(&args)?;
-        return verify_air_v1_path(&mut ui, &receipt_bytes, &public_key, &args);
+        return verify_air_v1_path(&mut ui, &receipt_bytes, &public_key, &args, output_format);
     }
 
     // Legacy path: JSON or CBOR AttestationReceipt
@@ -170,11 +236,17 @@ pub fn main() -> Result<()> {
     let result = ephemeral_ml_common::verify_receipt(&receipt, &public_key, &options);
 
     // 5. Output
-    match args.format.as_str() {
-        "json" => {
+    match output_format {
+        OutputFormat::Json => {
             println!("{}", serde_json::to_string_pretty(&result)?);
         }
-        _ => {
+        OutputFormat::CyntrisecEventV1 => {
+            let export_options = build_evidence_event_options(&args)?;
+            let event =
+                build_legacy_evidence_event(&result, &receipt, &receipt_bytes, &export_options)?;
+            println!("{}", serde_json::to_string_pretty(&event)?);
+        }
+        OutputFormat::Text => {
             print_text_report(&mut ui, &result, &receipt, args.verbose);
         }
     }
@@ -231,6 +303,7 @@ fn verify_air_v1_path(
     data: &[u8],
     public_key: &VerifyingKey,
     args: &Args,
+    output_format: OutputFormat,
 ) -> Result<()> {
     validate_air_v1_cli_args(args)?;
     let expected_model_hash =
@@ -271,12 +344,17 @@ fn verify_air_v1_path(
 
     let result = ephemeral_ml_common::air_verify::verify_air_v1_receipt(data, public_key, &policy);
 
-    match args.format.as_str() {
-        "json" => {
+    match output_format {
+        OutputFormat::Json => {
             // Serialize the check results as JSON
             println!("{}", serde_json::to_string_pretty(&result)?);
         }
-        _ => {
+        OutputFormat::CyntrisecEventV1 => {
+            let export_options = build_evidence_event_options(args)?;
+            let event = build_air_evidence_event(&result, data, public_key, &export_options)?;
+            println!("{}", serde_json::to_string_pretty(&event)?);
+        }
+        OutputFormat::Text => {
             print_air_v1_text_report(ui, &result, args.verbose);
         }
     }
@@ -334,6 +412,85 @@ fn parse_hash32_hex(value: Option<&str>, flag_name: &str) -> Result<Option<[u8; 
         .try_into()
         .map_err(|_| anyhow::anyhow!("--{flag_name} must decode to exactly 32 bytes"))?;
     Ok(Some(array))
+}
+
+fn verifier_version(args: &Args) -> String {
+    args.verifier_version.clone().unwrap_or_else(|| {
+        format!(
+            "ephemeralml-verify/{}",
+            option_env!("CARGO_PKG_VERSION").unwrap_or("unknown")
+        )
+    })
+}
+
+fn optional_arg_or_env(value: &Option<String>, env_name: &str) -> Option<String> {
+    value
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(ToOwned::to_owned)
+        .or_else(|| {
+            env::var(env_name)
+                .ok()
+                .map(|s| s.trim().to_string())
+                .filter(|s| !s.is_empty())
+        })
+}
+
+fn build_evidence_event_options(args: &Args) -> Result<EvidenceEventExportOptions> {
+    let evidence_bundle_sha256_hex = optional_arg_or_env(
+        &args.evidence_bundle_sha256,
+        "CYNTRISEC_EVIDENCE_BUNDLE_SHA256",
+    );
+    let evidence_bundle_sha256 = parse_hash32_hex(
+        evidence_bundle_sha256_hex.as_deref(),
+        "evidence-bundle-sha256",
+    )?;
+
+    let attestation_sha256 = match args.attestation.as_ref() {
+        Some(path) => Some(sha256_file(path).context("Failed to hash attestation file")?),
+        None => None,
+    };
+
+    Ok(EvidenceEventExportOptions {
+        tenant_id: optional_arg_or_env(&args.tenant_id, "CYNTRISEC_TENANT_ID"),
+        receipt_uri: optional_arg_or_env(&args.receipt_uri, "CYNTRISEC_RECEIPT_URI"),
+        inline_receipt: args.inline_receipt,
+        evidence_bundle_uri: optional_arg_or_env(
+            &args.evidence_bundle_uri,
+            "CYNTRISEC_EVIDENCE_BUNDLE_URI",
+        ),
+        evidence_bundle_sha256,
+        cloud_provider: optional_arg_or_env(&args.cloud_provider, "CYNTRISEC_CLOUD_PROVIDER"),
+        region: optional_arg_or_env(&args.region, "CYNTRISEC_REGION"),
+        instance_id: optional_arg_or_env(&args.instance_id, "CYNTRISEC_INSTANCE_ID"),
+        verifier_version: verifier_version(args),
+        legacy_model_hash: parse_hash32_hex(
+            args.expected_model_hash.as_deref(),
+            "expected-model-hash",
+        )?,
+        attestation_supplied: args.attestation.is_some(),
+        attestation_sha256,
+    })
+}
+
+fn sha256_file(path: &Path) -> Result<[u8; 32]> {
+    let bytes = fs::read(path)?;
+    Ok(Sha256::digest(bytes).into())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parses_cyntrisec_event_format() {
+        assert_eq!(
+            parse_output_format("cyntrisec-event-v1").unwrap(),
+            OutputFormat::CyntrisecEventV1
+        );
+        assert!(parse_output_format("xml").is_err());
+    }
 }
 
 fn print_air_v1_text_report(ui: &mut Ui, result: &AirVerifyResult, verbose: bool) {

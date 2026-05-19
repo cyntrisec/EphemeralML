@@ -18,6 +18,7 @@ compile_error!(
 pub mod attestation_bridge;
 pub mod attestation_verifier;
 pub mod error;
+pub mod evidence_event;
 pub mod freshness;
 pub mod gcp;
 pub mod model_validation;
