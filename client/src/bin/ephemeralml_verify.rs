@@ -103,6 +103,16 @@ struct Args {
     #[arg(long)]
     tenant_id: Option<String>,
 
+    /// Customer workflow or application identifier for cyntrisec-event-v1.
+    /// Can also be supplied with CYNTRISEC_WORKFLOW_ID.
+    #[arg(long)]
+    workflow_id: Option<String>,
+
+    /// Cyntrisec deployment identifier for cyntrisec-event-v1.
+    /// Can also be supplied with CYNTRISEC_DEPLOYMENT_ID.
+    #[arg(long)]
+    deployment_id: Option<String>,
+
     /// Customer-controlled URI for the raw receipt bytes.
     /// Required for cyntrisec-event-v1 unless --inline-receipt is used.
     #[arg(long)]
@@ -129,6 +139,18 @@ struct Args {
     /// Optional cloud region for cyntrisec-event-v1 environment metadata.
     #[arg(long)]
     region: Option<String>,
+
+    /// Optional cloud account/subscription identifier for cyntrisec-event-v1.
+    #[arg(long)]
+    cloud_account_id: Option<String>,
+
+    /// Optional GCP project identifier for cyntrisec-event-v1.
+    #[arg(long)]
+    cloud_project_id: Option<String>,
+
+    /// Optional provider-native resource identifier for cyntrisec-event-v1.
+    #[arg(long)]
+    cloud_resource_id: Option<String>,
 
     /// Optional instance/workload identifier for cyntrisec-event-v1 environment metadata.
     #[arg(long)]
@@ -454,6 +476,8 @@ fn build_evidence_event_options(args: &Args) -> Result<EvidenceEventExportOption
 
     Ok(EvidenceEventExportOptions {
         tenant_id: optional_arg_or_env(&args.tenant_id, "CYNTRISEC_TENANT_ID"),
+        workflow_id: optional_arg_or_env(&args.workflow_id, "CYNTRISEC_WORKFLOW_ID"),
+        deployment_id: optional_arg_or_env(&args.deployment_id, "CYNTRISEC_DEPLOYMENT_ID"),
         receipt_uri: optional_arg_or_env(&args.receipt_uri, "CYNTRISEC_RECEIPT_URI"),
         inline_receipt: args.inline_receipt,
         evidence_bundle_uri: optional_arg_or_env(
@@ -463,6 +487,12 @@ fn build_evidence_event_options(args: &Args) -> Result<EvidenceEventExportOption
         evidence_bundle_sha256,
         cloud_provider: optional_arg_or_env(&args.cloud_provider, "CYNTRISEC_CLOUD_PROVIDER"),
         region: optional_arg_or_env(&args.region, "CYNTRISEC_REGION"),
+        cloud_account_id: optional_arg_or_env(&args.cloud_account_id, "CYNTRISEC_CLOUD_ACCOUNT_ID"),
+        cloud_project_id: optional_arg_or_env(&args.cloud_project_id, "CYNTRISEC_CLOUD_PROJECT_ID"),
+        cloud_resource_id: optional_arg_or_env(
+            &args.cloud_resource_id,
+            "CYNTRISEC_CLOUD_RESOURCE_ID",
+        ),
         instance_id: optional_arg_or_env(&args.instance_id, "CYNTRISEC_INSTANCE_ID"),
         verifier_version: verifier_version(args),
         legacy_model_hash: parse_hash32_hex(

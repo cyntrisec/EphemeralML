@@ -17,12 +17,17 @@ use sha2::{Digest, Sha256};
 #[derive(Debug, Clone)]
 pub struct EvidenceEventExportOptions {
     pub tenant_id: Option<String>,
+    pub workflow_id: Option<String>,
+    pub deployment_id: Option<String>,
     pub receipt_uri: Option<String>,
     pub inline_receipt: bool,
     pub evidence_bundle_uri: Option<String>,
     pub evidence_bundle_sha256: Option<[u8; 32]>,
     pub cloud_provider: Option<String>,
     pub region: Option<String>,
+    pub cloud_account_id: Option<String>,
+    pub cloud_project_id: Option<String>,
+    pub cloud_resource_id: Option<String>,
     pub instance_id: Option<String>,
     pub verifier_version: String,
     pub legacy_model_hash: Option<[u8; 32]>,
@@ -34,6 +39,10 @@ pub struct EvidenceEventExportOptions {
 pub struct CyntrisecEvidenceEventV1 {
     pub schema_version: &'static str,
     pub tenant_id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub workflow_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub deployment_id: Option<String>,
     pub event_id: String,
     pub event_type: &'static str,
     pub event_time: String,
@@ -70,6 +79,12 @@ pub struct EvidenceEnvironment {
     pub cloud_provider: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub region: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub account_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub project_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cloud_resource_id: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub instance_id: Option<String>,
     pub tee_type: String,
@@ -118,6 +133,8 @@ pub fn build_air_evidence_event(
     Ok(CyntrisecEvidenceEventV1 {
         schema_version: "cyntrisec.evidence_event.v1",
         tenant_id: tenant_id(options)?,
+        workflow_id: optional_non_empty(&options.workflow_id, "workflow_id")?,
+        deployment_id: optional_non_empty(&options.deployment_id, "deployment_id")?,
         event_id: hex::encode(claims.cti),
         event_type: event_type(result.verified, failure_reason.as_deref()),
         event_time: format_unix_timestamp(claims.iat),
@@ -145,6 +162,9 @@ pub fn build_air_evidence_event(
                 &claims.enclave_measurements.measurement_type,
             )?,
             region: options.region.clone(),
+            account_id: options.cloud_account_id.clone(),
+            project_id: options.cloud_project_id.clone(),
+            cloud_resource_id: options.cloud_resource_id.clone(),
             instance_id: options.instance_id.clone(),
             tee_type: tee_type(None, &claims.enclave_measurements.measurement_type),
             attestation_mode: if options.attestation_supplied {
@@ -188,6 +208,8 @@ pub fn build_legacy_evidence_event(
     Ok(CyntrisecEvidenceEventV1 {
         schema_version: "cyntrisec.evidence_event.v1",
         tenant_id: tenant_id(options)?,
+        workflow_id: optional_non_empty(&options.workflow_id, "workflow_id")?,
+        deployment_id: optional_non_empty(&options.deployment_id, "deployment_id")?,
         event_id: event_id_from_legacy_receipt_id(&receipt.receipt_id),
         event_type: event_type(verified, failure_reason.as_deref()),
         event_time: format_unix_timestamp(receipt.execution_timestamp),
@@ -215,6 +237,9 @@ pub fn build_legacy_evidence_event(
                 &receipt.enclave_measurements.measurement_type,
             )?,
             region: options.region.clone(),
+            account_id: options.cloud_account_id.clone(),
+            project_id: options.cloud_project_id.clone(),
+            cloud_resource_id: options.cloud_resource_id.clone(),
             instance_id: options.instance_id.clone(),
             tee_type: tee_type(
                 receipt.attestation_source.as_deref(),
@@ -258,6 +283,17 @@ fn verifier_version(options: &EvidenceEventExportOptions) -> Result<String> {
         bail!("verifier_version is required for cyntrisec-event-v1");
     }
     Ok(version.to_string())
+}
+
+fn optional_non_empty(value: &Option<String>, field: &str) -> Result<Option<String>> {
+    let Some(value) = value.as_ref() else {
+        return Ok(None);
+    };
+    let trimmed = value.trim();
+    if trimmed.is_empty() {
+        bail!("{field} must be non-empty when supplied for cyntrisec-event-v1");
+    }
+    Ok(Some(trimmed.to_string()))
 }
 
 fn receipt_reference(
