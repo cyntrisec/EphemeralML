@@ -772,7 +772,7 @@ supports them. Implementers SHOULD consult
 {{I-D.reddy-rats-key-binding}} for a general treatment of key binding
 in RATS as that work matures.
 
-## Validator Behavior
+## Validator Behavior {#validator-behavior}
 
 An AIR Receipt Validator configured for end-to-end TEE assurance:
 
@@ -784,6 +784,18 @@ An AIR Receipt Validator configured for end-to-end TEE assurance:
     public-key value embedded in the attestation document (or its
     hash, depending on the construction).
 -   MUST reject the receipt if the binding check fails.
+-   MUST reconcile the receipt's `enclave_measurements` claim against
+    the measurement registers carried in the validated attestation
+    document. Every measurement register present in
+    `enclave_measurements` MUST equal, byte for byte, the
+    corresponding register in the validated attestation document; a
+    register that the attestation document does not expose cannot be
+    reconciled. The validator MUST reject the receipt if any register
+    in `enclave_measurements` is unequal to, or cannot be reconciled
+    against, the validated attestation document (fail-closed). The
+    `enclave_measurements` claim is signed only by the workload's own
+    key; it is corroborated platform evidence only after this
+    reconciliation succeeds (see {{claim-trust-classes}}).
 
 An AIR Receipt Validator that does not require end-to-end TEE
 assurance (for example, in a deployment that uses AIR only as a
@@ -1152,6 +1164,63 @@ Deployments that rely on AIR for end-to-end assurance MUST treat the
 receipt as meaningful only when the signing key is bound to an
 attested workload whose measurement set and execution policy are
 acceptable to the verifier.
+
+## Claim Trust Classes {#claim-trust-classes}
+
+Every claim in an AIR receipt is covered by the receipt signature, but
+that signature proves only that the *workload* asserted the claim. It
+does not, on its own, make the claim true. Claims differ in whether,
+and how, a verifier or Relying Party can corroborate them against
+evidence outside the receipt. This section classifies every AIR v1
+claim so that implementers and Relying Parties do not mistake a
+workload self-assertion for independently established fact.
+
+Three trust classes are used:
+
+-   **Self-asserted:** backed only by the workload's signature. A
+    malicious or misconfigured workload can place any syntactically
+    valid value in the claim; the receipt signature does not elevate
+    such a claim beyond "the workload stated this."
+-   **Externally corroborable:** a Relying Party that independently
+    holds the corresponding artifact (a known-good reference value,
+    the request or response bytes, or a verifier-supplied nonce) can
+    confirm the claim by recomputation or comparison.
+-   **Attestation-corroborable:** the claim is meaningful only after a
+    verifier obtains and validates the platform attestation document
+    and reconciles the claim against it per {{validator-behavior}}.
+    Before that reconciliation the claim is self-asserted.
+
+| Claim | Trust class | Corroboration available to a Relying Party |
+|-------|-------------|---------------------------------------------|
+| `iss` | Self-asserted | None; MAY be checked against an issuer allowlist |
+| `iat` | Self-asserted | None; workload clock (see {{replay-protection}} and Clock Integrity) |
+| `cti` | Self-asserted | None; uniqueness is assumed, not proven |
+| `eat_profile` | Self-asserted (fixed constant) | Verifier checks the exact AIR v1 profile URI |
+| `eat_nonce` | Externally corroborable | Only by the verifier that supplied the nonce |
+| `model_id` | Self-asserted | None; operator-assigned opaque string |
+| `model_version` | Self-asserted | None; operator-assigned opaque string |
+| `model_hash` | Externally corroborable | Compare against a known-good reference hash |
+| `request_hash` | Externally corroborable | Recompute from the request bytes the Relying Party holds |
+| `response_hash` | Externally corroborable | Recompute from the response bytes the Relying Party holds |
+| `attestation_doc_hash` | Attestation-corroborable | Re-hash the independently obtained attestation document |
+| `enclave_measurements` | Attestation-corroborable | Reconcile against the validated attestation document per {{validator-behavior}}; self-asserted until then |
+| `policy_version` | Self-asserted | None; operator-assigned |
+| `sequence_number` | Self-asserted | None; informational only (see its claim definition) |
+| `execution_time_ms` | Self-asserted | None; informational |
+| `memory_peak_mb` | Self-asserted | None; informational |
+| `security_mode` | Self-asserted | None; does not substitute for attestation-based trust |
+| `model_hash_scheme` | Self-asserted | Structural; declares how `model_hash` was computed |
+
+The `enclave_measurements` claim warrants specific attention. It
+carries platform measurement registers (PCR or MRTD/RTMR values) and
+therefore resembles hardware-rooted evidence, but within the receipt
+it is a Self-asserted claim: the values are written and signed by the
+workload, not by the platform attestation service. It becomes
+corroborated platform evidence only after the {{validator-behavior}}
+reconciliation against the validated attestation document. A verifier
+that presents `enclave_measurements` to a Relying Party as a verified
+measurement, without performing that reconciliation, misrepresents a
+workload self-assertion as hardware evidence.
 
 ## Key Substitution Attack {#key-substitution-attack}
 
