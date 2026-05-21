@@ -349,6 +349,13 @@ fn annotate_air_provenance(
     };
 
     let parsed = ephemeral_ml_common::air_receipt::parse_air_v1(receipt_data);
+    // F-5: capture the receipt's self-asserted enclave_measurements before the
+    // `match parsed` below moves `parsed`. Reconciled against the verified
+    // attestation document further down.
+    let receipt_measurements = parsed
+        .as_ref()
+        .ok()
+        .map(|p| p.claims.enclave_measurements.clone());
     let mut hash_ok = false;
     match parsed {
         Ok(parsed) => {
@@ -391,6 +398,7 @@ fn annotate_air_provenance(
 
     let mut platform_ok = false;
     let mut key_binding_ok = false;
+    let mut measurement_consistency_ok = false;
     let mut runtime_policy_ok = false;
     match verify_attestation_identity(attestation) {
         Ok(identity) => {
@@ -424,6 +432,57 @@ fn annotate_air_provenance(
                         hex::encode(public_key.to_bytes())
                     )),
                 ));
+            }
+
+            // F-5: reconcile the receipt's self-asserted enclave_measurements
+            // against the measurements in the verified attestation document.
+            // enclave_measurements is signed only by the workload's own key;
+            // without this check a compromised workload could place any PCR
+            // values it likes into the receipt and still pass provenance.
+            match &receipt_measurements {
+                Some(claimed) => {
+                    let mismatch_detail =
+                        enclave_measurements_mismatch_detail(claimed, &identity.measurements);
+                    match mismatch_detail {
+                        None => {
+                            measurement_consistency_ok = true;
+                            response.add_check(provenance_check(
+                                "enclave_measurements_consistency",
+                                "AIR enclave_measurements vs attestation",
+                                CheckStatus::Pass,
+                                "tee_provenance",
+                                None,
+                            ));
+                        }
+                        Some(detail) => {
+                            response.add_check(provenance_check(
+                                "enclave_measurements_consistency",
+                                "AIR enclave_measurements vs attestation",
+                                CheckStatus::Fail,
+                                "tee_provenance",
+                                Some(detail),
+                            ));
+                            response.add_warning(
+                                "The receipt's enclave_measurements claim does not match the verified \
+                                 platform attestation; the receipt's self-reported measurements are not \
+                                 trustworthy.",
+                            );
+                        }
+                    }
+                }
+                None => {
+                    response.add_check(provenance_check(
+                        "enclave_measurements_consistency",
+                        "AIR enclave_measurements vs attestation",
+                        CheckStatus::Skip,
+                        "tee_provenance",
+                        Some(
+                            "AIR receipt did not parse; enclave_measurements could not be \
+                             reconciled (see attestation_doc_hash)"
+                                .to_string(),
+                        ),
+                    ));
+                }
             }
 
             match expected_pcrs {
@@ -490,9 +549,20 @@ fn annotate_air_provenance(
         }
     }
 
-    if response.verified && hash_ok && platform_ok && key_binding_ok && runtime_policy_ok {
+    if response.verified
+        && hash_ok
+        && platform_ok
+        && key_binding_ok
+        && measurement_consistency_ok
+        && runtime_policy_ok
+    {
         response.set_tee_provenance_verified();
-    } else if response.verified && hash_ok && platform_ok && key_binding_ok {
+    } else if response.verified
+        && hash_ok
+        && platform_ok
+        && key_binding_ok
+        && measurement_consistency_ok
+    {
         response.set_platform_attested();
         response.add_warning(
             "Platform attestation and signing-key binding were verified, but no runtime measurement policy was supplied; assurance_level is platform_attested, not tee_provenance.",
@@ -521,6 +591,71 @@ fn pcrs_match(
     measurements.pcr0 == expected.pcr0
         && measurements.pcr1 == expected.pcr1
         && measurements.pcr2 == expected.pcr2
+}
+
+/// F-5: explain any mismatch between the receipt's self-asserted
+/// `enclave_measurements` claim and `PcrMeasurements` extracted from the
+/// verified platform attestation document. `enclave_measurements` is signed
+/// only by the workload's own key; reconciling it here stops a workload from
+/// being granted `tee_provenance` for PCR values the hardware attestation never
+/// carried.
+fn enclave_measurements_mismatch_detail(
+    receipt: &ephemeral_ml_common::receipt_signing::EnclaveMeasurements,
+    attested: &ephemeral_ml_common::PcrMeasurements,
+) -> Option<String> {
+    let mut mismatches = Vec::new();
+    if receipt.pcr0 != attested.pcr0 {
+        mismatches.push(format!(
+            "pcr0 receipt={} attestation={}",
+            hex::encode(&receipt.pcr0),
+            hex::encode(&attested.pcr0)
+        ));
+    }
+    if receipt.pcr1 != attested.pcr1 {
+        mismatches.push(format!(
+            "pcr1 receipt={} attestation={}",
+            hex::encode(&receipt.pcr1),
+            hex::encode(&attested.pcr1)
+        ));
+    }
+    if receipt.pcr2 != attested.pcr2 {
+        mismatches.push(format!(
+            "pcr2 receipt={} attestation={}",
+            hex::encode(&receipt.pcr2),
+            hex::encode(&attested.pcr2)
+        ));
+    }
+
+    // The current platform-attestation identity exposes only pcr0/pcr1/pcr2.
+    // Extra receipt fields are self-asserted unless the attestation verifier
+    // also extracts the corresponding platform measurements, so fail closed.
+    if receipt.pcr3.is_some() {
+        mismatches.push(
+            "pcr3 is present in the receipt but unavailable in verified attestation measurements"
+                .to_string(),
+        );
+    }
+    if receipt.pcr4.is_some() {
+        mismatches.push(
+            "pcr4 is present in the receipt but unavailable in verified attestation measurements"
+                .to_string(),
+        );
+    }
+    if receipt.pcr8.is_some() {
+        mismatches.push(
+            "pcr8 is present in the receipt but unavailable in verified attestation measurements"
+                .to_string(),
+        );
+    }
+
+    if mismatches.is_empty() {
+        None
+    } else {
+        Some(format!(
+            "receipt enclave_measurements do not match verified attestation document: {}",
+            mismatches.join("; ")
+        ))
+    }
 }
 
 fn provenance_check(
@@ -751,4 +886,62 @@ fn internal_error(msg: impl Into<String>) -> (StatusCode, Json<ErrorResponse>) {
         StatusCode::INTERNAL_SERVER_ERROR,
         Json(ErrorResponse { error: msg.into() }),
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use ephemeral_ml_common::receipt_signing::EnclaveMeasurements;
+    use ephemeral_ml_common::PcrMeasurements;
+
+    fn attested(p0: u8, p1: u8, p2: u8) -> PcrMeasurements {
+        PcrMeasurements {
+            pcr0: vec![p0; 48],
+            pcr1: vec![p1; 48],
+            pcr2: vec![p2; 48],
+        }
+    }
+
+    #[test]
+    fn enclave_measurements_match_accepts_identical_pcrs() {
+        let receipt = EnclaveMeasurements::new(vec![1u8; 48], vec![2u8; 48], vec![3u8; 48]);
+        assert!(enclave_measurements_mismatch_detail(&receipt, &attested(1, 2, 3)).is_none());
+    }
+
+    #[test]
+    fn enclave_measurements_match_rejects_each_pcr_mismatch() {
+        // F-5: a receipt that self-asserts PCR values the hardware attestation
+        // never carried must fail reconciliation on whichever register differs.
+        let receipt = EnclaveMeasurements::new(vec![1u8; 48], vec![2u8; 48], vec![3u8; 48]);
+        assert!(enclave_measurements_mismatch_detail(&receipt, &attested(9, 2, 3)).is_some());
+        assert!(enclave_measurements_mismatch_detail(&receipt, &attested(1, 9, 3)).is_some());
+        assert!(enclave_measurements_mismatch_detail(&receipt, &attested(1, 2, 9)).is_some());
+    }
+
+    #[test]
+    fn enclave_measurements_match_rejects_length_mismatch() {
+        // A truncated register must not compare equal to a 48-byte one.
+        let receipt = EnclaveMeasurements::new(vec![1u8; 32], vec![2u8; 48], vec![3u8; 48]);
+        assert!(enclave_measurements_mismatch_detail(&receipt, &attested(1, 2, 3)).is_some());
+    }
+
+    #[test]
+    fn enclave_measurements_match_uses_tdx_slots() {
+        // new_tdx maps MRTD/RTMR0/RTMR1 into pcr0/pcr1/pcr2 — the same slot
+        // convention the attestation verifier fills — so a matching TDX receipt
+        // reconciles cleanly and a mismatched one does not.
+        let receipt = EnclaveMeasurements::new_tdx(vec![7u8; 48], vec![8u8; 48], vec![9u8; 48]);
+        assert!(enclave_measurements_mismatch_detail(&receipt, &attested(7, 8, 9)).is_none());
+        assert!(enclave_measurements_mismatch_detail(&receipt, &attested(7, 8, 0)).is_some());
+    }
+
+    #[test]
+    fn enclave_measurements_match_rejects_unattested_optional_measurements() {
+        let mut receipt = EnclaveMeasurements::new(vec![1u8; 48], vec![2u8; 48], vec![3u8; 48]);
+        receipt.pcr8 = Some(vec![8u8; 48]);
+
+        let detail = enclave_measurements_mismatch_detail(&receipt, &attested(1, 2, 3))
+            .expect("pcr8 must not be silently accepted");
+        assert!(detail.contains("pcr8 is present"));
+    }
 }
