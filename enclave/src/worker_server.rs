@@ -575,7 +575,7 @@ mod tests {
             &output.receipt,
             "issuer.test".to_string(),
             model_hash,
-            Some("sha256-manifest".to_string()),
+            Some("sha256-single".to_string()),
         )
         .unwrap();
         let manifest = ModelManifest {
@@ -597,7 +597,7 @@ mod tests {
         output.air_v1_receipt_b64 = Some(
             base64::engine::general_purpose::STANDARD.encode(build_air_v1(&claims, &key).unwrap()),
         );
-        output.air_v1_model_hash_scheme = Some("sha256-manifest".to_string());
+        output.air_v1_model_hash_scheme = Some("sha256-single".to_string());
         output
     }
 

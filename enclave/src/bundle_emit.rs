@@ -466,7 +466,7 @@ mod tests {
             &receipt,
             "issuer.test".to_string(),
             model_hash,
-            Some("sha256-manifest".to_string()),
+            Some("sha256-single".to_string()),
         )
         .unwrap();
         let air_cbor = build_air_v1(&air_claims, &key).unwrap();
@@ -493,7 +493,7 @@ mod tests {
             ),
             model_manifest_json: Some(serde_json::to_string(&manifest).unwrap()),
             air_v1_receipt_b64: Some(base64::engine::general_purpose::STANDARD.encode(air_cbor)),
-            air_v1_model_hash_scheme: Some("sha256-manifest".to_string()),
+            air_v1_model_hash_scheme: Some("sha256-single".to_string()),
             model_identity_coverage: None,
             bundle_url: None,
             bundle_sha256: None,

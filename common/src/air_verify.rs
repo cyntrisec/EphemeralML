@@ -1489,6 +1489,38 @@ mod tests {
         assert!(result.has_failure(&AirCheckCode::PayloadNotMap));
     }
 
+    // ── F-10: model_hash_scheme — "sha256-single" present, or absent ────
+
+    #[test]
+    fn test_model_hash_scheme_single_and_absent_both_verify() {
+        // F-10: production always emits model_hash_scheme = "sha256-single"
+        // (model_hash is SHA-256 over the single model weights file). New
+        // receipts carry it. Receipts emitted before this change carry no
+        // scheme; model_hash_scheme is optional in AIR v1, so those MUST still
+        // verify.
+        let key = ReceiptSigningKey::generate().unwrap();
+
+        let mut with_scheme = fixture_claims();
+        with_scheme.model_hash_scheme = Some("sha256-single".to_string());
+        let bytes = build_receipt(&with_scheme, &key);
+        let result = verify_air_v1_receipt(&bytes, &key.public_key, &AirVerifyPolicy::default());
+        assert!(
+            result.verified,
+            "sha256-single receipt must verify: {:?}",
+            result.failures()
+        );
+
+        let absent = fixture_claims(); // model_hash_scheme: None
+        assert!(absent.model_hash_scheme.is_none());
+        let bytes = build_receipt(&absent, &key);
+        let result = verify_air_v1_receipt(&bytes, &key.public_key, &AirVerifyPolicy::default());
+        assert!(
+            result.verified,
+            "receipt without model_hash_scheme must still verify: {:?}",
+            result.failures()
+        );
+    }
+
     #[test]
     fn test_unknown_security_mode_claim_fails() {
         let key = ReceiptSigningKey::generate().unwrap();

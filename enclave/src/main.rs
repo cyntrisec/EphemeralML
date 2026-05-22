@@ -814,8 +814,12 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
             // Every match arm below assigns this before it is read.
             #[allow(unused_assignments)]
             let mut loaded_model_hash: Option<[u8; 32]> = None;
-            #[allow(unused_assignments)]
-            let mut loaded_model_hash_scheme: Option<String> = None;
+            // F-10: model_hash is computed as SHA-256 over the single model
+            // weights (or GGUF) file in every load path below, so
+            // model_hash_scheme is always "sha256-single". A signed manifest,
+            // where present, authorizes the weights but does not change how
+            // model_hash is computed.
+            let loaded_model_hash_scheme: Option<String> = Some("sha256-single".to_string());
             #[allow(unused_assignments)]
             let mut loaded_model_identity_coverage: Option<
                 std::collections::BTreeMap<String, bool>,
@@ -1181,7 +1185,10 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
                                 "Model identity coverage"
                             );
                             if manifest_authoritative {
-                                loaded_model_hash_scheme = Some("sha256-manifest".to_string());
+                                // The signed manifest authorizes the model
+                                // weights, but the AIR model_hash is still
+                                // SHA-256 over the weights file itself, so
+                                // model_hash_scheme stays "sha256-single".
                                 loaded_model_identity_coverage = Some(
                                     coverage
                                         .into_iter()
@@ -1948,7 +1955,11 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
         let model_source = args.model_source.as_deref().unwrap_or("local");
         #[allow(unused_assignments)]
         let mut model_hash: Option<[u8; 32]> = None;
-        let mut model_hash_scheme: Option<String> = None;
+        // F-10: model_hash is SHA-256 over the single model weights (or GGUF)
+        // file in every load path below, so model_hash_scheme is always
+        // "sha256-single". The KMS/manifest path validates the weights against
+        // a signed manifest but does not change how model_hash is computed.
+        let model_hash_scheme: Option<String> = Some("sha256-single".to_string());
         #[allow(unused_assignments)]
         let mut model_manifest_json: Option<String> = None;
         let mut model_identity_coverage: Option<std::collections::BTreeMap<String, bool>> = None;
@@ -2153,7 +2164,9 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
                         format!("KMS release evidence serialization failed: {}", e)
                     })?);
                 model_hash = Some(actual_model_hash);
-                model_hash_scheme = Some("sha256-manifest".to_string());
+                // model_hash is SHA-256 over the weights file; the signed
+                // manifest authorizes those weights but is not itself the
+                // hashed artifact, so model_hash_scheme stays "sha256-single".
 
                 info!(
                     step = "model_load",
