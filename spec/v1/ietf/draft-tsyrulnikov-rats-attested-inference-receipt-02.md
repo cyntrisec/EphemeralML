@@ -503,14 +503,46 @@ receipt to a specific output.
 
 ### attestation_doc_hash -- key -65542
 
-A 32-byte SHA-256 hash of the platform attestation document (e.g.,
-Nitro COSE attestation document, TDX quote). Links the receipt to
-TEE evidence without embedding the (potentially large) attestation
+A 32-byte SHA-256 digest that links the receipt to the platform
+attestation document without embedding the (potentially large)
 document itself.
 
-Note: AIR v1 does not define attestation document verification.
-Verifiers SHOULD independently obtain and verify the attestation
-document, then compare its hash.
+The hash preimage is the raw attestation artifact, pinned per
+platform:
+
+-   **AWS Nitro Enclaves:** SHA-256 of the NSM attestation document --
+    the COSE_Sign1 byte string returned by the Nitro Security Module,
+    hashed exactly as returned, with no re-encoding.
+
+-   **Intel TDX:** SHA-256 of the raw DCAP quote -- the TDX quote
+    structure, header through quote signature, as produced by the
+    platform. The preimage is the quote bytes alone: it MUST NOT
+    include any transport framing wrapped around the quote, and MUST
+    NOT include DCAP collateral (certificate chains, TCB info, QE
+    identity, or CRLs).
+
+`attestation_doc_hash` binds the receipt to the attestation artifact
+bytes themselves. It does not bind to collateral bundles, to verifier
+policy, or to any derived measurement summary; those are obtained and
+appraised separately.
+
+The TDX quote version (for example, v4 or v5) is not carried as a
+separate AIR v1 claim. A verifier that needs the version parses it
+from the quote bytes it obtains and hashes. A future AIR profile may
+add explicit attestation metadata for this purpose.
+
+AIR v1 does not define attestation document verification. A verifier
+reproduces this digest by obtaining the same raw attestation artifact;
+it SHOULD also independently verify that artifact -- its signature and
+trust chain -- before relying on it, then compare the artifact's
+SHA-256 to this claim.
+
+A conformant AIR receipt MUST set `attestation_doc_hash` to the
+per-platform preimage defined above. Populating the field with any
+other value -- for example, a digest of the receipt signing key used
+as an internal placeholder -- does not produce a conformant
+attestation-bound AIR receipt, and such a receipt MUST NOT be
+presented as one.
 
 ### enclave_measurements -- key -65543 {#measurements}
 
