@@ -4,8 +4,8 @@
 
 RATS                                                      B. Tsyrulnikov
 Internet-Draft                                                 Cyntrisec
-Intended status: Informational                             24 April 2026
-Expires: 26 October 2026
+Intended status: Informational                               22 May 2026
+Expires: 23 November 2026
 
 
 Attested Inference Receipt (AIR): A COSE/CWT Profile for Confidential AI
@@ -53,12 +53,12 @@ Status of This Memo
 
 
 
-Tsyrulnikov              Expires 26 October 2026                [Page 1]
+Tsyrulnikov             Expires 23 November 2026                [Page 1]
 
-Internet-Draft                   AIR v1                       April 2026
+Internet-Draft                   AIR v1                         May 2026
 
 
-   This Internet-Draft will expire on 26 October 2026.
+   This Internet-Draft will expire on 23 November 2026.
 
 Copyright Notice
 
@@ -87,8 +87,8 @@ Table of Contents
      4.3.  Unprotected Header  . . . . . . . . . . . . . . . . . . .   8
      4.4.  Payload: CWT Claims Map . . . . . . . . . . . . . . . . .   8
      4.5.  CDDL Schema . . . . . . . . . . . . . . . . . . . . . . .   8
-   5.  Claim Semantics . . . . . . . . . . . . . . . . . . . . . . .   9
-     5.1.  Standard CWT/EAT Claims . . . . . . . . . . . . . . . . .   9
+   5.  Claim Semantics . . . . . . . . . . . . . . . . . . . . . . .  10
+     5.1.  Standard CWT/EAT Claims . . . . . . . . . . . . . . . . .  10
        5.1.1.  iss (Issuer) -- key 1 . . . . . . . . . . . . . . . .  10
        5.1.2.  iat (Issued At) -- key 6  . . . . . . . . . . . . . .  10
        5.1.3.  cti (CWT ID) -- key 7 . . . . . . . . . . . . . . . .  10
@@ -102,75 +102,80 @@ Table of Contents
        5.2.5.  response_hash -- key -65541 . . . . . . . . . . . . .  11
        5.2.6.  attestation_doc_hash -- key -65542  . . . . . . . . .  11
        5.2.7.  enclave_measurements -- key -65543  . . . . . . . . .  12
-       5.2.8.  policy_version -- key -65544  . . . . . . . . . . . .  13
-       5.2.9.  sequence_number -- key -65545 . . . . . . . . . . . .  13
-       5.2.10. execution_time_ms -- key -65546 . . . . . . . . . . .  14
-       5.2.11. memory_peak_mb -- key -65547  . . . . . . . . . . . .  14
+       5.2.8.  policy_version -- key -65544  . . . . . . . . . . . .  14
+       5.2.9.  sequence_number -- key -65545 . . . . . . . . . . . .  14
+       5.2.10. execution_time_ms -- key -65546 . . . . . . . . . . .  15
+       5.2.11. memory_peak_mb -- key -65547  . . . . . . . . . . . .  15
 
 
 
-Tsyrulnikov              Expires 26 October 2026                [Page 2]
+Tsyrulnikov             Expires 23 November 2026                [Page 2]
 
-Internet-Draft                   AIR v1                       April 2026
+Internet-Draft                   AIR v1                         May 2026
 
 
-       5.2.12. security_mode -- key -65548 . . . . . . . . . . . . .  14
-       5.2.13. model_hash_scheme -- key -65549 . . . . . . . . . . .  15
-   6.  EAT Profile Declaration . . . . . . . . . . . . . . . . . . .  16
+       5.2.12. security_mode -- key -65548 . . . . . . . . . . . . .  15
+       5.2.13. model_hash_scheme -- key -65549 . . . . . . . . . . .  16
+   6.  EAT Profile Declaration . . . . . . . . . . . . . . . . . . .  17
    7.  Key Binding . . . . . . . . . . . . . . . . . . . . . . . . .  18
-     7.1.  Conformant Constructions  . . . . . . . . . . . . . . . .  18
-     7.2.  Validator Behavior  . . . . . . . . . . . . . . . . . . .  18
-   8.  Verification Procedure  . . . . . . . . . . . . . . . . . . .  19
-     8.1.  Layer 1: Parse  . . . . . . . . . . . . . . . . . . . . .  19
-     8.2.  Layer 2: Cryptographic Verification (AIR-local) . . . . .  20
-     8.3.  Layer 3: Claim Validation . . . . . . . . . . . . . . . .  20
-     8.4.  Layer 4: Policy Evaluation  . . . . . . . . . . . . . . .  21
-     8.5.  Interaction Model Compatibility . . . . . . . . . . . . .  21
-   9.  Relationship to Other Work  . . . . . . . . . . . . . . . . .  22
-     9.1.  draft-messous-eat-ai  . . . . . . . . . . . . . . . . . .  22
-     9.2.  SCITT . . . . . . . . . . . . . . . . . . . . . . . . . .  22
-     9.3.  RATS Architecture . . . . . . . . . . . . . . . . . . . .  23
-   10. Security Considerations . . . . . . . . . . . . . . . . . . .  24
-     10.1.  Trust Assumptions  . . . . . . . . . . . . . . . . . . .  24
-     10.2.  Receipt Integrity  . . . . . . . . . . . . . . . . . . .  25
-     10.3.  Algorithm Pinning  . . . . . . . . . . . . . . . . . . .  25
-     10.4.  Replay Protection  . . . . . . . . . . . . . . . . . . .  25
-     10.5.  Model Hash Limitations . . . . . . . . . . . . . . . . .  25
-     10.6.  Attestation Document Not Verified by Receipt . . . . . .  26
-     10.7.  Workload Honesty and Evidence Scope  . . . . . . . . . .  26
-     10.8.  Key Substitution Attack  . . . . . . . . . . . . . . . .  26
-     10.9.  TEE Compromise . . . . . . . . . . . . . . . . . . . . .  27
-     10.10. Clock Integrity  . . . . . . . . . . . . . . . . . . . .  27
-     10.11. Deterministic Encoding . . . . . . . . . . . . . . . . .  27
-     10.12. Closed Claims Map  . . . . . . . . . . . . . . . . . . .  27
-   11. Privacy Considerations  . . . . . . . . . . . . . . . . . . .  28
-     11.1.  Input/Output Hashes  . . . . . . . . . . . . . . . . . .  28
-     11.2.  Correlation Metadata . . . . . . . . . . . . . . . . . .  28
-     11.3.  Nonce Privacy  . . . . . . . . . . . . . . . . . . . . .  28
-     11.4.  Issuer Identity  . . . . . . . . . . . . . . . . . . . .  28
-   12. IANA Considerations . . . . . . . . . . . . . . . . . . . . .  28
-   13. Implementation Status . . . . . . . . . . . . . . . . . . . .  29
-     13.1.  Reference Implementation (Rust)  . . . . . . . . . . . .  29
-     13.2.  Python Interop Verifier  . . . . . . . . . . . . . . . .  29
-     13.3.  E2E Validation . . . . . . . . . . . . . . . . . . . . .  30
-   14. Examples  . . . . . . . . . . . . . . . . . . . . . . . . . .  30
-     14.1.  Valid Receipt Walkthrough  . . . . . . . . . . . . . . .  30
-     14.2.  Invalid Receipt Categories . . . . . . . . . . . . . . .  31
-   15. References  . . . . . . . . . . . . . . . . . . . . . . . . .  32
-     15.1.  Normative References . . . . . . . . . . . . . . . . . .  32
-     15.2.  Informative References . . . . . . . . . . . . . . . . .  33
-   Appendix A.  Full CDDL Schema . . . . . . . . . . . . . . . . . .  34
-   Appendix B.  Golden Vector Summary  . . . . . . . . . . . . . . .  36
-   Acknowledgments . . . . . . . . . . . . . . . . . . . . . . . . .  37
+     7.1.  Single-Purpose Signing Key  . . . . . . . . . . . . . . .  18
+     7.2.  Conformant Constructions  . . . . . . . . . . . . . . . .  19
+     7.3.  Validator Behavior  . . . . . . . . . . . . . . . . . . .  20
+   8.  Verification Procedure  . . . . . . . . . . . . . . . . . . .  21
+     8.1.  Layer 1: COSE Structure and Header Validation . . . . . .  21
+     8.2.  Layer 2: Signature Verification . . . . . . . . . . . . .  22
+     8.3.  Layer 3: Payload Decode and Claim Validation  . . . . . .  23
+     8.4.  Layer 4: Policy Evaluation  . . . . . . . . . . . . . . .  24
+     8.5.  Interaction Model Compatibility . . . . . . . . . . . . .  24
+   9.  Relationship to Other Work  . . . . . . . . . . . . . . . . .  25
+     9.1.  draft-messous-eat-ai  . . . . . . . . . . . . . . . . . .  25
+     9.2.  SCITT . . . . . . . . . . . . . . . . . . . . . . . . . .  25
+     9.3.  RATS Architecture . . . . . . . . . . . . . . . . . . . .  26
+   10. Security Considerations . . . . . . . . . . . . . . . . . . .  27
+     10.1.  Trust Assumptions  . . . . . . . . . . . . . . . . . . .  27
+     10.2.  Receipt Integrity  . . . . . . . . . . . . . . . . . . .  28
+     10.3.  Algorithm Pinning  . . . . . . . . . . . . . . . . . . .  28
+     10.4.  Replay Protection  . . . . . . . . . . . . . . . . . . .  28
+       10.4.1.  Freshness Boundary . . . . . . . . . . . . . . . . .  29
+     10.5.  Model Hash Limitations . . . . . . . . . . . . . . . . .  29
+     10.6.  Attestation Document Not Verified by Receipt . . . . . .  30
+     10.7.  Workload Honesty and Evidence Scope  . . . . . . . . . .  30
+     10.8.  Claim Trust Classes  . . . . . . . . . . . . . . . . . .  30
+     10.9.  Key Substitution Attack  . . . . . . . . . . . . . . . .  33
+     10.10. Signing Key Reuse  . . . . . . . . . . . . . . . . . . .  33
+     10.11. TEE Compromise . . . . . . . . . . . . . . . . . . . . .  34
+     10.12. Clock Integrity  . . . . . . . . . . . . . . . . . . . .  34
+     10.13. Deterministic Encoding . . . . . . . . . . . . . . . . .  34
+     10.14. Closed Claims Map  . . . . . . . . . . . . . . . . . . .  34
+   11. Privacy Considerations  . . . . . . . . . . . . . . . . . . .  34
+     11.1.  Input/Output Hashes  . . . . . . . . . . . . . . . . . .  34
+     11.2.  Correlation Metadata . . . . . . . . . . . . . . . . . .  35
+     11.3.  Nonce Privacy  . . . . . . . . . . . . . . . . . . . . .  35
+     11.4.  Issuer Identity  . . . . . . . . . . . . . . . . . . . .  35
+   12. IANA Considerations . . . . . . . . . . . . . . . . . . . . .  35
+   13. Implementation Status . . . . . . . . . . . . . . . . . . . .  36
+     13.1.  Reference Implementation (Rust)  . . . . . . . . . . . .  36
+     13.2.  Python Interop Verifier  . . . . . . . . . . . . . . . .  36
+     13.3.  Client Nonce Conveyance  . . . . . . . . . . . . . . . .  36
+     13.4.  E2E Validation . . . . . . . . . . . . . . . . . . . . .  37
+   14. Examples  . . . . . . . . . . . . . . . . . . . . . . . . . .  37
+     14.1.  Valid Receipt Walkthrough  . . . . . . . . . . . . . . .  37
+     14.2.  Invalid Receipt Categories . . . . . . . . . . . . . . .  39
+   15. References  . . . . . . . . . . . . . . . . . . . . . . . . .  40
 
 
 
-Tsyrulnikov              Expires 26 October 2026                [Page 3]
+Tsyrulnikov             Expires 23 November 2026                [Page 3]
 
-Internet-Draft                   AIR v1                       April 2026
+Internet-Draft                   AIR v1                         May 2026
 
 
-   Author's Address  . . . . . . . . . . . . . . . . . . . . . . . .  37
+     15.1.  Normative References . . . . . . . . . . . . . . . . . .  40
+     15.2.  Informative References . . . . . . . . . . . . . . . . .  41
+   Appendix A.  Full CDDL Schema . . . . . . . . . . . . . . . . . .  42
+   Appendix B.  Golden Vector Summary  . . . . . . . . . . . . . . .  43
+   Acknowledgments . . . . . . . . . . . . . . . . . . . . . . . . .  44
+   Author's Address  . . . . . . . . . . . . . . . . . . . . . . . .  44
 
 1.  Introduction
 
@@ -214,17 +219,16 @@ Internet-Draft                   AIR v1                       April 2026
    1.  Define a receipt wire format using existing IETF standards
        (COSE_Sign1, CWT, EAT).
 
+
+
+Tsyrulnikov             Expires 23 November 2026                [Page 4]
+
+Internet-Draft                   AIR v1                         May 2026
+
+
    2.  Bind model identity (cryptographic hash), input/output hashes,
        attestation metadata, and operational telemetry in a single
        signed envelope.
-
-
-
-
-Tsyrulnikov              Expires 26 October 2026                [Page 4]
-
-Internet-Draft                   AIR v1                       April 2026
-
 
    3.  Support AIR-local verification using standard COSE/CWT tooling,
        while allowing deployments to combine AIR with separate platform-
@@ -273,13 +277,9 @@ Internet-Draft                   AIR v1                       April 2026
 
 
 
-
-
-
-
-Tsyrulnikov              Expires 26 October 2026                [Page 5]
+Tsyrulnikov             Expires 23 November 2026                [Page 5]
 
-Internet-Draft                   AIR v1                       April 2026
+Internet-Draft                   AIR v1                         May 2026
 
 
 2.  Requirements Language
@@ -333,9 +333,9 @@ Internet-Draft                   AIR v1                       April 2026
 
 
 
-Tsyrulnikov              Expires 26 October 2026                [Page 6]
+Tsyrulnikov             Expires 23 November 2026                [Page 6]
 
-Internet-Draft                   AIR v1                       April 2026
+Internet-Draft                   AIR v1                         May 2026
 
 
    Measurement Map:  The enclave_measurements claim containing platform-
@@ -389,18 +389,21 @@ Internet-Draft                   AIR v1                       April 2026
 
 
 
-Tsyrulnikov              Expires 26 October 2026                [Page 7]
+Tsyrulnikov             Expires 23 November 2026                [Page 7]
 
-Internet-Draft                   AIR v1                       April 2026
+Internet-Draft                   AIR v1                         May 2026
 
 
    Verifiers MUST reject receipts where alg is not -8 or where content
    type is not 61.  Additional protected header parameters are not
    defined in v1 and MUST NOT be present.
 
-   The signing algorithm is Ed25519 with verify_strict semantics per
-   [RFC8032] Section 5.1.7.  Verifiers MUST reject non-canonical S
-   values (S >= L where L is the Ed25519 group order).
+   The signing algorithm is Ed25519 ([RFC8032]).  Receipts MUST be
+   verified with the strict procedure specified in Section 8, Layer 2: a
+   non-canonical scalar S (S outside [0, L), where L is the Ed25519
+   group order), a small-order R or A point, and any signature failing
+   the cofactorless group equation are all rejected.  This is stricter
+   than the baseline verification of [RFC8032] Section 5.1.7.
 
 4.3.  Unprotected Header
 
@@ -439,17 +442,17 @@ Internet-Draft                   AIR v1                       April 2026
    air-claims = {
      ; --- Standard CWT/EAT claims ---
      1   => tstr,                  ; iss: issuer
+
+
+
+Tsyrulnikov             Expires 23 November 2026                [Page 8]
+
+Internet-Draft                   AIR v1                         May 2026
+
+
      6   => uint,                  ; iat: issued-at (Unix seconds)
      7   => bstr .size 16,         ; cti: CWT ID (UUID v4, 16 bytes)
      265 => "https://spec.cyntrisec.com/air/v1",  ; eat_profile
-
-
-
-Tsyrulnikov              Expires 26 October 2026                [Page 8]
-
-Internet-Draft                   AIR v1                       April 2026
-
-
      ? 10 => bstr,                 ; eat_nonce (optional)
 
      ; --- AIR private claims ---
@@ -494,17 +497,18 @@ Internet-Draft                   AIR v1                       April 2026
 
    The full CDDL is also provided in Appendix A.
 
+
+
+
+
+Tsyrulnikov             Expires 23 November 2026                [Page 9]
+
+Internet-Draft                   AIR v1                         May 2026
+
+
 5.  Claim Semantics
 
 5.1.  Standard CWT/EAT Claims
-
-
-
-
-Tsyrulnikov              Expires 26 October 2026                [Page 9]
-
-Internet-Draft                   AIR v1                       April 2026
-
 
 5.1.1.  iss (Issuer) -- key 1
 
@@ -553,13 +557,9 @@ Internet-Draft                   AIR v1                       April 2026
 
 
 
-
-
-
-
-Tsyrulnikov              Expires 26 October 2026               [Page 10]
+Tsyrulnikov             Expires 23 November 2026               [Page 10]
 
-Internet-Draft                   AIR v1                       April 2026
+Internet-Draft                   AIR v1                         May 2026
 
 
 5.2.1.  model_id -- key -65537
@@ -601,22 +601,55 @@ Internet-Draft                   AIR v1                       April 2026
 
 5.2.6.  attestation_doc_hash -- key -65542
 
-   A 32-byte SHA-256 hash of the platform attestation document (e.g.,
-   Nitro COSE attestation document, TDX quote).  Links the receipt to
-   TEE evidence without embedding the (potentially large) attestation
+   A 32-byte SHA-256 digest that links the receipt to the platform
+   attestation document without embedding the (potentially large)
    document itself.
 
-   Note: AIR v1 does not define attestation document verification.
-   Verifiers SHOULD independently obtain and verify the attestation
-   document, then compare its hash.
+   The hash preimage is the raw attestation artifact, pinned per
+   platform:
 
 
 
 
-Tsyrulnikov              Expires 26 October 2026               [Page 11]
+
+
+Tsyrulnikov             Expires 23 November 2026               [Page 11]
 
-Internet-Draft                   AIR v1                       April 2026
+Internet-Draft                   AIR v1                         May 2026
 
+
+   *  *AWS Nitro Enclaves:* SHA-256 of the NSM attestation document --
+      the COSE_Sign1 byte string returned by the Nitro Security Module,
+      hashed exactly as returned, with no re-encoding.
+
+   *  *Intel TDX:* SHA-256 of the raw DCAP quote -- the TDX quote
+      structure, header through quote signature, as produced by the
+      platform.  The preimage is the quote bytes alone: it MUST NOT
+      include any transport framing wrapped around the quote, and MUST
+      NOT include DCAP collateral (certificate chains, TCB info, QE
+      identity, or CRLs).
+
+   attestation_doc_hash binds the receipt to the attestation artifact
+   bytes themselves.  It does not bind to collateral bundles, to
+   verifier policy, or to any derived measurement summary; those are
+   obtained and appraised separately.
+
+   The TDX quote version (for example, v4 or v5) is not carried as a
+   separate AIR v1 claim.  A verifier that needs the version parses it
+   from the quote bytes it obtains and hashes.  A future AIR profile may
+   add explicit attestation metadata for this purpose.
+
+   AIR v1 does not define attestation document verification.  A verifier
+   reproduces this digest by obtaining the same raw attestation
+   artifact; it SHOULD also independently verify that artifact -- its
+   signature and trust chain -- before relying on it, then compare the
+   artifact's SHA-256 to this claim.
+
+   A conformant AIR receipt MUST set attestation_doc_hash to the per-
+   platform preimage defined above.  Populating the field with any other
+   value -- for example, a digest of the receipt signing key used as an
+   internal placeholder -- does not produce a conformant attestation-
+   bound AIR receipt, and such a receipt MUST NOT be presented as one.
 
 5.2.7.  enclave_measurements -- key -65543
 
@@ -633,6 +666,14 @@ Internet-Draft                   AIR v1                       April 2026
    | "pcr1"             | bstr 48 | Yes      | PCR1 (kernel +          |
    |                    |         |          | ramdisk)                |
    +--------------------+---------+----------+-------------------------+
+
+
+
+Tsyrulnikov             Expires 23 November 2026               [Page 12]
+
+Internet-Draft                   AIR v1                         May 2026
+
+
    | "pcr2"             | bstr 48 | Yes      | PCR2                    |
    |                    |         |          | (application)           |
    +--------------------+---------+----------+-------------------------+
@@ -666,14 +707,6 @@ Internet-Draft                   AIR v1                       April 2026
       +--------------------+---------+----------+------------------+
       | "pcr1"             | bstr 48 | Yes      | RTMR0            |
       +--------------------+---------+----------+------------------+
-
-
-
-Tsyrulnikov              Expires 26 October 2026               [Page 12]
-
-Internet-Draft                   AIR v1                       April 2026
-
-
       | "pcr2"             | bstr 48 | Yes      | RTMR1            |
       +--------------------+---------+----------+------------------+
       | "pcr3"             | bstr 48 | No       | RTMR2 (optional) |
@@ -689,6 +722,14 @@ Internet-Draft                   AIR v1                       April 2026
    RTMR2 and RTMR3 are OPTIONAL in AIR v1: RTMR2 is commonly extended by
    the guest runtime (container platforms, language runtimes) and RTMR3
    by the workload itself.  Deployments that extend either register as
+
+
+
+Tsyrulnikov             Expires 23 November 2026               [Page 13]
+
+Internet-Draft                   AIR v1                         May 2026
+
+
    part of their trust model SHOULD include the corresponding value in
    the receipt.  Absence of an optional RTMR does not invalidate the
    receipt; verifiers MAY require specific optional RTMRs by local
@@ -722,14 +763,6 @@ Internet-Draft                   AIR v1                       April 2026
    produced within a single workload session, resetting on workload
    restart.
 
-
-
-
-Tsyrulnikov              Expires 26 October 2026               [Page 13]
-
-Internet-Draft                   AIR v1                       April 2026
-
-
    This claim is *informational only*. It is not a cryptographic
    freshness or replay-protection mechanism:
 
@@ -741,6 +774,17 @@ Internet-Draft                   AIR v1                       April 2026
 
    *  Gaps in sequence_number MAY indicate missed receipts within a
       session but are NOT a receipt-verification failure.
+
+
+
+
+
+
+
+Tsyrulnikov             Expires 23 November 2026               [Page 14]
+
+Internet-Draft                   AIR v1                         May 2026
+
 
    Verifiers MUST NOT treat sequence_number in isolation as evidence of
    freshness or as a replay-detection signal.  Replay resistance comes
@@ -767,25 +811,6 @@ Internet-Draft                   AIR v1                       April 2026
 
    Defined values:
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-Tsyrulnikov              Expires 26 October 2026               [Page 14]
-
-Internet-Draft                   AIR v1                       April 2026
-
-
      +==============+================================================+
      | Value        | Meaning                                        |
      +==============+================================================+
@@ -804,6 +829,18 @@ Internet-Draft                   AIR v1                       April 2026
    MUST reject receipts whose security_mode is "evaluation", and MAY
    reject receipts whose security_mode is any value other than an
    allowlisted production set.
+
+
+
+
+
+
+
+
+Tsyrulnikov             Expires 23 November 2026               [Page 15]
+
+Internet-Draft                   AIR v1                         May 2026
+
 
    No other security_mode values are defined in AIR v1.  Future
    revisions MAY define additional values.  AIR v1 implementations MUST
@@ -827,20 +864,6 @@ Internet-Draft                   AIR v1                       April 2026
    enabling verifiers to reproduce the hash from model artifacts.
 
    Defined scheme values:
-
-
-
-
-
-
-
-
-
-
-Tsyrulnikov              Expires 26 October 2026               [Page 15]
-
-Internet-Draft                   AIR v1                       April 2026
-
 
        +===================+=======================================+
        | Scheme            | Description                           |
@@ -866,6 +889,15 @@ Internet-Draft                   AIR v1                       April 2026
    treat model_hash as opaque (can still compare against a known-good
    hash, but cannot independently reproduce it).
 
+
+
+
+
+Tsyrulnikov             Expires 23 November 2026               [Page 16]
+
+Internet-Draft                   AIR v1                         May 2026
+
+
    No additional scheme values are defined in AIR v1.  Future revisions
    MAY define more scheme values.  AIR v1 implementations MUST NOT
    invent new scheme values.
@@ -890,17 +922,10 @@ Internet-Draft                   AIR v1                       April 2026
    5.   *HTTP media type*: application/eat+cwt ([RFC9782]).  Receivers
         SHOULD accept both application/cwt and application/eat+cwt.
 
-
-
-
-Tsyrulnikov              Expires 26 October 2026               [Page 16]
-
-Internet-Draft                   AIR v1                       April 2026
-
-
-   6.   *Signing algorithm*: Ed25519 only (COSE alg = -8). verify_strict
-        required (canonical S per [RFC8032] Section 5.1.7).  No
-        algorithm negotiation in v1.
+   6.   *Signing algorithm*: Ed25519 only (COSE alg = -8).  Signatures
+        MUST be verified with the strict procedure of Section 8, Layer 2
+        (canonical scalar S, small-order R/A rejection, cofactorless
+        group equation).  No algorithm negotiation in v1.
 
    7.   *Detached bundles*: Not supported in v1.  The attestation
         document is referenced by hash (attestation_doc_hash), not
@@ -918,6 +943,16 @@ Internet-Draft                   AIR v1                       April 2026
 
    10.  *Optional claims*: 2 optional claims: eat_nonce (replay
         resistance), model_hash_scheme (hash computation method).
+
+
+
+
+
+
+Tsyrulnikov             Expires 23 November 2026               [Page 17]
+
+Internet-Draft                   AIR v1                         May 2026
+
 
    11.  *Freshness*: iat carries the execution timestamp (Unix seconds).
         Verifiers apply max_age + clock_skew policy. eat_nonce provides
@@ -940,20 +975,6 @@ Internet-Draft                   AIR v1                       April 2026
         required.  AIR v1 defines no extension mechanism or additional
         private claim keys beyond this set.
 
-
-
-
-
-
-
-
-
-
-Tsyrulnikov              Expires 26 October 2026               [Page 17]
-
-Internet-Draft                   AIR v1                       April 2026
-
-
 7.  Key Binding
 
    AIR-local verification (see Section 8) does not require any
@@ -970,45 +991,99 @@ Internet-Draft                   AIR v1                       April 2026
    MUST bind the Ed25519 signing key to accepted platform attestation
    evidence via an out-of-band cryptographic construction.
 
-7.1.  Conformant Constructions
+7.1.  Single-Purpose Signing Key
+
+   The Ed25519 key bound to the platform attestation is a single-purpose
+   AIR receipt signing key.
+
+   *  The key MUST be used only to produce the signature of an AIR
+      COSE_Sign1 receipt: the Ed25519 signature over the receipt's COSE
+      Sig_structure ([RFC9052] Section 4.4) for the AIR profile named in
+      the receipt's eat_profile claim.
+
+
+
+
+
+Tsyrulnikov             Expires 23 November 2026               [Page 18]
+
+Internet-Draft                   AIR v1                         May 2026
+
+
+   *  The key MUST NOT be reused for any other purpose.  In particular
+      it MUST NOT be used for transport-layer handshakes, attestation or
+      key-exchange protocols, JWT or other token signing, transparency-
+      log or audit-log signing, general-purpose Ed25519 signatures, or
+      any other application protocol.
+
+   *  An implementation that needs a signing key for any additional role
+      MUST generate and separately attest a distinct key, or derive a
+      distinct key under a separate, domain-separated key schedule.  It
+      MUST NOT repurpose the attested AIR signing key.
+
+   With this restriction, every signature the attested key can produce
+   is an AIR receipt for the advertised profile, so an attested AIR
+   signature is unambiguous.
+
+7.2.  Conformant Constructions
 
    The following constructions satisfy the key binding requirement above
    when the associated attestation is verified by a RATS Verifier
    against the platform's trust chain:
 
-   1.  *AWS Nitro Enclaves:* generate the Ed25519 key pair inside the
-       enclave at startup and populate the public_key field of the Nitro
-       COSE attestation document with the raw 32-byte Ed25519 public
-       key.  A verifier obtains the attestation document, validates it
-       against the AWS Nitro root, and checks that the public_key field
-       matches the Ed25519 public key used to verify the AIR signature.
+   1.  *AWS Nitro Enclaves:* generate the Ed25519 receipt signing key
+       inside the enclave and carry either its 32-byte public key, or an
+       unambiguous encoded structure containing it, in the user_data
+       field of the NSM attestation document.  The Nitro Security Module
+       signs the document, including user_data, so the receipt signing
+       key is covered by the hardware-rooted signature.  A verifier
+       validates the document against the AWS Nitro root and checks that
+       the receipt signing key carried in user_data matches the public
+       key used to verify the AIR signature.
 
-   2.  *Intel TDX:* generate the Ed25519 key pair inside the Trusted
-       Domain at startup and place SHA-256(public_key) in the lower 32
-       bytes of REPORTDATA when producing a TDX quote.  A verifier
-       obtains the quote, validates it via DCAP against the Intel SGX
-       and TDX trust chains, and checks that REPORTDATA matches SHA-
-       256(Ed25519_public_key).
+   2.  *Intel TDX:* generate the Ed25519 receipt signing key inside the
+       Trusted Domain and bind it into the TDX quote's 64-byte
+       REPORTDATA.  Because REPORTDATA is fixed at 64 bytes, the binding
+       is a SHA-512 digest -- placed as the full REPORTDATA -- over a
+       domain-separated, length-prefixed encoding of: a domain label,
+       the platform identifier, the protocol version, the transport
+       handshake public key, the Ed25519 receipt signing key, the
+       session nonce, and an optional platform-evidence hash.  A
+       verifier validates the quote via DCAP against the Intel SGX and
+       TDX trust chains, recomputes the SHA-512 binding from the
+       attestation envelope's stated inputs, and rejects the quote
+       unless the result equals the quote's REPORTDATA.
+
+
+
+
+
+
+
+
+Tsyrulnikov             Expires 23 November 2026               [Page 19]
+
+Internet-Draft                   AIR v1                         May 2026
+
+
+   These constructions describe the key-binding attestation itself.  In
+   AIR v1, whether a receipt's attestation_doc_hash references that same
+   per-session attestation -- rather than a separate boot-time
+   attestation -- is a profile-versioning question that AIR v1 does not
+   settle and that a future AIR profile may address.
 
    Other constructions MAY be used where the target attestation platform
    supports them.  Implementers SHOULD consult
    [I-D.reddy-rats-key-binding] for a general treatment of key binding
    in RATS as that work matures.
 
-7.2.  Validator Behavior
+7.3.  Validator Behavior
 
    An AIR Receipt Validator configured for end-to-end TEE assurance:
 
    *  MUST obtain the platform attestation document referenced by
       attestation_doc_hash and validate it via platform-specific
       procedures before accepting the receipt.
-
-
-
-Tsyrulnikov              Expires 26 October 2026               [Page 18]
-
-Internet-Draft                   AIR v1                       April 2026
-
 
    *  MUST check the binding described in the construction above: the
       public key used to verify the AIR signature matches the public-key
@@ -1017,24 +1092,67 @@ Internet-Draft                   AIR v1                       April 2026
 
    *  MUST reject the receipt if the binding check fails.
 
+   *  MUST reconcile the receipt's enclave_measurements claim against
+      the measurement registers carried in the validated attestation
+      document.  Every measurement register present in
+      enclave_measurements MUST equal, byte for byte, the corresponding
+      register in the validated attestation document; a register that
+      the attestation document does not expose cannot be reconciled.
+      The validator MUST reject the receipt if any register in
+      enclave_measurements is unequal to, or cannot be reconciled
+      against, the validated attestation document (fail-closed).  The
+      enclave_measurements claim is signed only by the workload's own
+      key; it is corroborated platform evidence only after this
+      reconciliation succeeds (see Section 10.8).
+
    An AIR Receipt Validator that does not require end-to-end TEE
    assurance (for example, in a deployment that uses AIR only as a
    signed log bound by application-layer trust decisions) MAY skip the
    binding check.  Such a validator MUST NOT claim TEE provenance from
    the receipt alone.
 
+
+
+
+
+
+
+Tsyrulnikov             Expires 23 November 2026               [Page 20]
+
+Internet-Draft                   AIR v1                         May 2026
+
+
 8.  Verification Procedure
 
-   The AIR v1 verification procedure is organized into four layers.
+   The AIR v1 verification procedure is organized into four layers.  The
+   checks proceed strictly in this order:
+
+      COSE structure/header validation -> signature verification ->
+      payload CBOR decode -> AIR claim validation -> relying-party
+      policy checks
+
+   Layer 1 performs COSE structure and header validation; Layer 2
+   verifies the signature; Layer 3 decodes the payload CBOR and then
+   validates the AIR claims; Layer 4 applies relying-party policy
+   checks.
+
    These layers define AIR-local verification only.  A deployment that
    requires full TEE assurance MUST additionally obtain and verify the
    underlying platform attestation evidence and the binding between that
    evidence and the AIR signing key using platform-specific procedures.
+
    Each AIR-local layer MUST complete successfully before proceeding to
    the next.  If any check fails, the verifier MUST reject the receipt
    and SHOULD report the specific failure.
 
-8.1.  Layer 1: Parse
+   A verifier MUST NOT decode the payload CBOR or interpret any claim
+   value before the Layer 2 signature check succeeds.  Layers 1 and 2
+   operate only on the COSE_Sign1 structure, the protected header, and
+   the payload as an opaque byte string; the CWT claims are decoded and
+   validated in Layer 3, only after the signature over them has been
+   verified.
+
+8.1.  Layer 1: COSE Structure and Header Validation
 
    1.  Decode the input as CBOR.  Confirm the outer structure is tagged
        with CBOR tag 18.
@@ -1052,81 +1170,135 @@ Internet-Draft                   AIR v1                       April 2026
    4.  Decode the protected header.  Confirm it is a well-formed CBOR
        map.
 
+
+
+
+Tsyrulnikov             Expires 23 November 2026               [Page 21]
+
+Internet-Draft                   AIR v1                         May 2026
+
+
    5.  Confirm alg (label 1) in the protected header is -8 (EdDSA).
        Reject receipts with any other algorithm.
 
    6.  Confirm content type (label 3) in the protected header is 61
        (application/cwt).
 
-
-
-
-Tsyrulnikov              Expires 26 October 2026               [Page 19]
-
-Internet-Draft                   AIR v1                       April 2026
-
-
    7.  Confirm the unprotected header is empty.
 
-   8.  Decode the payload.  Confirm it is a well-formed CBOR map.
+   The payload is carried through this layer as an opaque byte string;
+   it is not decoded until Layer 3, after signature verification.
 
-   9.  Confirm eat_profile (key 265) equals
-       "https://spec.cyntrisec.com/air/v1".  Reject receipts with
-       unknown profile values.
-
-8.2.  Layer 2: Cryptographic Verification (AIR-local)
+8.2.  Layer 2: Signature Verification
 
    1.  Construct Sig_structure1 = ["Signature1", protected, h'',
-       payload].
+       payload] per [RFC9052] Section 4.4.  The result is the message M
+       over which the signature is verified.
 
-   2.  Verify the Ed25519 signature over Sig_structure1 using the
-       provided public key.  The verification MUST use verify_strict
-       semantics (reject non-canonical S values).
+   2.  Verify the Ed25519 signature -- the point R (first 32 octets) and
+       the scalar S (last 32 octets) -- over M with the Ed25519 public
+       key A.  A conformant verifier MUST perform all of the following
+       checks and MUST reject the receipt if any of them fails:
 
-8.3.  Layer 3: Claim Validation
+       a.  Decode S as a 32-octet little-endian integer.  Reject unless
+       0 <= S < L, where L is the order of the Ed25519 prime-order
+       subgroup.  A verifier MUST NOT reduce S modulo L; an S value
+       outside [0, L) is a verification failure.
 
-   1.   Confirm cti (key 7) is exactly 16 bytes.
+       b.  Recover R and A as Edwards curve points from their 32-octet
+       encodings.  Reject the signature if either encoding does not
+       decode to a point on the curve.
 
-   2.   Confirm iat (key 6) is a non-zero unsigned integer.
+       c.  Reject if A is a small-order point, or if R is a small-order
+       point (a point of order 1, 2, 4, or 8).
 
-   3.   Confirm model_hash (key -65539) is exactly 32 bytes and not all
+       d.  Compute k = SHA-512(R || A || M), interpreted as a little-
+       endian integer modulo L.  Verify the cofactorless group equation
+       [S]B = R + [k]A, where B is the Ed25519 base point.  Reject if it
+       does not hold.  The cofactored equation MUST NOT be used in place
+       of the cofactorless equation.
+
+   Checks (c) and (d) make AIR signature verification stricter than the
+   baseline of [RFC8032] Section 5.1.7, which permits the cofactored
+   equation and does not require small-order rejection.  The stricter
+   procedure removes signature malleability the baseline would otherwise
+   permit.
+
+
+
+
+
+
+Tsyrulnikov             Expires 23 November 2026               [Page 22]
+
+Internet-Draft                   AIR v1                         May 2026
+
+
+   Step (b) requires only that R and A decode to points on the curve.
+   AIR v1 does NOT require rejecting a non-canonical point encoding (an
+   encoded y-coordinate not reduced modulo the field prime); the
+   mandatory-to-implement Ed25519 verification routines accept such
+   encodings.  Rejecting them is not necessary for AIR security: a non-
+   canonical re-encoding leaves the receipt's cti and claims unchanged,
+   so it yields no new receipt identity, and the public key A is
+   obtained out of band from the attestation in canonical form.  The
+   canonical-scalar check in step (a) is required and is distinct from
+   point-encoding canonicalization.
+
+8.3.  Layer 3: Payload Decode and Claim Validation
+
+   Layer 3 is the first layer that decodes the payload CBOR, and it is
+   entered only after the Layer 2 signature check has succeeded.
+
+   1.   Decode the payload.  Confirm it is a well-formed CBOR map.
+
+   2.   Confirm eat_profile (key 265) equals
+        "https://spec.cyntrisec.com/air/v1".  Reject receipts with
+        unknown profile values.
+
+   3.   Confirm cti (key 7) is exactly 16 bytes.
+
+   4.   Confirm iat (key 6) is a non-zero unsigned integer.
+
+   5.   Confirm model_hash (key -65539) is exactly 32 bytes and not all
         zeros.
 
-   4.   Confirm all required text string claims (iss, model_id,
+   6.   Confirm all required text string claims (iss, model_id,
         model_version, policy_version, security_mode) are non-empty and
         within reasonable bounds (implementation-defined, RECOMMENDED
         maximum 1024 bytes each).
 
-   5.   Confirm enclave_measurements (key -65543) is a map.
+   7.   Confirm enclave_measurements (key -65543) is a map.
 
-   6.   Confirm measurement_type within enclave_measurements is one of
+   8.   Confirm measurement_type within enclave_measurements is one of
         the defined values ("nitro-pcr" or "tdx-mrtd-rtmr").
 
-   7.   Confirm that every measurement value present in the map (whether
+   9.   Confirm that every measurement value present in the map (whether
         required or optional) is exactly 48 bytes.
 
-   8.   If measurement_type is "tdx-mrtd-rtmr", confirm pcr8 is absent.
+   10.  If measurement_type is "tdx-mrtd-rtmr", confirm pcr8 is absent.
         TDX measurement maps MUST NOT contain pcr8 (pcr8 is a Nitro-only
         field).
 
-   9.   If model_hash_scheme (key -65549) is present, confirm it is one
+
+
+
+
+
+Tsyrulnikov             Expires 23 November 2026               [Page 23]
+
+Internet-Draft                   AIR v1                         May 2026
+
+
+   11.  If model_hash_scheme (key -65549) is present, confirm it is one
         of the defined values ("sha256-single", "sha256-concat",
         "sha256-manifest").  Unknown values MUST be rejected.
 
-
-
-
-
-Tsyrulnikov              Expires 26 October 2026               [Page 20]
-
-Internet-Draft                   AIR v1                       April 2026
-
-
-   10.  Confirm security_mode (key -65548) is one of the defined values
+   12.  Confirm security_mode (key -65548) is one of the defined values
         ("production", "evaluation").  Unknown values MUST be rejected
         (fail-closed).
 
-   11.  Confirm the claims map contains no unknown integer keys and no
+   13.  Confirm the claims map contains no unknown integer keys and no
         duplicate keys.
 
 8.4.  Layer 4: Policy Evaluation
@@ -1166,17 +1338,17 @@ Internet-Draft                   AIR v1                       April 2026
    *  *Uni-Directional*: when eat_nonce is absent, freshness reduces to
       the iat timestamp plus verifier-side cti deduplication.  This is
       acceptable for deployments that do not require challenge-binding,
+
+
+
+Tsyrulnikov             Expires 23 November 2026               [Page 24]
+
+Internet-Draft                   AIR v1                         May 2026
+
+
       but MUST be understood as weaker than challenge-bound freshness: a
       compromised workload can pre-sign receipts, and verifiers relying
       only on iat gain no defense beyond clock skew.
-
-
-
-
-Tsyrulnikov              Expires 26 October 2026               [Page 21]
-
-Internet-Draft                   AIR v1                       April 2026
-
 
    Attester-generated nonce values (nonce values not supplied by a
    verifier) provide no replay protection and SHOULD NOT be placed in
@@ -1222,17 +1394,18 @@ Internet-Draft                   AIR v1                       April 2026
    etc.) that a Transparency Service uses for registration-policy
    evaluation.  An AIR v1 COSE_Sign1 does not carry those outer
    registration-relevant claims.  Deployments wishing to anchor AIR
+
+
+
+Tsyrulnikov             Expires 23 November 2026               [Page 25]
+
+Internet-Draft                   AIR v1                         May 2026
+
+
    receipts in a SCITT Transparency Service should wrap an AIR
    COSE_Sign1 as the payload of an outer Signed Statement produced by
    the issuer, with the outer envelope supplying the claims required by
    the Transparency Service's registration policy.
-
-
-
-Tsyrulnikov              Expires 26 October 2026               [Page 22]
-
-Internet-Draft                   AIR v1                       April 2026
-
 
    TEE-backed Transparency Service profiles such as
    [I-D.ietf-scitt-receipts-ccf-profile] are natural complements to
@@ -1240,6 +1413,14 @@ Internet-Draft                   AIR v1                       April 2026
    [I-D.kamimura-scitt-refusal-events] covers the refusal-event side of
    AI inference auditing, which pairs with AIR's successful-inference
    scope to give broader audit coverage.
+
+   A SCITT Transparency Service can provide an independent inclusion
+   time and ordering record for AIR receipts that are submitted to it.
+   It does not, by itself, prove when the underlying inference ran, and
+   it does not detect a receipt that the issuer never submitted.
+   Completeness requires a deployment policy on top of transparency
+   logging, such as mandatory submission, monotonic counters, per-
+   session manifests, or client-enforced inclusion proofs.
 
    AIR v1 does not define the outer Signed Statement wrapping or a
    registration profile for a SCITT Transparency Service.  Future
@@ -1270,6 +1451,13 @@ Internet-Draft                   AIR v1                       April 2026
       attestation, the Relying Party consumes both the AIR receipt and
       any platform Attestation Results.
 
+
+
+Tsyrulnikov             Expires 23 November 2026               [Page 26]
+
+Internet-Draft                   AIR v1                         May 2026
+
+
    *  The TEE hardware vendor (AWS, Intel) is the *Endorser*; their
       attestation infrastructure anchors trust in the platform evidence.
 
@@ -1279,16 +1467,6 @@ Internet-Draft                   AIR v1                       April 2026
    platform Evidence.  In a complete deployment, a Verifier may evaluate
    platform Evidence and an AIR receipt together, and an EAR may
    reference an AIR receipt as part of the evidence it considered.
-
-
-
-
-
-
-Tsyrulnikov              Expires 26 October 2026               [Page 23]
-
-Internet-Draft                   AIR v1                       April 2026
-
 
    This version of AIR assumes a single Attester producing one
    attestation document per receipt.  Patterns for composite attesters
@@ -1325,10 +1503,21 @@ Internet-Draft                   AIR v1                       April 2026
       such a signer.  This assumption is meaningful only when combined
       with TA-3.
 
+
+
+
+
+
+
+Tsyrulnikov             Expires 23 November 2026               [Page 27]
+
+Internet-Draft                   AIR v1                         May 2026
+
+
    *  *TA-3 (Key binding enforced out of band):* for deployments
       asserting end-to-end TEE provenance, the Ed25519 signing key is
       cryptographically bound to the attested workload per Section 7.
-      Without this binding, key substitution attacks (see Section 10.8)
+      Without this binding, key substitution attacks (see Section 10.9)
       defeat the TEE-provenance claim regardless of TA-1 and TA-2.
 
    *  *TA-4 (Platform attestation verifiable via Endorser trust chain):*
@@ -1337,14 +1526,6 @@ Internet-Draft                   AIR v1                       April 2026
       vendor's trust chain (for example, the AWS Nitro root CA, or the
       Intel DCAP / Provisioning Certification Service).  AIR v1 does not
       define these procedures and relies on platform-specific verifiers.
-
-
-
-
-Tsyrulnikov              Expires 26 October 2026               [Page 24]
-
-Internet-Draft                   AIR v1                       April 2026
-
 
    AIR-local verification (Layers 1-4 of Section 8) proves only TA-
    independent properties: receipt well-formedness, signature validity
@@ -1379,13 +1560,43 @@ Internet-Draft                   AIR v1                       April 2026
       freshness.  When present, it binds the receipt to a specific
       verifier-supplied challenge, preventing replay to other verifiers.
 
-   *  The sequence_number claim provides monotonicity within a session.
-      Gaps indicate missed receipts.
+
+
+
+
+
+Tsyrulnikov             Expires 23 November 2026               [Page 28]
+
+Internet-Draft                   AIR v1                         May 2026
+
+
+   *  The sequence_number claim provides monotonicity within an observed
+      session.  Gaps indicate missing sequence numbers within that
+      observed stream; absence of a gap does not prove that every
+      receipt was submitted.
 
    Verifiers not maintaining state and not using eat_nonce have limited
    replay protection (only iat-based freshness).  Deployments requiring
    strong replay resistance MUST use at least one of cti deduplication
    or eat_nonce.
+
+10.4.1.  Freshness Boundary
+
+   The freshness an AIR receipt conveys is bounded by who holds the
+   nonce. eat_nonce demonstrates freshness only to the party that issued
+   the nonce; a later auditor who did not issue or observe that nonce
+   cannot infer freshness from it.  The iat claim is a workload-asserted
+   time -- useful for verifier policy such as an age bound, but not an
+   externally attested timestamp, and a compromised workload can assert
+   any value.
+
+   An AIR receipt therefore does not, on its own, give an after-the-fact
+   auditor verifiable freshness, nor evidence that the set of receipts
+   is complete.  Audit-time freshness and non-omission require an
+   external mechanism -- for example, a transparency log that
+   countersigns receipts with an independent timestamp, or an external
+   sequencing authority -- layered on AIR.  AIR v1 does not define that
+   layer.
 
 10.5.  Model Hash Limitations
 
@@ -1394,13 +1605,6 @@ Internet-Draft                   AIR v1                       April 2026
    bias, or safety.  Two distinct artifact sets with identical hashes
    are computationally infeasible, but a model with a correct hash may
    still produce harmful or incorrect outputs.
-
-
-
-Tsyrulnikov              Expires 26 October 2026               [Page 25]
-
-Internet-Draft                   AIR v1                       April 2026
-
 
    The model_hash_scheme claim (Section 5.2.13) declares how the hash
    was computed.  Unknown scheme values MUST be rejected.  This prevents
@@ -1411,6 +1615,16 @@ Internet-Draft                   AIR v1                       April 2026
    does not prove that the corresponding artifacts were loaded or
    executed inside a hardware-attested environment; that requires
    verification of the attested workload and its model-loading path.
+
+
+
+
+
+
+Tsyrulnikov             Expires 23 November 2026               [Page 29]
+
+Internet-Draft                   AIR v1                         May 2026
+
 
 10.6.  Attestation Document Not Verified by Receipt
 
@@ -1437,7 +1651,161 @@ Internet-Draft                   AIR v1                       April 2026
    attested workload whose measurement set and execution policy are
    acceptable to the verifier.
 
-10.8.  Key Substitution Attack
+10.8.  Claim Trust Classes
+
+   Every claim in an AIR receipt is covered by the receipt signature,
+   but that signature proves only that the _workload_ asserted the
+   claim.  It does not, on its own, make the claim true.  Claims differ
+   in whether, and how, a verifier or Relying Party can corroborate them
+   against evidence outside the receipt.  This section classifies every
+   AIR v1 claim so that implementers and Relying Parties do not mistake
+   a workload self-assertion for independently established fact.
+
+   Three trust classes are used:
+
+   *  *Self-asserted:* backed only by the workload's signature.  A
+      malicious or misconfigured workload can place any syntactically
+      valid value in the claim; the receipt signature does not elevate
+      such a claim beyond "the workload stated this."
+
+   *  *Externally corroborable:* a Relying Party that independently
+      holds the corresponding artifact (a known-good reference value,
+      the request or response bytes, or a verifier-supplied nonce) can
+      confirm the claim by recomputation or comparison.
+
+
+
+
+
+Tsyrulnikov             Expires 23 November 2026               [Page 30]
+
+Internet-Draft                   AIR v1                         May 2026
+
+
+   *  *Attestation-corroborable:* the claim is meaningful only after a
+      verifier obtains and validates the platform attestation document
+      and reconciles the claim against it per Section 7.3.  Before that
+      reconciliation the claim is self-asserted.
+
+   +====================+==========================+===================+
+   |Claim               | Trust class              | Corroboration     |
+   |                    |                          | available to a    |
+   |                    |                          | Relying Party     |
+   +====================+==========================+===================+
+   |iss                 | Self-asserted            | None; MAY be      |
+   |                    |                          | checked against   |
+   |                    |                          | an issuer         |
+   |                    |                          | allowlist         |
+   +--------------------+--------------------------+-------------------+
+   |iat                 | Self-asserted            | None; workload    |
+   |                    |                          | clock (see        |
+   |                    |                          | Section 10.4 and  |
+   |                    |                          | Clock Integrity)  |
+   +--------------------+--------------------------+-------------------+
+   |cti                 | Self-asserted            | None; uniqueness  |
+   |                    |                          | is assumed, not   |
+   |                    |                          | proven            |
+   +--------------------+--------------------------+-------------------+
+   |eat_profile         | Self-asserted (fixed     | Verifier checks   |
+   |                    | constant)                | the exact AIR v1  |
+   |                    |                          | profile URI       |
+   +--------------------+--------------------------+-------------------+
+   |eat_nonce           | Externally corroborable  | Only by the       |
+   |                    |                          | verifier that     |
+   |                    |                          | supplied the      |
+   |                    |                          | nonce             |
+   +--------------------+--------------------------+-------------------+
+   |model_id            | Self-asserted            | None; operator-   |
+   |                    |                          | assigned opaque   |
+   |                    |                          | string            |
+   +--------------------+--------------------------+-------------------+
+   |model_version       | Self-asserted            | None; operator-   |
+   |                    |                          | assigned opaque   |
+   |                    |                          | string            |
+   +--------------------+--------------------------+-------------------+
+   |model_hash          | Externally corroborable  | Compare against a |
+   |                    |                          | known-good        |
+   |                    |                          | reference hash    |
+   +--------------------+--------------------------+-------------------+
+   |request_hash        | Externally corroborable  | Recompute from    |
+   |                    |                          | the request bytes |
+   |                    |                          | the Relying Party |
+
+
+
+Tsyrulnikov             Expires 23 November 2026               [Page 31]
+
+Internet-Draft                   AIR v1                         May 2026
+
+
+   |                    |                          | holds             |
+   +--------------------+--------------------------+-------------------+
+   |response_hash       | Externally corroborable  | Recompute from    |
+   |                    |                          | the response      |
+   |                    |                          | bytes the Relying |
+   |                    |                          | Party holds       |
+   +--------------------+--------------------------+-------------------+
+   |attestation_doc_hash| Attestation-corroborable | Re-hash the       |
+   |                    |                          | independently     |
+   |                    |                          | obtained          |
+   |                    |                          | attestation       |
+   |                    |                          | document          |
+   +--------------------+--------------------------+-------------------+
+   |enclave_measurements| Attestation-corroborable | Reconcile against |
+   |                    |                          | the validated     |
+   |                    |                          | attestation       |
+   |                    |                          | document per      |
+   |                    |                          | Section 7.3;      |
+   |                    |                          | self-asserted     |
+   |                    |                          | until then        |
+   +--------------------+--------------------------+-------------------+
+   |policy_version      | Self-asserted            | None; operator-   |
+   |                    |                          | assigned          |
+   +--------------------+--------------------------+-------------------+
+   |sequence_number     | Self-asserted            | None;             |
+   |                    |                          | informational     |
+   |                    |                          | only (see its     |
+   |                    |                          | claim definition) |
+   +--------------------+--------------------------+-------------------+
+   |execution_time_ms   | Self-asserted            | None;             |
+   |                    |                          | informational     |
+   +--------------------+--------------------------+-------------------+
+   |memory_peak_mb      | Self-asserted            | None;             |
+   |                    |                          | informational     |
+   +--------------------+--------------------------+-------------------+
+   |security_mode       | Self-asserted            | None; does not    |
+   |                    |                          | substitute for    |
+   |                    |                          | attestation-based |
+   |                    |                          | trust             |
+   +--------------------+--------------------------+-------------------+
+   |model_hash_scheme   | Self-asserted            | Structural;       |
+   |                    |                          | declares how      |
+   |                    |                          | model_hash was    |
+   |                    |                          | computed          |
+   +--------------------+--------------------------+-------------------+
+
+                                  Table 6
+
+
+
+
+Tsyrulnikov             Expires 23 November 2026               [Page 32]
+
+Internet-Draft                   AIR v1                         May 2026
+
+
+   The enclave_measurements claim warrants specific attention.  It
+   carries platform measurement registers (PCR or MRTD/RTMR values) and
+   therefore resembles hardware-rooted evidence, but within the receipt
+   it is a Self-asserted claim: the values are written and signed by the
+   workload, not by the platform attestation service.  It becomes
+   corroborated platform evidence only after the Section 7.3
+   reconciliation against the validated attestation document.  A
+   verifier that presents enclave_measurements to a Relying Party as a
+   verified measurement, without performing that reconciliation,
+   misrepresents a workload self-assertion as hardware evidence.
+
+10.9.  Key Substitution Attack
 
    If an implementation does not enforce key binding as described in
    Section 7, a workload compromise enables a key-substitution attack.
@@ -1448,15 +1816,6 @@ Internet-Draft                   AIR v1                       April 2026
    2.  Obtain or generate a fresh platform attestation document with a
        different REPORTDATA (or equivalent field), which may correspond
        to a different measurement or a different workload image.
-
-
-
-
-
-Tsyrulnikov              Expires 26 October 2026               [Page 26]
-
-Internet-Draft                   AIR v1                       April 2026
-
 
    3.  Sign AIR receipts with the extracted key and populate
        attestation_doc_hash with the hash of the new attestation
@@ -1473,7 +1832,25 @@ Internet-Draft                   AIR v1                       April 2026
    enforcing such claims MUST check that binding using platform-specific
    procedures.
 
-10.9.  TEE Compromise
+10.10.  Signing Key Reuse
+
+   Section 7 requires the attested AIR signing key to be single-purpose.
+   Ed25519 unforgeability is analyzed for a key used in a single signing
+   role; reusing the attested key across protocols falls outside that
+   model and can enable cross-protocol signature confusion, in which a
+   signature produced for another protocol is presented as an AIR
+   receipt, or an AIR receipt signature is replayed into another
+   protocol.
+
+
+
+
+Tsyrulnikov             Expires 23 November 2026               [Page 33]
+
+Internet-Draft                   AIR v1                         May 2026
+
+
+10.11.  TEE Compromise
 
    See TA-1 in Section 10.1.  Operators of verifiers SHOULD consult
    platform-vendor advisories and maintain an allowlist or denylist of
@@ -1483,14 +1860,14 @@ Internet-Draft                   AIR v1                       April 2026
    performed by the platform-specific RATS Verifier against its
    reference-value store.
 
-10.10.  Clock Integrity
+10.12.  Clock Integrity
 
    The iat claim depends on the workload's system clock.  On AWS Nitro,
    the enclave uses the host clock (no independent time source).  On
    Intel TDX, the CVM has a TSC but it is subject to frequency scaling.
    AIR v1 freshness checks are only as accurate as the platform clock.
 
-10.11.  Deterministic Encoding
+10.13.  Deterministic Encoding
 
    AIR v1 requires deterministic CBOR encoding ([RFC8949]
    Section 4.2.1).  This ensures that the same claims always produce the
@@ -1498,21 +1875,13 @@ Internet-Draft                   AIR v1                       April 2026
    receipt.  Implementations MUST sort map keys per the CBOR
    deterministic encoding rules.
 
-10.12.  Closed Claims Map
+10.14.  Closed Claims Map
 
    The claims map is closed: unknown integer keys MUST be rejected.
    This prevents downgrade attacks where an attacker adds unrecognized
    claims that a naive verifier might silently accept as benign.  This
    closed-scope behavior is intentional in AIR v1; future extensions
    require a revised profile.
-
-
-
-
-Tsyrulnikov              Expires 26 October 2026               [Page 27]
-
-Internet-Draft                   AIR v1                       April 2026
-
 
 11.  Privacy Considerations
 
@@ -1524,6 +1893,18 @@ Internet-Draft                   AIR v1                       April 2026
    knowledge of the input space could brute-force the hash to recover
    the original input.  Deployments handling sensitive low-entropy data
    SHOULD consider whether receipt exposure risks input recovery.
+
+
+
+
+
+
+
+
+Tsyrulnikov             Expires 23 November 2026               [Page 34]
+
+Internet-Draft                   AIR v1                         May 2026
+
 
 11.2.  Correlation Metadata
 
@@ -1560,16 +1941,6 @@ Internet-Draft                   AIR v1                       April 2026
 
    This document has no IANA actions at this time.
 
-
-
-
-
-
-Tsyrulnikov              Expires 26 October 2026               [Page 28]
-
-Internet-Draft                   AIR v1                       April 2026
-
-
    AIR v1 uses negative integer keys in the CWT private-use range (keys
    -65537 through -65549).  If AIR gains adoption, a future version may
    request registration of these claims in the CWT Claims registry
@@ -1579,6 +1950,17 @@ Internet-Draft                   AIR v1                       April 2026
 
    The HTTP media type application/eat+cwt referenced in Section 6 is
    registered by [RFC9782].
+
+
+
+
+
+
+
+Tsyrulnikov             Expires 23 November 2026               [Page 35]
+
+Internet-Draft                   AIR v1                         May 2026
+
 
 13.  Implementation Status
 
@@ -1619,14 +2001,30 @@ Internet-Draft                   AIR v1                       April 2026
 
    Maturity:  Test/interop.
 
+13.3.  Client Nonce Conveyance
+
+   The reference gateway accepts an optional client-supplied challenge
+   nonce on its OpenAI-compatible HTTP endpoints via a request header,
+   X-Cyntrisec-Air-Nonce (a hex string).  When the header is present and
+   within the RFC 9711 length bounds, the gateway conveys the nonce to
+   the workload, which binds it into the receipt's eat_nonce claim.
 
 
-Tsyrulnikov              Expires 26 October 2026               [Page 29]
+
+
+
+Tsyrulnikov             Expires 23 November 2026               [Page 36]
 
-Internet-Draft                   AIR v1                       April 2026
+Internet-Draft                   AIR v1                         May 2026
 
 
-13.3.  E2E Validation
+   This header is an implementation convention of the reference gateway
+   only.  It is not part of the AIR receipt format, is not required for
+   conformance, and a different deployment may convey the nonce by any
+   means.  AIR v1 defines the eat_nonce claim; it does not define how a
+   nonce reaches the workload.
+
+13.4.  E2E Validation
 
    The reference implementation has been validated end-to-end on three
    confidential computing platforms:
@@ -1655,7 +2053,7 @@ Internet-Draft                   AIR v1                       April 2026
     |                 |        |            | the receipt.            |
     +-----------------+--------+------------+-------------------------+
 
-                                  Table 6
+                                  Table 7
 
 14.  Examples
 
@@ -1666,6 +2064,16 @@ Internet-Draft                   AIR v1                       April 2026
 
    The COSE_Sign1 envelope (tagged with CBOR tag 18):
 
+
+
+
+
+
+Tsyrulnikov             Expires 23 November 2026               [Page 37]
+
+Internet-Draft                   AIR v1                         May 2026
+
+
    18([
      h'A2012703183D',           / protected: {1: -8, 3: 61} /
      {},                         / unprotected: empty /
@@ -1674,13 +2082,6 @@ Internet-Draft                   AIR v1                       April 2026
    ])
 
    The protected header decodes to:
-
-
-
-Tsyrulnikov              Expires 26 October 2026               [Page 30]
-
-Internet-Draft                   AIR v1                       April 2026
-
 
    {
      1: -8,    / alg: EdDSA /
@@ -1717,26 +2118,23 @@ Internet-Draft                   AIR v1                       April 2026
    Verification with the corresponding Ed25519 public key succeeds
    through all four layers.
 
+
+
+
+
+
+
+
+Tsyrulnikov             Expires 23 November 2026               [Page 38]
+
+Internet-Draft                   AIR v1                         May 2026
+
+
 14.2.  Invalid Receipt Categories
 
-   The specification includes 8 invalid golden vectors covering failure
-   modes across all verification layers:
-
-
-
-
-
-
-
-
-
-
-
-
-Tsyrulnikov              Expires 26 October 2026               [Page 31]
-
-Internet-Draft                   AIR v1                       April 2026
-
+   The specification includes invalid golden vectors covering failure
+   modes across all verification layers.  The structural and policy
+   vectors are:
 
         +========================+=======+========================+
         | Vector                 | Layer | Expected Failure       |
@@ -1758,7 +2156,35 @@ Internet-Draft                   AIR v1                       April 2026
         | stale-iat              | L4    | TIMESTAMP_STALE        |
         +------------------------+-------+------------------------+
 
-                                  Table 7
+                                  Table 8
+
+   The signature-strictness vectors exercise the strict Ed25519
+   verification algorithm of Section 8 Layer 2.  Each is a valid receipt
+   body whose 64-octet signature violates one Layer 2 check (the letters
+   reference the checks enumerated in that section):
+
+        +=====================+=======+==================+=======+
+        | Vector              | Layer | Expected Failure | Check |
+        +=====================+=======+==================+=======+
+        | sig-s-out-of-range  | L2    | SIG_FAILED       | (a)   |
+        +---------------------+-------+------------------+-------+
+        | sig-small-order-r   | L2    | SIG_FAILED       | (c)   |
+        +---------------------+-------+------------------+-------+
+        | sig-small-order-a   | L2    | SIG_FAILED       | (c)   |
+        +---------------------+-------+------------------+-------+
+        | sig-cofactored-only | L2    | SIG_FAILED       | (d)   |
+        +---------------------+-------+------------------+-------+
+
+                                 Table 9
+
+
+
+
+
+Tsyrulnikov             Expires 23 November 2026               [Page 39]
+
+Internet-Draft                   AIR v1                         May 2026
+
 
    Complete vector files (JSON with hex-encoded COSE bytes, expected
    failure codes, and policy overrides) are available in the reference
@@ -1784,16 +2210,6 @@ Internet-Draft                   AIR v1                       April 2026
               DOI 10.17487/RFC8032, January 2017,
               <https://www.rfc-editor.org/rfc/rfc8032>.
 
-
-
-
-
-
-Tsyrulnikov              Expires 26 October 2026               [Page 32]
-
-Internet-Draft                   AIR v1                       April 2026
-
-
    [RFC8174]  Leiba, B., "Ambiguity of Uppercase vs Lowercase in RFC
               2119 Key Words", BCP 14, RFC 8174, DOI 10.17487/RFC8174,
               May 2017, <https://www.rfc-editor.org/rfc/rfc8174>.
@@ -1817,6 +2233,14 @@ Internet-Draft                   AIR v1                       April 2026
               Structures and Process", STD 96, RFC 9052,
               DOI 10.17487/RFC9052, August 2022,
               <https://www.rfc-editor.org/rfc/rfc9052>.
+
+
+
+
+Tsyrulnikov             Expires 23 November 2026               [Page 40]
+
+Internet-Draft                   AIR v1                         May 2026
+
 
    [RFC9334]  Birkholz, H., Thaler, D., Richardson, M., Smith, N., and
               W. Pan, "Remote ATtestation procedureS (RATS)
@@ -1843,13 +2267,6 @@ Internet-Draft                   AIR v1                       April 2026
               Birkholz, H., "Reference Interaction Models for Remote
               Attestation Procedures", 2026.
 
-
-
-Tsyrulnikov              Expires 26 October 2026               [Page 33]
-
-Internet-Draft                   AIR v1                       April 2026
-
-
    [I-D.ietf-scitt-architecture]
               Birkholz, H., "An Architecture for Trustworthy and
               Transparent Digital Supply Chains", 2026.
@@ -1871,6 +2288,15 @@ Internet-Draft                   AIR v1                       April 2026
 
    [I-D.richardson-rats-composite-attesters]
               Richardson, M., "Taxonomy of Composite Attesters", 2026.
+
+
+
+
+
+Tsyrulnikov             Expires 23 November 2026               [Page 41]
+
+Internet-Draft                   AIR v1                         May 2026
+
 
    [RFC7942]  Sheffer, Y. and A. Farrel, "Improving Awareness of Running
               Code: The Implementation Status Section", BCP 205,
@@ -1898,14 +2324,6 @@ Appendix A.  Full CDDL Schema
      protected:   bstr .cbor air-protected-header,
      unprotected: air-unprotected-header,
      payload:     bstr .cbor air-claims,
-
-
-
-Tsyrulnikov              Expires 26 October 2026               [Page 34]
-
-Internet-Draft                   AIR v1                       April 2026
-
-
      signature:   bstr .size 64
    ])
 
@@ -1928,6 +2346,14 @@ Internet-Draft                   AIR v1                       April 2026
      -65537 => tstr,               ; model_id
      -65538 => tstr,               ; model_version
      -65539 => sha256-hash,        ; model_hash
+
+
+
+Tsyrulnikov             Expires 23 November 2026               [Page 42]
+
+Internet-Draft                   AIR v1                         May 2026
+
+
      -65540 => sha256-hash,        ; request_hash
      -65541 => sha256-hash,        ; response_hash
      -65542 => sha256-hash,        ; attestation_doc_hash
@@ -1954,14 +2380,6 @@ Internet-Draft                   AIR v1                       April 2026
      ? "pcr3"           => sha384-hash,   ; IAM role (optional)
      ? "pcr4"           => sha384-hash,   ; instance identity (optional)
      ? "pcr8"           => sha384-hash,   ; signing cert (optional)
-
-
-
-Tsyrulnikov              Expires 26 October 2026               [Page 35]
-
-Internet-Draft                   AIR v1                       April 2026
-
-
      "measurement_type" => "nitro-pcr",
    }
 
@@ -1984,6 +2402,13 @@ Appendix B.  Golden Vector Summary
 
    *  Public key:
       197f6b23e16c8532c6abc838facd5ea789be0c76b2920334039bfa8b3d368d61
+
+
+
+Tsyrulnikov             Expires 23 November 2026               [Page 43]
+
+Internet-Draft                   AIR v1                         May 2026
+
 
    Vectors are JSON files containing the COSE_Sign1 bytes (hex-encoded),
    expected verification outcomes, and policy overrides for Layer 4
@@ -2009,14 +2434,6 @@ Appendix B.  Golden Vector Summary
    *  v1-bad-measurement-length.json (L3: BAD_MEASUREMENT_LENGTH)
 
    *  v1-nonce-mismatch.json (L4: NONCE_MISMATCH)
-
-
-
-
-Tsyrulnikov              Expires 26 October 2026               [Page 36]
-
-Internet-Draft                   AIR v1                       April 2026
-
 
    *  v1-model-hash-mismatch.json (L4: MODEL_HASH_MISMATCH)
 
@@ -2044,29 +2461,4 @@ Author's Address
 
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-Tsyrulnikov              Expires 26 October 2026               [Page 37]
+Tsyrulnikov             Expires 23 November 2026               [Page 44]
