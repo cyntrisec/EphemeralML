@@ -66,13 +66,7 @@ pub async fn verify_json(
 
     let mut response = verify_dispatch::verify_json_value(&body.receipt, &public_key, &policy)
         .map_err(bad_request)?;
-    annotate_air_provenance(
-        &mut response,
-        None,
-        None,
-        None,
-        policy.expected_pcrs.as_ref(),
-    );
+    annotate_air_provenance(&mut response, None, None, policy.expected_pcrs.as_ref());
 
     Ok(Json(response))
 }
@@ -272,7 +266,6 @@ pub async fn verify_upload(
         verify_dispatch::verify_bytes(&receipt_data, &public_key, &policy).map_err(bad_request)?;
     annotate_air_provenance(
         &mut response,
-        Some(&receipt_data),
         Some(&public_key),
         attestation_bytes.as_deref(),
         policy.expected_pcrs.as_ref(),
@@ -296,7 +289,6 @@ fn parse_attestation_public_key(
 
 fn annotate_air_provenance(
     response: &mut TrustCenterResponse,
-    receipt_data: Option<&[u8]>,
     public_key: Option<&VerifyingKey>,
     attestation: Option<&[u8]>,
     expected_pcrs: Option<&ExpectedPcrs>,
@@ -335,12 +327,6 @@ fn annotate_air_provenance(
         return;
     };
 
-    let Some(receipt_data) = receipt_data else {
-        response.add_warning(
-            "TEE provenance was not checked because the verifier did not receive raw AIR receipt bytes.",
-        );
-        return;
-    };
     let Some(public_key) = public_key else {
         response.add_warning(
             "TEE provenance was not checked because the verifier did not receive the AIR signing public key.",
@@ -348,19 +334,23 @@ fn annotate_air_provenance(
         return;
     };
 
-    let parsed = ephemeral_ml_common::air_receipt::parse_air_v1(receipt_data);
-    // F-5: capture the receipt's self-asserted enclave_measurements before the
-    // `match parsed` below moves `parsed`. Reconciled against the verified
-    // attestation document further down.
-    let receipt_measurements = parsed
+    // F-2 (verify-before-parse): provenance annotation uses only the claims the
+    // verifier captured *after* checking the COSE signature. `air_claims` is
+    // `Some` only when the signature verified and the payload decoded; the raw
+    // receipt payload is never re-decoded here. A `None` means the signature did
+    // not verify, so the receipt carries no trustworthy claims to bind to the
+    // attestation document.
+    let air_claims = response.air_claims.clone();
+    // F-5: the receipt's self-asserted enclave_measurements, reconciled against
+    // the verified attestation document further down.
+    let receipt_measurements = air_claims
         .as_ref()
-        .ok()
-        .map(|p| p.claims.enclave_measurements.clone());
+        .map(|c| c.enclave_measurements.clone());
     let mut hash_ok = false;
-    match parsed {
-        Ok(parsed) => {
+    match &air_claims {
+        Some(claims) => {
             let actual_hash: [u8; 32] = Sha256::digest(attestation).into();
-            if actual_hash == parsed.claims.attestation_doc_hash {
+            if actual_hash == claims.attestation_doc_hash {
                 hash_ok = true;
                 response.add_check(provenance_check(
                     "attestation_doc_hash",
@@ -377,21 +367,23 @@ fn annotate_air_provenance(
                     "tee_provenance",
                     Some(format!(
                         "expected {}, got {}",
-                        hex::encode(parsed.claims.attestation_doc_hash),
+                        hex::encode(claims.attestation_doc_hash),
                         hex::encode(actual_hash)
                     )),
                 ));
             }
         }
-        Err(err) => {
+        None => {
             response.add_check(provenance_check(
                 "attestation_doc_hash",
                 "Attestation document hash",
                 CheckStatus::Fail,
                 "tee_provenance",
-                Some(format!(
-                    "failed to parse AIR receipt for attestation binding: {err}"
-                )),
+                Some(
+                    "AIR receipt signature did not verify; its claims are not \
+                     trusted for attestation binding"
+                        .to_string(),
+                ),
             ));
         }
     }
@@ -477,8 +469,8 @@ fn annotate_air_provenance(
                         CheckStatus::Skip,
                         "tee_provenance",
                         Some(
-                            "AIR receipt did not parse; enclave_measurements could not be \
-                             reconciled (see attestation_doc_hash)"
+                            "AIR receipt signature did not verify; enclave_measurements \
+                             could not be reconciled (see attestation_doc_hash)"
                                 .to_string(),
                         ),
                     ));

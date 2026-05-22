@@ -531,13 +531,16 @@ def verify_vector(vec: dict[str, Any], now_epoch: int) -> VerificationResult:
         if content_type != COSE_CONTENT_TYPE_CWT:
             fail(1, "CONTENT_TYPE", "BAD_CONTENT_TYPE", f"content_type {content_type!r} != 61")
 
+        # F-2 (verify-before-parse): authenticate the COSE Sig_structure1
+        # signature before the payload is decoded or any claim is interpreted.
+        verify_sig_structure(protected_bstr, payload, signature, public_key)
+
         if "payload_hex" in vec:
             expected_payload = hex_to_bytes(vec["payload_hex"], "payload_hex")
             if payload != expected_payload:
                 fail(1, "PAYLOAD", "PAYLOAD_NOT_MAP", "payload bytes do not match payload_hex fixture")
 
         claims = decode_and_validate_claims(payload)
-        verify_sig_structure(protected_bstr, payload, signature, public_key)
         apply_policy(claims, policy, now_epoch)
         return VerificationResult(ok=True)
     except AirVerifyError as exc:

@@ -152,6 +152,14 @@ pub struct TrustCenterResponse {
     /// Warnings (non-fatal).
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub warnings: Vec<String>,
+    /// Signature-verified AIR v1 claims, retained for provenance annotation.
+    /// `Some` only when the COSE signature verified and the payload decoded
+    /// (see `AirVerifyResult::claims`); `None` for legacy receipts and for AIR
+    /// receipts that failed the signature or decode gate. Never serialized —
+    /// provenance annotation reads this instead of re-decoding raw receipt
+    /// bytes, so the claim decoder never runs on an unauthenticated payload.
+    #[serde(skip)]
+    pub air_claims: Option<ephemeral_ml_common::air_receipt::AirReceiptClaims>,
 }
 
 impl TrustCenterResponse {
@@ -206,6 +214,7 @@ impl TrustCenterResponse {
             checks,
             errors: result.errors,
             warnings: result.warnings,
+            air_claims: None,
         };
         response.refresh_verdict_matrix();
         response
@@ -304,6 +313,7 @@ impl TrustCenterResponse {
             checks,
             errors,
             warnings: vec![],
+            air_claims: result.claims,
         };
         response.refresh_verdict_matrix();
         response
@@ -717,6 +727,7 @@ mod tests {
             checks: vec![],
             errors: vec![],
             warnings: vec![],
+            air_claims: None,
         }
     }
 

@@ -1,15 +1,28 @@
 //! AIR v1 — Layered receipt verification
 //!
-//! Four verification layers, designed for standardizability:
+//! Five verification layers, designed for standardizability. The first two
+//! layers are **gates**: verification halts immediately if either fails, so
+//! the claims payload is never decoded or interpreted until its signature has
+//! been verified (verify-before-parse).
 //!
-//! 1. **Parse** (`parse`) — CBOR/COSE shape validation only
-//! 2. **Crypto** (`crypto_verify`) — COSE Sig_structure1 + Ed25519 verify_strict
-//! 3. **Claim validation** (`claim_validate`) — types, required claims, eat_profile, measurements
-//! 4. **Policy evaluation** (`policy_evaluate`) — freshness, model_hash, platform, nonce, replay
+//! 1. **Structural** (`layer1_structural`) — COSE_Sign1 shape + protected
+//!    header (`alg`, `content_type`); no claim decoding. Gate.
+//! 2. **Crypto** (`layer2_crypto`) — COSE Sig_structure1 + Ed25519
+//!    verify_strict. Gate: a receipt whose signature fails is rejected here
+//!    and its payload is never decoded.
+//! 3. **Claims decode** (`layer3_claims_decode`) — decode the now-authenticated
+//!    CWT claims map and `eat_profile`.
+//! 4. **Claim validation** (`layer4_claims`) — types, required claims,
+//!    measurements, allowlists.
+//! 5. **Policy evaluation** (`layer5_policy`) — freshness, model_hash,
+//!    platform, nonce, replay.
 //!
 //! Each layer produces structured check results with explicit failure codes.
+//! Once the signature is verified, layer 3 decodes the payload; if decoding
+//! succeeds, layers 4–5 both run even if one fails, so the result holds a
+//! complete picture of every claim-validation and policy check.
 
-use crate::air_receipt::{self, AirReceiptClaims, ParsedAirReceipt};
+use crate::air_receipt::{self, AirReceiptClaims};
 use crate::error::EphemeralError;
 use coset::TaggedCborSerializable;
 use serde::{Deserialize, Serialize};
@@ -206,7 +219,8 @@ pub struct AirVerifyResult {
     pub verified: bool,
     /// Individual check outcomes, ordered by layer.
     pub checks: Vec<AirCheck>,
-    /// Parsed claims (present even if verification fails, as long as parse succeeds).
+    /// Parsed claims. Present only once the signature has been verified and the
+    /// payload decoded; `None` if a structural, signature, or decode check failed.
     #[serde(skip)]
     pub claims: Option<AirReceiptClaims>,
 }
@@ -302,10 +316,15 @@ impl AirVerifyPolicy {
 
 // ── Top-level verify ────────────────────────────────────────────────
 
-/// Verify an AIR v1 receipt through all four layers.
+/// Verify an AIR v1 receipt through five layers.
 ///
-/// Layers execute in order. Later layers run even if earlier layers fail,
-/// so the result contains a complete picture of all check outcomes.
+/// Layers 1 (structural) and 2 (crypto) are **gates**: if either fails,
+/// verification halts and the claims payload is never decoded. A receipt whose
+/// signature does not verify is rejected without its payload being parsed or
+/// interpreted (verify-before-parse). Once the signature is verified, the
+/// payload is decoded (layer 3); if decoding succeeds, layers 4–5 both run even
+/// if one of them fails, so the result contains a complete picture of every
+/// claim-validation and policy check.
 pub fn verify_air_v1_receipt(
     data: &[u8],
     public_key: &ed25519_dalek::VerifyingKey,
@@ -313,9 +332,9 @@ pub fn verify_air_v1_receipt(
 ) -> AirVerifyResult {
     let mut checks = Vec::with_capacity(16);
 
-    // Layer 1: Parse
-    let parsed = match layer1_parse(data, &mut checks) {
-        Some(p) => p,
+    // Layer 1: Structural parse — COSE_Sign1 shape only, no claim decoding.
+    let cose = match layer1_structural(data, &mut checks) {
+        Some(c) => c,
         None => {
             return AirVerifyResult {
                 verified: false,
@@ -325,16 +344,34 @@ pub fn verify_air_v1_receipt(
         }
     };
 
-    let claims = parsed.claims.clone();
+    // Layer 2: Crypto — verify the signature BEFORE any claim is decoded.
+    // Fail closed: an unauthenticated payload is never handed to the CBOR
+    // claims decoder.
+    if !layer2_crypto(&cose, public_key, &mut checks) {
+        return AirVerifyResult {
+            verified: false,
+            checks,
+            claims: None,
+        };
+    }
 
-    // Layer 2: Crypto
-    layer2_crypto(&parsed, public_key, &mut checks);
+    // Layer 3: Claims decode — only reached once the signature is verified.
+    let claims = match layer3_claims_decode(&cose, &mut checks) {
+        Some(c) => c,
+        None => {
+            return AirVerifyResult {
+                verified: false,
+                checks,
+                claims: None,
+            };
+        }
+    };
 
-    // Layer 3: Claim validation
-    layer3_claims(&parsed.claims, &mut checks);
+    // Layer 4: Claim validation
+    layer4_claims(&claims, &mut checks);
 
-    // Layer 4: Policy evaluation
-    layer4_policy(&parsed.claims, policy, &mut checks);
+    // Layer 5: Policy evaluation
+    layer5_policy(&claims, policy, &mut checks);
 
     let verified = verified_from_checks(&checks);
 
@@ -377,10 +414,14 @@ fn is_critical_check_name(name: &str) -> bool {
     )
 }
 
-// ── Layer 1: Parse ──────────────────────────────────────────────────
+// ── Layer 1: Structural parse ───────────────────────────────────────
 
-fn layer1_parse(data: &[u8], checks: &mut Vec<AirCheck>) -> Option<ParsedAirReceipt> {
-    // Fix 1: Pre-parse receipt size limit
+/// Validate the COSE_Sign1 envelope shape and protected header. Does **not**
+/// decode the claims payload — that happens only after the signature is
+/// verified (see [`layer3_claims_decode`]). Any structural failure halts
+/// verification.
+fn layer1_structural(data: &[u8], checks: &mut Vec<AirCheck>) -> Option<coset::CoseSign1> {
+    // Pre-parse receipt size limit
     if data.len() > air_receipt::MAX_RECEIPT_BYTES {
         checks.push(AirCheck::fail(
             "SIZE",
@@ -410,7 +451,7 @@ fn layer1_parse(data: &[u8], checks: &mut Vec<AirCheck>) -> Option<ParsedAirRece
         }
     };
 
-    // Fix 2: Reject non-empty unprotected headers (tamper-prone, not signed)
+    // Reject non-empty unprotected headers (tamper-prone, not signed)
     if !cose.unprotected.is_empty() {
         checks.push(AirCheck::fail(
             "UNPROTECTED",
@@ -428,13 +469,13 @@ fn layer1_parse(data: &[u8], checks: &mut Vec<AirCheck>) -> Option<ParsedAirRece
         return None;
     }
 
-    // Protected header: alg
-    let alg_ok = match cose.protected.header.alg.as_ref() {
+    // Protected header: alg. Required to know which signature algorithm layer 2
+    // must apply, so a bad or missing alg halts before the crypto layer.
+    match cose.protected.header.alg.as_ref() {
         Some(a)
             if *a == coset::RegisteredLabelWithPrivate::Assigned(coset::iana::Algorithm::EdDSA) =>
         {
             checks.push(AirCheck::pass("ALG"));
-            true
         }
         Some(a) => {
             checks.push(AirCheck::fail(
@@ -442,29 +483,28 @@ fn layer1_parse(data: &[u8], checks: &mut Vec<AirCheck>) -> Option<ParsedAirRece
                 AirCheckCode::BadAlg,
                 format!("got {:?}", a),
             ));
-            false
+            return None;
         }
         None => {
             checks.push(AirCheck::fail("ALG", AirCheckCode::BadAlg, "missing alg"));
-            false
+            return None;
         }
-    };
+    }
 
     // Protected header: content_type
-    let ct_ok = match cose.protected.header.content_type.as_ref() {
+    match cose.protected.header.content_type.as_ref() {
+        Some(ct)
+            if *ct == coset::ContentType::Assigned(coset::iana::CoapContentFormat::Cwt) =>
+        {
+            checks.push(AirCheck::pass("CONTENT_TYPE"));
+        }
         Some(ct) => {
-            let expected = coset::ContentType::Assigned(coset::iana::CoapContentFormat::Cwt);
-            if *ct == expected {
-                checks.push(AirCheck::pass("CONTENT_TYPE"));
-                true
-            } else {
-                checks.push(AirCheck::fail(
-                    "CONTENT_TYPE",
-                    AirCheckCode::BadContentType,
-                    format!("got {:?}", ct),
-                ));
-                false
-            }
+            checks.push(AirCheck::fail(
+                "CONTENT_TYPE",
+                AirCheckCode::BadContentType,
+                format!("got {:?}", ct),
+            ));
+            return None;
         }
         None => {
             checks.push(AirCheck::fail(
@@ -472,15 +512,15 @@ fn layer1_parse(data: &[u8], checks: &mut Vec<AirCheck>) -> Option<ParsedAirRece
                 AirCheckCode::BadContentType,
                 "missing content_type",
             ));
-            false
+            return None;
         }
-    };
+    }
 
-    // Payload present
-    let payload_bytes: &Vec<u8> = match cose.payload.as_ref() {
+    // Payload present. The payload bytes are decoded only later, in layer 3,
+    // once the signature over them has been verified.
+    match cose.payload.as_ref() {
         Some(p) if !p.is_empty() => {
             checks.push(AirCheck::pass("PAYLOAD"));
-            p
         }
         _ => {
             checks.push(AirCheck::fail(
@@ -490,64 +530,33 @@ fn layer1_parse(data: &[u8], checks: &mut Vec<AirCheck>) -> Option<ParsedAirRece
             ));
             return None;
         }
-    };
-
-    if !alg_ok || !ct_ok {
-        // Header checks failed — still try to decode claims for diagnostics,
-        // but return None to signal parse failure.
-        // Try decoding claims anyway for the result.
-        if let Ok(claims) = air_receipt::decode_claims_from_bytes(payload_bytes) {
-            claims_profile_check(checks);
-            return Some(ParsedAirReceipt { claims, cose });
-        }
-        return None;
     }
 
-    // Decode claims
-    let claims = match air_receipt::decode_claims_from_bytes(payload_bytes) {
-        Ok(c) => c,
-        Err(e) => {
-            checks.push(AirCheck::fail(
-                "CLAIMS_DECODE",
-                AirCheckCode::PayloadNotMap,
-                format!("{e}"),
-            ));
-            return None;
-        }
-    };
-
-    // eat_profile
-    claims_profile_check(checks);
-
-    Some(ParsedAirReceipt { claims, cose })
-}
-
-fn claims_profile_check(checks: &mut Vec<AirCheck>) {
-    // eat_profile is already decoded into the claims struct, but we
-    // verify the parse succeeded (decode_claims rejects unknown profiles).
-    // If we got here, the profile is correct.
-    checks.push(AirCheck::pass("EAT_PROFILE"));
+    Some(cose)
 }
 
 // ── Layer 2: Crypto ─────────────────────────────────────────────────
 
+/// Verify the COSE Sig_structure1 signature with Ed25519 `verify_strict`.
+/// Returns `true` only if the signature verifies; the caller halts on `false`
+/// so that an unauthenticated payload is never decoded.
 fn layer2_crypto(
-    parsed: &ParsedAirReceipt,
+    cose: &coset::CoseSign1,
     public_key: &ed25519_dalek::VerifyingKey,
     checks: &mut Vec<AirCheck>,
-) {
+) -> bool {
     // Signature length
-    if parsed.cose.signature.len() != 64 {
+    if cose.signature.len() != 64 {
         checks.push(AirCheck::fail(
             "SIG",
             AirCheckCode::BadSignatureLength,
-            format!("got {} bytes", parsed.cose.signature.len()),
+            format!("got {} bytes", cose.signature.len()),
         ));
-        return;
+        return false;
     }
 
     // Ed25519 verify_strict via COSE Sig_structure1
-    let result = parsed.cose.verify_signature(b"", |sig, tbs| {
+    let result = cose.verify_signature(b"", |sig, tbs| {
         let mut sig_array = [0u8; 64];
         sig_array.copy_from_slice(sig);
         let signature = ed25519_dalek::Signature::from_bytes(&sig_array);
@@ -557,18 +566,55 @@ fn layer2_crypto(
     });
 
     match result {
-        Ok(()) => checks.push(AirCheck::pass("SIG")),
-        Err(_) => checks.push(AirCheck::fail(
-            "SIG",
-            AirCheckCode::SignatureFailed,
-            "Ed25519 verify_strict failed",
-        )),
+        Ok(()) => {
+            checks.push(AirCheck::pass("SIG"));
+            true
+        }
+        Err(_) => {
+            checks.push(AirCheck::fail(
+                "SIG",
+                AirCheckCode::SignatureFailed,
+                "Ed25519 verify_strict failed",
+            ));
+            false
+        }
     }
 }
 
-// ── Layer 3: Claim validation ───────────────────────────────────────
+// ── Layer 3: Claims decode ──────────────────────────────────────────
 
-fn layer3_claims(claims: &AirReceiptClaims, checks: &mut Vec<AirCheck>) {
+/// Decode the CWT claims map from the now signature-verified payload.
+/// `eat_profile` is validated inside [`air_receipt::decode_claims_from_bytes`],
+/// which also enforces the closed claims map and rejects duplicate keys; any of
+/// those failures surface as a `CLAIMS_DECODE` check.
+fn layer3_claims_decode(
+    cose: &coset::CoseSign1,
+    checks: &mut Vec<AirCheck>,
+) -> Option<AirReceiptClaims> {
+    // Payload presence is guaranteed by layer 1; default to an empty slice
+    // defensively so an absent payload yields a decode failure, never a panic.
+    let payload = cose.payload.as_deref().unwrap_or_default();
+    match air_receipt::decode_claims_from_bytes(payload) {
+        Ok(claims) => {
+            // A successful decode means the closed-map, duplicate-key, and
+            // eat_profile checks inside decode_claims_from_bytes all passed.
+            checks.push(AirCheck::pass("EAT_PROFILE"));
+            Some(claims)
+        }
+        Err(e) => {
+            checks.push(AirCheck::fail(
+                "CLAIMS_DECODE",
+                AirCheckCode::PayloadNotMap,
+                format!("{e}"),
+            ));
+            None
+        }
+    }
+}
+
+// ── Layer 4: Claim validation ───────────────────────────────────────
+
+fn layer4_claims(claims: &AirReceiptClaims, checks: &mut Vec<AirCheck>) {
     // cti length (already parsed as [u8; 16], but verify it's not all zeros)
     if claims.cti == [0u8; 16] {
         checks.push(AirCheck::fail(
@@ -639,9 +685,9 @@ fn layer3_claims(claims: &AirReceiptClaims, checks: &mut Vec<AirCheck>) {
     }
 }
 
-// ── Layer 4: Policy evaluation ──────────────────────────────────────
+// ── Layer 5: Policy evaluation ──────────────────────────────────────
 
-fn layer4_policy(claims: &AirReceiptClaims, policy: &AirVerifyPolicy, checks: &mut Vec<AirCheck>) {
+fn layer5_policy(claims: &AirReceiptClaims, policy: &AirVerifyPolicy, checks: &mut Vec<AirCheck>) {
     // Timestamp freshness
     if policy.max_age_secs == 0 {
         checks.push(AirCheck::skip("FRESH"));
@@ -949,6 +995,54 @@ mod tests {
         let result = verify_air_v1_receipt(&bytes, &key2.public_key, &AirVerifyPolicy::default());
         assert!(!result.verified);
         assert!(result.has_failure(&AirCheckCode::SignatureFailed));
+    }
+
+    // ── F-2: signature failure halts before the payload is decoded ──
+
+    #[test]
+    fn test_signature_failure_halts_before_parse() {
+        // Verify-before-parse: a receipt whose signature does not verify must
+        // be rejected before its payload is decoded — no claims, and no
+        // post-signature (layer 3/4/5) check ran.
+        let key1 = ReceiptSigningKey::generate().unwrap();
+        let key2 = ReceiptSigningKey::generate().unwrap();
+        let claims = fixture_claims();
+        let bytes = build_receipt(&claims, &key1);
+
+        let result = verify_air_v1_receipt(&bytes, &key2.public_key, &AirVerifyPolicy::default());
+
+        assert!(!result.verified);
+        assert!(result.has_failure(&AirCheckCode::SignatureFailed));
+        // The payload was never decoded.
+        assert!(result.claims.is_none());
+        // No post-signature check ran.
+        for c in &result.checks {
+            assert!(
+                !matches!(
+                    c.name,
+                    "EAT_PROFILE"
+                        | "CLAIMS_DECODE"
+                        | "CTI"
+                        | "MHASH_PRESENT"
+                        | "MEAS"
+                        | "MTYPE"
+                        | "MHASH_SCHEME"
+                        | "SECURITY_MODE"
+                        | "FRESH"
+                        | "MHASH"
+                        | "RHASH"
+                        | "OHASH"
+                        | "ADHASH"
+                        | "MODEL"
+                        | "SECURITY_MODE_POLICY"
+                        | "PLATFORM"
+                        | "NONCE"
+                        | "REPLAY"
+                ),
+                "post-signature check {} ran despite signature failure",
+                c.name
+            );
+        }
     }
 
     // ── Layer 1: bad COSE data ──────────────────────────────────────
@@ -1407,22 +1501,26 @@ mod tests {
         assert!(result.has_failure(&AirCheckCode::UnknownSecurityMode("debug".to_string())));
     }
 
-    // ── Multiple failures reported ──────────────────────────────────
+    // ── Multiple post-signature failures reported in one pass ───────
 
     #[test]
     fn test_multiple_failures_all_reported() {
-        let key1 = ReceiptSigningKey::generate().unwrap();
-        let key2 = ReceiptSigningKey::generate().unwrap();
+        // Once the signature verifies and the payload decodes, layers 4-5
+        // both run, so a single pass reports every claim and policy failure
+        // rather than stopping at the first. (Layers 1-2 are gates and halt
+        // on failure — see `test_signature_failure_halts_before_parse`.)
+        let key = ReceiptSigningKey::generate().unwrap();
         let mut claims = fixture_claims();
         claims.iat = crate::current_timestamp().unwrap().saturating_sub(7200);
-        let bytes = build_receipt(&claims, &key1);
+        let bytes = build_receipt(&claims, &key);
 
         let policy = AirVerifyPolicy {
             max_age_secs: 3600,
             expected_model_id: Some("wrong-model".to_string()),
+            expected_model_hash: Some([0xFF; 32]),
             ..Default::default()
         };
-        let result = verify_air_v1_receipt(&bytes, &key2.public_key, &policy);
+        let result = verify_air_v1_receipt(&bytes, &key.public_key, &policy);
         assert!(!result.verified);
 
         let failures = result.failures();
@@ -1431,9 +1529,9 @@ mod tests {
             "expected >= 3 failures, got {:?}",
             failures
         );
-        assert!(result.has_failure(&AirCheckCode::SignatureFailed));
         assert!(result.has_failure(&AirCheckCode::TimestampStale));
         assert!(result.has_failure(&AirCheckCode::ModelIdMismatch));
+        assert!(result.has_failure(&AirCheckCode::ModelHashMismatch));
     }
 
     // ── Skipped checks don't cause failure ──────────────────────────
@@ -1615,8 +1713,9 @@ mod tests {
         let result = verify_air_v1_receipt(&receipt, &pubkey, &AirVerifyPolicy::unbounded());
         assert!(!result.verified);
         assert!(result.has_failure(&AirCheckCode::SignatureFailed));
-        // Claims should still parse successfully
-        assert!(result.claims.is_some());
+        // Verify-before-parse: a receipt whose signature fails is rejected
+        // before its payload is decoded, so no claims are returned.
+        assert!(result.claims.is_none());
     }
 
     // ── GV-5: wrong alg → BAD_ALG

@@ -316,8 +316,9 @@ fn cv_wrong_key_sig_fails() {
         "expected SIG_FAILED, got: {:?}",
         result.failures()
     );
-    // Claims should still parse
-    assert!(result.claims.is_some());
+    // Verify-before-parse: the payload is not decoded when the signature
+    // fails, so no claims are returned.
+    assert!(result.claims.is_none());
 }
 
 #[test]
