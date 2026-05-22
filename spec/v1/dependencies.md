@@ -29,7 +29,7 @@ These specifications are **required** for implementing AIR v1. A conformant impl
 
 ### 2.1 Algorithm Agility
 
-v1.0 mandates Ed25519 only. Future v1.x minor versions MAY add:
+v1.0 mandates Ed25519 only. A future AIR profile — a new `eat_profile` URI, not a wire-compatible v1.x update — MAY define additional signing algorithms, such as:
 - Ed448 (RFC 8032)
 - ECDSA P-256 (for environments where Ed25519 is unavailable)
 

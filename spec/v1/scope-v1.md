@@ -31,7 +31,7 @@ v1 receipt measurements cover:
 - **AWS Nitro Enclaves** — PCR0/PCR1/PCR2/PCR8, measurement_type `"nitro-pcr"`
 - **Intel TDX** — MRTD/RTMR0/RTMR1, measurement_type `"tdx-mrtd-rtmr"`
 
-Additional platforms (AMD SEV-SNP, ARM CCA) may be added in v1.x minor versions without breaking existing verifiers.
+Additional platforms (AMD SEV-SNP, ARM CCA) would be defined by a future AIR profile with a new `eat_profile` URI. The AIR v1 profile is closed; a v1 verifier does not accept other profiles' receipts.
 
 ## 2. Non-Goals — What v1 Does NOT Define
 

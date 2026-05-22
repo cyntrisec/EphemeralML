@@ -24,21 +24,25 @@
 | Trusted Inference Proof (TIP) | "Trusted" implies trust assumption; we prove, not trust |
 | EphemeralML Receipt | Vendor-specific, blocks third-party adoption |
 
-## Version Scheme
+## Profile Version Scheme
 
-Versions follow a two-part scheme: **`air-v{major}.{minor}`**
-
-| Component | Meaning |
-|-----------|---------|
-| `major` | Breaking wire-format change (new COSE structure, removed required field) |
-| `minor` | Backward-compatible addition (new optional claim, new algorithm option) |
+AIR is versioned by **profile**, not by wire-compatible minor versions. Each
+profile version is a complete, closed wire-format specification with its own
+`eat_profile` URI.
 
 ### Rules
 
-1. **v1.0** is the first standardized version (replaces EphemeralML's internal v0.1).
-2. A conformant verifier for v1.x MUST accept any v1.y receipt where y >= x.
-3. Major version bumps (v2.0) require a new `eat_profile` URI.
-4. Minor version bumps (v1.1) MUST NOT remove or redefine existing claims.
+1. **AIR v1** is the first standardized profile (replacing EphemeralML's
+   internal v0.1 format).
+2. AIR v1 is a closed profile. Its claim map, protected header shape,
+   unprotected header shape, `measurement_type` values, and
+   `model_hash_scheme` values are fixed by the v1 specification.
+3. A conformant AIR v1 verifier MUST reject receipts that carry unknown claim
+   keys, unknown profile identifiers, or values outside the v1 closed sets.
+4. Any wire-format change — including a new claim, a new measurement type, a
+   new model-hash scheme, a new signing-algorithm option, or a new required
+   header parameter — requires a new profile with a new `eat_profile` URI.
+5. The next profile after AIR v1 is AIR v2.
 
 ## EAT Profile URI
 
@@ -51,10 +55,10 @@ https://spec.cyntrisec.com/air/v1
 ### URI Structure
 
 ```
-https://spec.cyntrisec.com/air/v{major}
+https://spec.cyntrisec.com/air/v{profile}
 ```
 
-- Major version only in the URI (minor versions are wire-compatible).
+- Profile version in the URI; there are no wire-compatible minor versions.
 - The URI is an identifier, not necessarily a fetchable URL (per EAT convention).
 - Once v1 is adopted by a standards body (e.g., IETF), the URI migrates to that body's namespace.
 

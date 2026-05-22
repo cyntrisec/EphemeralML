@@ -535,8 +535,8 @@ pub fn parse_air_v1(data: &[u8]) -> Result<ParsedAirReceipt> {
     // Fix 2: Reject non-empty unprotected headers.
     // AIR v1 requires all header parameters in the protected bucket.
     // Unprotected headers are NOT signed and can be tampered with.
-    // This is stricter than the CDDL (which allows `? 4 => bstr` for kid)
-    // because AIR v1 does not use unprotected kid.
+    // The CDDL agrees: air-unprotected-header is the empty map `{}`.
+    // AIR v1 does not use kid or any other unprotected parameter.
     if !cose.unprotected.is_empty() {
         return Err(EphemeralError::ValidationError(
             "non-empty unprotected header (AIR v1 requires all headers in protected bucket)"

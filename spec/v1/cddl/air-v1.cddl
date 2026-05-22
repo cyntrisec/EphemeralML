@@ -85,9 +85,10 @@ air-claims = {
                               ;   assumption). Implementations are RECOMMENDED to
                               ;   include this claim.
 
-  ; --- v1.x extension point ---
-  ; Future minor versions MAY add optional claims here.
-  ; Key range reserved: -65550 to -65599
+  ; --- end of claims ---
+  ; The claims map is closed. AIR v1 defines no other claim keys and no
+  ; in-band extension range; verifiers MUST reject unknown integer keys.
+  ; A new claim requires a new profile (a new eat_profile URI).
 }
 
 ; ============================================================
@@ -138,10 +139,10 @@ tdx-measurements = {
 ; 1. No pipeline fields (previous_receipt_hash) in v1.
 ;    Pipeline chaining is tracked in M6 (vNEXT).
 ;
-; 2. Private claim keys -65537 to -65549 are assigned.
-;    -65537 to -65548 are required; -65549 is optional.
-;    Range -65550 to -65599 is reserved for v1.x extensions.
-;    Do NOT use keys in this range without spec amendment.
+; 2. Private claim keys -65537 to -65549 are assigned:
+;    -65537 to -65548 required, -65549 optional. AIR v1 defines no
+;    other private claim keys. The claims map is closed; a new claim
+;    requires a new profile (a new eat_profile URI), not a v1.x amendment.
 ;
 ; 3. COSE_Sign1 tag 18 is mandatory for AIR v1 receipts.
 ;    Untagged COSE_Sign1 MUST be rejected by verifiers.

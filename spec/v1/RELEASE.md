@@ -60,12 +60,11 @@ See `limitations-v1.md` for the full list. Key items:
 - No pipeline chaining (deferred to vNEXT)
 - No proof of data destruction
 - No attestation document verification (platform-specific, out of scope)
-- No AMD SEV-SNP or ARM CCA measurements (may be added in v1.x)
+- No AMD SEV-SNP or ARM CCA measurements (a future profile may add them)
 
-## v1.x extension rules
+## Extensibility
 
-1. New optional claims may use keys -65550 to -65599
-2. New claims must not be required
-3. New measurement_type variants may be added
-4. Protected header must not gain new required fields
-5. New `model_hash_scheme` values may be registered
+AIR v1 is a closed profile. The claims map is closed — verifiers MUST reject
+unknown integer keys — so a new claim, a new `measurement_type`, or a new
+`model_hash_scheme` value cannot be added under the v1 profile; it requires a
+new profile with its own `eat_profile` URI. See `claim-mapping.md` §7.

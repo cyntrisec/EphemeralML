@@ -31,11 +31,12 @@ The signature covers `Sig_structure1 = ["Signature1", protected, external_aad, p
 
 ### 1.2 Unprotected Header
 
-| Label | Name | Value | Notes |
-|-------|------|-------|-------|
-| 4 | kid | bstr | Optional. Key identifier for the signing key. |
-
-> **Implementation note (v1.0):** The reference implementation rejects non-empty unprotected headers. This is stricter than the CDDL, which permits optional `kid`. Rationale: unprotected headers are not covered by the COSE signature and can be tampered in transit. If `kid` is needed in a future v1.x, it should move to the protected header.
+The unprotected header MUST be empty — `air-unprotected-header = {}` in the
+CDDL, a closed empty map. AIR v1 defines no unprotected header parameters; in
+particular it does not use `kid`. The verifier obtains the Ed25519 public key
+out of band (see §6, Key identification). Receipts with a non-empty
+unprotected header MUST be rejected: unprotected parameters are not covered by
+the COSE signature.
 
 ## 2. Standard CWT/EAT Claims
 
@@ -94,7 +95,7 @@ These claims use IANA-registered CWT integer keys.
 
 ## 3. AIR Private Claims
 
-These claims use negative integer keys to avoid collision with IANA CWT claim registry. Range -65537 to -65548 assigned (required); -65549 assigned (optional). Range -65550 to -65599 reserved for v1.x extensions.
+These claims use negative integer keys to avoid collision with the IANA CWT claim registry. Keys -65537 to -65548 are assigned and required; -65549 is assigned and optional. AIR v1 defines no other private claim keys: the claims map is closed (see §7), and there is no reserved key range for in-band v1.x extension.
 
 ### model_id — key -65537
 
@@ -222,7 +223,7 @@ These claims use negative integer keys to avoid collision with IANA CWT claim re
 | `"sha256-concat"` | SHA-256 of deterministically concatenated weight files. Files MUST be concatenated in lexicographic filename order. The concatenation order MUST be reproducible from the model artifact directory. |
 | `"sha256-manifest"` | SHA-256 of a manifest document that lists per-file hashes. The manifest format is implementation-defined but MUST be self-describing (i.e., the manifest contains enough information to verify each file independently). |
 
-**Extensibility:** New scheme values MAY be registered in v1.x minor updates. Implementations MUST NOT invent unregistered scheme values.
+**Extensibility:** No `model_hash_scheme` values beyond the three above are defined in AIR v1. A new value cannot be added under the AIR v1 profile — it would require a new profile (see §7). Implementations MUST NOT invent unregistered scheme values.
 
 **Issue:** #80 (RESOLVED)
 
@@ -282,19 +283,30 @@ This section consolidates the mandatory profile positions per RFC 9711 §6.3.
 | **HTTP media type** | `application/eat+cwt` (RFC 9782). Receivers SHOULD accept both `application/cwt` and `application/eat+cwt`. |
 | **Signing algorithm** | Ed25519 only (COSE alg = -8). `verify_strict` required (canonical S per RFC 8032 §5.1.7). No algorithm negotiation in v1. |
 | **Detached bundles** | Not supported in v1. The attestation document is referenced by hash (`attestation_doc_hash`), not embedded. |
-| **Key identification** | Out of band. The verifier obtains the Ed25519 public key through a platform-specific channel (e.g., attestation document, key registry). Optional `kid` in unprotected header is reserved but currently rejected by the reference implementation (see §1.2 note). |
+| **Key identification** | Out of band. The verifier obtains the Ed25519 public key through a platform-specific channel (e.g., attestation document, key registry). AIR v1 does not use `kid`. |
 | **Mandatory claims** | 16 required: iss, iat, cti, eat_profile, model_id, model_version, model_hash, request_hash, response_hash, attestation_doc_hash, enclave_measurements, policy_version, sequence_number, execution_time_ms, memory_peak_mb, security_mode. |
 | **Optional claims** | 2 optional: eat_nonce (replay resistance), model_hash_scheme (hash computation method). |
 | **Freshness** | `iat` carries execution timestamp (Unix seconds). Verifier applies `max_age` + `clock_skew` policy. `eat_nonce` provides optional challenge-response replay resistance (RFC 9711 §4.1, 8–64 bytes). |
 | **Deterministic encoding** | Required. Map keys sorted per RFC 8949 §4.2.1 (shorter encoded form first, then bytewise lexicographic). |
 | **Closed map** | The claims map is closed: unknown integer keys MUST be rejected. Duplicate keys MUST be rejected. |
-| **Unprotected header** | MUST be empty. AIR v1 requires all header parameters in the protected bucket. The CDDL permits `? 4 => bstr` (kid) for forward compatibility, but the reference implementation rejects non-empty unprotected headers since they are not signed and can be tampered. |
-| **Private claim keys** | -65537 to -65549 (private use per RFC 8392). No IANA registration required. Keys -65550 to -65599 reserved for v1.x extensions. |
+| **Unprotected header** | MUST be empty (`air-unprotected-header = {}`). AIR v1 requires all header parameters in the protected bucket and defines no `kid` or other unprotected parameter; receipts with a non-empty unprotected header MUST be rejected. |
+| **Private claim keys** | -65537 to -65549 (private use per RFC 8392). No IANA registration required. AIR v1 defines no other private claim keys and no extension mechanism (see §7). |
 
-## 7. v1.x Extension Rules
+## 7. Extensibility
 
-1. New optional claims MAY be added in v1.x minor versions using keys -65550 to -65599.
-2. New claims MUST NOT be required — a v1.0 verifier must still accept v1.x receipts.
-3. New measurement_type variants MAY be added (e.g., `"sev-snp-vcek"` for AMD SEV-SNP).
-4. The protected header MUST NOT gain new required fields in v1.x.
-5. New `model_hash_scheme` values MAY be registered in v1.x minor updates.
+AIR v1 is a **closed profile**. It has no in-band extension mechanism, and a
+v1.0 verifier cannot accept a receipt carrying anything beyond the v1 profile:
+
+- The claims map is closed. Verifiers MUST reject any unknown integer claim
+  key. Keys -65537 to -65549 are the complete set; there is no reserved
+  claim-key range for v1.x.
+- The protected header is a closed two-entry map (`alg`, `content type`).
+- `measurement_type` and `model_hash_scheme` take values only from the closed
+  sets defined in this document.
+
+Because the claims map is closed, a new claim, a new `measurement_type`, or a
+new `model_hash_scheme` value cannot be added under the AIR v1 profile: a v1.0
+verifier would reject any receipt that used one. Such changes require a **new
+profile** — a new `eat_profile` URI identifying a distinct profile version.
+This matches the AIR Internet-Draft, which states that AIR v1 defines no
+extension mechanism and that future extensions require a revised profile.
