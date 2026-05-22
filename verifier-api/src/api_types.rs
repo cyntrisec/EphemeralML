@@ -45,6 +45,11 @@ pub struct VerifyRequest {
     /// Expected Nitro PCR2 measurement as 96-character hex.
     #[serde(default)]
     pub expected_pcr2_hex: Option<String>,
+    /// Optional expected AIR `eat_nonce` challenge as a hex string
+    /// (RFC 9711: 8..=64 bytes). When set, a receipt whose `eat_nonce`
+    /// does not match is rejected.
+    #[serde(default)]
+    pub expected_nonce_hex: Option<String>,
 }
 
 fn default_measurement_type() -> String {

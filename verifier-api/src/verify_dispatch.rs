@@ -24,6 +24,9 @@ pub struct DispatchPolicy {
     pub max_age_secs: u64,
     pub expected_attestation_source: Option<String>,
     pub expected_image_digest: Option<String>,
+    /// Expected AIR `eat_nonce` challenge (RFC 9711, 8..=64 bytes). When set,
+    /// a receipt whose `eat_nonce` does not match is rejected.
+    pub expected_nonce: Option<Vec<u8>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -120,7 +123,7 @@ fn verify_air(
         expected_security_mode: policy.expected_security_mode.clone(),
         allow_evaluation_mode: false,
         expected_platform: policy.expected_measurement_type.clone(),
-        expected_nonce: None,
+        expected_nonce: policy.expected_nonce.clone(),
         require_nonce: false,
         seen_cti: None,
     };

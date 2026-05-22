@@ -50,6 +50,8 @@ pub async fn verify_json(
     )?;
     let expected_security_mode =
         parse_expected_security_mode(body.expected_security_mode.as_deref())?;
+    let expected_nonce =
+        parse_optional_nonce_hex(body.expected_nonce_hex.as_deref(), "expected_nonce_hex")?;
 
     let policy = DispatchPolicy {
         expected_model: body.expected_model,
@@ -62,6 +64,7 @@ pub async fn verify_json(
         max_age_secs: body.max_age_secs,
         expected_attestation_source: body.expected_attestation_source,
         expected_image_digest: body.expected_image_digest,
+        expected_nonce,
     };
 
     let mut response = verify_dispatch::verify_json_value(&body.receipt, &public_key, &policy)
@@ -93,6 +96,7 @@ pub async fn verify_upload(
     let mut max_age_secs: u64 = 0;
     let mut expected_attestation_source: Option<String> = None;
     let mut expected_image_digest: Option<String> = None;
+    let mut expected_nonce: Option<Vec<u8>> = None;
 
     while let Ok(Some(field)) = multipart.next_field().await {
         let name = field.name().unwrap_or("").to_string();
@@ -163,6 +167,13 @@ pub async fn verify_upload(
                 })?;
                 expected_response_hash =
                     parse_optional_hash32_hex(Some(text.trim()), "expected_response_hash_hex")?;
+            }
+            "expected_nonce_hex" => {
+                let text = field.text().await.map_err(|e| {
+                    bad_request(format!("Failed to read expected_nonce_hex field: {}", e))
+                })?;
+                expected_nonce =
+                    parse_optional_nonce_hex(Some(text.trim()), "expected_nonce_hex")?;
             }
             "expected_pcr0_hex" => {
                 let text = field.text().await.map_err(|e| {
@@ -260,6 +271,7 @@ pub async fn verify_upload(
         max_age_secs,
         expected_attestation_source,
         expected_image_digest,
+        expected_nonce,
     };
 
     let mut response =
@@ -694,6 +706,23 @@ fn parse_optional_hash48_hex(
         .try_into()
         .map_err(|_| bad_request(format!("{field_name} must decode to exactly 48 bytes")))?;
     Ok(Some(array))
+}
+
+fn parse_optional_nonce_hex(
+    value: Option<&str>,
+    field_name: &str,
+) -> Result<Option<Vec<u8>>, (StatusCode, Json<ErrorResponse>)> {
+    let Some(value) = value.map(str::trim).filter(|v| !v.is_empty()) else {
+        return Ok(None);
+    };
+    let bytes = hex::decode(value)
+        .map_err(|_| bad_request(format!("{field_name} must be a hex string")))?;
+    if !(8..=64).contains(&bytes.len()) {
+        return Err(bad_request(format!(
+            "{field_name} must decode to between 8 and 64 bytes (RFC 9711)"
+        )));
+    }
+    Ok(Some(bytes))
 }
 
 fn parse_expected_pcrs(

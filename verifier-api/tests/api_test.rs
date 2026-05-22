@@ -765,6 +765,35 @@ fn make_air_v1_receipt_with_security_mode(key: &ReceiptSigningKey, security_mode
     build_air_v1(&claims, key).unwrap()
 }
 
+fn make_air_v1_receipt_with_nonce(key: &ReceiptSigningKey, eat_nonce: Vec<u8>) -> Vec<u8> {
+    use ephemeral_ml_common::air_receipt::{build_air_v1, AirReceiptClaims};
+    use ephemeral_ml_common::receipt_signing::EnclaveMeasurements;
+
+    let claims = AirReceiptClaims {
+        iss: "cyntrisec.com".to_string(),
+        iat: std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs(),
+        cti: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16],
+        eat_nonce: Some(eat_nonce),
+        model_id: "minilm-l6-v2".to_string(),
+        model_version: "1.0.0".to_string(),
+        model_hash: [0xAA; 32],
+        request_hash: [0xBB; 32],
+        response_hash: [0xCC; 32],
+        attestation_doc_hash: [0xDD; 32],
+        enclave_measurements: EnclaveMeasurements::new(vec![1u8; 48], vec![2u8; 48], vec![3u8; 48]),
+        policy_version: "policy-v1".to_string(),
+        sequence_number: 1,
+        execution_time_ms: 100,
+        memory_peak_mb: 64,
+        security_mode: "production".to_string(),
+        model_hash_scheme: None,
+    };
+    build_air_v1(&claims, key).unwrap()
+}
+
 #[tokio::test]
 async fn test_air_v1_upload_valid() {
     let base = require_base!(start_server());
@@ -888,6 +917,53 @@ async fn test_air_v1_json_expected_model_hash_enforced() {
     let body: serde_json::Value = resp.json().await.unwrap();
     assert_eq!(body["verified"], false);
     assert_eq!(check_status(&body, "MHASH"), "fail");
+}
+
+#[tokio::test]
+async fn test_air_v1_json_expected_nonce_enforced() {
+    // F-9: the verifier-api accepts expected_nonce_hex and enforces it against
+    // the receipt's eat_nonce claim, so the nonce path (X-Cyntrisec-Air-Nonce
+    // emission plus verification) is demonstrable end to end.
+    let base = require_base!(start_server());
+    let key = ReceiptSigningKey::generate().unwrap();
+    let nonce = vec![0xDE, 0xAD, 0xBE, 0xEF, 0xCA, 0xFE, 0xBA, 0xBE];
+    let receipt_bytes = make_air_v1_receipt_with_nonce(&key, nonce.clone());
+    let public_key_hex = hex::encode(key.public_key_bytes());
+    let receipt_b64 =
+        base64::Engine::encode(&base64::engine::general_purpose::STANDARD, &receipt_bytes);
+    let client = reqwest::Client::new();
+
+    // Matching expected_nonce_hex -> verified.
+    let resp = client
+        .post(format!("{}/api/v1/verify", base))
+        .json(&serde_json::json!({
+            "receipt": receipt_b64.clone(),
+            "public_key": public_key_hex.clone(),
+            "expected_nonce_hex": hex::encode(&nonce),
+        }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 200);
+    let body: serde_json::Value = resp.json().await.unwrap();
+    assert_eq!(body["verified"], true, "matching nonce must verify: {body}");
+    assert_eq!(check_status(&body, "NONCE"), "pass");
+
+    // Mismatched expected_nonce_hex -> rejected.
+    let resp = client
+        .post(format!("{}/api/v1/verify", base))
+        .json(&serde_json::json!({
+            "receipt": receipt_b64,
+            "public_key": public_key_hex,
+            "expected_nonce_hex": "0011223344556677",
+        }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 200);
+    let body: serde_json::Value = resp.json().await.unwrap();
+    assert_eq!(body["verified"], false, "mismatched nonce must fail: {body}");
+    assert_eq!(check_status(&body, "NONCE"), "fail");
 }
 
 #[tokio::test]
