@@ -814,12 +814,11 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
             // Every match arm below assigns this before it is read.
             #[allow(unused_assignments)]
             let mut loaded_model_hash: Option<[u8; 32]> = None;
-            // F-10: model_hash is computed as SHA-256 over the single model
-            // weights (or GGUF) file in every load path below, so
-            // model_hash_scheme is always "sha256-single". A signed manifest,
-            // where present, authorizes the weights but does not change how
-            // model_hash is computed.
-            let loaded_model_hash_scheme: Option<String> = Some("sha256-single".to_string());
+            // F-10: model_hash is normally computed as SHA-256 over the
+            // single model weights (or GGUF) file. Authoritative manifests
+            // switch the receipt scheme to "sha256-manifest" after their
+            // signed file digests are validated.
+            let mut loaded_model_hash_scheme: Option<String> = Some("sha256-single".to_string());
             #[allow(unused_assignments)]
             let mut loaded_model_identity_coverage: Option<
                 std::collections::BTreeMap<String, bool>,

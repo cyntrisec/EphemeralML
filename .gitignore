@@ -203,3 +203,6 @@ site/marketing/spec/
 # Local release/build artifacts
 dist/
 docker-stage/
+
+# Local GCP preview smoke script
+scripts/gcp/g4_evidence_smoke.sh
