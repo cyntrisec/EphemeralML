@@ -27,7 +27,7 @@ hex = { workspace = true }
 # Stage 5 S3 upload for the evidence bundle.
 aws-config = { workspace = true }
 aws-sdk-s3 = { version = "1.132.0", default-features = false, features = ["behavior-version-latest", "rt-tokio", "default-https-client", "http-1x", "sigv4a"] }
-aws-sdk-ssm = { version = "1.55", default-features = false, features = ["behavior-version-latest", "rt-tokio", "default-https-client"] }
+aws-sdk-ssm = { version = "1.110", default-features = false, features = ["behavior-version-latest", "rt-tokio", "default-https-client"] }
 
 [dev-dependencies]
 assert_cmd = "2.0"
