@@ -12,7 +12,16 @@ Parameters:
   InstanceType:
     Type: String
     Default: m6i.xlarge
-    Description: Nitro Enclaves-capable instance type.
+    AllowedValues:
+      - m6i.xlarge
+      - m6i.2xlarge
+      - m6i.4xlarge
+      - c6i.xlarge
+      - c6i.2xlarge
+      - c6i.4xlarge
+      - r6i.xlarge
+      - r6i.2xlarge
+    Description: Nitro Enclaves-capable instance type with at least 4 vCPUs.
   VpcId:
     Type: AWS::EC2::VPC::Id
     Description: VPC for the PoC host security group.
@@ -26,7 +35,8 @@ Parameters:
   AllowedSshCidr:
     Type: String
     Default: ""
-    Description: Optional CIDR allowed to SSH to the host. Leave empty for SSM-only access.
+    AllowedPattern: '^$|^([0-9]{1,3}\.){3}[0-9]{1,3}/32$'
+    Description: Optional single-admin /32 CIDR allowed to SSH. Leave empty for SSM-only access.
   EnclaveImageSha384:
     Type: String
     AllowedPattern: "^[0-9a-fA-F]{96}$"
@@ -42,10 +52,32 @@ Parameters:
   LatestAmiId:
     Type: AWS::SSM::Parameter::Value<AWS::EC2::Image::Id>
     Default: /aws/service/ami-amazon-linux-latest/al2023-ami-kernel-default-x86_64
+  CyntrisecAmiId:
+    Type: String
+    Default: ""
+    AllowedPattern: '^$|^ami-[0-9a-fA-F]+$'
+    Description: Optional private shared Cyntrisec pilot AMI. Leave empty to launch stock AL2023 and install host prerequisites at boot.
+  SplunkHecEndpoint:
+    Type: String
+    Default: ""
+    AllowedPattern: '^$|^https://[A-Za-z0-9._:/-]+$'
+    Description: Optional Splunk HEC endpoint for evidence events. The token must be stored in the secret referenced by SplunkHecSecretArn.
+  SplunkHecSecretArn:
+    Type: String
+    Default: ""
+    AllowedPattern: '^$|^arn:(aws|aws-us-gov|aws-cn):secretsmanager:[a-z0-9-]+:[0-9]{12}:secret:[A-Za-z0-9/_+=.@-]+$'
+    Description: Optional Secrets Manager secret ARN containing the Splunk HEC token. Leave empty to disable Splunk evidence publishing.
+  ModelBundleUri:
+    Type: String
+    Default: ""
+    AllowedPattern: '^$|^s3://[A-Za-z0-9][A-Za-z0-9._/-]*$'
+    Description: Optional S3 URI for the encrypted model bundle consumed by the pilot runtime.
 
 Conditions:
   HasKeyName: !Not [!Equals [!Ref KeyName, ""]]
   EnableSshIngress: !Not [!Equals [!Ref AllowedSshCidr, ""]]
+  UseCyntrisecPrivateAmi: !Not [!Equals [!Ref CyntrisecAmiId, ""]]
+  HasSplunkHecSecretArn: !Not [!Equals [!Ref SplunkHecSecretArn, ""]]
 
 Resources:
   EvidenceKey:
@@ -228,6 +260,17 @@ Resources:
                     kms:RecipientAttestation:ImageSha384: !Ref EnclaveImageSha384
                     kms:RecipientAttestation:PCR1: !Ref EnclavePcr1Sha384
                     kms:RecipientAttestation:PCR2: !Ref EnclavePcr2Sha384
+        - !If
+          - HasSplunkHecSecretArn
+          - PolicyName: PilotSplunkSecretRead
+            PolicyDocument:
+              Version: "2012-10-17"
+              Statement:
+                - Effect: Allow
+                  Action:
+                    - secretsmanager:GetSecretValue
+                  Resource: !Ref SplunkHecSecretArn
+          - !Ref "AWS::NoValue"
 
   HostInstanceProfile:
     Type: AWS::IAM::InstanceProfile
@@ -239,7 +282,7 @@ Resources:
   HostInstance:
     Type: AWS::EC2::Instance
     Properties:
-      ImageId: !Ref LatestAmiId
+      ImageId: !If [UseCyntrisecPrivateAmi, !Ref CyntrisecAmiId, !Ref LatestAmiId]
       InstanceType: !Ref InstanceType
       IamInstanceProfile: !Ref HostInstanceProfile
       KeyName: !If [HasKeyName, !Ref KeyName, !Ref "AWS::NoValue"]
@@ -258,28 +301,44 @@ Resources:
             VolumeType: gp3
             Encrypted: true
       UserData:
-        Fn::Base64: !Sub |
-          #!/bin/bash
-          set -euxo pipefail
-          dnf update -y
-          dnf install -y aws-nitro-enclaves-cli aws-nitro-enclaves-cli-devel docker jq git
-          systemctl enable --now docker
-          usermod -aG docker,ne ec2-user || true
-          /opt/aws/aws-nitro-enclaves-cli/bin/nitro-cli --version || true
-          printf -- '---\nmemory_mib: 4096\ncpu_count: 2\n' >/etc/nitro_enclaves/allocator.yaml
-          systemctl enable --now nitro-enclaves-allocator.service
-          mkdir -p /opt/cyntrisec/bin /opt/cyntrisec/eif
-          {
-            printf 'export CYNTRISEC_STACK_NAME=%s\n' '${AWS::StackName}'
-            printf 'export CYNTRISEC_EVIDENCE_BUCKET=%s\n' '${EvidenceBucket}'
-            printf 'export CYNTRISEC_EVIDENCE_KMS_KEY_ARN=%s\n' '${EvidenceKey.Arn}'
-            printf 'export CYNTRISEC_MODEL_KMS_KEY_ARN=%s\n' '${ModelKey.Arn}'
-            printf 'export CYNTRISEC_MODEL_KMS_ALIAS=%s\n' 'alias/${ProjectName}-model'
-            printf 'export CYNTRISEC_APPROVED_EIF_SHA384=%s\n' '${EnclaveImageSha384}'
-            printf 'export CYNTRISEC_APPROVED_PCR1_SHA384=%s\n' '${EnclavePcr1Sha384}'
-            printf 'export CYNTRISEC_APPROVED_PCR2_SHA384=%s\n' '${EnclavePcr2Sha384}'
-            printf 'export CYNTRISEC_EXPECTED_HOST_PROFILE=%s\n' '${ProjectName}-host-profile-${AWS::Region}'
-          } >/etc/cyntrisec-poc.env
+        Fn::Base64:
+          Fn::Sub:
+            - |
+              #!/bin/bash
+              set -euxo pipefail
+              if [[ "${UsePrivateAmi}" != "true" ]]; then
+                dnf update -y
+                dnf install -y aws-nitro-enclaves-cli aws-nitro-enclaves-cli-devel jq git
+                usermod -aG ne ec2-user || true
+                /opt/aws/aws-nitro-enclaves-cli/bin/nitro-cli --version || true
+                printf -- '---\nmemory_mib: 4096\ncpu_count: 2\n' >/etc/nitro_enclaves/allocator.yaml
+                systemctl enable --now nitro-enclaves-allocator.service
+                mkdir -p /opt/cyntrisec/bin /opt/cyntrisec/eif /etc/cyntrisec
+              else
+                systemctl enable --now nitro-enclaves-allocator.service
+                mkdir -p /etc/cyntrisec
+              fi
+              umask 077
+              {
+                printf 'CYNTRISEC_STACK_NAME=%s\n' '${AWS::StackName}'
+                printf 'CYNTRISEC_EVIDENCE_BUCKET=%s\n' '${EvidenceBucket}'
+                printf 'CYNTRISEC_EVIDENCE_KMS_KEY_ARN=%s\n' '${EvidenceKey.Arn}'
+                printf 'CYNTRISEC_MODEL_KMS_KEY_ARN=%s\n' '${ModelKey.Arn}'
+                printf 'CYNTRISEC_MODEL_KMS_ALIAS=%s\n' 'alias/${ProjectName}-model'
+                printf 'CYNTRISEC_APPROVED_EIF_SHA384=%s\n' '${EnclaveImageSha384}'
+                printf 'CYNTRISEC_APPROVED_PCR1_SHA384=%s\n' '${EnclavePcr1Sha384}'
+                printf 'CYNTRISEC_APPROVED_PCR2_SHA384=%s\n' '${EnclavePcr2Sha384}'
+                printf 'CYNTRISEC_EXPECTED_HOST_PROFILE=%s\n' '${ProjectName}-host-profile-${AWS::Region}'
+                printf 'CYNTRISEC_SPLUNK_HEC_ENDPOINT=%s\n' '${SplunkHecEndpoint}'
+                printf 'CYNTRISEC_SPLUNK_HEC_SECRET_ARN=%s\n' '${SplunkHecSecretArn}'
+                printf 'CYNTRISEC_MODEL_BUNDLE_URI=%s\n' '${ModelBundleUri}'
+              } >/etc/cyntrisec/deployment.env
+              ln -sfn /etc/cyntrisec/deployment.env /etc/cyntrisec-poc.env
+              if [[ -x /opt/cyntrisec/bin/cyntrisec-bootstrap ]]; then
+                /opt/cyntrisec/bin/cyntrisec-bootstrap --config /etc/cyntrisec/deployment.env --validate-only
+                systemctl enable --now cyntrisec-bootstrap.service
+              fi
+            - UsePrivateAmi: !If [UseCyntrisecPrivateAmi, "true", "false"]
       Tags:
         - Key: Name
           Value: !Sub "${ProjectName}-nitro-host"
@@ -354,3 +413,14 @@ Outputs:
   StackConfigPrefix:
     Description: SSM parameter prefix consumed by doctor and smoke-test.
     Value: !Sub "/cyntrisec/pilot/config/${AWS::StackName}/"
+  DoctorCommand:
+    Description: Operator command to run doctor through SSM after CREATE_COMPLETE when CyntrisecAmiId is set.
+    Value: !Sub >-
+      aws ssm send-command --region ${AWS::Region} --instance-ids ${HostInstance} --document-name AWS-RunShellScript --parameters commands='["sudo -E /opt/cyntrisec/bin/ephemeralml-doctor --json --stack-name ${AWS::StackName}"]'
+  SmokeTestCommand:
+    Description: Operator command to run the AWS-native smoke test through SSM after doctor passes when CyntrisecAmiId is set.
+    Value: !Sub >-
+      aws ssm send-command --region ${AWS::Region} --instance-ids ${HostInstance} --document-name AWS-RunShellScript --parameters commands='["sudo -E /opt/cyntrisec/bin/ephemeralml-smoke-test --json --terminate-existing --stack-name ${AWS::StackName} --eif-path /opt/cyntrisec/eif/ephemeralml-pilot.eif --kms-proxy-bin /opt/cyntrisec/bin/kms_proxy_host --host-bin /opt/cyntrisec/bin/ephemeral-ml-host --doctor-bin /opt/cyntrisec/bin/ephemeralml-doctor --verifier-bin /opt/cyntrisec/bin/ephemeralml-verify --evidence-bucket ${EvidenceBucket} --model-bucket ${EvidenceBucket} --verbose"]'
+  SplunkSearchQuery:
+    Description: Suggested Splunk search for Cyntrisec evidence events.
+    Value: 'index=cyntrisec sourcetype="cyntrisec:evidence" | sort -_time | head 20'

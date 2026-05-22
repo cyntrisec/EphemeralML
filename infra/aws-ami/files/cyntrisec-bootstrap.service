@@ -1,0 +1,13 @@
+[Unit]
+Description=Cyntrisec AWS pilot AMI bootstrap validation
+After=network-online.target nitro-enclaves-allocator.service
+Wants=network-online.target nitro-enclaves-allocator.service
+
+[Service]
+Type=oneshot
+EnvironmentFile=/etc/cyntrisec/deployment.env
+ExecStart=/opt/cyntrisec/bin/cyntrisec-bootstrap --config /etc/cyntrisec/deployment.env
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target

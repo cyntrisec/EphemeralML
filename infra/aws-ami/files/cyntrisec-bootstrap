@@ -1,0 +1,197 @@
+#!/usr/bin/env bash
+# cyntrisec-bootstrap - first-boot validation for the Cyntrisec AWS pilot AMI.
+
+set -euo pipefail
+
+CONFIG="/etc/cyntrisec/deployment.env"
+VALIDATE_ONLY=0
+MANIFEST="/opt/cyntrisec/release-manifest.json"
+EIF_PATH="/opt/cyntrisec/eif/ephemeralml-pilot.eif"
+
+usage() {
+  cat <<'EOF'
+Usage:
+  cyntrisec-bootstrap [--config PATH] [--validate-only]
+
+Validates that the private pilot AMI has the fixed release artifacts in place
+and that CloudFormation wrote the customer-specific deployment configuration.
+This script intentionally never reads or prints secret values.
+EOF
+}
+
+die() {
+  echo "ERROR: $*" >&2
+  exit 1
+}
+
+info() {
+  echo "==> $*"
+}
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --config) CONFIG="$2"; shift 2 ;;
+    --validate-only) VALIDATE_ONLY=1; shift ;;
+    -h|--help) usage; exit 0 ;;
+    *) die "unknown option: $1" ;;
+  esac
+done
+
+[[ -f "${MANIFEST}" ]] || die "missing ${MANIFEST}"
+[[ -x /opt/cyntrisec/bin/ephemeralml-doctor ]] || die "missing ephemeralml-doctor"
+[[ -x /opt/cyntrisec/bin/ephemeralml-smoke-test ]] || die "missing ephemeralml-smoke-test"
+[[ -x /opt/cyntrisec/bin/ephemeral-ml-host ]] || die "missing ephemeral-ml-host"
+[[ -x /opt/cyntrisec/bin/kms_proxy_host ]] || die "missing kms_proxy_host"
+[[ -f "${EIF_PATH}" ]] || die "missing fixed EIF artifact"
+[[ -f "${CONFIG}" ]] || die "missing deployment config: ${CONFIG}"
+
+set -a
+# shellcheck disable=SC1090
+source "${CONFIG}"
+set +a
+
+required=(
+  CYNTRISEC_STACK_NAME
+  CYNTRISEC_EVIDENCE_BUCKET
+  CYNTRISEC_EVIDENCE_KMS_KEY_ARN
+  CYNTRISEC_MODEL_KMS_KEY_ARN
+  CYNTRISEC_APPROVED_EIF_SHA384
+  CYNTRISEC_APPROVED_PCR1_SHA384
+  CYNTRISEC_APPROVED_PCR2_SHA384
+  CYNTRISEC_EXPECTED_HOST_PROFILE
+)
+
+for name in "${required[@]}"; do
+  [[ -n "${!name:-}" ]] || die "missing required config variable: ${name}"
+done
+
+if [[ -n "${CYNTRISEC_SPLUNK_HEC_SECRET_ARN:-}" && -z "${CYNTRISEC_SPLUNK_HEC_ENDPOINT:-}" ]]; then
+  die "CYNTRISEC_SPLUNK_HEC_ENDPOINT is required when CYNTRISEC_SPLUNK_HEC_SECRET_ARN is set"
+fi
+
+nitro_cli=""
+for candidate in nitro-cli /opt/aws/aws-nitro-enclaves-cli/bin/nitro-cli; do
+  if command -v "${candidate}" >/dev/null 2>&1; then
+    nitro_cli="$(command -v "${candidate}")"
+    break
+  elif [[ -x "${candidate}" ]]; then
+    nitro_cli="${candidate}"
+    break
+  fi
+done
+[[ -n "${nitro_cli}" ]] || die "nitro-cli not found; cannot verify EIF measurements"
+
+measurements_file="$(mktemp)"
+trap 'rm -f "${measurements_file}"' EXIT
+"${nitro_cli}" describe-eif --eif-path "${EIF_PATH}" >"${measurements_file}"
+
+python3 - \
+  "${MANIFEST}" \
+  "${measurements_file}" \
+  "${CYNTRISEC_APPROVED_EIF_SHA384}" \
+  "${CYNTRISEC_APPROVED_PCR1_SHA384}" \
+  "${CYNTRISEC_APPROVED_PCR2_SHA384}" <<'PY'
+import hashlib
+import json
+import re
+import sys
+from pathlib import Path
+
+manifest_path = Path(sys.argv[1])
+measurements_path = Path(sys.argv[2])
+approved = {
+    "pcr0": sys.argv[3].lower(),
+    "pcr1": sys.argv[4].lower(),
+    "pcr2": sys.argv[5].lower(),
+}
+HEX_384 = re.compile(r"^[0-9a-fA-F]{96}$")
+
+
+def sha256(path: Path) -> str:
+    h = hashlib.sha256()
+    with path.open("rb") as f:
+        for chunk in iter(lambda: f.read(1024 * 1024), b""):
+            h.update(chunk)
+    return h.hexdigest()
+
+
+def sha384(path: Path) -> str:
+    h = hashlib.sha384()
+    with path.open("rb") as f:
+        for chunk in iter(lambda: f.read(1024 * 1024), b""):
+            h.update(chunk)
+    return h.hexdigest()
+
+
+def find_measurements(obj):
+    values = {}
+
+    def visit(key, value):
+        key_l = str(key).lower()
+        if isinstance(value, str) and HEX_384.fullmatch(value):
+            if key_l in {"pcr0", "image_sha384", "imagesha384", "imagehash"}:
+                values.setdefault("pcr0", value.lower())
+            elif key_l == "pcr1":
+                values.setdefault("pcr1", value.lower())
+            elif key_l == "pcr2":
+                values.setdefault("pcr2", value.lower())
+        if isinstance(value, dict):
+            for child_key, child_value in value.items():
+                visit(child_key, child_value)
+        elif isinstance(value, list):
+            for child_value in value:
+                visit(key, child_value)
+
+    visit("root", obj)
+    return values
+
+
+def parse_measurements(path: Path) -> dict[str, str]:
+    raw = path.read_text(encoding="utf-8")
+    try:
+        values = find_measurements(json.loads(raw))
+    except json.JSONDecodeError:
+        values = {}
+        for name in ("PCR0", "PCR1", "PCR2"):
+            match = re.search(rf"{name}[^0-9a-fA-F]*([0-9a-fA-F]{{96}})", raw, re.IGNORECASE)
+            if match:
+                values[name.lower()] = match.group(1).lower()
+        image = re.search(r"ImageSha384[^0-9a-fA-F]*([0-9a-fA-F]{96})", raw, re.IGNORECASE)
+        if image:
+            values.setdefault("pcr0", image.group(1).lower())
+    missing = [name for name in ("pcr0", "pcr1", "pcr2") if name not in values]
+    if missing:
+        raise SystemExit(f"missing live EIF measurements: {', '.join(missing)}")
+    return values
+
+manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+for binary, expected in manifest.get("binaries", {}).items():
+    path = Path("/opt/cyntrisec/bin") / binary
+    if not path.exists():
+        raise SystemExit(f"manifest binary missing: {path}")
+    actual = sha256(path)
+    if actual != expected.get("sha256"):
+        raise SystemExit(f"binary digest mismatch for {binary}: {actual} != {expected.get('sha256')}")
+
+eif = manifest.get("eif") or {}
+eif_path = Path(eif.get("path", "/opt/cyntrisec/eif/ephemeralml-pilot.eif"))
+if sha384(eif_path) != eif.get("file_sha384"):
+    raise SystemExit("EIF file SHA-384 does not match release manifest")
+
+manifest_measurements = eif.get("measurements") or {}
+live_measurements = parse_measurements(measurements_path)
+for name in ("pcr0", "pcr1", "pcr2"):
+    expected_manifest = (manifest_measurements.get(name) or "").lower()
+    if expected_manifest != live_measurements[name]:
+        raise SystemExit(f"EIF {name} mismatch against manifest: {live_measurements[name]} != {expected_manifest}")
+    if approved[name] != live_measurements[name]:
+        raise SystemExit(f"EIF {name} mismatch against CloudFormation-approved value: {live_measurements[name]} != {approved[name]}")
+PY
+
+info "Cyntrisec AMI bootstrap validation passed"
+if [[ "${VALIDATE_ONLY}" -eq 1 ]]; then
+  exit 0
+fi
+
+install -d -m 0755 /var/lib/cyntrisec /var/log/cyntrisec
+printf '%s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" >/var/lib/cyntrisec/last-bootstrap
