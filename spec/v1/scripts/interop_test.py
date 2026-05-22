@@ -291,6 +291,19 @@ def decode_protected_header(protected_bstr: bytes) -> dict[Any, Any]:
 
 
 def verify_sig_structure(protected_bstr: bytes, payload: bytes, signature: bytes, public_key: bytes) -> None:
+    """Verify the COSE Sig_structure1 Ed25519 signature.
+
+    AIR v1 (Verification Procedure, Layer 2) requires strict Ed25519
+    verification: reject a non-canonical scalar S, reject small-order R and A
+    points, and use the cofactorless group equation. This harness delegates to
+    libsodium via PyNaCl (``VerifyKey.verify`` -> ``crypto_sign_open``).
+    Whether libsodium's verification matches every step of the strict
+    procedure -- in particular small-order R/A rejection and use of the
+    cofactorless equation -- is not asserted here; it is confirmed empirically
+    by the F-1 edge-case conformance vectors. A conformant verifier is
+    REQUIRED to reject those vectors regardless of which Ed25519 library it
+    uses.
+    """
     if len(signature) != 64:
         fail(2, "SIG", "BAD_SIG_LENGTH", f"expected 64-byte Ed25519 signature, got {len(signature)}")
     if len(public_key) != 32:

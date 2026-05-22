@@ -537,9 +537,21 @@ fn layer1_structural(data: &[u8], checks: &mut Vec<AirCheck>) -> Option<coset::C
 
 // ── Layer 2: Crypto ─────────────────────────────────────────────────
 
-/// Verify the COSE Sig_structure1 signature with Ed25519 `verify_strict`.
-/// Returns `true` only if the signature verifies; the caller halts on `false`
-/// so that an unauthenticated payload is never decoded.
+/// Verify the COSE Sig_structure1 signature with Ed25519. Returns `true` only
+/// if the signature verifies; the caller halts on `false` so an unauthenticated
+/// payload is never decoded.
+///
+/// AIR v1 (Verification Procedure, Layer 2) mandates strict Ed25519
+/// verification: reject a non-canonical scalar `S` (outside `[0, L)`), reject
+/// small-order `R` and `A` points, and use the cofactorless group equation.
+/// `ed25519-dalek`'s `verify_strict` enforces exactly that set — a full
+/// canonical-`S` check (`check_scalar` via `Scalar::from_canonical_bytes`),
+/// `is_small_order` rejection of both `R` and `A`, and the cofactorless
+/// equation `[S]B = R + [k]A` — provided the crate's `legacy_compatibility`
+/// feature is off, which it is in this build (see workspace `Cargo.toml`).
+/// `verify_strict` does not additionally reject non-canonically *encoded*
+/// `R`/`A` point values; AIR v1 Layer 2 does not require that check either,
+/// so this verifier conforms to the specified algorithm.
 fn layer2_crypto(
     cose: &coset::CoseSign1,
     public_key: &ed25519_dalek::VerifyingKey,

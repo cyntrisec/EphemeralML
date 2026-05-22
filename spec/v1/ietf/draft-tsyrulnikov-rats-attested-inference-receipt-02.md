@@ -319,9 +319,13 @@ Verifiers MUST reject receipts where `alg` is not -8 or where
 `content type` is not 61. Additional protected header parameters are
 not defined in v1 and MUST NOT be present.
 
-The signing algorithm is Ed25519 with `verify_strict` semantics per
-{{RFC8032}} Section 5.1.7. Verifiers MUST reject non-canonical S
-values (S >= L where L is the Ed25519 group order).
+The signing algorithm is Ed25519 ({{RFC8032}}). Receipts MUST be
+verified with the strict procedure specified in
+{{verification-procedure}}, Layer 2: a non-canonical scalar S (S
+outside \[0, L), where L is the Ed25519 group order), a small-order R
+or A point, and any signature failing the cofactorless group equation
+are all rejected. This is stricter than the baseline verification of
+{{RFC8032}} Section 5.1.7.
 
 ## Unprotected Header
 
@@ -687,9 +691,11 @@ This section consolidates the mandatory profile positions per
     Receivers SHOULD accept both `application/cwt` and
     `application/eat+cwt`.
 
-6.  **Signing algorithm**: Ed25519 only (COSE alg = -8).
-    `verify_strict` required (canonical S per {{RFC8032}} Section
-    5.1.7). No algorithm negotiation in v1.
+6.  **Signing algorithm**: Ed25519 only (COSE alg = -8). Signatures
+    MUST be verified with the strict procedure of
+    {{verification-procedure}}, Layer 2 (canonical scalar S,
+    small-order R/A rejection, cofactorless group equation). No
+    algorithm negotiation in v1.
 
 7.  **Detached bundles**: Not supported in v1. The attestation
     document is referenced by hash (attestation_doc_hash), not
@@ -864,11 +870,36 @@ is not decoded until Layer 3, after signature verification.
 ## Layer 2: Signature Verification
 
 1.  Construct Sig_structure1 = \["Signature1", protected, h'',
-    payload\].
+    payload\] per {{RFC9052}} Section 4.4. The result is the message M
+    over which the signature is verified.
 
-2.  Verify the Ed25519 signature over Sig_structure1 using the
-    provided public key. The verification MUST use `verify_strict`
-    semantics (reject non-canonical S values).
+2.  Verify the Ed25519 signature -- the point R (first 32 octets) and
+    the scalar S (last 32 octets) -- over M with the Ed25519 public
+    key A. A conformant verifier MUST perform all of the following
+    checks and MUST reject the receipt if any of them fails:
+
+    a.  Decode S as a 32-octet little-endian integer. Reject unless
+        0 <= S < L, where L is the order of the Ed25519 prime-order
+        subgroup. A verifier MUST NOT reduce S modulo L; an S value
+        outside \[0, L) is a verification failure.
+
+    b.  Decode R and A as Edwards points. Reject if either decoding
+        fails.
+
+    c.  Reject if A is a small-order point, or if R is a small-order
+        point (a point of order 1, 2, 4, or 8).
+
+    d.  Compute k = SHA-512(R || A || M), interpreted as a
+        little-endian integer modulo L. Verify the cofactorless group
+        equation \[S\]B = R + \[k\]A, where B is the Ed25519 base
+        point. Reject if it does not hold. The cofactored equation
+        MUST NOT be used in place of the cofactorless equation.
+
+Checks (c) and (d) make AIR signature verification stricter than the
+baseline of {{RFC8032}} Section 5.1.7, which permits the cofactored
+equation and does not require small-order rejection. The stricter
+procedure removes signature malleability the baseline would otherwise
+permit.
 
 ## Layer 3: Payload Decode and Claim Validation
 
