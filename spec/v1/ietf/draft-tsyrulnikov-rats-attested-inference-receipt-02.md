@@ -1540,8 +1540,9 @@ through all four layers.
 
 ## Invalid Receipt Categories
 
-The specification includes 8 invalid golden vectors covering failure
-modes across all verification layers:
+The specification includes invalid golden vectors covering failure
+modes across all verification layers. The structural and policy
+vectors are:
 
 | Vector               | Layer | Expected Failure         |
 |:---------------------|:------|:-------------------------|
@@ -1553,6 +1554,18 @@ modes across all verification layers:
 | model-hash-mismatch  | L4    | MODEL_HASH_MISMATCH      |
 | platform-mismatch    | L4    | PLATFORM_MISMATCH        |
 | stale-iat            | L4    | TIMESTAMP_STALE          |
+
+The signature-strictness vectors exercise the strict Ed25519
+verification algorithm of {{verification-procedure}} Layer 2. Each is a
+valid receipt body whose 64-octet signature violates one Layer 2 check
+(the letters reference the checks enumerated in that section):
+
+| Vector              | Layer | Expected Failure | Check |
+|:--------------------|:------|:-----------------|:------|
+| sig-s-out-of-range  | L2    | SIG_FAILED       | (a)   |
+| sig-small-order-r   | L2    | SIG_FAILED       | (c)   |
+| sig-small-order-a   | L2    | SIG_FAILED       | (c)   |
+| sig-cofactored-only | L2    | SIG_FAILED       | (d)   |
 
 Complete vector files (JSON with hex-encoded COSE bytes, expected
 failure codes, and policy overrides) are available in the reference

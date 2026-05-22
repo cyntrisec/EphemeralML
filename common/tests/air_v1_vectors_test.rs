@@ -450,6 +450,36 @@ fn cv_stale_iat_fails() {
 }
 
 // ═══════════════════════════════════════════════════════════════════
+// Invalid vector tests — signature strictness (Layer 2, F-1)
+// ═══════════════════════════════════════════════════════════════════
+
+#[test]
+fn cv_signature_strictness_vectors_fail() {
+    // Each F-1 vector is a receipt whose Ed25519 signature violates the
+    // strict verification algorithm (non-canonical S, small-order R,
+    // small-order A, or a signature valid only under the cofactored
+    // equation). All MUST be rejected at Layer 2 with SIG_FAILED.
+    for name in [
+        "v1-sig-s-out-of-range",
+        "v1-sig-small-order-r",
+        "v1-sig-small-order-a",
+        "v1-sig-cofactored-only",
+    ] {
+        let v = load_vector("invalid", &format!("{name}.json"));
+        let receipt = decode_hex(&v, "receipt_hex");
+        let pubkey = pubkey_from_hex(v["public_key_hex"].as_str().unwrap());
+
+        let result = verify_air_v1_receipt(&receipt, &pubkey, &AirVerifyPolicy::default());
+        assert!(!result.verified, "{name} must not verify");
+        assert!(
+            result.has_failure(&AirCheckCode::SignatureFailed),
+            "{name} expected SIG_FAILED, got: {:?}",
+            result.failures()
+        );
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════════
 // Vector file integrity
 // ═══════════════════════════════════════════════════════════════════
 
@@ -476,6 +506,11 @@ fn cv_vector_directory_complete() {
     assert!(dir.join("invalid/v1-model-hash-mismatch.json").exists());
     assert!(dir.join("invalid/v1-platform-mismatch.json").exists());
     assert!(dir.join("invalid/v1-stale-iat.json").exists());
+    // Invalid vectors — signature strictness (layer 2, F-1)
+    assert!(dir.join("invalid/v1-sig-s-out-of-range.json").exists());
+    assert!(dir.join("invalid/v1-sig-small-order-r.json").exists());
+    assert!(dir.join("invalid/v1-sig-small-order-a.json").exists());
+    assert!(dir.join("invalid/v1-sig-cofactored-only.json").exists());
     // Documentation
     assert!(dir.join("README.md").exists());
 }

@@ -1,0 +1,14 @@
+{
+  "name": "v1-sig-cofactored-only",
+  "description": "AIR v1 receipt whose signature satisfies the cofactored group equation [8][S]B = [8]R + [8][k]A but not the cofactorless equation [S]B = R + [k]A: R carries an order-2 torsion component. R is not itself small-order, so only Verification Procedure Layer 2 check (d) catches it -- a verifier that uses the cofactored equation would wrongly accept it. Edge case: cofactored vs cofactorless (Taming the many EdDSA / ed25519-speccheck).",
+  "receipt_hex": "d28446a2012703183da0590207b0016d63796e7472697365632e636f6d061a67bdec2007500102030405060708090a0b0c0d0e0f10190109782168747470733a2f2f737065632e63796e7472697365632e636f6d2f6169722f76313a000100006c6d696e696c6d2d6c362d76323a0001000165312e302e303a000100025820aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa3a000100035820bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb3a000100045820cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc3a000100055820dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd3a00010006a4647063723058300101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101016470637231583002020202020202020202020202020202020202020202020202020202020202020202020202020202020202020202020264706372325830030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303706d6561737572656d656e745f74797065696e6974726f2d7063723a000100076e706f6c6963792d323032362e30323a00010008182a3a0001000918743a0001000a1902003a0001000b6a70726f64756374696f6e5840c664cda8da48a912ba8318f8fb7bb69d0df1f4fe371baa061206fdc179cdc2d4750958246467f7be51d1b24c780908cfb621fa25e0880967ac98b57436dceb05",
+  "public_key_hex": "197f6b23e16c8532c6abc838facd5ea789be0c76b2920334039bfa8b3d368d61",
+  "expected_failure": {
+    "layer": 2,
+    "check": "SIG",
+    "code": "SIG_FAILED",
+    "reason": "signature satisfies the cofactored but not the cofactorless equation"
+  },
+  "version": "1.0",
+  "date": "2026-05-22"
+}

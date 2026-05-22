@@ -55,6 +55,23 @@ the policy that triggers the failure.
 | `invalid/v1-platform-mismatch.json` | PLATFORM_MISMATCH | `expected_platform` |
 | `invalid/v1-stale-iat.json` | TIMESTAMP_STALE | `max_age_secs` |
 
+### Signature strictness failures (Layer 2)
+
+These vectors are valid receipt bodies whose Ed25519 signature violates the
+strict verification algorithm of the specification's Verification Procedure,
+Layer 2. They are produced by `../scripts/gen_f1_vectors.py` (deterministic;
+re-running reproduces byte-identical files).
+
+| File | Expected Failure | Layer 2 Check |
+|------|-----------------|---------------|
+| `invalid/v1-sig-s-out-of-range.json` | SIG_FAILED | (a) non-canonical scalar `S` (`S + L`) |
+| `invalid/v1-sig-small-order-r.json` | SIG_FAILED | (c) small-order `R` |
+| `invalid/v1-sig-small-order-a.json` | SIG_FAILED | (c) small-order public key `A` |
+| `invalid/v1-sig-cofactored-only.json` | SIG_FAILED | (d) cofactored-valid, cofactorless-invalid |
+
+`v1-sig-small-order-a.json` carries its small-order public key in
+`public_key_hex`; it is not signed by the standard golden key.
+
 ## JSON Schema
 
 Each vector file contains:
