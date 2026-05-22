@@ -177,7 +177,7 @@ These claims use negative integer keys to avoid collision with the IANA CWT clai
 | CBOR type | uint |
 | Required | Yes |
 | Semantics | Monotonically increasing counter within a single workload session. Resets on restart. |
-| Verification | Verifiers processing a stream SHOULD check monotonicity. Gaps indicate missed receipts (within a session). |
+| Verification | Verifiers processing an observed stream SHOULD check monotonicity. Gaps indicate missing sequence numbers within that session; absence of a gap does not prove that every receipt was submitted. |
 
 ### execution_time_ms — key -65546
 

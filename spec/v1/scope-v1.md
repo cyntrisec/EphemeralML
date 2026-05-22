@@ -41,7 +41,7 @@ Additional platforms (AMD SEV-SNP, ARM CCA) would be defined by a future AIR pro
 | **Deletion/destruction proof** | DestroyEvidence is self-reported, not cryptographically provable. v1 does not claim provable data destruction. |
 | **Transport protocol** | How receipts travel (VSock, TCP, gRPC) is out of scope. v1 defines the receipt, not the wire protocol. |
 | **Key management** | How signing keys are provisioned, rotated, or bound to attestation is implementation-specific. v1 defines the signature algorithm, not key lifecycle. |
-| **SCITT integration** | Transparency log registration (IETF SCITT) is a future layer. v1 receipts are compatible but do not require SCITT. |
+| **SCITT integration** | Transparency log registration (IETF SCITT) is a future layer. v1 receipts are compatible but do not require SCITT. A transparency log can timestamp and order submitted receipts; completeness requires a separate mandatory-submission or sequencing policy. |
 | **C2PA integration** | Content provenance embedding is complementary but out of scope for v1. |
 | **Model format** | v1 does not define how model_id or model_version are assigned. These are opaque strings. `model_hash` is a SHA-256 digest whose computation method is declared by the optional `model_hash_scheme` claim (key -65549). Defined schemes: `"sha256-single"`, `"sha256-concat"`, `"sha256-manifest"`. When `model_hash_scheme` is absent, the hash is treated as opaque. |
 | **Attestation document format** | The attestation_doc_hash is a SHA-256 of the platform's attestation document. v1 does not define the document format itself (Nitro COSE, TDX quote, etc.). |

@@ -42,6 +42,7 @@ AIR-local verification alone does not prove:
 - The model artifact set was loaded or executed correctly.
 - The customer-approved model was used, unless `expected_model_hash` or an equivalent model policy is supplied.
 - The receipt is fresh, unless freshness policy is applied.
+- The receipt stream is complete. AIR can identify a submitted receipt and can support replay/gap checks when the verifier maintains state, but it cannot prove that an issuer submitted every receipt without an external sequencing or mandatory-submission policy.
 - The receipt corresponds to the customer's request or response, unless those hashes are recomputed and checked.
 - The cloud operator could not affect availability, scheduling, network delivery, or billing metadata.
 - The underlying TEE hardware, firmware, platform verifier, or endorsement chain is flawless.

@@ -995,6 +995,14 @@ AIR's TEE-attested workload model. Complementary work by
 of AI inference auditing, which pairs with AIR's successful-inference
 scope to give broader audit coverage.
 
+A SCITT Transparency Service can provide an independent inclusion time
+and ordering record for AIR receipts that are submitted to it. It does
+not, by itself, prove when the underlying inference ran, and it does
+not detect a receipt that the issuer never submitted. Completeness
+requires a deployment policy on top of transparency logging, such as
+mandatory submission, monotonic counters, per-session manifests, or
+client-enforced inclusion proofs.
+
 AIR v1 does not define the outer Signed Statement wrapping or a
 registration profile for a SCITT Transparency Service. Future
 revisions may define such a profile.
@@ -1115,8 +1123,10 @@ Replay protection in AIR v1 is a shared responsibility:
   freshness. When present, it binds the receipt to a specific
   verifier-supplied challenge, preventing replay to other verifiers.
 
-- The `sequence_number` claim provides monotonicity within a
-  session. Gaps indicate missed receipts.
+- The `sequence_number` claim provides monotonicity within an
+  observed session. Gaps indicate missing sequence numbers within
+  that observed stream; absence of a gap does not prove that every
+  receipt was submitted.
 
 Verifiers not maintaining state and not using eat_nonce have limited
 replay protection (only iat-based freshness). Deployments requiring

@@ -79,6 +79,7 @@ The `sequence_number` claim is a monotonic counter within a single workload sess
 
 - Verifiers cannot use sequence_number to detect gaps across sessions.
 - Cross-session ordering requires external mechanisms (e.g., transparency logs, SCITT).
+- Transparency logs can provide inclusion time and ordering for submitted receipts, but they do not prove that an issuer submitted every receipt unless paired with a mandatory-submission, counter, or manifest policy.
 
 ### L-9: No Regulatory Certification
 

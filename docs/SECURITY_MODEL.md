@@ -102,7 +102,7 @@ hardware and cryptographic mechanisms; others are best-effort software measures.
 | OS page cache / swap | TDX encrypts memory, but the guest OS may page data to encrypted swap | No swap is configured in the CS image, but this is not enforced by EphemeralML |
 | Cloud Logging | CS debug images write container stdout/stderr to Cloud Logging; production images do not | Use `confidential-space` (not `-debug`) image for production |
 | GCS model artifacts | Encrypted model + wrapped DEK persist in GCS after inference | Caller must delete GCS objects if post-inference cleanup is required |
-| Receipt persistence | Receipts are saved to the client filesystem and are not auto-deleted | Receipts are designed to persist — they are the audit trail |
+| Receipt persistence | Receipts are saved to the client filesystem and are not auto-deleted | Receipts are durable per-inference evidence records; they are not a complete audit log by themselves |
 
 #### What we do NOT claim
 

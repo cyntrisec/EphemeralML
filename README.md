@@ -99,7 +99,7 @@ For what to actively maintain versus freeze, see [`docs/REPO_MAINTENANCE_SCOPE.m
 |---------|----------|
 | Cloud hosts can see your data | TEE isolation — data decrypted only inside the enclave |
 | "Trust me" isn't enough | Cryptographic attestation — verify code before sending secrets |
-| No audit trail | Per-inference receipts — signed proof of what ran and what it touched |
+| No independently verifiable execution record | Per-inference receipts — signed evidence for one inference event |
 
 Built for: healthcare, finance, legal — anywhere audit evidence matters more than promises.
 

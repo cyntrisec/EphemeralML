@@ -147,7 +147,7 @@ EphemeralML is a defense-in-depth confidential inference system that protects mo
 5. THE System SHALL ensure receipts are cryptographically bound to enclave measurement, session, and request hash
 6. WHEN clients receive receipts, THE System SHALL enable verification of receipt authenticity and binding to the specific inference request
 7. THE System SHALL ensure receipts cannot be forged or replayed by unauthorized parties
-8. WHEN audit trails are required, THE System SHALL provide receipt verification tools for compliance and forensic analysis
+8. WHEN independently verifiable execution evidence is required, THE System SHALL provide receipt verification tools for compliance and forensic analysis
 9. Receipt signing keys SHALL be ephemeral per session unless explicitly configured otherwise
 10. AER MUST include: protocol version, security mode, enclave measurement(s), attestation doc hash, request hash, response hash (or output hash), policy version, and monotonic sequence number within the session
 11. Request hash SHALL be computed over the canonical plaintext request structure before encryption
@@ -194,7 +194,7 @@ EphemeralML is a defense-in-depth confidential inference system that protects mo
 2. WHEN security violations are detected, THE System SHALL generate immutable audit records without exposing sensitive data
 3. THE System SHALL track key release events, session establishment, and termination for security monitoring
 4. WHEN suspicious activities are detected, THE System SHALL alert security teams while maintaining confidentiality of operations
-5. THE System SHALL provide audit trails that enable forensic analysis without compromising ongoing security
+5. THE System SHALL provide security event logs and receipt records that enable forensic analysis without compromising ongoing security
 6. WHEN compliance reporting is required, THE System SHALL generate reports that demonstrate adherence to security policies
 7. Logs SHALL NOT include plaintext prompts, outputs, weights, session keys, or masking secrets
 8. Receipts SHALL store only cryptographic hashes of sensitive data, never plaintext values

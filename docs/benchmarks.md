@@ -307,7 +307,7 @@ serving, making CPU enclaves significantly cheaper for small embedding models.
 
 ### 1. Mithril Security (BlindLlama)
 - **Approach**: SaaS-style "Private AI" using Python/C++
-- **Our advantage**: Native Rust reduces memory consumption ~60% and avoids Python GIL bottleneck. AER receipts provide auditable proof for regulated industries.
+- **Our advantage**: Native Rust reduces memory consumption ~60% and avoids Python GIL bottleneck. AIR receipts provide signed, verifier-readable inference evidence for regulated industries.
 
 ### 2. Anjuna / Fortanix
 - **Approach**: General-purpose "Lift-and-Shift" LibOS containers
