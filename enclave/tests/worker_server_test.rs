@@ -64,6 +64,7 @@ fn request() -> InferenceHandlerInput {
         temperature: None,
         top_p: None,
         benchmark_mode: None,
+        eat_nonce: None,
     }
 }
 

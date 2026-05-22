@@ -89,6 +89,10 @@ struct DirectInferenceRequest {
     /// has `EPHEMERALML_BENCHMARK_MODE=development` set.
     #[serde(default)]
     benchmark_mode: Option<String>,
+    /// Optional client-supplied challenge nonce, bound into the AIR receipt's
+    /// `eat_nonce` claim (RFC 9711 Section 4.1: 8..=64 bytes).
+    #[serde(default)]
+    eat_nonce: Option<Vec<u8>>,
 }
 
 #[derive(serde::Serialize)]
@@ -657,8 +661,11 @@ fn handle_direct_request<A: crate::AttestationProvider>(
             mh,
             model_hash_scheme.map(|s| s.to_string()),
         ) {
-            Ok(claims) => {
+            Ok(mut claims) => {
                 record_elapsed(&mut timings.air_claims_from_legacy, air_claims_start);
+                // F-9: bind the client-supplied challenge nonce, if any.
+                // build_air_v1 validates it against RFC 9711 length bounds.
+                claims.eat_nonce = request.eat_nonce.clone();
                 if timing_enabled {
                     match ephemeral_ml_common::air_receipt::build_air_v1_with_timings(
                         &claims,

@@ -30,6 +30,11 @@ pub struct InferenceHandlerInput {
     /// Development-only request for backend benchmark timings.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub benchmark_mode: Option<String>,
+    /// Optional client-supplied challenge nonce, bound into the AIR receipt's
+    /// `eat_nonce` claim (RFC 9711 Section 4.1: 8..=64 bytes). Absent for
+    /// clients that do not supply a challenge.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub eat_nonce: Option<Vec<u8>>,
 }
 
 fn is_false(v: &bool) -> bool {

@@ -222,8 +222,36 @@ pub async fn list_models(State(state): State<AppState>) -> Json<ModelsResponse> 
 // POST /v1/chat/completions
 // ---------------------------------------------------------------------------
 
+/// Request header carrying the optional client-supplied AIR receipt
+/// challenge nonce, hex-encoded.
+const AIR_NONCE_HEADER: &str = "x-cyntrisec-air-nonce";
+
+/// Parse the optional `X-Cyntrisec-Air-Nonce` request header.
+///
+/// The value is a hex string. When present it is bound into the AIR receipt's
+/// `eat_nonce` claim; RFC 9711 Section 4.1 bounds that claim to 8..=64 bytes,
+/// so a malformed or out-of-range value is rejected here, before any receipt
+/// is built. Absence is allowed (no client challenge).
+fn parse_air_nonce(headers: &HeaderMap) -> Result<Option<Vec<u8>>, ErrorResponse> {
+    let Some(value) = headers.get(AIR_NONCE_HEADER) else {
+        return Ok(None);
+    };
+    let text = value.to_str().map_err(|_| {
+        ErrorResponse::invalid_request("X-Cyntrisec-Air-Nonce must be an ASCII hex string.")
+    })?;
+    let bytes = hex::decode(text.trim())
+        .map_err(|_| ErrorResponse::invalid_request("X-Cyntrisec-Air-Nonce must be valid hex."))?;
+    if !(8..=64).contains(&bytes.len()) {
+        return Err(ErrorResponse::invalid_request(
+            "X-Cyntrisec-Air-Nonce must decode to between 8 and 64 bytes (RFC 9711).",
+        ));
+    }
+    Ok(Some(bytes))
+}
+
 pub async fn chat_completions(
     State(state): State<AppState>,
+    headers: HeaderMap,
     OpenAiJson(req): OpenAiJson<ChatCompletionRequest>,
 ) -> Response {
     let request_id = uuid::Uuid::new_v4().to_string();
@@ -294,6 +322,11 @@ pub async fn chat_completions(
     let max_tokens = req.max_tokens.unwrap_or(256);
     let model_id = &state.config.default_model;
 
+    let eat_nonce = match parse_air_nonce(&headers) {
+        Ok(n) => n,
+        Err(err) => return error_response_with_id(StatusCode::BAD_REQUEST, err, &request_id),
+    };
+
     // Call backend
     let result = state
         .worker_channel
@@ -306,6 +339,7 @@ pub async fn chat_completions(
             temperature: req.temperature,
             top_p: req.top_p,
             benchmark_mode: benchmark_request_mode(),
+            eat_nonce,
         })
         .await;
 
@@ -408,6 +442,7 @@ pub async fn chat_completions(
 
 pub async fn responses(
     State(state): State<AppState>,
+    headers: HeaderMap,
     OpenAiJson(req): OpenAiJson<ResponsesRequest>,
 ) -> Response {
     let request_id = uuid::Uuid::new_v4().to_string();
@@ -526,6 +561,11 @@ pub async fn responses(
     let max_tokens = req.max_output_tokens.unwrap_or(256);
     let model_id = &state.config.default_model;
 
+    let eat_nonce = match parse_air_nonce(&headers) {
+        Ok(n) => n,
+        Err(err) => return error_response_with_id(StatusCode::BAD_REQUEST, err, &request_id),
+    };
+
     let result = state
         .worker_channel
         .inference(InferenceHandlerInput {
@@ -537,6 +577,7 @@ pub async fn responses(
             temperature: req.temperature,
             top_p: req.top_p,
             benchmark_mode: benchmark_request_mode(),
+            eat_nonce,
         })
         .await;
 
@@ -621,6 +662,7 @@ pub async fn responses(
 
 pub async fn embeddings(
     State(state): State<AppState>,
+    headers: HeaderMap,
     OpenAiJson(req): OpenAiJson<EmbeddingRequest>,
 ) -> Response {
     let request_id = uuid::Uuid::new_v4().to_string();
@@ -698,6 +740,11 @@ pub async fn embeddings(
         &state.config.default_model
     };
 
+    let eat_nonce = match parse_air_nonce(&headers) {
+        Ok(n) => n,
+        Err(err) => return error_response_with_id(StatusCode::BAD_REQUEST, err, &request_id),
+    };
+
     let mut data = Vec::with_capacity(texts.len());
     let mut total_tokens: u32 = 0;
     let mut last_result: Option<InferenceResult> = None;
@@ -713,6 +760,7 @@ pub async fn embeddings(
                 temperature: None,
                 top_p: None,
                 benchmark_mode: benchmark_request_mode(),
+                eat_nonce: eat_nonce.clone(),
             })
             .await;
 

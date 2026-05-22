@@ -728,6 +728,7 @@ impl WorkerChannel for HttpBackendChannel {
                     temperature: None,
                     top_p: None,
                     benchmark_mode: None,
+                    eat_nonce: None,
                 })
                 .await?;
             total_tokens += estimate_tokens(text);
@@ -823,6 +824,7 @@ impl WorkerChannel for SecureChannelTransport {
                     temperature: None,
                     top_p: None,
                     benchmark_mode: None,
+                    eat_nonce: None,
                 })
                 .await?;
             total_tokens += estimate_tokens(&text);
@@ -1425,6 +1427,7 @@ mod tests {
             temperature: None,
             top_p: None,
             benchmark_mode: Some("development".to_string()),
+            eat_nonce: None,
         }
     }
 

@@ -542,6 +542,7 @@ impl SecureClient for SecureEnclaveClient {
             temperature: None,
             top_p: None,
             benchmark_mode: benchmark_mode.clone(),
+            eat_nonce: None,
         };
         let plaintext = serde_json::to_vec(&input)
             .map_err(|e| ClientError::Client(EphemeralError::SerializationError(e.to_string())))?;
@@ -763,6 +764,7 @@ impl SecureClient for SecureEnclaveClient {
             temperature: None,
             top_p: None,
             benchmark_mode: benchmark_mode.clone(),
+            eat_nonce: None,
         };
         let plaintext = serde_json::to_vec(&input)
             .map_err(|e| ClientError::Client(EphemeralError::SerializationError(e.to_string())))?;
@@ -970,6 +972,7 @@ impl SecureClient for SecureEnclaveClient {
             temperature: None,
             top_p: None,
             benchmark_mode: benchmark_mode.clone(),
+            eat_nonce: None,
         };
         let plaintext = serde_json::to_vec(&input)
             .map_err(|e| ClientError::Client(EphemeralError::SerializationError(e.to_string())))?;
@@ -1393,6 +1396,7 @@ mod tests {
             temperature: None,
             top_p: None,
             benchmark_mode: benchmark_request_mode(),
+            eat_nonce: None,
         };
         let input_bytes = serde_json::to_vec(&input).unwrap();
         channel.send(Bytes::from(input_bytes)).await.unwrap();

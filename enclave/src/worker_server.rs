@@ -251,7 +251,10 @@ where
                 model_hash,
                 self.evidence.model_hash_scheme.clone(),
             )
-            .and_then(|claims| {
+            .and_then(|mut claims| {
+                // F-9: bind the client-supplied challenge nonce, if any.
+                // build_air_v1 validates it against RFC 9711 length bounds.
+                claims.eat_nonce = input.eat_nonce.clone();
                 ephemeral_ml_common::air_receipt::build_air_v1(&claims, &state.receipt_signing_key)
             }) {
                 Ok(bytes) => {
@@ -531,6 +534,7 @@ mod tests {
             temperature: None,
             top_p: None,
             benchmark_mode: None,
+            eat_nonce: None,
         }
     }
 
