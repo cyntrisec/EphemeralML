@@ -752,6 +752,29 @@ workload. Deployments that assert such end-to-end TEE provenance MUST
 bind the Ed25519 signing key to accepted platform attestation evidence
 via an out-of-band cryptographic construction.
 
+## Single-Purpose Signing Key
+
+The Ed25519 key bound to the platform attestation is a single-purpose
+AIR receipt signing key.
+
+-   The key MUST be used only to produce the signature of an AIR
+    COSE_Sign1 receipt: the Ed25519 signature over the receipt's COSE
+    `Sig_structure` ({{RFC9052}} Section 4.4) for the AIR profile named
+    in the receipt's `eat_profile` claim.
+-   The key MUST NOT be reused for any other purpose. In particular it
+    MUST NOT be used for transport-layer handshakes, attestation or
+    key-exchange protocols, JWT or other token signing,
+    transparency-log or audit-log signing, general-purpose Ed25519
+    signatures, or any other application protocol.
+-   An implementation that needs a signing key for any additional role
+    MUST generate and separately attest a distinct key, or derive a
+    distinct key under a separate, domain-separated key schedule. It
+    MUST NOT repurpose the attested AIR signing key.
+
+With this restriction, every signature the attested key can produce is
+an AIR receipt for the advertised profile, so an attested AIR signature
+is unambiguous.
+
 ## Conformant Constructions
 
 The following constructions satisfy the key binding requirement above
@@ -1323,6 +1346,16 @@ Deployments that claim end-to-end TEE provenance from AIR receipts
 MUST therefore enforce key binding per {{key-binding}}, and verifiers
 enforcing such claims MUST check that binding using platform-specific
 procedures.
+
+## Signing Key Reuse
+
+{{key-binding}} requires the attested AIR signing key to be
+single-purpose. Ed25519 unforgeability is analyzed for a key used in a
+single signing role; reusing the attested key across protocols falls
+outside that model and can enable cross-protocol signature confusion,
+in which a signature produced for another protocol is presented as an
+AIR receipt, or an AIR receipt signature is replayed into another
+protocol.
 
 ## TEE Compromise
 
