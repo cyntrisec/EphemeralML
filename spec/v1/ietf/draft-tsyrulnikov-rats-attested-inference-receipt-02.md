@@ -1255,6 +1255,23 @@ replay protection (only iat-based freshness). Deployments requiring
 strong replay resistance MUST use at least one of cti deduplication
 or eat_nonce.
 
+### Freshness Boundary
+
+The freshness an AIR receipt conveys is bounded by who holds the
+nonce. `eat_nonce` demonstrates freshness only to the party that
+issued the nonce; a later auditor who did not issue or observe that
+nonce cannot infer freshness from it. The `iat` claim is a
+workload-asserted time -- useful for verifier policy such as an age
+bound, but not an externally attested timestamp, and a compromised
+workload can assert any value.
+
+An AIR receipt therefore does not, on its own, give an after-the-fact
+auditor verifiable freshness, nor evidence that the set of receipts is
+complete. Audit-time freshness and non-omission require an external
+mechanism -- for example, a transparency log that countersigns
+receipts with an independent timestamp, or an external sequencing
+authority -- layered on AIR. AIR v1 does not define that layer.
+
 ## Model Hash Limitations
 
 The `model_hash` claim proves byte-level identity for the model
@@ -1531,6 +1548,20 @@ Description:
 
 Maturity:
 : Test/interop.
+
+## Client Nonce Conveyance
+
+The reference gateway accepts an optional client-supplied challenge
+nonce on its OpenAI-compatible HTTP endpoints via a request header,
+`X-Cyntrisec-Air-Nonce` (a hex string). When the header is present and
+within the RFC 9711 length bounds, the gateway conveys the nonce to
+the workload, which binds it into the receipt's `eat_nonce` claim.
+
+This header is an implementation convention of the reference gateway
+only. It is not part of the AIR receipt format, is not required for
+conformance, and a different deployment may convey the nonce by any
+means. AIR v1 defines the `eat_nonce` claim; it does not define how a
+nonce reaches the workload.
 
 ## E2E Validation
 
