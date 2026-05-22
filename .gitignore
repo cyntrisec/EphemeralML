@@ -199,3 +199,7 @@ site/marketing/spec/
 
 # Local Claude config
 **/.claude/
+
+# Local release/build artifacts
+dist/
+docker-stage/
