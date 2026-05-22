@@ -172,8 +172,7 @@ pub async fn verify_upload(
                 let text = field.text().await.map_err(|e| {
                     bad_request(format!("Failed to read expected_nonce_hex field: {}", e))
                 })?;
-                expected_nonce =
-                    parse_optional_nonce_hex(Some(text.trim()), "expected_nonce_hex")?;
+                expected_nonce = parse_optional_nonce_hex(Some(text.trim()), "expected_nonce_hex")?;
             }
             "expected_pcr0_hex" => {
                 let text = field.text().await.map_err(|e| {
@@ -355,9 +354,7 @@ fn annotate_air_provenance(
     let air_claims = response.air_claims.clone();
     // F-5: the receipt's self-asserted enclave_measurements, reconciled against
     // the verified attestation document further down.
-    let receipt_measurements = air_claims
-        .as_ref()
-        .map(|c| c.enclave_measurements.clone());
+    let receipt_measurements = air_claims.as_ref().map(|c| c.enclave_measurements.clone());
     let mut hash_ok = false;
     match &air_claims {
         Some(claims) => {

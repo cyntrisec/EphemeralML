@@ -493,9 +493,7 @@ fn layer1_structural(data: &[u8], checks: &mut Vec<AirCheck>) -> Option<coset::C
 
     // Protected header: content_type
     match cose.protected.header.content_type.as_ref() {
-        Some(ct)
-            if *ct == coset::ContentType::Assigned(coset::iana::CoapContentFormat::Cwt) =>
-        {
+        Some(ct) if *ct == coset::ContentType::Assigned(coset::iana::CoapContentFormat::Cwt) => {
             checks.push(AirCheck::pass("CONTENT_TYPE"));
         }
         Some(ct) => {

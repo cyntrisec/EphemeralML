@@ -962,7 +962,10 @@ async fn test_air_v1_json_expected_nonce_enforced() {
         .unwrap();
     assert_eq!(resp.status(), 200);
     let body: serde_json::Value = resp.json().await.unwrap();
-    assert_eq!(body["verified"], false, "mismatched nonce must fail: {body}");
+    assert_eq!(
+        body["verified"], false,
+        "mismatched nonce must fail: {body}"
+    );
     assert_eq!(check_status(&body, "NONCE"), "fail");
 }
 
