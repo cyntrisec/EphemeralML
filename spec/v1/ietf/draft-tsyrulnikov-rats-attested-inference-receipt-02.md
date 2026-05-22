@@ -805,16 +805,34 @@ the receipt alone.
 
 # Verification Procedure {#verification-procedure}
 
-The AIR v1 verification procedure is organized into four layers.
+The AIR v1 verification procedure is organized into four layers. The
+checks proceed strictly in this order:
+
+> COSE structure/header validation -> signature verification ->
+> payload CBOR decode -> AIR claim validation ->
+> relying-party policy checks
+
+Layer 1 performs COSE structure and header validation; Layer 2 verifies
+the signature; Layer 3 decodes the payload CBOR and then validates the
+AIR claims; Layer 4 applies relying-party policy checks.
+
 These layers define AIR-local verification only. A deployment that
 requires full TEE assurance MUST additionally obtain and verify the
 underlying platform attestation evidence and the binding between that
 evidence and the AIR signing key using platform-specific procedures.
+
 Each AIR-local layer MUST complete successfully before proceeding to
 the next. If any check fails, the verifier MUST reject the receipt and
 SHOULD report the specific failure.
 
-## Layer 1: Parse
+A verifier MUST NOT decode the payload CBOR or interpret any claim
+value before the Layer 2 signature check succeeds. Layers 1 and 2
+operate only on the COSE_Sign1 structure, the protected header, and the
+payload as an opaque byte string; the CWT claims are decoded and
+validated in Layer 3, only after the signature over them has been
+verified.
+
+## Layer 1: COSE Structure and Header Validation
 
 1.  Decode the input as CBOR. Confirm the outer structure is tagged
     with CBOR tag 18.
@@ -840,13 +858,10 @@ SHOULD report the specific failure.
 
 7.  Confirm the unprotected header is empty.
 
-8.  Decode the payload. Confirm it is a well-formed CBOR map.
+The payload is carried through this layer as an opaque byte string; it
+is not decoded until Layer 3, after signature verification.
 
-9.  Confirm `eat_profile` (key 265) equals
-    `"https://spec.cyntrisec.com/air/v1"`. Reject receipts with
-    unknown profile values.
-
-## Layer 2: Cryptographic Verification (AIR-local)
+## Layer 2: Signature Verification
 
 1.  Construct Sig_structure1 = \["Signature1", protected, h'',
     payload\].
@@ -855,42 +870,51 @@ SHOULD report the specific failure.
     provided public key. The verification MUST use `verify_strict`
     semantics (reject non-canonical S values).
 
-## Layer 3: Claim Validation
+## Layer 3: Payload Decode and Claim Validation
 
-1.  Confirm `cti` (key 7) is exactly 16 bytes.
+Layer 3 is the first layer that decodes the payload CBOR, and it is
+entered only after the Layer 2 signature check has succeeded.
 
-2.  Confirm `iat` (key 6) is a non-zero unsigned integer.
+1.  Decode the payload. Confirm it is a well-formed CBOR map.
 
-3.  Confirm `model_hash` (key -65539) is exactly 32 bytes and not
+2.  Confirm `eat_profile` (key 265) equals
+    `"https://spec.cyntrisec.com/air/v1"`. Reject receipts with
+    unknown profile values.
+
+3.  Confirm `cti` (key 7) is exactly 16 bytes.
+
+4.  Confirm `iat` (key 6) is a non-zero unsigned integer.
+
+5.  Confirm `model_hash` (key -65539) is exactly 32 bytes and not
     all zeros.
 
-4.  Confirm all required text string claims (iss, model_id,
+6.  Confirm all required text string claims (iss, model_id,
     model_version, policy_version, security_mode) are non-empty and
     within reasonable bounds (implementation-defined, RECOMMENDED
     maximum 1024 bytes each).
 
-5.  Confirm `enclave_measurements` (key -65543) is a map.
+7.  Confirm `enclave_measurements` (key -65543) is a map.
 
-6.  Confirm `measurement_type` within enclave_measurements is one
+8.  Confirm `measurement_type` within enclave_measurements is one
     of the defined values (`"nitro-pcr"` or `"tdx-mrtd-rtmr"`).
 
-7.  Confirm that every measurement value present in the map (whether
+9.  Confirm that every measurement value present in the map (whether
     required or optional) is exactly 48 bytes.
 
-8.  If `measurement_type` is `"tdx-mrtd-rtmr"`, confirm `pcr8` is
+10. If `measurement_type` is `"tdx-mrtd-rtmr"`, confirm `pcr8` is
     absent. TDX measurement maps MUST NOT contain `pcr8` (`pcr8`
     is a Nitro-only field).
 
-9.  If `model_hash_scheme` (key -65549) is present, confirm it is
+11. If `model_hash_scheme` (key -65549) is present, confirm it is
     one of the defined values (`"sha256-single"`,
     `"sha256-concat"`, `"sha256-manifest"`). Unknown values MUST be
     rejected.
 
-10. Confirm `security_mode` (key -65548) is one of the defined values
+12. Confirm `security_mode` (key -65548) is one of the defined values
     (`"production"`, `"evaluation"`). Unknown values MUST
     be rejected (fail-closed).
 
-11. Confirm the claims map contains no unknown integer keys and no
+13. Confirm the claims map contains no unknown integer keys and no
     duplicate keys.
 
 ## Layer 4: Policy Evaluation
