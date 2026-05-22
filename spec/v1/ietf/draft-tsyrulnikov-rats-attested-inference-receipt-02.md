@@ -813,20 +813,34 @@ The following constructions satisfy the key binding requirement above
 when the associated attestation is verified by a RATS Verifier against
 the platform's trust chain:
 
-1.  **AWS Nitro Enclaves:** generate the Ed25519 key pair inside the
-    enclave at startup and populate the `public_key` field of the
-    Nitro COSE attestation document with the raw 32-byte Ed25519
-    public key. A verifier obtains the attestation document,
-    validates it against the AWS Nitro root, and checks that the
-    `public_key` field matches the Ed25519 public key used to verify
-    the AIR signature.
+1.  **AWS Nitro Enclaves:** generate the Ed25519 receipt signing key
+    inside the enclave and carry either its 32-byte public key, or an
+    unambiguous encoded structure containing it, in the `user_data`
+    field of the NSM attestation document. The Nitro Security Module
+    signs the document, including `user_data`, so the receipt signing
+    key is covered by the hardware-rooted signature. A verifier
+    validates the document against the AWS Nitro root and checks that
+    the receipt signing key carried in `user_data` matches the public
+    key used to verify the AIR signature.
 
-2.  **Intel TDX:** generate the Ed25519 key pair inside the Trusted
-    Domain at startup and place `SHA-256(public_key)` in the lower
-    32 bytes of REPORTDATA when producing a TDX quote. A verifier
-    obtains the quote, validates it via DCAP against the Intel SGX
-    and TDX trust chains, and checks that REPORTDATA matches
-    `SHA-256(Ed25519_public_key)`.
+2.  **Intel TDX:** generate the Ed25519 receipt signing key inside the
+    Trusted Domain and bind it into the TDX quote's 64-byte
+    REPORTDATA. Because REPORTDATA is fixed at 64 bytes, the binding
+    is a SHA-512 digest -- placed as the full REPORTDATA -- over a
+    domain-separated, length-prefixed encoding of: a domain label,
+    the platform identifier, the protocol version, the transport
+    handshake public key, the Ed25519 receipt signing key, the
+    session nonce, and an optional platform-evidence hash. A verifier
+    validates the quote via DCAP against the Intel SGX and TDX trust
+    chains, recomputes the SHA-512 binding from the attestation
+    envelope's stated inputs, and rejects the quote unless the result
+    equals the quote's REPORTDATA.
+
+These constructions describe the key-binding attestation itself. In
+AIR v1, whether a receipt's `attestation_doc_hash` references that
+same per-session attestation -- rather than a separate boot-time
+attestation -- is a profile-versioning question that AIR v1 does not
+settle and that a future AIR profile may address.
 
 Other constructions MAY be used where the target attestation platform
 supports them. Implementers SHOULD consult
