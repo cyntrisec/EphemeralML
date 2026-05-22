@@ -883,8 +883,9 @@ is not decoded until Layer 3, after signature verification.
         subgroup. A verifier MUST NOT reduce S modulo L; an S value
         outside \[0, L) is a verification failure.
 
-    b.  Decode R and A as Edwards points. Reject if either decoding
-        fails.
+    b.  Recover R and A as Edwards curve points from their 32-octet
+        encodings. Reject the signature if either encoding does not
+        decode to a point on the curve.
 
     c.  Reject if A is a small-order point, or if R is a small-order
         point (a point of order 1, 2, 4, or 8).
@@ -900,6 +901,17 @@ baseline of {{RFC8032}} Section 5.1.7, which permits the cofactored
 equation and does not require small-order rejection. The stricter
 procedure removes signature malleability the baseline would otherwise
 permit.
+
+Step (b) requires only that R and A decode to points on the curve.
+AIR v1 does NOT require rejecting a non-canonical point encoding (an
+encoded y-coordinate not reduced modulo the field prime); the
+mandatory-to-implement Ed25519 verification routines accept such
+encodings. Rejecting them is not necessary for AIR security: a
+non-canonical re-encoding leaves the receipt's `cti` and claims
+unchanged, so it yields no new receipt identity, and the public key A
+is obtained out of band from the attestation in canonical form. The
+canonical-scalar check in step (a) is required and is distinct from
+point-encoding canonicalization.
 
 ## Layer 3: Payload Decode and Claim Validation
 
