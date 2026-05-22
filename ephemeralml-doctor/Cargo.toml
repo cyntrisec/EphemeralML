@@ -37,7 +37,7 @@ aws-sdk-ssm = { version = "1.55", default-features = false, features = ["behavio
 ureq = { version = "2.10", default-features = false, features = ["tls", "json"] }
 
 [dev-dependencies]
-assert_cmd = "2.0"
+assert_cmd = "2.2"
 predicates = "3.1"
 tempfile = "3.13"
 tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }

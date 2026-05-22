@@ -30,5 +30,5 @@ aws-sdk-s3 = { version = "1.132.0", default-features = false, features = ["behav
 aws-sdk-ssm = { version = "1.55", default-features = false, features = ["behavior-version-latest", "rt-tokio", "default-https-client"] }
 
 [dev-dependencies]
-assert_cmd = "2.0"
+assert_cmd = "2.2"
 predicates = "3.1"
