@@ -32,6 +32,12 @@ use crate::types::ErrorResponse;
 
 /// Build the Axum router with all routes and middleware.
 pub fn build_router(state: AppState) -> Router {
+    // Layer order note: in axum/tower, the last `.layer()` is the OUTERMOST
+    // and runs first. We add `auth_middleware` before `rate_limit_middleware`
+    // so the per-IP rate limiter wraps auth, and unauthenticated requests are
+    // throttled at the source rather than being able to spam the auth check
+    // until they exhaust some other limit. Request flow becomes:
+    //   trace -> cors -> body_limit -> rate_limit -> auth -> handler
     Router::new()
         .route("/v1/chat/completions", post(routes::chat_completions))
         .route("/v1/responses", post(routes::responses))
@@ -41,11 +47,11 @@ pub fn build_router(state: AppState) -> Router {
         .route("/readyz", get(routes::readyz))
         .layer(middleware::from_fn_with_state(
             state.clone(),
-            rate_limit_middleware,
+            auth::auth_middleware,
         ))
         .layer(middleware::from_fn_with_state(
             state.clone(),
-            auth::auth_middleware,
+            rate_limit_middleware,
         ))
         .layer(RequestBodyLimitLayer::new(2 * 1024 * 1024)) // 2 MB
         .layer(cors_layer(&state))

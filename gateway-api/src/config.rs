@@ -384,6 +384,20 @@ impl GatewayConfig {
             );
         }
 
+        // Reject empty api_key. An empty string is treated as "no auth" by
+        // auth_middleware (Some("") matches `_ => return next.run`), which is
+        // almost always an env-var typo rather than an intentional config.
+        // Unset the variable to opt into the unauthenticated path explicitly.
+        if let Some(ref key) = self.api_key {
+            if key.is_empty() {
+                return Err(
+                    "EPHEMERALML_API_KEY is set but empty. Either set a non-empty bearer token, \
+                     or unset the variable entirely to run without authentication."
+                        .to_string(),
+                );
+            }
+        }
+
         for origin in &self.cors_origins {
             if origin == "*" {
                 return Err(
