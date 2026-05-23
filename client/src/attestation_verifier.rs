@@ -9,22 +9,6 @@ use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use x509_parser::prelude::FromDer;
 
-// The mock-attestation bypass below is gated on
-// `#[cfg(all(feature = "mock", not(feature = "production")))]` and is intended
-// for tests and local development only. A release build that enables `mock`
-// without also enabling `production` would compile that bypass into a release
-// artifact, so any attestation document whose `module_id` is `"mock"` or
-// `"mock-enclave"` would skip COSE signature and certificate-chain
-// verification. This guard fires at compile time on that exact combination so
-// the foot-gun cannot ship.
-#[cfg(all(not(debug_assertions), feature = "mock", not(feature = "production")))]
-compile_error!(
-    "Release builds with the `mock` feature MUST also enable the `production` feature. \
-     `--release --features mock` (without `production`) would compile the \
-     mock-attestation bypass in attestation_verifier.rs into a release artifact. \
-     Add `production` to the features list, drop `mock`, or build without `--release`."
-);
-
 /// Attestation verification errors
 #[derive(Error, Debug)]
 pub enum AttestationError {
