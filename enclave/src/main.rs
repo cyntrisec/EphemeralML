@@ -814,11 +814,17 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
             // Every match arm below assigns this before it is read.
             #[allow(unused_assignments)]
             let mut loaded_model_hash: Option<[u8; 32]> = None;
-            // F-10: model_hash is normally computed as SHA-256 over the
-            // single model weights (or GGUF) file. Authoritative manifests
-            // switch the receipt scheme to "sha256-manifest" after their
-            // signed file digests are validated.
-            let mut loaded_model_hash_scheme: Option<String> = Some("sha256-single".to_string());
+            // F-10 (commit 9eb5518): model_hash is computed as SHA-256 over
+            // the single model weights (or GGUF) file in every load path
+            // below, so model_hash_scheme is always "sha256-single". A signed
+            // manifest, where present, authorizes the weights but does not
+            // change how model_hash is computed.
+            //
+            // Re-introducing "sha256-manifest" (where model_hash would be
+            // SHA-256 of the canonical manifest bytes instead) is planned as
+            // F-10 v2 — see
+            // startup-plans/11-research/standards/air-v1-hardening-phase1-2026-05-22.md.
+            let loaded_model_hash_scheme: Option<String> = Some("sha256-single".to_string());
             #[allow(unused_assignments)]
             let mut loaded_model_identity_coverage: Option<
                 std::collections::BTreeMap<String, bool>,
@@ -1402,7 +1408,14 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
                             "Model identity coverage"
                         );
                         if manifest_authoritative {
-                            loaded_model_hash_scheme = Some("sha256-manifest".to_string());
+                            // F-10 (commit 9eb5518): production receipts always emit
+                            // model_hash_scheme = "sha256-single". model_hash is SHA-256
+                            // of the weights file, not of the manifest, so labeling it
+                            // "sha256-manifest" would be a mislabel (and non-conformant
+                            // with the AIR v1 IETF draft, which defines "sha256-manifest"
+                            // as SHA-256 of the manifest document itself).
+                            // Reintroducing "sha256-manifest" is tracked as F-10 v2 —
+                            // see startup-plans/11-research/standards/air-v1-hardening-phase1-2026-05-22.md.
                             loaded_model_identity_coverage = Some(
                                 coverage
                                     .into_iter()
