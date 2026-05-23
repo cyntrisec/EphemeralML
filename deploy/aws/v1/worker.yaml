@@ -10,6 +10,7 @@ Metadata:
           - AccessCIDR
           - ModelURI
           - EvidenceBucketName
+          - EvidenceReaderPrincipalArn
           - RetentionDays
           - InstanceType
           - EnableObjectLock
@@ -31,6 +32,8 @@ Metadata:
         default: Model S3 URI
       EvidenceBucketName:
         default: Evidence bucket name
+      EvidenceReaderPrincipalArn:
+        default: Evidence reader principal ARN
       RetentionDays:
         default: Evidence retention days
       InstanceType:
@@ -62,6 +65,12 @@ Parameters:
     Type: String
     AllowedPattern: ^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$
     Description: Globally unique S3 bucket name for receipt bundles and policy output.
+
+  EvidenceReaderPrincipalArn:
+    Type: String
+    Default: ''
+    AllowedPattern: '^$|^arn:(aws|aws-us-gov|aws-cn):iam::[0-9]{12}:(root|user/.+|role/.+)$'
+    Description: Optional IAM user or role ARN allowed to read retained evidence bundles and decrypt them through S3 after stack teardown. Use a customer SOC/compliance role for pilots.
 
   RetentionDays:
     Type: Number
@@ -116,6 +125,7 @@ Parameters:
 
 Conditions:
   UseObjectLock: !Equals [!Ref EnableObjectLock, 'true']
+  HasEvidenceReader: !Not [!Equals [!Ref EvidenceReaderPrincipalArn, '']]
 
 Resources:
   WorkerVpc:
@@ -203,6 +213,21 @@ Resources:
               AWS: !Sub arn:${AWS::Partition}:iam::${AWS::AccountId}:root
             Action: kms:*
             Resource: '*'
+          - !If
+            - HasEvidenceReader
+            - Sid: AllowEvidenceReaderDecryptViaS3
+              Effect: Allow
+              Principal:
+                AWS: !Ref EvidenceReaderPrincipalArn
+              Action:
+                - kms:Decrypt
+              Resource: '*'
+              Condition:
+                StringEquals:
+                  kms:ViaService: !Sub s3.${AWS::Region}.amazonaws.com
+                StringLike:
+                  kms:EncryptionContext:aws:s3:arn: !Sub arn:${AWS::Partition}:s3:::${EvidenceBucketName}/*
+            - !Ref AWS::NoValue
 
   EvidenceKeyAlias:
     Type: AWS::KMS::Alias
@@ -300,6 +325,34 @@ Resources:
             Condition:
               StringNotEquals:
                 s3:x-amz-server-side-encryption-aws-kms-key-id: !GetAtt EvidenceKey.Arn
+          - !If
+            - HasEvidenceReader
+            - Sid: AllowEvidenceReaderListEvidencePrefixes
+              Effect: Allow
+              Principal:
+                AWS: !Ref EvidenceReaderPrincipalArn
+              Action:
+                - s3:ListBucket
+              Resource: !GetAtt EvidenceBucket.Arn
+              Condition:
+                StringLike:
+                  s3:prefix:
+                    - policy/*
+                    - bundles/*
+            - !Ref AWS::NoValue
+          - !If
+            - HasEvidenceReader
+            - Sid: AllowEvidenceReaderReadEvidenceObjects
+              Effect: Allow
+              Principal:
+                AWS: !Ref EvidenceReaderPrincipalArn
+              Action:
+                - s3:GetObject
+                - s3:GetObjectVersion
+              Resource:
+                - !Sub ${EvidenceBucket.Arn}/policy/*
+                - !Sub ${EvidenceBucket.Arn}/bundles/*
+            - !Ref AWS::NoValue
 
   RelayLogGroup:
     Type: AWS::Logs::LogGroup
@@ -754,6 +807,10 @@ Outputs:
   EvidenceBucketName:
     Description: Evidence bucket retaining per-inference bundles.
     Value: !Ref EvidenceBucket
+
+  EvidenceReaderPrincipalArn:
+    Description: IAM principal allowed to read retained evidence bundles after stack teardown, if configured.
+    Value: !If [HasEvidenceReader, !Ref EvidenceReaderPrincipalArn, '']
 
   ModelKeyArn:
     Description: Attestation-gated model KMS key ARN.

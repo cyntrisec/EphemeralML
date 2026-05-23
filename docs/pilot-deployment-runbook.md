@@ -72,6 +72,7 @@ link, URL-encode the nested `?versionId=...` query string inside `templateURL`.
    - `AccessCIDR`
    - `ModelURI`
    - `EvidenceBucketName`
+   - `EvidenceReaderPrincipalArn`
    - `RetentionDays`
    - `InstanceType`
 
@@ -80,6 +81,14 @@ so the worker NLB is closed until the operator explicitly opens it. Set it to
 the customer proxy's egress IP, VPN CIDR, or office CIDR. Do not use
 `0.0.0.0/0` for a pilot unless the account owner has explicitly accepted the
 resource-abuse risk.
+
+Set `EvidenceReaderPrincipalArn` to the customer SOC/compliance IAM role that
+must be able to retrieve retained receipt bundles after the worker stack is
+deleted. The template grants that principal read access to `policy/*` and
+`bundles/*` plus KMS decrypt through S3 on the evidence key. If this is left
+empty, bundle download still works during the stack lifetime through the worker
+SSM presign path, but post-teardown re-verification from a Splunk
+`evidence_bundle_uri` can fail with `kms:Decrypt` `AccessDenied`.
 
 4. Create the stack and wait for `CREATE_COMPLETE`.
 
@@ -95,6 +104,7 @@ aws cloudformation create-stack \
     ParameterKey=AccessCIDR,ParameterValue=<customer-egress-cidr> \
     ParameterKey=ModelURI,ParameterValue=s3://<model-bucket>/<model-prefix> \
     ParameterKey=EvidenceBucketName,ParameterValue=<unique-evidence-bucket> \
+    ParameterKey=EvidenceReaderPrincipalArn,ParameterValue=arn:aws:iam::<account-id>:role/<soc-evidence-reader-role> \
     ParameterKey=RetentionDays,ParameterValue=90 \
     ParameterKey=EnclaveImageSha384,ParameterValue=<from enclave-measurements.json> \
     ParameterKey=EnclavePcr1Sha384,ParameterValue=<from enclave-measurements.json> \
@@ -235,6 +245,12 @@ cyntrisec-verify /tmp/cyntrisec-bundle/air.cbor \
 If direct `aws s3 cp "$BUNDLE_URL"` fails on KMS permissions, use the
 `BundlePresignCommandTemplate` output or the batch harness option
 `--s3-presign-ssm-instance-id`.
+
+The SSM presign fallback depends on the worker instance still existing. For
+long-term audit retrieval after stack teardown, the reader identity must be the
+same principal configured in `EvidenceReaderPrincipalArn`, or another principal
+with equivalent S3 read and KMS decrypt-through-S3 permissions on the retained
+evidence bucket and key.
 
 Expected verifier matrix:
 

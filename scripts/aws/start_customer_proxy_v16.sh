@@ -13,6 +13,8 @@
 set -euo pipefail
 
 AWS_REGION_NAME="${AWS_REGION:-${AWS_DEFAULT_REGION:-us-east-1}}"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 RELEASE_TAG="v1.6"
 MODEL_ID="stage-0"
 MODEL_URI="s3://cyntrisec-placeholder-models/stage-0-minilm"
@@ -22,11 +24,13 @@ ENABLE_OBJECT_LOCK="false"
 STACK_NAME=""
 BUCKET_NAME=""
 ACCESS_CIDR=""
+EVIDENCE_READER_PRINCIPAL_ARN=""
 OUT_DIR=""
 PROXY_CONTAINER="cyntrisec-e2e-proxy"
 PROXY_PORT="4000"
 
-TEMPLATE_URL="https://s3.us-east-1.amazonaws.com/cyntrisec-public-templates-us-east-1/aws/v1.6/worker.yaml?versionId=geKxLqg1klvD7tgZeCuuyDSqm_wW_sLX"
+TEMPLATE_BODY_PATH="${CYNTRISEC_WORKER_TEMPLATE_BODY:-${PROJECT_ROOT}/deploy/aws/v1/worker.yaml}"
+TEMPLATE_URL="${CYNTRISEC_WORKER_TEMPLATE_URL:-}"
 ENCLAVE_IMAGE_SHA384="cb522223eebc335a2ebca329c076f4cd7eeb10db824bd853bee6db9706301645ad3dd71228038bbe805b7a8212cdb024"
 ENCLAVE_PCR1_SHA384="4b4d5b3661b3efc12920900c80e126e4ce783c522de6c02a2a5bf7af3a2b9327b86776f188e4be1c1c404a129dbda493"
 ENCLAVE_PCR2_SHA384="0216e427b4381a540d4895542e3acd4ed248679d008c61754e4a79bc27a8344792d9b925bfa4adf47215b3e5fc00b59a"
@@ -40,6 +44,12 @@ Options:
   --stack-name NAME       CloudFormation stack name. Default: cyntrisec-e2e-v16-<timestamp>
   --bucket-name NAME      Evidence bucket name. Default: cyntrisec-e2e-v16-<account>-<timestamp>
   --access-cidr CIDR      CIDR allowed to reach the worker NLB. Default: current public IP /32
+  --evidence-reader-principal-arn ARN
+                          IAM user/role allowed to read retained evidence bundles after teardown.
+                          Default: current caller, normalized from assumed-role session to IAM role ARN.
+  --no-evidence-reader    Do not configure retained evidence reader access.
+  --template-body PATH    CloudFormation template body. Default: deploy/aws/v1/worker.yaml.
+  --template-url URL      CloudFormation template URL. Overrides --template-body.
   --region REGION         AWS region. Default: AWS_REGION/AWS_DEFAULT_REGION/us-east-1
   --out-dir DIR           Local output dir. Default: /tmp/<stack-name>
   --proxy-container NAME  Docker container name. Default: cyntrisec-e2e-proxy
@@ -66,11 +76,34 @@ need() {
     fi
 }
 
+normalize_evidence_reader_arn() {
+    local arn="$1"
+    local account="$2"
+    local rest role
+
+    case "$arn" in
+        arn:aws:sts::*:assumed-role/*|arn:aws-us-gov:sts::*:assumed-role/*|arn:aws-cn:sts::*:assumed-role/*)
+            rest="${arn#*:assumed-role/}"
+            role="${rest%%/*}"
+            partition="${arn%%:sts::*}"
+            partition="${partition#arn:}"
+            printf 'arn:%s:iam::%s:role/%s\n' "$partition" "$account" "$role"
+            ;;
+        *)
+            printf '%s\n' "$arn"
+            ;;
+    esac
+}
+
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --stack-name) STACK_NAME="$2"; shift 2 ;;
         --bucket-name) BUCKET_NAME="$2"; shift 2 ;;
         --access-cidr) ACCESS_CIDR="$2"; shift 2 ;;
+        --evidence-reader-principal-arn) EVIDENCE_READER_PRINCIPAL_ARN="$2"; shift 2 ;;
+        --no-evidence-reader) EVIDENCE_READER_PRINCIPAL_ARN="__none__"; shift ;;
+        --template-body) TEMPLATE_BODY_PATH="$2"; TEMPLATE_URL=""; shift 2 ;;
+        --template-url) TEMPLATE_URL="$2"; shift 2 ;;
         --region) AWS_REGION_NAME="$2"; shift 2 ;;
         --out-dir) OUT_DIR="$2"; shift 2 ;;
         --proxy-container) PROXY_CONTAINER="$2"; shift 2 ;;
@@ -86,7 +119,9 @@ need docker
 need jq
 
 timestamp="$(date -u +%Y%m%d%H%M%S)"
-account_id="$(aws sts get-caller-identity --query Account --output text)"
+caller_json="$(aws sts get-caller-identity --output json)"
+account_id="$(printf '%s\n' "$caller_json" | jq -r '.Account')"
+caller_arn="$(printf '%s\n' "$caller_json" | jq -r '.Arn')"
 
 if [[ -z "$STACK_NAME" ]]; then
     STACK_NAME="cyntrisec-e2e-v16-${timestamp}"
@@ -98,6 +133,11 @@ if [[ -z "$ACCESS_CIDR" ]]; then
     current_ip="$(curl -fsS https://checkip.amazonaws.com | tr -d '\n')"
     [[ -n "$current_ip" ]] || fail "could not determine current public IP"
     ACCESS_CIDR="${current_ip}/32"
+fi
+if [[ -z "$EVIDENCE_READER_PRINCIPAL_ARN" ]]; then
+    EVIDENCE_READER_PRINCIPAL_ARN="$(normalize_evidence_reader_arn "$caller_arn" "$account_id")"
+elif [[ "$EVIDENCE_READER_PRINCIPAL_ARN" == "__none__" ]]; then
+    EVIDENCE_READER_PRINCIPAL_ARN=""
 fi
 if [[ -z "$OUT_DIR" ]]; then
     OUT_DIR="/tmp/${STACK_NAME}"
@@ -115,19 +155,35 @@ log "region: $AWS_REGION_NAME"
 log "stack: $STACK_NAME"
 log "evidence bucket: $BUCKET_NAME"
 log "access CIDR: $ACCESS_CIDR"
+if [[ -n "$EVIDENCE_READER_PRINCIPAL_ARN" ]]; then
+    log "evidence reader: $EVIDENCE_READER_PRINCIPAL_ARN"
+else
+    log "evidence reader: disabled"
+fi
 log "local output: $OUT_DIR"
 
 log "creating CloudFormation stack"
+template_args=()
+if [[ -n "$TEMPLATE_URL" ]]; then
+    template_args=(--template-url "$TEMPLATE_URL")
+    log "template: $TEMPLATE_URL"
+else
+    [[ -f "$TEMPLATE_BODY_PATH" ]] || fail "template body not found: $TEMPLATE_BODY_PATH"
+    template_args=(--template-body "file://${TEMPLATE_BODY_PATH}")
+    log "template: $TEMPLATE_BODY_PATH"
+fi
+
 aws cloudformation create-stack \
     --region "$AWS_REGION_NAME" \
     --stack-name "$STACK_NAME" \
-    --template-url "$TEMPLATE_URL" \
+    "${template_args[@]}" \
     --capabilities CAPABILITY_NAMED_IAM \
     --on-failure DO_NOTHING \
     --parameters \
         ParameterKey=AccessCIDR,ParameterValue="$ACCESS_CIDR" \
         ParameterKey=ModelURI,ParameterValue="$MODEL_URI" \
         ParameterKey=EvidenceBucketName,ParameterValue="$BUCKET_NAME" \
+        ParameterKey=EvidenceReaderPrincipalArn,ParameterValue="$EVIDENCE_READER_PRINCIPAL_ARN" \
         ParameterKey=RetentionDays,ParameterValue="$RETENTION_DAYS" \
         ParameterKey=InstanceType,ParameterValue="$INSTANCE_TYPE" \
         ParameterKey=EnableObjectLock,ParameterValue="$ENABLE_OBJECT_LOCK" \
