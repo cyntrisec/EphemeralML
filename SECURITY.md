@@ -9,7 +9,7 @@ If you discover a security vulnerability in EphemeralML, please report it respon
 Instead, please use one of these channels:
 
 1. **GitHub Security Advisories** (preferred): [Report a vulnerability](https://github.com/cyntrisec/EphemeralML/security/advisories/new)
-2. **Email**: security@cyntrisec.com
+2. **Email**: contact@cyntrisec.com
 
 ### What to Include
 
@@ -55,4 +55,4 @@ For details on the threat model and security architecture, see:
 - [`docs/security/AUDIT_STATUS.md`](docs/security/AUDIT_STATUS.md) -- current public audit status
 - [`docs/security/RISK_REGISTER.md`](docs/security/RISK_REGISTER.md) -- accepted risks and dependency exceptions
 
-Detailed internal workpapers and customer-specific evidence remain private. Contact `security@cyntrisec.com` for reviewer access where appropriate.
+Detailed internal workpapers and customer-specific evidence remain private. Contact `contact@cyntrisec.com` for reviewer access where appropriate.
