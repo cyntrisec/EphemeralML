@@ -54,6 +54,19 @@ const MODEL_HASH_SCHEME_SHA256_SINGLE: &str = "sha256-single";
 const MODEL_HASH_SCHEME_SHA256_CONCAT: &str = "sha256-concat";
 const MODEL_HASH_SCHEME_SHA256_MANIFEST: &str = "sha256-manifest";
 const KNOWN_SECURITY_MODES: &[&str] = &["production", "evaluation"];
+
+/// The `security_mode` value emitted by AIR receipts built from this binary.
+///
+/// Builds compiled with the `mock` feature are test / non-TEE builds and MUST
+/// NOT emit production-labeled evidence (UIUC/MATS coordinated-disclosure
+/// finding #7): they emit `"evaluation"`, which the default AIR verifier
+/// rejects (`air_verify::AirVerifyPolicy::allow_evaluation_mode` defaults to
+/// `false`). Production builds emit `"production"`. Both values are members of
+/// the closed [`KNOWN_SECURITY_MODES`] set, so this widens nothing.
+#[cfg(feature = "mock")]
+pub(crate) const BUILD_SECURITY_MODE: &str = "evaluation";
+#[cfg(not(feature = "mock"))]
+pub(crate) const BUILD_SECURITY_MODE: &str = "production";
 const KNOWN_MEASUREMENT_KEYS: &[&str] = &[
     "measurement_type",
     "pcr0",
@@ -202,8 +215,11 @@ impl AirReceiptClaims {
         })?;
         let cti = *uuid.as_bytes();
 
+        // Single emission chokepoint for a receipt's security_mode. Mock /
+        // non-TEE builds emit "evaluation" so test receipts can never
+        // masquerade as production evidence (UIUC/MATS finding #7).
         let security_mode = match receipt.security_mode {
-            crate::receipt_signing::SecurityMode::GatewayOnly => "production".to_string(),
+            crate::receipt_signing::SecurityMode::GatewayOnly => BUILD_SECURITY_MODE.to_string(),
         };
 
         Ok(Self {
@@ -1560,7 +1576,9 @@ mod tests {
 
         assert_eq!(air_claims.model_id, "test-model");
         assert_eq!(air_claims.model_hash, model_hash);
-        assert_eq!(air_claims.security_mode, "production");
+        // GatewayOnly maps to the build's security_mode: "production" in
+        // default builds, "evaluation" under the `mock` feature (finding #7).
+        assert_eq!(air_claims.security_mode, BUILD_SECURITY_MODE);
 
         // cti should be the raw UUID bytes
         let expected_uuid = uuid::Uuid::parse_str(&receipt_id).unwrap();
@@ -1571,6 +1589,47 @@ mod tests {
         let bytes = build_air_v1(&air_claims, &key).unwrap();
         let parsed = parse_air_v1(&bytes).unwrap();
         assert!(verify_air_v1(&parsed, &key.public_key).unwrap());
+    }
+
+    /// UIUC/MATS finding #7 regression: a receipt built by a `mock` (non-TEE)
+    /// build must be labeled `security_mode = "evaluation"` and must be rejected
+    /// by the default production verification policy.
+    #[cfg(feature = "mock")]
+    #[test]
+    fn mock_build_emits_evaluation_and_default_policy_rejects_it() {
+        use crate::air_verify::{verify_air_v1_receipt, AirCheckCode, AirVerifyPolicy};
+
+        let measurements = EnclaveMeasurements::new(vec![1u8; 48], vec![2u8; 48], vec![3u8; 48]);
+        let legacy = AttestationReceipt::new(
+            uuid::Uuid::new_v4().to_string(),
+            1,
+            crate::receipt_signing::SecurityMode::GatewayOnly,
+            measurements,
+            [4u8; 32],
+            [5u8; 32],
+            [6u8; 32],
+            "policy-v1".to_string(),
+            7,
+            "test-model".to_string(),
+            "v1.0".to_string(),
+            100,
+            64,
+        );
+        let claims =
+            AirReceiptClaims::from_legacy(&legacy, "cyntrisec.com".to_string(), [0xFF; 32]).unwrap();
+
+        // Mock builds must never emit production-labeled evidence.
+        assert_eq!(claims.security_mode, "evaluation");
+
+        // The default production policy must fail closed on the mock receipt.
+        let key = ReceiptSigningKey::generate().unwrap();
+        let bytes = build_air_v1(&claims, &key).unwrap();
+        let result = verify_air_v1_receipt(&bytes, &key.public_key, &AirVerifyPolicy::unbounded());
+        assert!(
+            !result.verified,
+            "mock-emitted evaluation receipt must fail the default verify"
+        );
+        assert!(result.has_failure(&AirCheckCode::EvaluationModeRejected));
     }
 
     #[test]
