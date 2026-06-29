@@ -282,6 +282,7 @@ fn build_air_report(
         expected_nonce: None,
         require_nonce: false,
         seen_cti: None,
+        require_model_hash_scheme: false,
     };
     let result = verify_air_v1_receipt(receipt_bytes, public_key, &policy);
     let parsed = parse_air_v1(receipt_bytes).ok();

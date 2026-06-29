@@ -126,6 +126,7 @@ fn verify_air(
         expected_nonce: policy.expected_nonce.clone(),
         require_nonce: false,
         seen_cti: None,
+        require_model_hash_scheme: false,
     };
     let result = verify_air_v1_receipt(data, public_key, &air_policy);
     Ok(TrustCenterResponse::from_air_v1(result))

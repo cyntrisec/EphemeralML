@@ -111,6 +111,8 @@ pub enum AirCheckCode {
     NonceMissing,
     /// `cti` has already been seen (replay)
     ReplayCti,
+    /// `model_hash_scheme` required by policy but absent
+    ModelHashSchemeMissing,
 }
 
 impl std::fmt::Display for AirCheckCode {
@@ -150,6 +152,7 @@ impl std::fmt::Display for AirCheckCode {
             Self::NonceMismatch => write!(f, "NONCE_MISMATCH"),
             Self::NonceMissing => write!(f, "NONCE_MISSING"),
             Self::ReplayCti => write!(f, "REPLAY_CTI"),
+            Self::ModelHashSchemeMissing => write!(f, "MODEL_HASH_SCHEME_MISSING"),
         }
     }
 }
@@ -310,6 +313,13 @@ pub struct AirVerifyPolicy {
     /// Seen-cti cache hook. If provided, called with the receipt's cti.
     /// Return `true` if the cti has been seen before (replay).
     pub seen_cti: Option<SeenCtiFn>,
+    /// Require `model_hash_scheme` to be present and known.
+    ///
+    /// The default policy accepts an absent scheme (model_hash is then opaque:
+    /// comparable against a known-good value, not independently reproducible).
+    /// Deployments that need the model hash to be *reproducible* set this so a
+    /// receipt without a declared scheme fails closed (UIUC/MATS finding #6).
+    pub require_model_hash_scheme: bool,
 }
 
 impl Default for AirVerifyPolicy {
@@ -339,6 +349,7 @@ impl Default for AirVerifyPolicy {
             expected_nonce: None,
             require_nonce: false,
             seen_cti: None,
+            require_model_hash_scheme: false,
         }
     }
 }
@@ -384,6 +395,7 @@ impl AirVerifyPolicy {
             expected_platform: Some(expected_platform.into()),
             require_nonce: true,
             seen_cti: Some(seen_cti),
+            require_model_hash_scheme: true,
             ..Self::default()
         }
     }
@@ -1106,6 +1118,30 @@ fn layer5_policy(claims: &AirReceiptClaims, policy: &AirVerifyPolicy, checks: &m
     } else {
         checks.push(AirCheck::skip("REPLAY"));
     }
+
+    // model_hash_scheme policy: require a declared, known scheme when the
+    // deployment needs the model hash to be reproducible (finding #6). The
+    // layer-4 MHASH_SCHEME check only fail-closes on a *present-but-unknown*
+    // scheme; this is the knob to also reject an absent one.
+    if policy.require_model_hash_scheme {
+        match &claims.model_hash_scheme {
+            Some(s) if crate::air_receipt::is_known_model_hash_scheme(s) => {
+                checks.push(AirCheck::pass("MHASH_SCHEME_REQUIRED"));
+            }
+            Some(s) => checks.push(AirCheck::fail(
+                "MHASH_SCHEME_REQUIRED",
+                AirCheckCode::UnknownModelHashScheme(s.clone()),
+                format!("model_hash_scheme '{s}' is unknown but a scheme is required"),
+            )),
+            None => checks.push(AirCheck::fail(
+                "MHASH_SCHEME_REQUIRED",
+                AirCheckCode::ModelHashSchemeMissing,
+                "model_hash_scheme is required by policy but absent",
+            )),
+        }
+    } else {
+        checks.push(AirCheck::skip("MHASH_SCHEME_REQUIRED"));
+    }
 }
 
 #[cfg(test)]
@@ -1196,6 +1232,7 @@ mod tests {
         let key = ReceiptSigningKey::generate().unwrap();
         let mut claims = fixture_claims();
         claims.eat_nonce = Some(vec![0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08]);
+        claims.model_hash_scheme = Some("sha256-single".to_string());
         let bytes = build_receipt(&claims, &key);
 
         let policy = AirVerifyPolicy::strict(
@@ -1253,6 +1290,7 @@ mod tests {
         let key = ReceiptSigningKey::generate().unwrap();
         let mut claims = fixture_claims();
         claims.eat_nonce = Some(vec![9u8; 8]);
+        claims.model_hash_scheme = Some("sha256-single".to_string());
         let bytes = build_receipt(&claims, &key);
 
         // One cache shared across both verifications.
@@ -1279,6 +1317,63 @@ mod tests {
         let r2 = verify_air_v1_receipt(&bytes, &key.public_key, &p2);
         assert!(!r2.verified, "second verify of the same cti must fail (replay)");
         assert!(r2.has_failure(&AirCheckCode::ReplayCti));
+    }
+
+    // ── Finding #6: require model_hash_scheme ───────────────────────
+
+    #[test]
+    fn require_model_hash_scheme_rejects_absent_scheme() {
+        let key = ReceiptSigningKey::generate().unwrap();
+        let mut claims = fixture_claims();
+        claims.model_hash_scheme = None;
+        let bytes = build_receipt(&claims, &key);
+
+        let policy = AirVerifyPolicy {
+            require_model_hash_scheme: true,
+            ..AirVerifyPolicy::default()
+        };
+        let result = verify_air_v1_receipt(&bytes, &key.public_key, &policy);
+        assert!(!result.verified, "absent scheme must fail when required");
+        assert!(result.has_failure(&AirCheckCode::ModelHashSchemeMissing));
+    }
+
+    #[test]
+    fn require_model_hash_scheme_accepts_known_scheme() {
+        let key = ReceiptSigningKey::generate().unwrap();
+        let mut claims = fixture_claims();
+        claims.model_hash_scheme = Some("sha256-single".to_string());
+        let bytes = build_receipt(&claims, &key);
+
+        let policy = AirVerifyPolicy {
+            require_model_hash_scheme: true,
+            ..AirVerifyPolicy::default()
+        };
+        let result = verify_air_v1_receipt(&bytes, &key.public_key, &policy);
+        assert!(result.verified, "failures: {:?}", result.failures());
+    }
+
+    #[test]
+    fn default_policy_does_not_require_model_hash_scheme() {
+        let key = ReceiptSigningKey::generate().unwrap();
+        let mut claims = fixture_claims();
+        claims.model_hash_scheme = None;
+        let bytes = build_receipt(&claims, &key);
+        // default() leaves require_model_hash_scheme = false, so an absent
+        // scheme is accepted (opaque model_hash).
+        let result = verify_air_v1_receipt(&bytes, &key.public_key, &AirVerifyPolicy::default());
+        assert!(result.verified, "failures: {:?}", result.failures());
+    }
+
+    #[test]
+    fn strict_policy_requires_model_hash_scheme() {
+        let policy = AirVerifyPolicy::strict(
+            [0xAA; 32],
+            "minilm-l6-v2",
+            [0xDD; 32],
+            "nitro-pcr",
+            Box::new(|_cti: &[u8; 16]| false),
+        );
+        assert!(policy.require_model_hash_scheme);
     }
 
     // ── Layer 2: wrong key ──────────────────────────────────────────
