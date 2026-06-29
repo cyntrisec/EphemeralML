@@ -17,6 +17,7 @@ compile_error!(
 
 pub mod attestation_bridge;
 pub mod attestation_verifier;
+pub mod chained_verify;
 pub mod error;
 pub mod evidence_event;
 pub mod freshness;
@@ -35,6 +36,7 @@ pub mod mock;
 
 // Re-export common types and client-specific types
 pub use attestation_verifier::{AttestationError, AttestationVerifier, EnclaveIdentity};
+pub use chained_verify::verify_air_v1_receipt_chained;
 pub use ephemeral_ml_common::*;
 pub use error::{ClientError, Result};
 pub use freshness::{
