@@ -212,11 +212,41 @@ impl AirCheck {
 
 // ── Full verification result ────────────────────────────────────────
 
+/// Assurance level reached by a verification.
+///
+/// Makes the AIR-local vs. TEE-provenance distinction first-class in the
+/// result so a caller cannot read `verified == true` and assume hardware
+/// provenance (UIUC/MATS coordinated-disclosure finding #1).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AssuranceLevel {
+    /// Receipt structure, signature, closed claim set, freshness, and any
+    /// caller-pinned policy checks passed. Identity checks the policy did not
+    /// pin are reported as `Skip` and listed in
+    /// [`AirVerifyResult::skipped_identity_checks`]. This level does **not**
+    /// establish that the receipt was produced by a specific attested TEE.
+    AirLocal,
+    /// AIR-local checks passed **and** the receipt was bound to a verified
+    /// platform attestation document (signing-key binding, attestation-doc-hash
+    /// binding, and measurement reconciliation). Only the chained verifier can
+    /// produce this; [`verify_air_v1_receipt`] alone always returns
+    /// [`AssuranceLevel::AirLocal`].
+    TeeProvenance,
+}
+
 /// Complete verification result across all four layers.
 #[derive(Debug, Clone, Serialize)]
 pub struct AirVerifyResult {
     /// Overall verdict: true only if all non-skipped checks pass.
     pub verified: bool,
+    /// Assurance level reached. [`verify_air_v1_receipt`] always reports
+    /// [`AssuranceLevel::AirLocal`]; the chained verifier may raise it.
+    pub assurance_level: AssuranceLevel,
+    /// Identity checks (model hash/id, attestation-doc binding, platform,
+    /// nonce, replay) reported as `Skip` because the policy did not pin them.
+    /// Empty under an [`AirVerifyPolicy::strict`] policy. Surfaces the
+    /// "verified but nothing was pinned" footgun explicitly.
+    pub skipped_identity_checks: Vec<&'static str>,
     /// Individual check outcomes, ordered by layer.
     pub checks: Vec<AirCheck>,
     /// Parsed claims. Present only once the signature has been verified and the
@@ -281,6 +311,17 @@ pub struct AirVerifyPolicy {
 }
 
 impl Default for AirVerifyPolicy {
+    /// **AIR-local baseline policy — not a production identity policy.**
+    ///
+    /// Enforces freshness (max age 1h), the closed claim set, and rejection of
+    /// `evaluation` receipts, but pins **no** identity claims: model hash,
+    /// model id, attestation-doc hash, platform, nonce, and replay are all
+    /// reported as `Skip`. A `verified == true` result from this policy means
+    /// "a well-formed, fresh, authentically-signed AIR receipt" — **not** "the
+    /// expected model ran in the expected TEE" (UIUC/MATS finding #1). For
+    /// production verification of a known workload use [`AirVerifyPolicy::strict`];
+    /// the skipped identity checks are also enumerated in
+    /// [`AirVerifyResult::skipped_identity_checks`].
     fn default() -> Self {
         Self {
             max_age_secs: 3600,
@@ -312,6 +353,37 @@ impl AirVerifyPolicy {
             ..Self::default()
         }
     }
+
+    /// Build a strict, production-oriented policy that fails closed on missing
+    /// identity evidence.
+    ///
+    /// Unlike [`Self::default`] — which performs only AIR-local checks and
+    /// reports unpinned identity checks as `Skip` — `strict` pins every
+    /// identity-bearing claim and wires replay protection, so a receipt that
+    /// omits any of them fails verification. Use it to verify a known model on
+    /// a known platform, bound to a specific attestation document.
+    ///
+    /// The caller supplies the replay hook (`seen_cti`) and owns its durability
+    /// scope. `require_nonce` is set, so the receipt must carry an `eat_nonce`.
+    /// Freshness uses the [`Self::default`] window; override `max_age_secs`
+    /// afterwards if a different bound is required.
+    pub fn strict(
+        expected_model_hash: [u8; 32],
+        expected_model_id: impl Into<String>,
+        expected_attestation_doc_hash: [u8; 32],
+        expected_platform: impl Into<String>,
+        seen_cti: SeenCtiFn,
+    ) -> Self {
+        Self {
+            expected_model_hash: Some(expected_model_hash),
+            expected_model_id: Some(expected_model_id.into()),
+            expected_attestation_doc_hash: Some(expected_attestation_doc_hash),
+            expected_platform: Some(expected_platform.into()),
+            require_nonce: true,
+            seen_cti: Some(seen_cti),
+            ..Self::default()
+        }
+    }
 }
 
 // ── Top-level verify ────────────────────────────────────────────────
@@ -338,6 +410,8 @@ pub fn verify_air_v1_receipt(
         None => {
             return AirVerifyResult {
                 verified: false,
+                assurance_level: AssuranceLevel::AirLocal,
+                skipped_identity_checks: identity_skips(&checks),
                 checks,
                 claims: None,
             };
@@ -350,6 +424,8 @@ pub fn verify_air_v1_receipt(
     if !layer2_crypto(&cose, public_key, &mut checks) {
         return AirVerifyResult {
             verified: false,
+            assurance_level: AssuranceLevel::AirLocal,
+            skipped_identity_checks: identity_skips(&checks),
             checks,
             claims: None,
         };
@@ -361,6 +437,8 @@ pub fn verify_air_v1_receipt(
         None => {
             return AirVerifyResult {
                 verified: false,
+                assurance_level: AssuranceLevel::AirLocal,
+                skipped_identity_checks: identity_skips(&checks),
                 checks,
                 claims: None,
             };
@@ -374,12 +452,28 @@ pub fn verify_air_v1_receipt(
     layer5_policy(&claims, policy, &mut checks);
 
     let verified = verified_from_checks(&checks);
+    let skipped_identity_checks = identity_skips(&checks);
 
     AirVerifyResult {
         verified,
+        assurance_level: AssuranceLevel::AirLocal,
+        skipped_identity_checks,
         checks,
         claims: Some(claims),
     }
+}
+
+/// Identity-bearing policy checks whose `Skip` means the receipt was not pinned
+/// to a known model / platform / attestation document / nonce / replay window.
+/// Surfaced via [`AirVerifyResult::skipped_identity_checks`].
+const IDENTITY_CHECK_NAMES: &[&str] = &["MHASH", "MODEL", "ADHASH", "PLATFORM", "NONCE", "REPLAY"];
+
+fn identity_skips(checks: &[AirCheck]) -> Vec<&'static str> {
+    checks
+        .iter()
+        .filter(|c| matches!(c.status, AirCheckStatus::Skip) && IDENTITY_CHECK_NAMES.contains(&c.name))
+        .map(|c| c.name)
+        .collect()
 }
 
 fn verified_from_checks(checks: &[AirCheck]) -> bool {
@@ -991,6 +1085,60 @@ mod tests {
                 c.detail
             );
         }
+    }
+
+    // ── Finding #1: assurance level + strict policy ─────────────────
+
+    #[test]
+    fn default_policy_is_air_local_and_surfaces_skipped_identity_checks() {
+        let key = ReceiptSigningKey::generate().unwrap();
+        let claims = fixture_claims();
+        let bytes = build_receipt(&claims, &key);
+
+        let result = verify_air_v1_receipt(&bytes, &key.public_key, &AirVerifyPolicy::default());
+        assert!(result.verified, "failures: {:?}", result.failures());
+        // A bare `verified: true` no longer hides the fact that nothing was pinned.
+        assert_eq!(result.assurance_level, AssuranceLevel::AirLocal);
+        for name in ["MHASH", "MODEL", "ADHASH", "PLATFORM", "NONCE", "REPLAY"] {
+            assert!(
+                result.skipped_identity_checks.contains(&name),
+                "{name} should be a skipped identity check; got {:?}",
+                result.skipped_identity_checks
+            );
+        }
+    }
+
+    #[test]
+    fn strict_policy_pins_identity_and_passes_a_fully_bound_receipt() {
+        let key = ReceiptSigningKey::generate().unwrap();
+        let mut claims = fixture_claims();
+        claims.eat_nonce = Some(vec![0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08]);
+        let bytes = build_receipt(&claims, &key);
+
+        let policy = AirVerifyPolicy::strict(
+            [0xAA; 32],
+            "minilm-l6-v2",
+            [0xDD; 32],
+            "nitro-pcr",
+            Box::new(|_cti: &[u8; 16]| false),
+        );
+        // strict pins every identity claim and wires a nonce + replay hook.
+        assert!(policy.expected_model_hash.is_some());
+        assert!(policy.expected_model_id.is_some());
+        assert!(policy.expected_attestation_doc_hash.is_some());
+        assert!(policy.expected_platform.is_some());
+        assert!(policy.require_nonce);
+        assert!(policy.seen_cti.is_some());
+
+        let result = verify_air_v1_receipt(&bytes, &key.public_key, &policy);
+        assert!(result.verified, "failures: {:?}", result.failures());
+        assert!(
+            result.skipped_identity_checks.is_empty(),
+            "strict policy should skip no identity checks; got {:?}",
+            result.skipped_identity_checks
+        );
+        // The low-level verifier never claims TEE provenance on its own.
+        assert_eq!(result.assurance_level, AssuranceLevel::AirLocal);
     }
 
     // ── Layer 2: wrong key ──────────────────────────────────────────
