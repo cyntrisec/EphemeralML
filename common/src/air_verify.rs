@@ -26,6 +26,8 @@ use crate::air_receipt::{self, AirReceiptClaims};
 use crate::error::EphemeralError;
 use coset::TaggedCborSerializable;
 use serde::{Deserialize, Serialize};
+use std::collections::{HashSet, VecDeque};
+use std::sync::{Arc, Mutex};
 
 // ── Failure codes ───────────────────────────────────────────────────
 
@@ -364,7 +366,8 @@ impl AirVerifyPolicy {
     /// a known platform, bound to a specific attestation document.
     ///
     /// The caller supplies the replay hook (`seen_cti`) and owns its durability
-    /// scope. `require_nonce` is set, so the receipt must carry an `eat_nonce`.
+    /// scope; a process-local [`SeenCtiCache`] is a convenient default.
+    /// `require_nonce` is set, so the receipt must carry an `eat_nonce`.
     /// Freshness uses the [`Self::default`] window; override `max_age_secs`
     /// afterwards if a different bound is required.
     pub fn strict(
@@ -383,6 +386,86 @@ impl AirVerifyPolicy {
             seen_cti: Some(seen_cti),
             ..Self::default()
         }
+    }
+}
+
+// ── Replay helper ───────────────────────────────────────────────────
+
+/// Bounded, in-memory cache of seen `cti` values for replay detection.
+///
+/// Pass [`SeenCtiCache::as_seen_cti_fn`] as the [`AirVerifyPolicy::seen_cti`]
+/// hook (e.g. via [`AirVerifyPolicy::strict`]). The cache holds at most
+/// `capacity` ctis and evicts the oldest first — a sliding window over the most
+/// recently seen receipts.
+///
+/// **Scope (UIUC/MATS finding #4):** this protects a single verifier process
+/// only. Durable, cross-restart, cross-instance replay protection is deployment
+/// infrastructure (a shared store or a transparency log) that a receipt library
+/// cannot own; see the AIR draft "Replay Protection" section. When no hook is
+/// configured the verification result reports `REPLAY` among
+/// [`AirVerifyResult::skipped_identity_checks`], rather than only as a `Skip` line.
+pub struct SeenCtiCache {
+    inner: Mutex<SeenCtiInner>,
+    capacity: usize,
+}
+
+struct SeenCtiInner {
+    seen: HashSet<[u8; 16]>,
+    order: VecDeque<[u8; 16]>,
+}
+
+impl SeenCtiCache {
+    /// Create a cache holding at most `capacity` ctis (must be non-zero).
+    pub fn new(capacity: usize) -> Self {
+        assert!(capacity > 0, "SeenCtiCache capacity must be non-zero");
+        Self {
+            inner: Mutex::new(SeenCtiInner {
+                seen: HashSet::with_capacity(capacity),
+                order: VecDeque::with_capacity(capacity),
+            }),
+            capacity,
+        }
+    }
+
+    /// Record `cti`. Returns `true` if it was already present (a replay).
+    ///
+    /// On first sight the cti is inserted; if the cache is full, the oldest
+    /// entry is evicted. A replayed cti is reported but not re-inserted.
+    pub fn check_and_insert(&self, cti: &[u8; 16]) -> bool {
+        let mut g = self.inner.lock().unwrap_or_else(|e| e.into_inner());
+        if g.seen.contains(cti) {
+            return true;
+        }
+        if g.order.len() >= self.capacity {
+            if let Some(evicted) = g.order.pop_front() {
+                g.seen.remove(&evicted);
+            }
+        }
+        g.seen.insert(*cti);
+        g.order.push_back(*cti);
+        false
+    }
+
+    /// Number of ctis currently cached.
+    pub fn len(&self) -> usize {
+        self.inner
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .order
+            .len()
+    }
+
+    /// True if the cache holds no ctis.
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+
+    /// Build a [`SeenCtiFn`] backed by this cache, for use as
+    /// [`AirVerifyPolicy::seen_cti`] / the `seen_cti` argument of
+    /// [`AirVerifyPolicy::strict`].
+    pub fn as_seen_cti_fn(self: &Arc<Self>) -> SeenCtiFn {
+        let cache = Arc::clone(self);
+        Box::new(move |cti: &[u8; 16]| cache.check_and_insert(cti))
     }
 }
 
@@ -1139,6 +1222,63 @@ mod tests {
         );
         // The low-level verifier never claims TEE provenance on its own.
         assert_eq!(result.assurance_level, AssuranceLevel::AirLocal);
+    }
+
+    // ── Finding #4: bounded replay cache ────────────────────────────
+
+    #[test]
+    fn seen_cti_cache_detects_replay() {
+        let cache = SeenCtiCache::new(8);
+        let a = [1u8; 16];
+        assert!(!cache.check_and_insert(&a), "first sight is not a replay");
+        assert!(cache.check_and_insert(&a), "second sight is a replay");
+        assert_eq!(cache.len(), 1);
+    }
+
+    #[test]
+    fn seen_cti_cache_is_bounded_and_evicts_oldest() {
+        let cache = SeenCtiCache::new(2);
+        let (a, b, c) = ([1u8; 16], [2u8; 16], [3u8; 16]);
+        assert!(!cache.check_and_insert(&a)); // [a]
+        assert!(!cache.check_and_insert(&b)); // [a, b]
+        assert!(!cache.check_and_insert(&c)); // full -> evict a -> [b, c]
+        assert_eq!(cache.len(), 2);
+        assert!(cache.check_and_insert(&b), "b still cached -> replay");
+        assert!(cache.check_and_insert(&c), "c still cached -> replay");
+        assert!(!cache.check_and_insert(&a), "a was evicted -> fresh again");
+    }
+
+    #[test]
+    fn strict_policy_rejects_a_replayed_receipt() {
+        let key = ReceiptSigningKey::generate().unwrap();
+        let mut claims = fixture_claims();
+        claims.eat_nonce = Some(vec![9u8; 8]);
+        let bytes = build_receipt(&claims, &key);
+
+        // One cache shared across both verifications.
+        let cache = Arc::new(SeenCtiCache::new(16));
+
+        let p1 = AirVerifyPolicy::strict(
+            [0xAA; 32],
+            "minilm-l6-v2",
+            [0xDD; 32],
+            "nitro-pcr",
+            cache.as_seen_cti_fn(),
+        );
+        let r1 = verify_air_v1_receipt(&bytes, &key.public_key, &p1);
+        assert!(r1.verified, "first verify failures: {:?}", r1.failures());
+
+        // Re-verifying the same receipt (same cti) against the same cache replays.
+        let p2 = AirVerifyPolicy::strict(
+            [0xAA; 32],
+            "minilm-l6-v2",
+            [0xDD; 32],
+            "nitro-pcr",
+            cache.as_seen_cti_fn(),
+        );
+        let r2 = verify_air_v1_receipt(&bytes, &key.public_key, &p2);
+        assert!(!r2.verified, "second verify of the same cti must fail (replay)");
+        assert!(r2.has_failure(&AirCheckCode::ReplayCti));
     }
 
     // ── Layer 2: wrong key ──────────────────────────────────────────
