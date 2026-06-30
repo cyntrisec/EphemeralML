@@ -604,59 +604,9 @@ fn enclave_measurements_mismatch_detail(
     receipt: &ephemeral_ml_common::receipt_signing::EnclaveMeasurements,
     attested: &ephemeral_ml_common::PcrMeasurements,
 ) -> Option<String> {
-    let mut mismatches = Vec::new();
-    if receipt.pcr0 != attested.pcr0 {
-        mismatches.push(format!(
-            "pcr0 receipt={} attestation={}",
-            hex::encode(&receipt.pcr0),
-            hex::encode(&attested.pcr0)
-        ));
-    }
-    if receipt.pcr1 != attested.pcr1 {
-        mismatches.push(format!(
-            "pcr1 receipt={} attestation={}",
-            hex::encode(&receipt.pcr1),
-            hex::encode(&attested.pcr1)
-        ));
-    }
-    if receipt.pcr2 != attested.pcr2 {
-        mismatches.push(format!(
-            "pcr2 receipt={} attestation={}",
-            hex::encode(&receipt.pcr2),
-            hex::encode(&attested.pcr2)
-        ));
-    }
-
-    // The current platform-attestation identity exposes only pcr0/pcr1/pcr2.
-    // Extra receipt fields are self-asserted unless the attestation verifier
-    // also extracts the corresponding platform measurements, so fail closed.
-    if receipt.pcr3.is_some() {
-        mismatches.push(
-            "pcr3 is present in the receipt but unavailable in verified attestation measurements"
-                .to_string(),
-        );
-    }
-    if receipt.pcr4.is_some() {
-        mismatches.push(
-            "pcr4 is present in the receipt but unavailable in verified attestation measurements"
-                .to_string(),
-        );
-    }
-    if receipt.pcr8.is_some() {
-        mismatches.push(
-            "pcr8 is present in the receipt but unavailable in verified attestation measurements"
-                .to_string(),
-        );
-    }
-
-    if mismatches.is_empty() {
-        None
-    } else {
-        Some(format!(
-            "receipt enclave_measurements do not match verified attestation document: {}",
-            mismatches.join("; ")
-        ))
-    }
+    // Single source of truth lives in common (EnclaveMeasurements::reconcile_against)
+    // so the hosted verifier and the client chained verifier cannot drift.
+    receipt.reconcile_against(attested)
 }
 
 fn provenance_check(

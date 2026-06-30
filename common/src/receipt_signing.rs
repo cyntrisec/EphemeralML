@@ -343,6 +343,69 @@ impl EnclaveMeasurements {
         };
         base && pcr3_ok && pcr4_ok && pcr8_ok
     }
+
+    /// Reconcile these receipt-asserted measurements against the PCR set
+    /// extracted from a *verified* platform attestation document.
+    ///
+    /// Returns `None` when consistent, or `Some(detail)` describing the
+    /// mismatch. PCR0/1/2 must match the attestation. Optional pcr3/pcr4/pcr8
+    /// are self-asserted: the platform-attestation identity exposes only
+    /// PCR0/1/2, so any extra PCR present in the receipt cannot be corroborated
+    /// and fails closed (it MUST NOT be treated as provenance-covered). Shared
+    /// by the hosted verifier and the client chained verifier so the two paths
+    /// cannot drift.
+    pub fn reconcile_against(&self, attested: &crate::types::PcrMeasurements) -> Option<String> {
+        let mut mismatches = Vec::new();
+        if self.pcr0 != attested.pcr0 {
+            mismatches.push(format!(
+                "pcr0 receipt={} attestation={}",
+                hex::encode(&self.pcr0),
+                hex::encode(&attested.pcr0)
+            ));
+        }
+        if self.pcr1 != attested.pcr1 {
+            mismatches.push(format!(
+                "pcr1 receipt={} attestation={}",
+                hex::encode(&self.pcr1),
+                hex::encode(&attested.pcr1)
+            ));
+        }
+        if self.pcr2 != attested.pcr2 {
+            mismatches.push(format!(
+                "pcr2 receipt={} attestation={}",
+                hex::encode(&self.pcr2),
+                hex::encode(&attested.pcr2)
+            ));
+        }
+        // Extra receipt PCRs are self-asserted unless the attestation verifier
+        // also extracts them; today it exposes only pcr0/1/2, so fail closed.
+        if self.pcr3.is_some() {
+            mismatches.push(
+                "pcr3 is present in the receipt but unavailable in verified attestation measurements"
+                    .to_string(),
+            );
+        }
+        if self.pcr4.is_some() {
+            mismatches.push(
+                "pcr4 is present in the receipt but unavailable in verified attestation measurements"
+                    .to_string(),
+            );
+        }
+        if self.pcr8.is_some() {
+            mismatches.push(
+                "pcr8 is present in the receipt but unavailable in verified attestation measurements"
+                    .to_string(),
+            );
+        }
+        if mismatches.is_empty() {
+            None
+        } else {
+            Some(format!(
+                "receipt enclave_measurements do not match verified attestation document: {}",
+                mismatches.join("; ")
+            ))
+        }
+    }
 }
 
 impl AttestationReceipt {

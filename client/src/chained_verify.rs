@@ -18,7 +18,7 @@ use ephemeral_ml_common::air_verify::{
     verify_air_v1_receipt, AirCheck, AirCheckStatus, AirVerifyPolicy, AirVerifyResult,
     AssuranceLevel,
 };
-use ephemeral_ml_common::{EnclaveMeasurements, PcrMeasurements};
+use ephemeral_ml_common::PcrMeasurements;
 
 use crate::attestation_verifier::AttestationVerifier;
 
@@ -79,16 +79,17 @@ fn bind_attestation(att_bytes: &[u8], allow_mock: bool) -> Result<DocBinding> {
     }
 }
 
-/// Reconcile the receipt's measurements against the document PCRs (PCR0/1/2).
-fn measurements_match(doc: &PcrMeasurements, receipt: &EnclaveMeasurements) -> bool {
-    doc.pcr0 == receipt.pcr0 && doc.pcr1 == receipt.pcr1 && doc.pcr2 == receipt.pcr2
-}
-
 /// TEE provenance requires a cryptographically verified document, successful
-/// measurement reconciliation, and a passing AIR-local verification; anything
-/// else is AIR-local.
-fn assurance_from(doc_verified: bool, reconciled: bool, air_verified: bool) -> AssuranceLevel {
-    if doc_verified && reconciled && air_verified {
+/// measurement reconciliation, a passing AIR-local verification, and a
+/// production-mode receipt (an evaluation receipt is never TEE provenance,
+/// regardless of the caller's policy). Anything else is AIR-local.
+fn assurance_from(
+    doc_verified: bool,
+    reconciled: bool,
+    air_verified: bool,
+    production: bool,
+) -> AssuranceLevel {
+    if doc_verified && reconciled && air_verified && production {
         AssuranceLevel::TeeProvenance
     } else {
         AssuranceLevel::AirLocal
@@ -106,11 +107,22 @@ fn assurance_from(doc_verified: bool, reconciled: bool, air_verified: bool) -> A
 ///    document.
 /// 3. Run the layered [`verify_air_v1_receipt`].
 /// 4. Reconcile the receipt's `enclave_measurements` against the verified
-///    document's PCRs, recorded as a `MEAS_RECONCILE` check (a mismatch fails
-///    verification; an unverifiable/mock document is `Skip`).
+///    document's PCRs via `EnclaveMeasurements::reconcile_against` (shared with
+///    the hosted verifier), recorded as a `MEAS_RECONCILE` check. PCR0/1/2 must
+///    match; any pcr3/pcr4/pcr8 present in the receipt fails closed because the
+///    attestation identity exposes only PCR0/1/2. A mismatch fails verification;
+///    an unverifiable/mock document is `Skip`.
 /// 5. Report [`AssuranceLevel::TeeProvenance`] only when the document was
-///    cryptographically verified, reconciliation passed, and AIR-local
-///    verification passed; otherwise [`AssuranceLevel::AirLocal`].
+///    cryptographically verified, reconciliation passed, AIR-local verification
+///    passed, and the receipt is production-mode; otherwise
+///    [`AssuranceLevel::AirLocal`]. An evaluation receipt is never TEE
+///    provenance, even if the caller set `allow_evaluation_mode`.
+///
+/// `TeeProvenance` asserts *platform* provenance (a verified, measured TEE) plus
+/// PCR0/1/2 reconciliation — not that the *expected model or session* ran. To
+/// bind those, pass a policy that pins them (e.g. [`AirVerifyPolicy::strict`], or
+/// set `expected_model_hash`/`expected_model_id`); the chained verifier only adds
+/// the attestation-doc-hash binding on top of the policy you supply.
 ///
 /// This is the recommended production entry point; [`verify_air_v1_receipt`]
 /// alone is a building block that never establishes TEE provenance.
@@ -131,17 +143,11 @@ pub fn verify_air_v1_receipt_chained(
     // Measurement reconciliation against the verified document's PCRs.
     let (status, detail, reconciled) = match (&binding.measurements, result.claims.as_ref()) {
         (Some(doc_m), Some(claims)) => {
-            if measurements_match(doc_m, &claims.enclave_measurements) {
-                (AirCheckStatus::Pass, None, true)
-            } else {
-                (
-                    AirCheckStatus::Fail,
-                    Some(
-                        "receipt enclave_measurements do not match the attestation document PCRs"
-                            .to_string(),
-                    ),
-                    false,
-                )
+            // Shared with the hosted verifier: PCR0/1/2 must match and any extra
+            // self-asserted pcr3/4/8 fail closed.
+            match claims.enclave_measurements.reconcile_against(doc_m) {
+                None => (AirCheckStatus::Pass, None, true),
+                Some(detail) => (AirCheckStatus::Fail, Some(detail), false),
             }
         }
         // Document verified but the receipt never decoded its claims: the
@@ -172,7 +178,15 @@ pub fn verify_air_v1_receipt_chained(
         result.verified = false;
     }
 
-    result.assurance_level = assurance_from(binding.doc_verified, reconciled, result.verified);
+    // Production-mode floor: an evaluation receipt is never TEE provenance,
+    // even if the caller's policy set allow_evaluation_mode = true.
+    let is_production = result
+        .claims
+        .as_ref()
+        .map(|c| c.security_mode == "production")
+        .unwrap_or(false);
+    result.assurance_level =
+        assurance_from(binding.doc_verified, reconciled, result.verified, is_production);
 
     Ok(result)
 }
@@ -182,6 +196,7 @@ mod tests {
     use super::*;
     use ephemeral_ml_common::air_receipt::{build_air_v1, AirReceiptClaims};
     use ephemeral_ml_common::air_verify::AirCheckCode;
+    use ephemeral_ml_common::EnclaveMeasurements;
     use ephemeral_ml_common::receipt_signing::ReceiptSigningKey;
     use ephemeral_ml_common::WorkerAttestationUserData;
 
@@ -225,22 +240,30 @@ mod tests {
     }
 
     #[test]
-    fn measurements_match_compares_pcr_set() {
-        let m = PcrMeasurements::new(vec![1u8; 48], vec![2u8; 48], vec![3u8; 48]);
-        let same = EnclaveMeasurements::new(vec![1u8; 48], vec![2u8; 48], vec![3u8; 48]);
-        let diff = EnclaveMeasurements::new(vec![9u8; 48], vec![2u8; 48], vec![3u8; 48]);
-        assert!(measurements_match(&m, &same));
-        assert!(!measurements_match(&m, &diff));
+    fn reconcile_against_matches_pcr012_and_fails_closed_on_extra_pcrs() {
+        let attested = PcrMeasurements::new(vec![1u8; 48], vec![2u8; 48], vec![3u8; 48]);
+
+        let matching = EnclaveMeasurements::new(vec![1u8; 48], vec![2u8; 48], vec![3u8; 48]);
+        assert!(matching.reconcile_against(&attested).is_none());
+
+        let mismatch = EnclaveMeasurements::new(vec![9u8; 48], vec![2u8; 48], vec![3u8; 48]);
+        assert!(mismatch.reconcile_against(&attested).is_some());
+
+        // Extra self-asserted PCRs the attestation cannot corroborate fail closed (#4).
+        let mut extra = EnclaveMeasurements::new(vec![1u8; 48], vec![2u8; 48], vec![3u8; 48]);
+        extra.pcr8 = Some(vec![7u8; 48]);
+        assert!(extra.reconcile_against(&attested).is_some());
     }
 
     #[test]
     fn assurance_decision_table() {
         // Only a verified document + reconciled measurements + a passing
         // AIR-local verification yields TEE provenance.
-        assert_eq!(assurance_from(true, true, true), AssuranceLevel::TeeProvenance);
-        assert_eq!(assurance_from(false, true, true), AssuranceLevel::AirLocal); // mock document
-        assert_eq!(assurance_from(true, false, true), AssuranceLevel::AirLocal); // measurement mismatch
-        assert_eq!(assurance_from(true, true, false), AssuranceLevel::AirLocal); // air-local failed
+        assert_eq!(assurance_from(true, true, true, true), AssuranceLevel::TeeProvenance);
+        assert_eq!(assurance_from(false, true, true, true), AssuranceLevel::AirLocal); // mock document
+        assert_eq!(assurance_from(true, false, true, true), AssuranceLevel::AirLocal); // measurement mismatch
+        assert_eq!(assurance_from(true, true, false, true), AssuranceLevel::AirLocal); // air-local failed
+        assert_eq!(assurance_from(true, true, true, false), AssuranceLevel::AirLocal); // evaluation receipt
     }
 
     #[test]
