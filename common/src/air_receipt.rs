@@ -1616,7 +1616,8 @@ mod tests {
             64,
         );
         let claims =
-            AirReceiptClaims::from_legacy(&legacy, "cyntrisec.com".to_string(), [0xFF; 32]).unwrap();
+            AirReceiptClaims::from_legacy(&legacy, "cyntrisec.com".to_string(), [0xFF; 32])
+                .unwrap();
 
         // Mock builds must never emit production-labeled evidence.
         assert_eq!(claims.security_mode, "evaluation");

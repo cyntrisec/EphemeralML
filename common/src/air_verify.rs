@@ -566,7 +566,9 @@ const IDENTITY_CHECK_NAMES: &[&str] = &["MHASH", "MODEL", "ADHASH", "PLATFORM", 
 fn identity_skips(checks: &[AirCheck]) -> Vec<&'static str> {
     checks
         .iter()
-        .filter(|c| matches!(c.status, AirCheckStatus::Skip) && IDENTITY_CHECK_NAMES.contains(&c.name))
+        .filter(|c| {
+            matches!(c.status, AirCheckStatus::Skip) && IDENTITY_CHECK_NAMES.contains(&c.name)
+        })
         .map(|c| c.name)
         .collect()
 }
@@ -1315,7 +1317,10 @@ mod tests {
             cache.as_seen_cti_fn(),
         );
         let r2 = verify_air_v1_receipt(&bytes, &key.public_key, &p2);
-        assert!(!r2.verified, "second verify of the same cti must fail (replay)");
+        assert!(
+            !r2.verified,
+            "second verify of the same cti must fail (replay)"
+        );
         assert!(r2.has_failure(&AirCheckCode::ReplayCti));
     }
 

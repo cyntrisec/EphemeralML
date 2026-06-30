@@ -154,7 +154,10 @@ pub fn verify_air_v1_receipt_chained(
         // AIR-local result already failed; nothing to reconcile.
         (Some(_), None) => (
             AirCheckStatus::Skip,
-            Some("receipt claims unavailable; AIR-local verification did not decode claims".to_string()),
+            Some(
+                "receipt claims unavailable; AIR-local verification did not decode claims"
+                    .to_string(),
+            ),
             false,
         ),
         // No verifiable measurements (mock or unsupported document format).
@@ -185,8 +188,12 @@ pub fn verify_air_v1_receipt_chained(
         .as_ref()
         .map(|c| c.security_mode == "production")
         .unwrap_or(false);
-    result.assurance_level =
-        assurance_from(binding.doc_verified, reconciled, result.verified, is_production);
+    result.assurance_level = assurance_from(
+        binding.doc_verified,
+        reconciled,
+        result.verified,
+        is_production,
+    );
 
     Ok(result)
 }
@@ -196,8 +203,8 @@ mod tests {
     use super::*;
     use ephemeral_ml_common::air_receipt::{build_air_v1, AirReceiptClaims};
     use ephemeral_ml_common::air_verify::AirCheckCode;
-    use ephemeral_ml_common::EnclaveMeasurements;
     use ephemeral_ml_common::receipt_signing::ReceiptSigningKey;
+    use ephemeral_ml_common::EnclaveMeasurements;
     use ephemeral_ml_common::WorkerAttestationUserData;
 
     /// Build a mock (plain CBOR map) attestation document embedding `pubkey`.
@@ -228,7 +235,11 @@ mod tests {
             request_hash: [0xBB; 32],
             response_hash: [0xCC; 32],
             attestation_doc_hash: doc_hash,
-            enclave_measurements: EnclaveMeasurements::new(vec![1u8; 48], vec![2u8; 48], vec![3u8; 48]),
+            enclave_measurements: EnclaveMeasurements::new(
+                vec![1u8; 48],
+                vec![2u8; 48],
+                vec![3u8; 48],
+            ),
             policy_version: "policy-2026.02".to_string(),
             sequence_number: 1,
             execution_time_ms: 10,
@@ -259,11 +270,26 @@ mod tests {
     fn assurance_decision_table() {
         // Only a verified document + reconciled measurements + a passing
         // AIR-local verification yields TEE provenance.
-        assert_eq!(assurance_from(true, true, true, true), AssuranceLevel::TeeProvenance);
-        assert_eq!(assurance_from(false, true, true, true), AssuranceLevel::AirLocal); // mock document
-        assert_eq!(assurance_from(true, false, true, true), AssuranceLevel::AirLocal); // measurement mismatch
-        assert_eq!(assurance_from(true, true, false, true), AssuranceLevel::AirLocal); // air-local failed
-        assert_eq!(assurance_from(true, true, true, false), AssuranceLevel::AirLocal); // evaluation receipt
+        assert_eq!(
+            assurance_from(true, true, true, true),
+            AssuranceLevel::TeeProvenance
+        );
+        assert_eq!(
+            assurance_from(false, true, true, true),
+            AssuranceLevel::AirLocal
+        ); // mock document
+        assert_eq!(
+            assurance_from(true, false, true, true),
+            AssuranceLevel::AirLocal
+        ); // measurement mismatch
+        assert_eq!(
+            assurance_from(true, true, false, true),
+            AssuranceLevel::AirLocal
+        ); // air-local failed
+        assert_eq!(
+            assurance_from(true, true, true, false),
+            AssuranceLevel::AirLocal
+        ); // evaluation receipt
     }
 
     #[test]
@@ -298,7 +324,10 @@ mod tests {
         let receipt = receipt_bound_to(&att, &key);
         let result =
             verify_air_v1_receipt_chained(&receipt, &att, AirVerifyPolicy::unbounded(), false);
-        assert!(result.is_err(), "mock doc must be rejected unless allow_mock is set");
+        assert!(
+            result.is_err(),
+            "mock doc must be rejected unless allow_mock is set"
+        );
     }
 
     #[test]
@@ -312,7 +341,10 @@ mod tests {
         let result =
             verify_air_v1_receipt_chained(&receipt, &other, AirVerifyPolicy::unbounded(), true)
                 .unwrap();
-        assert!(!result.verified, "receipt bound to a different document must fail");
+        assert!(
+            !result.verified,
+            "receipt bound to a different document must fail"
+        );
         assert!(result.has_failure(&AirCheckCode::AttestationDocHashMismatch));
         assert_eq!(result.assurance_level, AssuranceLevel::AirLocal);
     }
