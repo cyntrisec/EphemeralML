@@ -307,8 +307,13 @@ impl SecureEnclaveClient {
     ///      signing key, and attestation hash.
     ///   2. Recomputes the canonical bundle hash and checks it against the
     ///      value embedded in the server's attested `user_data`.
-    ///   3. Cross-checks `binding.receipt_signing_key` and
-    ///      `binding.base_attestation_hash` against the session values.
+    ///   3. Cross-checks `binding.receipt_signing_key` against the session value.
+    ///   4. For single-attestation profiles, requires
+    ///      `binding.base_attestation_hash` to equal the session attestation
+    ///      hash. GCP Confidential Space uses a separate boot quote hash as the
+    ///      base evidence and commits the bundle hash into each transport
+    ///      attestation; for that profile the base hash must be non-zero and is
+    ///      returned for callers to compare against the boot quote / AIR ADHASH.
     ///
     /// Returns the decoded bundle on success, or a clear error identifying
     /// the specific mismatch. Must be called after `establish_channel`.
@@ -333,13 +338,29 @@ impl SecureEnclaveClient {
                 "No server attestation hash captured from handshake".to_string(),
             ))
         })?;
-        ephemeral_ml_common::PlatformEvidenceBundle::verify_binding(
+        let bundle = ephemeral_ml_common::PlatformEvidenceBundle::verify_binding(
             bundle_bytes,
             &expected_hash,
             &expected_signing_key,
             &expected_attestation_hash,
         )
-        .map_err(ClientError::Client)
+        .or_else(|err| {
+            let bundle = ephemeral_ml_common::PlatformEvidenceBundle::from_cbor(bundle_bytes)?;
+            if bundle.platform_profile != "gcp-cs-tdx" && bundle.platform_profile != "gcp-cvm-tdx" {
+                return Err(err);
+            }
+            if bundle.binding.base_attestation_hash == [0u8; 32] {
+                return Err(err);
+            }
+            ephemeral_ml_common::PlatformEvidenceBundle::verify_binding(
+                bundle_bytes,
+                &expected_hash,
+                &expected_signing_key,
+                &bundle.binding.base_attestation_hash,
+            )
+        })
+        .map_err(ClientError::Client)?;
+        Ok(bundle)
     }
 
     /// Fetch the platform evidence bundle over the attested SecureChannel
@@ -1610,6 +1631,117 @@ mod tests {
         wrong_bundle.binding.receipt_signing_key = [0x99; 32];
         let wrong_bytes = wrong_bundle.to_cbor_deterministic().unwrap();
         assert!(client.verify_platform_evidence(&wrong_bytes).is_err());
+    }
+
+    #[tokio::test]
+    async fn verify_platform_evidence_accepts_gcp_boot_hash_distinct_from_transport_hash() {
+        use ephemeral_ml_common::{
+            CloudEvidenceSummary, CpuEvidenceSummary, EvidenceBinding, EvidenceVerifierSummary,
+            MeasurementEntry, PlatformEvidenceBundle, PLATFORM_EVIDENCE_V1,
+        };
+
+        let transport_attestation_hash: [u8; 32] = [0x44; 32];
+        let boot_attestation_hash: [u8; 32] = [0x55; 32];
+        let signing_key: [u8; 32] = [0x11; 32];
+
+        let bundle = PlatformEvidenceBundle {
+            version: PLATFORM_EVIDENCE_V1,
+            platform_profile: "gcp-cs-tdx".to_string(),
+            generated_at: 1_744_500_000,
+            binding: EvidenceBinding {
+                receipt_signing_key: signing_key,
+                hpke_public_key: Some([0x22; 32]),
+                model_id: "stage-0".to_string(),
+                model_hash: Some([0x33; 32]),
+                base_attestation_hash: boot_attestation_hash,
+            },
+            cpu: Some(CpuEvidenceSummary {
+                tee_type: "tdx".to_string(),
+                measurement_type: "tdx-mrtd-rtmr".to_string(),
+                measurements: vec![MeasurementEntry {
+                    index: 0,
+                    value: vec![0xAA; 48],
+                }],
+            }),
+            gpu: None,
+            cloud: Some(CloudEvidenceSummary {
+                attestation_source: "cs-tdx".to_string(),
+                launcher_jwt_sha256: None,
+                image_digest: None,
+                project_id: Some("p".to_string()),
+                zone: None,
+            }),
+            verifier: EvidenceVerifierSummary {
+                cpu_verifier: "cml-transport-tdx".to_string(),
+                gpu_verifier: None,
+                policy_version: "v1-default".to_string(),
+            },
+        };
+        let bundle_bytes = bundle.to_cbor_deterministic().unwrap();
+        let bundle_hash = bundle.document_hash().unwrap();
+
+        let mut client = SecureEnclaveClient::new("test-client".to_string());
+        client.set_session_state_for_test(transport_attestation_hash, signing_key, bundle_hash);
+
+        let verified = client.verify_platform_evidence(&bundle_bytes).unwrap();
+        assert_eq!(
+            verified.binding.base_attestation_hash,
+            boot_attestation_hash
+        );
+        assert_eq!(verified.platform_profile, "gcp-cs-tdx");
+    }
+
+    #[tokio::test]
+    async fn verify_platform_evidence_rejects_non_gcp_distinct_base_hash() {
+        use ephemeral_ml_common::{
+            CloudEvidenceSummary, CpuEvidenceSummary, EvidenceBinding, EvidenceVerifierSummary,
+            MeasurementEntry, PlatformEvidenceBundle, PLATFORM_EVIDENCE_V1,
+        };
+
+        let transport_attestation_hash: [u8; 32] = [0x44; 32];
+        let boot_attestation_hash: [u8; 32] = [0x55; 32];
+        let signing_key: [u8; 32] = [0x11; 32];
+
+        let bundle = PlatformEvidenceBundle {
+            version: PLATFORM_EVIDENCE_V1,
+            platform_profile: "aws-nitro-enclave".to_string(),
+            generated_at: 1_744_500_000,
+            binding: EvidenceBinding {
+                receipt_signing_key: signing_key,
+                hpke_public_key: Some([0x22; 32]),
+                model_id: "stage-0".to_string(),
+                model_hash: Some([0x33; 32]),
+                base_attestation_hash: boot_attestation_hash,
+            },
+            cpu: Some(CpuEvidenceSummary {
+                tee_type: "nitro".to_string(),
+                measurement_type: "nitro-pcr".to_string(),
+                measurements: vec![MeasurementEntry {
+                    index: 0,
+                    value: vec![0xAA; 48],
+                }],
+            }),
+            gpu: None,
+            cloud: Some(CloudEvidenceSummary {
+                attestation_source: "aws-nitro".to_string(),
+                launcher_jwt_sha256: None,
+                image_digest: None,
+                project_id: None,
+                zone: None,
+            }),
+            verifier: EvidenceVerifierSummary {
+                cpu_verifier: "nitro-cose".to_string(),
+                gpu_verifier: None,
+                policy_version: "v1-default".to_string(),
+            },
+        };
+        let bundle_bytes = bundle.to_cbor_deterministic().unwrap();
+        let bundle_hash = bundle.document_hash().unwrap();
+
+        let mut client = SecureEnclaveClient::new("test-client".to_string());
+        client.set_session_state_for_test(transport_attestation_hash, signing_key, bundle_hash);
+
+        assert!(client.verify_platform_evidence(&bundle_bytes).is_err());
     }
 
     #[tokio::test]
