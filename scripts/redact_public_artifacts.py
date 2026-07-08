@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import ipaddress
 import json
 import re
 from dataclasses import dataclass
@@ -21,6 +22,7 @@ from typing import Iterable
 DEFAULT_TARGETS = (
     Path("evidence/publication-airv1-20260228"),
     Path("evidence/hardening-v050-20260315T140324Z"),
+    Path("evidence/benchmarks"),
     Path("artifacts/benchmarks/aws-nitro-modern-20260225"),
     Path("artifacts/benchmarks/aws-nitro-modern-20260225-clean"),
 )
@@ -36,6 +38,10 @@ TEXT_SUFFIXES = {
     ".yml",
 }
 
+# Raw/private evidence is the recovery source for a publication bundle. Never
+# rewrite it implicitly when a parent directory is passed to this tool.
+SKIPPED_DIRECTORY_NAMES = {"raw", "private"}
+
 
 @dataclass(frozen=True)
 class Replacement:
@@ -43,13 +49,21 @@ class Replacement:
     value: str
 
 
+# Match the UUID-shaped project-name convention used by historical runs without
+# embedding any live project identifier in the publication tool itself.
+_GCP_UUID_STYLE_PROJECT = (
+    r"project-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{3}"
+)
+_CYNTRISEC_EMAIL = r"[A-Za-z0-9._%+-]+@cyntrisec\.com"
+
+
 REPLACEMENTS = (
     Replacement(
-        re.compile(r"ephemeralml-models-project-d3c20737-eec2-453d-8e5"),
+        re.compile(rf"ephemeralml-models-{_GCP_UUID_STYLE_PROJECT}"),
         "redacted-model-bucket",
     ),
     Replacement(
-        re.compile(r"project-d3c20737-eec2-453d-8e5"),
+        re.compile(rf"\b{_GCP_UUID_STYLE_PROJECT}\b"),
         "gcp-project-redacted",
     ),
     Replacement(
@@ -57,15 +71,23 @@ REPLACEMENTS = (
         "//iam.googleapis.com/projects/gcp-project-number-redacted/locations/",
     ),
     Replacement(
-        re.compile(r"ephemeralml-cvm@gcp-project-redacted\.iam\.gserviceaccount\.com"),
-        "ephemeralml-cvm@gcp-project-redacted.iam.gserviceaccount.com",
-    ),
-    Replacement(
-        re.compile(r"founder@cyntrisec\.com"),
+        re.compile(rf"\b{_CYNTRISEC_EMAIL}\b", re.IGNORECASE),
         "operator@example.invalid",
     ),
     Replacement(
-        re.compile(r"/home/[A-Za-z0-9._-]+/[^ \n\r\t\"]*"),
+        re.compile(r"s3://(?!redacted-private-bucket\b)[A-Za-z0-9._-]+"),
+        "s3://redacted-private-bucket",
+    ),
+    Replacement(
+        re.compile(r"gs://(?!redacted-(?:private|model)-bucket\b)[A-Za-z0-9._-]+"),
+        "gs://redacted-private-bucket",
+    ),
+    Replacement(
+        re.compile(r"\b\d{12}\b"),
+        "aws-account-redacted",
+    ),
+    Replacement(
+        re.compile(r"/home/[A-Za-z0-9._-]+/[^ \n\r\t\"'`<>()\[\]{},;]*"),
         "<redacted-local-path>",
     ),
     Replacement(
@@ -83,13 +105,72 @@ REPLACEMENTS = (
 )
 
 BLOCKED_PATTERNS = (
-    re.compile(r"project-d3c20737-eec2-453d-8e5"),
-    re.compile(r"ephemeralml-models-project-d3c20737-eec2-453d-8e5"),
-    re.compile(r"us-docker\.pkg\.dev/project-d3c20737-eec2-453d-8e5"),
+    re.compile(rf"\b{_GCP_UUID_STYLE_PROJECT}\b"),
     re.compile(r"//iam\.googleapis\.com/projects/\d{6,}/locations/"),
-    re.compile(r"founder@cyntrisec\.com"),
+    re.compile(rf"\b{_CYNTRISEC_EMAIL}\b", re.IGNORECASE),
+    re.compile(r"s3://(?!redacted-private-bucket\b)[A-Za-z0-9._-]+"),
+    re.compile(r"gs://(?!redacted-(?:private|model)-bucket\b)[A-Za-z0-9._-]+"),
+    re.compile(r"\b\d{12}\b"),
+    re.compile(r"/home/[A-Za-z0-9._-]+/"),
+    re.compile(r"/tmp/tmp[.A-Za-z0-9_-]+"),
     re.compile(r"\bi-[0-9a-f]{17}-enc[0-9a-f]{16,}\b"),
+    re.compile(r"\bi-[0-9a-f]{17}\b"),
 )
+
+
+# Public IPv4 redaction is context-aware: a syntactic dotted-quad is only
+# replaced when it parses as a valid address AND falls outside every reserved,
+# private, loopback, link-local (incl. the cloud metadata endpoint), or
+# documentation range below. This preserves internal 10.x deploy IPs, the
+# 169.254.169.254 metadata IP, and RFC 5737 doc IPs, and it is idempotent
+# because the placeholder itself lives in the preserved 203.0.113.0/24 block.
+# We use an explicit network list rather than ipaddress.is_global because the
+# stdlib's treatment of the RFC 5737 documentation ranges differs across
+# Python versions.
+_PUBLIC_IP_PLACEHOLDER = "203.0.113.10"  # RFC 5737 TEST-NET-3 (documentation)
+
+_PRESERVED_IP_NETS = tuple(
+    ipaddress.ip_network(cidr)
+    for cidr in (
+        "0.0.0.0/8",
+        "10.0.0.0/8",
+        "100.64.0.0/10",  # CGNAT
+        "127.0.0.0/8",  # loopback
+        "169.254.0.0/16",  # link-local (incl. 169.254.169.254 metadata)
+        "172.16.0.0/12",
+        "192.0.0.0/24",  # IETF protocol assignments
+        "192.0.2.0/24",  # TEST-NET-1
+        "192.88.99.0/24",  # 6to4 relay anycast
+        "192.168.0.0/16",
+        "198.18.0.0/15",  # benchmarking
+        "198.51.100.0/24",  # TEST-NET-2
+        "203.0.113.0/24",  # TEST-NET-3 (contains the placeholder)
+        "224.0.0.0/4",  # multicast
+        "240.0.0.0/4",  # reserved (incl. 255.255.255.255)
+    )
+)
+
+_IP_CANDIDATE = re.compile(r"(?<![\w.])(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})(?![\w.])")
+
+
+def _is_public_ipv4(text: str) -> bool:
+    try:
+        ip = ipaddress.ip_address(text)
+    except ValueError:
+        return False  # octet > 255: not an address (e.g. a version/section number)
+    return not any(ip in net for net in _PRESERVED_IP_NETS)
+
+
+def redact_public_ipv4(value: str) -> str:
+    def _sub(match: re.Match[str]) -> str:
+        raw = match.group(1)
+        return _PUBLIC_IP_PLACEHOLDER if _is_public_ipv4(raw) else raw
+
+    return _IP_CANDIDATE.sub(_sub, value)
+
+
+def line_has_public_ipv4(line: str) -> bool:
+    return any(_is_public_ipv4(m.group(1)) for m in _IP_CANDIDATE.finditer(line))
 
 
 def sha256_file(path: Path) -> str:
@@ -109,7 +190,12 @@ def iter_text_files(paths: Iterable[Path]) -> Iterable[Path]:
         if root.is_file() and is_text_file(root):
             yield root
         elif root.is_dir():
+            if root.name in SKIPPED_DIRECTORY_NAMES:
+                continue
             for path in sorted(root.rglob("*")):
+                relative_parts = path.relative_to(root).parts[:-1]
+                if any(part in SKIPPED_DIRECTORY_NAMES for part in relative_parts):
+                    continue
                 if path.is_file() and is_text_file(path):
                     yield path
 
@@ -118,18 +204,24 @@ def redact_text(value: str) -> str:
     out = value
     for replacement in REPLACEMENTS:
         out = replacement.pattern.sub(replacement.value, out)
+    out = redact_public_ipv4(out)
     return out
 
 
 def redact_file(path: Path) -> bool:
+    # newline="" disables universal-newline translation so redaction only
+    # rewrites the matched tokens and leaves original line endings (incl. the
+    # embedded CRs in terminal-progress logs) byte-for-byte intact.
     try:
-        before = path.read_text(encoding="utf-8")
+        with open(path, "r", encoding="utf-8", newline="") as handle:
+            before = handle.read()
     except UnicodeDecodeError:
         return False
     after = redact_text(before)
     if after == before:
         return False
-    path.write_text(after, encoding="utf-8")
+    with open(path, "w", encoding="utf-8", newline="") as handle:
+        handle.write(after)
     return True
 
 
@@ -178,8 +270,9 @@ def rewrite_publication_manifest(root_manifest: Path) -> None:
         return
     value["redacted"] = True
     value["redaction_note"] = (
-        "Cloud project, bucket, KMS, local path, operator email, and Nitro "
-        "enclave identifiers were redacted for public repository publication."
+        "Cloud project, bucket, KMS, local path, operator email, public IPv4 "
+        "addresses, and Nitro enclave identifiers were redacted for public "
+        "repository publication."
     )
     platforms = value.get("platforms")
     if not isinstance(platforms, dict):
@@ -218,8 +311,8 @@ def write_redaction_note(root: Path) -> None:
                 "",
                 "This bundle is a redacted public artifact. Live cloud project IDs,",
                 "bucket names, KMS resource names, operator-local paths, operator",
-                "emails, and Nitro instance/enclave identifiers were replaced with",
-                "stable placeholders.",
+                "emails, public IPv4 addresses, and Nitro instance/enclave",
+                "identifiers were replaced with stable placeholders.",
                 "",
                 "Cryptographic receipts, attestation binaries, timing files, and",
                 "verifier outputs are preserved unless they are text files containing",
@@ -240,8 +333,10 @@ def scan_blocked(paths: Iterable[Path]) -> list[str]:
         except UnicodeDecodeError:
             continue
         for idx, line in enumerate(text.splitlines(), start=1):
-            if any(pattern.search(line) for pattern in BLOCKED_PATTERNS):
-                hits.append(f"{path}:{idx}:{line}")
+            if any(pattern.search(line) for pattern in BLOCKED_PATTERNS) or line_has_public_ipv4(line):
+                # Never echo the matching content: this command is commonly run
+                # in CI, where doing so would copy the identifier into logs.
+                hits.append(f"{path}:{idx}:sensitive identifier remains")
     return hits
 
 

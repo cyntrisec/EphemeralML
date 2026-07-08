@@ -7,7 +7,7 @@
 #
 # Usage:
 #   bash scripts/gcp/verify.sh                              # auto-detect IP; requires GCP_WIP_AUDIENCE
-#   bash scripts/gcp/verify.sh --ip 34.72.100.50            # explicit IP
+#   bash scripts/gcp/verify.sh --ip 203.0.113.10            # explicit IP
 #   bash scripts/gcp/verify.sh --allow-unpinned-audience     # skip audience pin (dev only)
 # Env:
 #   EPHEMERALML_REQUIRE_AIR_V1_VERIFY=true|false            # fail if AIR v1 verify fails/missing (default false)

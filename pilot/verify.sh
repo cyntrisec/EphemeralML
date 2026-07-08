@@ -6,7 +6,7 @@
 #
 # Usage:
 #   bash pilot/verify.sh
-#   bash pilot/verify.sh --ip 34.72.100.50
+#   bash pilot/verify.sh --ip 203.0.113.10
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

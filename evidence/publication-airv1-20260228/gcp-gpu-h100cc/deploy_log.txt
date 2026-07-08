@@ -36,7 +36,7 @@ WARNING: Some requests generated warnings:
  - Disk size: '30 GB' is larger than image size: '11 GB'. You might need to resize the root repartition manually if the operating system does not support automatic resizing. See https://cloud.google.com/compute/docs/disks/add-persistent-disk#resize_pd for details.
 
 NAME             ZONE           MACHINE_TYPE   PREEMPTIBLE  INTERNAL_IP  EXTERNAL_IP   STATUS
-ephemeralml-gpu  us-central1-a  a3-highgpu-1g  true         10.128.0.9   34.173.61.34  RUNNING
+ephemeralml-gpu  us-central1-a  a3-highgpu-1g  true         10.128.0.9   203.0.113.10  RUNNING
   Instance 'ephemeralml-gpu' created.
 
   [6/6] Waiting for instance to become RUNNING...
@@ -48,7 +48,7 @@ ephemeralml-gpu  us-central1-a  a3-highgpu-1g  true         10.128.0.9   34.173.
   Instance:     ephemeralml-gpu
   Zone:         us-central1-a
   Status:       RUNNING
-  External IP:  34.173.61.34
+  External IP:  203.0.113.10
   Ports:        9000 (control), 9001 (data_in), 9002 (data_out)
 
 

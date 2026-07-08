@@ -69,6 +69,16 @@ macro_rules! require_base {
     }};
 }
 
+fn contains_twelve_digit_identifier(text: &str) -> bool {
+    let bytes = text.as_bytes();
+    bytes.windows(12).enumerate().any(|(start, candidate)| {
+        candidate.iter().all(|byte| byte.is_ascii_digit())
+            && (start == 0 || !bytes[start - 1].is_ascii_digit())
+            && (start + candidate.len() == bytes.len()
+                || !bytes[start + candidate.len()].is_ascii_digit())
+    })
+}
+
 fn make_signed_receipt(key: &ReceiptSigningKey) -> AttestationReceipt {
     let measurements = EnclaveMeasurements::new(vec![1u8; 48], vec![2u8; 48], vec![3u8; 48]);
     let mut receipt = AttestationReceipt::new(
@@ -194,7 +204,7 @@ async fn test_public_aws_native_poc_evidence_page() {
     );
     // Privacy guardrails: no raw account ID, ARN, instance ID, or live bucket
     assert!(
-        !text.contains("272493677165"),
+        !contains_twelve_digit_identifier(&text),
         "evidence page must not contain the real AWS account ID"
     );
     assert!(
@@ -202,7 +212,7 @@ async fn test_public_aws_native_poc_evidence_page() {
         "evidence page must not contain raw arn:aws references"
     );
     assert!(
-        !text.contains("ephemeralml-pilot-evidence-272"),
+        !text.contains("ephemeralml-pilot-evidence-"),
         "evidence page must not contain a live bucket name"
     );
 }

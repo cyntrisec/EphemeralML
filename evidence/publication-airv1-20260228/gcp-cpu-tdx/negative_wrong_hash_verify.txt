@@ -3,9 +3,9 @@
   ==============================================================
 
   [1/4] Resolving instance IP...
-  Instance IP:  136.112.113.182
+  Instance IP:  203.0.113.10
 
-  [2/4] Waiting for 136.112.113.182:9000 to be reachable (max 180s)...
+  [2/4] Waiting for 203.0.113.10:9000 to be reachable (max 180s)...
   Waiting... [5/180s]
   Waiting... [10/180s]
   Waiting... [15/180s]

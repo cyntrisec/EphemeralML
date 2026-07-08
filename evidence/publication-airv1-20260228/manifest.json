@@ -96,8 +96,8 @@
         },
         {
           "file": "deploy_log.txt",
-          "sha256": "6b718eb3993ab49ce5421e2353efa40ef4be3d909e1fc97a29365e474f4b70a4",
-          "bytes": 2141
+          "sha256": "560717e7b61ac0d513a66d314a410518944a547543c7f628afdbfd9d40ebbf2c",
+          "bytes": 2143
         },
         {
           "file": "manifest.json",
@@ -111,22 +111,22 @@
         },
         {
           "file": "negative_wrong_hash_deploy.txt",
-          "sha256": "55ad6bfb1ecc7c05ad4051ee8576dbddedf59aedf8e049eb41a7b291339af6b8",
-          "bytes": 2072
+          "sha256": "3239da2523f3b8690272d4f9a69ca4494fe79e73e50f31073d0858b75826fa06",
+          "bytes": 2066
         },
         {
           "file": "negative_wrong_hash_verify.txt",
-          "sha256": "30e1c9c1245beb34ba1330d8f3432328287e7d46b5e57d96e0cba81c9103a4aa",
-          "bytes": 1425
+          "sha256": "75473b361340ed1452a2acdd4fe3d392af54b7042e53d30a971de054dbb959e8",
+          "bytes": 1419
         },
         {
           "file": "negative_wrong_key_deploy.txt",
-          "sha256": "ba681bd33aa9e34e233b7055952da26eef57104461db236af5dfe43709038c95",
+          "sha256": "9c5299385b649ed988fc77de6c2b227c113734628718e4207cca900346649184",
           "bytes": 2058
         },
         {
           "file": "negative_wrong_key_verify.txt",
-          "sha256": "b00c5c526b604b0c56272fc323951ca14290a7b222ecaefa2dd52ae3266f62a1",
+          "sha256": "75473b361340ed1452a2acdd4fe3d392af54b7042e53d30a971de054dbb959e8",
           "bytes": 1419
         },
         {
@@ -166,8 +166,8 @@
         },
         {
           "file": "verify_output.txt",
-          "sha256": "071409615bc4b37fc6eb0885beddea8b6eac61a036b803baeafbe35c4759a63c",
-          "bytes": 10406
+          "sha256": "6b152d1924db20ce17b3b09b3ae809fea9836a8d111d9ad35b257e93fec1e458",
+          "bytes": 10412
         }
       ]
     },
@@ -207,7 +207,7 @@
         },
         {
           "file": "deploy_log.txt",
-          "sha256": "44928e47edf539c51b551c7dc0cf2db17ff69ca830672c69f8cfad116efbe389",
+          "sha256": "64c94453ccaef324f996fe62ade7d4c9720198743dd557edfed516a9a9e57680",
           "bytes": 2732
         },
         {
@@ -222,23 +222,23 @@
         },
         {
           "file": "negative_wrong_hash_deploy.txt",
-          "sha256": "459c285dbab2aaf0d99d8b507ba80886b336a23394cbb3258068b26d23f5ba10",
-          "bytes": 2654
+          "sha256": "d4a853f939bac19164a7735537add5ce6597adf0aafebba5fd21a8276cf152c4",
+          "bytes": 2652
         },
         {
           "file": "negative_wrong_hash_verify.txt",
-          "sha256": "be14b24092faf55351bd3ca031165de7a97030164e5d24be8f1b28c33596c422",
-          "bytes": 1997
+          "sha256": "48ffea431f4df9b669e83e832ec2678b525205a69975e13278dfdca421017758",
+          "bytes": 1995
         },
         {
           "file": "negative_wrong_key_deploy.txt",
-          "sha256": "fa69f2a1e8c77610951d2179aa5e149e4ef18b570b7ae89ecf6b79e3c7838762",
-          "bytes": 2643
+          "sha256": "d295249ffbfc7e6e03e01ee27e3490b810d99fb22b368ae3d8132a3cf349c2b7",
+          "bytes": 2645
         },
         {
           "file": "negative_wrong_key_verify.txt",
-          "sha256": "cf37a3bc8e2e9453b973b3767d83dab007ddfcd514bb6bd9db39eb2d7ad11702",
-          "bytes": 1993
+          "sha256": "48ffea431f4df9b669e83e832ec2678b525205a69975e13278dfdca421017758",
+          "bytes": 1995
         },
         {
           "file": "package_model_log.txt",
@@ -277,7 +277,7 @@
         },
         {
           "file": "verify_output.txt",
-          "sha256": "2d593d377d32ba9980c07cff7c12227bf257c93e276cfdbeb12c4aef6aa694c4",
+          "sha256": "ef0a37e1848c064001f6c374fc0559aef29c1ceacba6f41b4d0addf1c33d8cda",
           "bytes": 5269
         }
       ]
@@ -325,5 +325,5 @@
     }
   },
   "redacted": true,
-  "redaction_note": "Cloud project, bucket, KMS, local path, operator email, and Nitro enclave identifiers were redacted for public repository publication."
+  "redaction_note": "Cloud project, bucket, KMS, local path, operator email, public IPv4 addresses, and Nitro enclave identifiers were redacted for public repository publication."
 }

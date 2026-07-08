@@ -3,12 +3,12 @@
   ==============================================================
 
   [1/4] Resolving instance IP...
-  Instance IP:  34.173.61.34
+  Instance IP:  203.0.113.10
 
-  [2/4] Waiting for 34.173.61.34:9000 to be reachable (max 300s)...
+  [2/4] Waiting for 203.0.113.10:9000 to be reachable (max 300s)...
   Waiting... [5/300s]  Waiting... [10/300s]  Waiting... [15/300s]  Waiting... [20/300s]  Waiting... [25/300s]  Waiting... [30/300s]  Waiting... [35/300s]  Waiting... [40/300s]  Waiting... [45/300s]  Waiting... [50/300s]  Waiting... [55/300s]  Waiting... [60/300s]  Waiting... [65/300s]  Waiting... [70/300s]  Waiting... [75/300s]  Waiting... [80/300s]  Waiting... [85/300s]  Waiting... [90/300s]  Waiting... [95/300s]  Waiting... [100/300s]  Waiting... [105/300s]  Port 9000 is reachable.
 
-  [3/4] Running inference against 34.173.61.34:9000...
+  [3/4] Running inference against 203.0.113.10:9000...
   Text:         "Verify EphemeralML on Confidential Space"
   Mode:         gcp (TDX attestation + handshake)
   Request model ID: stage-0
@@ -112,7 +112,7 @@ Manifest saved to /tmp/ephemeralml-manifest.json
   PASS — Inference + receipt verification succeeded
   ==============================================================
 
-  Instance:     ephemeralml-gpu (34.173.61.34)
+  Instance:     ephemeralml-gpu (203.0.113.10)
   Client:       exit 0
   Receipt:      VERIFIED
   AIR v1:       VERIFIED

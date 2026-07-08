@@ -1,7 +1,7 @@
 //! Polished demo CLI for EphemeralML confidential inference.
 //!
 //! Usage:
-//!   ephemeralml infer --addr 34.63.158.243:9000 --text "Patient presents with..."
+//!   ephemeralml infer --addr 203.0.113.10:9000 --text "Patient presents with..."
 //!   ephemeralml infer --addr 127.0.0.1:9000 --file client/demo/radiology-report.txt
 //!   ephemeralml verify-pipeline pipeline-proof-bundle.json --public-key <hex>
 //!   ephemeralml-verify receipt.json --public-key-file receipt.pubkey

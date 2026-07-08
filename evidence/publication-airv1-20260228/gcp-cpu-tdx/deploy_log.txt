@@ -32,7 +32,7 @@
   [5/6] Launching Confidential Space CVM...
 Created [https://www.googleapis.com/compute/v1/projects/gcp-project-redacted/zones/us-central1-a/instances/ephemeralml-cvm].
 NAME             ZONE           MACHINE_TYPE   PREEMPTIBLE  INTERNAL_IP  EXTERNAL_IP  STATUS
-ephemeralml-cvm  us-central1-a  c3-standard-4               10.128.0.6   34.10.87.31  RUNNING
+ephemeralml-cvm  us-central1-a  c3-standard-4               10.128.0.6   203.0.113.10  RUNNING
   Instance 'ephemeralml-cvm' created.
 
   [6/6] Waiting for instance to become RUNNING...
@@ -44,7 +44,7 @@ ephemeralml-cvm  us-central1-a  c3-standard-4               10.128.0.6   34.10.8
   Instance:     ephemeralml-cvm
   Zone:         us-central1-a
   Status:       RUNNING
-  External IP:  34.10.87.31
+  External IP:  203.0.113.10
   Ports:        9000 (control), 9001 (data_in), 9002 (data_out)
 
 
