@@ -294,12 +294,12 @@ jobs:
     timeout-minutes: 5
     steps:
       - name: Download clean build
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: byoc-pilot-clean
           path: clean/
       - name: Download cached build
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: byoc-pilot-cached
           path: cached/
@@ -324,7 +324,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Download canonical build (clean variant)
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: byoc-pilot-clean
           path: dist/
@@ -415,7 +415,7 @@ jobs:
       (github.event_name == 'workflow_dispatch' && github.event.inputs.dry_run == 'false')
     steps:
       - name: Download signed artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: byoc-pilot-signed
           path: dist/
