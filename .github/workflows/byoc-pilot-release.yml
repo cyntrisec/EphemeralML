@@ -335,7 +335,7 @@ jobs:
           cosign-release: 'v2.4.1'
 
       - name: Configure AWS credentials (OIDC assume-role)
-        uses: aws-actions/configure-aws-credentials@v4
+        uses: aws-actions/configure-aws-credentials@v6
         with:
           # TODO: set AWS_RELEASE_ROLE_ARN as a repository secret pointing at
           # the `cyntrisec-gha-release-signer` IAM role per Day 8 spec §2.1.
@@ -421,7 +421,7 @@ jobs:
           path: dist/
 
       - name: Configure AWS credentials (OIDC)
-        uses: aws-actions/configure-aws-credentials@v4
+        uses: aws-actions/configure-aws-credentials@v6
         with:
           role-to-assume: ${{ secrets.AWS_RELEASE_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
