@@ -35,9 +35,12 @@ pub struct EphemeralStageExecutor<A: AttestationProvider> {
 impl<A: AttestationProvider> EphemeralStageExecutor<A> {
     /// Create a new stage executor.
     ///
-    /// `attestation_doc_hash`: if provided, used as the receipt's `attestation_doc_hash`
-    /// field (should be SHA-256 of the actual attestation document bytes). If `None`,
-    /// falls back to SHA-256 of the receipt signing public key as a binding fingerprint.
+    /// `attestation_doc_hash`: when `Some`, MUST be the SHA-256 of the actual
+    /// attestation document the receipt is bound to — the value a RATS Verifier
+    /// reconciles against (AIR draft, `attestation_doc_hash` claim). Production
+    /// builds require this value. A build explicitly compiled with the `mock`
+    /// feature may pass `None`; its AIR receipts are labeled `evaluation` and use
+    /// a domain-separated test-only placeholder.
     pub fn new(
         engine: CandleInferenceEngine,
         provider: A,
@@ -76,10 +79,7 @@ impl<A: AttestationProvider> EphemeralStageExecutor<A> {
     ) -> Self {
         let receipt_pk = receipt_key.public_key_bytes();
         let session_id = hex::encode(&receipt_pk[..16]);
-        let attestation_hash = attestation_doc_hash.unwrap_or_else(|| {
-            use sha2::{Digest, Sha256};
-            Sha256::digest(receipt_pk).into()
-        });
+        let attestation_hash = resolve_attestation_doc_hash(attestation_doc_hash, &receipt_pk);
         let state = ConnectionState::new(
             session_id,
             receipt_key,
@@ -105,6 +105,36 @@ impl<A: AttestationProvider> EphemeralStageExecutor<A> {
     pub fn with_kms_release_evidence(mut self, kms_release_bytes: Vec<u8>) -> Self {
         self.kms_release_bytes = Some(bytes::Bytes::from(kms_release_bytes));
         self
+    }
+}
+
+fn resolve_attestation_doc_hash(
+    attestation_doc_hash: Option<[u8; 32]>,
+    receipt_public_key: &[u8; 32],
+) -> [u8; 32] {
+    if let Some(hash) = attestation_doc_hash {
+        return hash;
+    }
+
+    #[cfg(feature = "mock")]
+    {
+        use sha2::{Digest, Sha256};
+
+        eprintln!(
+            "[stage] Warning: no attestation document provided; using a \
+             domain-separated test placeholder — the receipt is not bound to \
+             a platform attestation document"
+        );
+        let mut hasher = Sha256::new();
+        hasher.update(b"ephemeralml/no-attestation-doc/v1");
+        hasher.update(receipt_public_key);
+        hasher.finalize().into()
+    }
+
+    #[cfg(not(feature = "mock"))]
+    {
+        let _ = receipt_public_key;
+        panic!("attestation_doc_hash is required in non-mock builds");
     }
 }
 
@@ -434,6 +464,19 @@ mod tests {
         assert!(!is_aux_receipt_name("__receipt__"));
     }
 
+    #[test]
+    fn mock_attestation_placeholder_is_domain_separated_and_deterministic() {
+        use sha2::{Digest, Sha256};
+
+        let public_key = [0xA5; 32];
+        let first = resolve_attestation_doc_hash(None, &public_key);
+        let second = resolve_attestation_doc_hash(None, &public_key);
+        let legacy_bare_key_hash: [u8; 32] = Sha256::digest(public_key).into();
+
+        assert_eq!(first, second);
+        assert_ne!(first, legacy_bare_key_hash);
+    }
+
     #[tokio::test]
     async fn test_stage_executor_forward() {
         let engine = CandleInferenceEngine::new().unwrap();
@@ -477,5 +520,25 @@ mod tests {
         };
         let result = executor.forward(1, 0, vec![input]).await;
         assert!(result.is_err()); // Expected: model not loaded
+    }
+}
+
+#[cfg(all(test, not(feature = "mock")))]
+mod non_mock_tests {
+    use super::resolve_attestation_doc_hash;
+
+    #[test]
+    fn provided_attestation_hash_is_preserved() {
+        let expected = [0x42; 32];
+        assert_eq!(
+            resolve_attestation_doc_hash(Some(expected), &[0xA5; 32]),
+            expected
+        );
+    }
+
+    #[test]
+    #[should_panic(expected = "attestation_doc_hash is required in non-mock builds")]
+    fn missing_attestation_hash_fails_closed() {
+        let _ = resolve_attestation_doc_hash(None, &[0xA5; 32]);
     }
 }
