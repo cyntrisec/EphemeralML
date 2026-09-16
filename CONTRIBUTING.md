@@ -10,7 +10,7 @@ This project follows the [Contributor Covenant Code of Conduct](CODE_OF_CONDUCT.
 
 ### Prerequisites
 
-- Rust 1.75+ (stable toolchain)
+- Rust 1.95+ (stable toolchain)
 - OpenSSL development headers (`libssl-dev` / `openssl-devel`)
 - C/C++ compiler (`gcc`, `g++`)
 

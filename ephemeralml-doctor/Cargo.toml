@@ -2,7 +2,7 @@
 name = "ephemeral-ml-doctor"
 version = "0.1.0"
 edition = "2021"
-rust-version = "1.75"
+rust-version = "1.95"
 license = "Apache-2.0"
 description = "Phase 1 BYOC preflight check binary. Verifies a deployed Cyntrisec pilot host is ready to run inference before ephemeralml-smoke-test exercises it."
 repository = "https://github.com/cyntrisec/EphemeralML"

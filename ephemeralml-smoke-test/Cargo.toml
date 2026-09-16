@@ -2,7 +2,7 @@
 name = "ephemeral-ml-smoke-test"
 version = "0.1.0"
 edition = "2021"
-rust-version = "1.75"
+rust-version = "1.95"
 license = "Apache-2.0"
 description = "Phase 1 BYOC end-to-end smoke test. Runs doctor preflight, launches the Cyntrisec enclave, runs a synthetic inference, verifies the AIR v1 receipt offline, writes the evidence bundle to S3."
 repository = "https://github.com/cyntrisec/EphemeralML"

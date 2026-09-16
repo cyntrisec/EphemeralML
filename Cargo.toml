@@ -20,7 +20,7 @@ repository = "https://github.com/cyntrisec/EphemeralML"
 homepage = "https://ephemeralml.cyntrisec.com"
 license = "Apache-2.0"
 edition = "2021"
-rust-version = "1.75"
+rust-version = "1.95"
 keywords = ["confidential-computing", "nitro-enclaves", "confidential-space", "tee", "machine-learning"]
 categories = ["cryptography", "science"]
 

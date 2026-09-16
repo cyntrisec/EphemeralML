@@ -414,7 +414,7 @@ cargo run --release --features mock --bin ephemeral-ml-host
 
 ### Production (AWS Nitro Enclaves)
 
-Prerequisites: AWS account with Nitro Enclave support, Rust 1.75+, Terraform.
+Prerequisites: AWS account with Nitro Enclave support, Rust 1.95+, Terraform.
 
 ```bash
 # 1. Provision infrastructure
@@ -431,7 +431,7 @@ nitro-cli run-enclave --eif-path enclave.eif --cpu-count 2 --memory 4096
 
 ### Production (GCP Confidential Space — CPU)
 
-Prerequisites: GCP project with Confidential Computing API enabled, c3-standard-4 (TDX), Rust 1.75+.
+Prerequisites: GCP project with Confidential Computing API enabled, c3-standard-4 (TDX), Rust 1.95+.
 
 ```bash
 # Build for GCP (no mock, no default features)

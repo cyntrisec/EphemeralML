@@ -9,7 +9,7 @@ This guide walks you through deploying EphemeralML on GCP Confidential Space, ru
 - GCP project with billing enabled
 - `gcloud` CLI authenticated (`gcloud auth login`)
 - Docker installed and running
-- Rust 1.75+ (`curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh`)
+- Rust 1.95+ (`curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh`)
 
 ## Step 1: Validate Environment
 

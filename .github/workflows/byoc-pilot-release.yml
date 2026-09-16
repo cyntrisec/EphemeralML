@@ -48,7 +48,7 @@ permissions:
 
 env:
   AWS_REGION: us-east-1
-  RUST_VERSION: '1.75'
+  RUST_VERSION: '1.95.0'
   # These are placeholder names that match the Day 8 spec's pinned identities.
   # Real values live in repository secrets so the workflow file itself carries
   # no AWS account ID.

@@ -320,7 +320,7 @@ The client verifies the signature using the Ed25519 public key extracted from th
 \section{Implementation}
 \label{sec:implementation}
 
-\textsc{EphemeralML} is implemented in 13,000+ lines of Rust (2021 edition, stable toolchain, MSRV 1.75+) organized as a Cargo workspace with four core crates (plus a VSock benchmarking utility):
+\textsc{EphemeralML} is implemented in 13,000+ lines of Rust (2021 edition, stable toolchain, MSRV 1.95+) organized as a Cargo workspace with four core crates (plus a VSock benchmarking utility):
 
 \begin{description}
   \item[\texttt{common/}] Shared cryptographic primitives (HPKE sessions, receipt signing), protocol definitions, VSock abstractions, input validation, and policy types.

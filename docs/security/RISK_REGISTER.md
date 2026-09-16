@@ -1,6 +1,6 @@
 # Security Risk Register (Public Summary)
 
-Last updated: 2026-05-06
+Last updated: 2026-09-19
 
 This public summary tracks known third-party advisories relevant to the repository. Internal ownership, review cadence, and operational follow-up are maintained outside the public repo.
 
@@ -23,6 +23,12 @@ This public summary tracks known third-party advisories relevant to the reposito
 - **Upstream tracking:** <https://github.com/RustCrypto/RSA/issues/19>
 - **Public status:** Closed for this repository's direct dependency graph.
 
+### RUSTSEC-2026-0097 — `rand 0.8.5` / `rand 0.9.2`
+
+- **Issue:** Unsoundness for applications combining the affected APIs with a custom logger.
+- **Resolution:** The current lockfile resolves `rand 0.8.6` and `rand 0.9.3`; the affected versions no longer appear in `cargo audit` output.
+- **Public status:** Closed for the current dependency graph; normal lockfile audit remains required after updates.
+
 ## Informational / Unmaintained Dependencies
 
 ### RUSTSEC-2024-0436 — `paste 1.0.15`
@@ -37,11 +43,11 @@ This public summary tracks known third-party advisories relevant to the reposito
 - **Impact in this repo:** Transitive dependency through `aws-nitro-enclaves-nsm-api`; EphemeralML uses `ciborium` directly for its own CBOR handling.
 - **Public status:** Monitored until upstream dependency chain changes.
 
-### RUSTSEC-2026-0097 — `rand 0.8.5` / `rand 0.9.2`
+### Yanked `spin 0.9.8` / `spin 0.10.0`
 
-- **Type:** Unsound advisory for applications using a custom logger with `rand::rng()`.
-- **Impact in this repo:** Present through direct workspace dependencies and transitive ML/networking dependencies. No code path has been identified that combines `rand::rng()` with a custom logger in the vulnerable pattern, but the advisory is still denied by `cargo audit --deny warnings`.
-- **Public status:** Monitored pending upstream crate migrations and targeted local dependency updates.
+- **Type:** Yanked upstream releases; no RustSec vulnerability advisory reported.
+- **Impact in this repo:** `spin 0.9.8` is transitive through `multer` / `axum`; `spin 0.10.0` is transitive through `crc-fast` / AWS checksums. The dependent version constraints currently select these releases.
+- **Public status:** Monitored until `multer` and `crc-fast` move to non-yanked compatible releases. Treat this as dependency hygiene, not evidence of an active exploit.
 
 ## Operationally Closed
 
