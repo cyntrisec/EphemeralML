@@ -8,9 +8,11 @@
 # Usage:
 #   bash scripts/gcp/verify.sh                              # auto-detect IP; requires GCP_WIP_AUDIENCE
 #   bash scripts/gcp/verify.sh --ip 203.0.113.10            # explicit IP
+#   bash scripts/gcp/verify.sh --image-digest sha256:...    # pin the deployed container image
 #   bash scripts/gcp/verify.sh --allow-unpinned-audience     # skip audience pin (dev only)
 # Env:
 #   EPHEMERALML_REQUIRE_AIR_V1_VERIFY=true|false            # fail if AIR v1 verify fails/missing (default false)
+#   EPHEMERALML_EXPECTED_IMAGE_DIGEST=sha256:...            # CS Launcher-JWT image identity pin
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -53,6 +55,7 @@ ZONE="${EPHEMERALML_GCP_ZONE:-us-central1-a}"
 IP=""
 GPU=false
 ALLOW_UNPINNED_AUDIENCE=false
+EXPECTED_IMAGE_DIGEST="${EPHEMERALML_EXPECTED_IMAGE_DIGEST:-}"
 
 # Parse args
 while [[ $# -gt 0 ]]; do
@@ -62,6 +65,7 @@ while [[ $# -gt 0 ]]; do
         --project) PROJECT="$2"; shift 2 ;;
         --model-id) VERIFY_MODEL_ID="$2"; shift 2 ;;
         --receipt-model-id) VERIFY_RECEIPT_MODEL_ID="$2"; shift 2 ;;
+        --image-digest) EXPECTED_IMAGE_DIGEST="$2"; shift 2 ;;
         --gpu)     GPU=true; shift ;;
         --allow-unpinned-audience) ALLOW_UNPINNED_AUDIENCE=true; shift ;;
         *) echo "Unknown option: $1"; exit 1 ;;
@@ -77,6 +81,11 @@ fi
 if [[ -z "${PROJECT}" ]]; then
     echo "ERROR: GCP project not set."
     echo "Set EPHEMERALML_GCP_PROJECT or pass --project PROJECT_ID"
+    exit 1
+fi
+
+if [[ -n "${EXPECTED_IMAGE_DIGEST}" && ! "${EXPECTED_IMAGE_DIGEST}" =~ ^sha256:[0-9a-f]{64}$ ]]; then
+    echo "ERROR: --image-digest / EPHEMERALML_EXPECTED_IMAGE_DIGEST must be sha256:<64 lowercase hex chars>."
     exit 1
 fi
 
@@ -129,7 +138,7 @@ ui_blank
 # ---------------------------------------------------------------------------
 ui_info "[3/4] Running inference against ${IP}:${DATA_PORT}..."
 ui_kv "Text" "\"${INFERENCE_TEXT}\""
-ui_kv "Mode" "gcp (TDX attestation + handshake)"
+ui_kv "Mode" "gcp (Confidential Space Launcher-JWT attestation + handshake)"
 ui_kv "Request model ID" "${VERIFY_MODEL_ID}"
 ui_kv "Receipt model ID" "${VERIFY_RECEIPT_MODEL_ID}"
 ui_blank
@@ -143,12 +152,13 @@ run_step 3 4 "Building GCP client" \
 CLIENT_BUILD_END=$(date +%s%N)
 
 # The GCP-mode client reads EPHEMERALML_ENCLAVE_ADDR for the server address.
-# It connects to the data_in port (9001) where the enclave accepts inference traffic.
+# Direct mode accepts the SecureChannel and inference traffic on port 9000.
 #
 # SECURITY NOTES:
-# - EPHEMERALML_REQUIRE_MRTD=false is set because verify.sh is a post-deploy smoke
-#   test — the MRTD value is not known until after deployment. Production clients
-#   MUST set EPHEMERALML_EXPECTED_MRTD=<96 hex chars> to pin the TDX peer measurement.
+# - Confidential Space transport uses a signed Launcher JWT rather than the raw-TDX
+#   verifier, so EPHEMERALML_REQUIRE_MRTD=false is explicit. An expected MRTD is not
+#   evaluated for a cs-tdx envelope. Project and zone are pinned below; production
+#   callers should also pass --image-digest (or export the equivalent env var).
 # - EPHEMERALML_EXPECTED_AUDIENCE is set from GCP_WIP_AUDIENCE (setup_kms.sh output)
 #   so that audience pinning is enforced. If GCP_WIP_AUDIENCE is not set, the script
 #   fails unless --allow-unpinned-audience is explicitly passed (development only).
@@ -172,15 +182,28 @@ else
     exit 1
 fi
 
+ui_kv "JWT project pin" "${PROJECT}"
+ui_kv "JWT zone pin" "${ZONE}"
+if [[ -n "${EXPECTED_IMAGE_DIGEST}" ]]; then
+    ui_kv "JWT image pin" "${EXPECTED_IMAGE_DIGEST}"
+else
+    ui_warn "WARNING: container image digest is not pinned; this run is smoke evidence only."
+fi
+
 INFERENCE_START=$(date +%s%N)
-# When both MRTD and audience are unpinned (post-deploy smoke test),
-# the insecure override is required by F10 hardening.
+# The explicit insecure override is needed only when the audience pin is also
+# bypassed. MRTD is not an applicable pin for the Launcher-JWT envelope path.
 CLIENT_ENV=(
     "EPHEMERALML_ENCLAVE_ADDR=${IP}:${DATA_PORT}"
     "EPHEMERALML_REQUIRE_MRTD=false"
+    "EPHEMERALML_EXPECTED_PROJECT=${PROJECT}"
+    "EPHEMERALML_EXPECTED_ZONE=${ZONE}"
     "EPHEMERALML_GCP_VERIFY_MODEL_ID=${VERIFY_MODEL_ID}"
     "EPHEMERALML_ACCEPT_RECEIPT_MODEL_ID=${VERIFY_RECEIPT_MODEL_ID}"
 )
+if [[ -n "${EXPECTED_IMAGE_DIGEST}" ]]; then
+    CLIENT_ENV+=("EPHEMERALML_EXPECTED_IMAGE_DIGEST=${EXPECTED_IMAGE_DIGEST}")
+fi
 if [[ "${EPHEMERALML_ALLOW_UNPINNED_AUDIENCE:-}" == "true" ]]; then
     CLIENT_ENV+=("EPHEMERALML_INSECURE_ALLOW_UNPINNED=I_UNDERSTAND")
 fi

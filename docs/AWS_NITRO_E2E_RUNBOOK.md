@@ -79,18 +79,18 @@ SSH="ssh -o StrictHostKeyChecking=no -i /tmp/ephemeralml-nitro-e2e.pem ec2-user@
 $SSH "sudo dnf install -y aws-nitro-enclaves-cli aws-nitro-enclaves-cli-devel \
   docker git gcc gcc-c++ cmake openssl-devel perl-FindBin perl-IPC-Cmd pkg-config"
 
-# Start services and add user to groups
+# Start Docker and add user to groups
 $SSH "sudo systemctl enable --now docker && \
-  sudo systemctl enable --now nitro-enclaves-allocator && \
   sudo usermod -aG docker ec2-user && \
   sudo usermod -aG ne ec2-user"
 
-# Configure allocator (4096 MiB, 2 CPUs for enclave)
+# Configure allocator before its first start (4096 MiB, 2 CPUs for enclave)
 $SSH "sudo bash -c 'cat > /etc/nitro_enclaves/allocator.yaml << EOF
 ---
 memory_mib: 4096
 cpu_count: 2
 EOF
+systemctl enable nitro-enclaves-allocator
 systemctl restart nitro-enclaves-allocator'"
 
 # Install Rust

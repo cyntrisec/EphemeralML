@@ -1,6 +1,7 @@
 # .gcloudignore — controls what gcloud uploads for Cloud Build.
 # Must be kept tight to avoid multi-GB uploads.
-# The verifier build only needs: Cargo.toml, Cargo.lock, common/, verifier-api/
+# Dockerfile.gcp and Dockerfile.gpu build the enclave from the root Cargo
+# workspace, so every workspace member must remain in the upload context.
 
 # Rust build artifacts
 target/
@@ -24,13 +25,15 @@ target/
 # Environment / secrets
 .env
 .env.*
-keys/*_private*
+keys/
+*.log
+*.pid
 
-# Large directories not needed for verifier build
+# Large directories not needed for enclave image builds
 test_assets/
+artifacts/
 examples/
 scripts/
-gateway-api/
 site/
 docs/
 spec/
@@ -40,16 +43,14 @@ demo-artifacts/
 demo-pack/
 infra/
 benchmark_results/
+pilot/
 pilot-evidence/
 nvidia-disclosures/
-compliance/
+enclaves/
+manifests/
+tests/
 AGENTS/
 investor/
-
-# Crates not needed for verifier (stubs created in Dockerfile)
-client/
-host/
-enclave/
 
 # AWS Nitro artifacts
 *.eif

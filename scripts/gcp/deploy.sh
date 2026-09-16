@@ -336,6 +336,11 @@ fi
 if [[ "${MODEL_SOURCE}" == "gcs" || "${MODEL_SOURCE}" == "gcs-kms" ]]; then
     METADATA="${METADATA},tee-env-EPHEMERALML_GCS_BUCKET=${GCS_BUCKET}"
     METADATA="${METADATA},tee-env-EPHEMERALML_GCP_MODEL_PREFIX=${GCP_MODEL_PREFIX}"
+fi
+# Pin bundled/local models too when the caller supplies an expected hash.
+# Previously --model-hash was accepted for MODEL_SOURCE=local but silently
+# omitted from Confidential Space metadata.
+if [[ -n "${EXPECTED_MODEL_HASH}" ]]; then
     METADATA="${METADATA},tee-env-EPHEMERALML_EXPECTED_MODEL_HASH=${EXPECTED_MODEL_HASH}"
 fi
 # KMS-specific env vars only for gcs-kms
@@ -411,7 +416,7 @@ ui_kv "Zone" "${ZONE}"
 ui_kv "Status" "${STATUS}"
 ui_kv "External IP" "${EXTERNAL_IP}"
 ui_kv "Benchmark mode" "$($BENCHMARK && echo development || echo off)"
-ui_kv "Ports" "9000 (control), 9001 (data_in), 9002 (data_out)"
+ui_kv "Port" "9000 (direct SecureChannel inference)"
 ui_blank
 if $DEBUG; then
     ui_info "SSH:  gcloud compute ssh ${INSTANCE_NAME} --zone=${ZONE} --project=${PROJECT}"

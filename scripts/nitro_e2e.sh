@@ -31,6 +31,11 @@ VERIFY_BIN="$REPO_DIR/target/release/ephemeralml-verify"
 TRUST_CENTER_BIN="$REPO_DIR/target/release/ephemeralml-verifier"
 TRUST_CENTER_PORT="${TRUST_CENTER_PORT:-8091}"
 ATTESTATION_PATH="$EVIDENCE_DIR/attestation.cbor"
+# Nitro CLI 1.5 no longer assumes these paths when invoked by SSM or another
+# non-login shell. Keep explicit defaults while allowing operator overrides.
+NITRO_CLI_ARTIFACTS="${NITRO_CLI_ARTIFACTS:-/tmp/nitro-cli-artifacts}"
+NITRO_CLI_BLOBS="${NITRO_CLI_BLOBS:-/usr/share/nitro_enclaves/blobs}"
+export NITRO_CLI_ARTIFACTS NITRO_CLI_BLOBS
 
 # Defaults
 ENCLAVE_CID=16
@@ -80,7 +85,7 @@ trap cleanup_on_exit EXIT
 
 # --- Setup evidence directory ---
 rm -rf "$EVIDENCE_DIR"
-mkdir -p "$EVIDENCE_DIR"
+mkdir -p "$EVIDENCE_DIR" "$NITRO_CLI_ARTIFACTS"
 log "Evidence directory: $EVIDENCE_DIR"
 
 cd "$REPO_DIR"
@@ -122,9 +127,13 @@ if [ "$SKIP_BUILD" = false ]; then
     log "       Trust center verifier built in $((BUILD_END - BUILD_START))s"
 
     log "[5/6] Building Docker image..."
-    # target/ is in .dockerignore, so stage the binary outside it
-    mkdir -p docker-stage
+    # target/ and test_assets/ are in .dockerignore, so stage only the files
+    # required by the enclave image outside those directories.
+    mkdir -p docker-stage/model
     cp target/release/ephemeral-ml-enclave docker-stage/
+    cp test_assets/minilm/config.json docker-stage/model/
+    cp test_assets/minilm/tokenizer.json docker-stage/model/
+    cp test_assets/minilm/model.safetensors docker-stage/model/
     docker build -f enclave/Dockerfile.enclave -t ephemeral-ml-enclave:latest . 2>&1 | tail -3
     log "       Docker image built."
 
@@ -543,7 +552,7 @@ log "  Files collected:"
 ls -la "$EVIDENCE_DIR/"
 echo ""
 
-if [ $HOST_EXIT -eq 0 ]; then
+if [ "$HOST_EXIT" -eq 0 ]; then
     log "  STATUS: SUCCESS"
     log "  The host orchestrator completed inference with PCR-pinned attestation,"
     log "  offline AIR verification passed, and the trust center API accepted the AWS receipt."
@@ -557,4 +566,4 @@ else
 fi
 
 log "============================================================"
-exit $HOST_EXIT
+exit "$HOST_EXIT"

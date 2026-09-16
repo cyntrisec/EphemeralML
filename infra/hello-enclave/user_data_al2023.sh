@@ -30,7 +30,6 @@ usermod -aG docker ec2-user || true
 # Nitro Enclaves tooling
 # Packages are available in Amazon repos on Nitro-capable instances.
 dnf install -y aws-nitro-enclaves-cli aws-nitro-enclaves-cli-devel aws-nitro-enclaves-allocator || true
-systemctl enable --now nitro-enclaves-allocator.service || true
 
 # Reserve small resources (adjust later): 2 vCPU + 1024 MiB
 mkdir -p /etc/nitro_enclaves
@@ -40,6 +39,7 @@ cpu_count: 2
 memory_mib: 1024
 EOF
 
+systemctl enable nitro-enclaves-allocator.service || true
 systemctl restart nitro-enclaves-allocator.service || true
 
 echo "[ephemeralml] bootstrap complete. Run: nitro-cli --version"

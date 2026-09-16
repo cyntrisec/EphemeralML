@@ -28,8 +28,6 @@ amazon-linux-extras install -y aws-nitro-enclaves-cli || true
 # Install CLI + headers if available via yum after enabling extras.
 yum install -y aws-nitro-enclaves-cli aws-nitro-enclaves-cli-devel || true
 
-systemctl enable --now nitro-enclaves-allocator.service || true
-
 # Reserve small resources (adjust later): 2 vCPU + 1024 MiB
 cat >/etc/nitro_enclaves/allocator.yaml <<'EOF'
 ---
@@ -37,6 +35,7 @@ cpu_count: 2
 memory_mib: 1024
 EOF
 
+systemctl enable nitro-enclaves-allocator.service || true
 systemctl restart nitro-enclaves-allocator.service || true
 
 echo "[ephemeralml] bootstrap complete. Run: nitro-cli --version"

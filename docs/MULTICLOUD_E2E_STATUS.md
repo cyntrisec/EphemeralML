@@ -1,13 +1,27 @@
 # Multicloud E2E Validation Status
 
-**Last updated:** 2026-05-07
+**Last updated:** 2026-09-16
 **Canonical claims:** See `docs/publication/claim_definitions.md` for formal definitions and `docs/publication/claim_evidence_matrix.md` for traceability.
 
-EphemeralML has been validated single-stage E2E on AWS Nitro Enclaves and GCP Confidential Space (CPU and H100 GPU). All three platforms completed inference with MiniLM-L6-v2, produced Ed25519-signed receipts, and verified them. Cross-cloud results validate functional correctness and receipt verification — they are NOT cross-provider overhead comparisons.
+EphemeralML has been validated single-stage E2E on AWS Nitro Enclaves and GCP Confidential Space (CPU and H100 GPU). Azure SEV-SNP has been validated at the transport/attestation layer, but the application inference path is not implemented there. Cross-cloud results validate specific functional and verification paths; they are NOT cross-provider overhead comparisons.
 
 Attestation-chain recheck note (2026-05-07): Intel TDX, AMD SEV-SNP, and AWS Nitro accepted through the project verifier code on commodity cloud hardware. NVIDIA H100 NRAS rejected tested GCP A3 evidence; that vendor appraisement result is separate from AIR receipt verification and is tracked outside this historical E2E matrix.
 
-## Summary
+## 2026-09-16 Live Rerun
+
+The rerun used public EphemeralML commit `df4454246c28b82521ca4f8ae657ca90eb6d3a97`. Packaging, deploy-metadata, and runbook fixes discovered during the rerun are included in the follow-up commit documented below. Transport and pipeline were also tested at their current upstream commits.
+
+| Platform | Live hardware | Result | Important boundary | Private evidence |
+|----------|---------------|--------|--------------------|------------------|
+| AWS Nitro | `m6i.xlarge`, us-east-1 | **PASS — full inference E2E**. All three PCRs pinned; legacy and AIR v1 receipts verified; trust-center upload verdict `verified`; 118ms client E2E / 77ms enclave execution. | Temporary host was terminated after evidence upload. | Private encrypted evidence bundle retained; storage URI intentionally omitted. |
+| GCP Confidential Space CPU | `c3-standard-4`, us-central1-a | **PASS — inference + signed Launcher-JWT identity policy**. Exact image digest, project, zone, and audience pins passed; a wrong-image negative control was rejected before channel establishment. Legacy and AIR v1 receipts verified; 1610ms client E2E / 68ms enclave execution in the captured Cloud Build run. | `EPHEMERALML_REQUIRE_MRTD=false`: no independently verified MRTD/RTMR pin. The receipt-side 764-byte `attestation.bin` is synthetic TDX-format boot evidence, not a raw quote verified by this client path. | Private encrypted run bundle and strict negative-control output retained; storage URIs intentionally omitted. |
+| Azure SEV-SNP | `Standard_DC2as_v5`, westeurope | **PASS — transport/attestation only**. Real Azure vTPM/HCL evidence (9,110 bytes), certificate chain, production policy, live CRL, TCB binding, and Milan rejection under a Genoa-only policy passed. Transport: 312 tests; pipeline mock/TCP matrix: 95 tests; Azure production-feature compile check passed. | No EphemeralML application inference backend/E2E exists for Azure yet. | Transient command logs only; no publication bundle was produced before resource-group deletion. |
+
+GCP claim boundary: the signed Confidential Space Launcher JWT binds the transport challenge and supplies the container image digest, GCE project, and zone. The 2026-09-16 positive and wrong-image tests demonstrate enforcement of those signed identity claims. They do **not** demonstrate client-side verification or pinning of a raw TDX quote measurement, and the receipt's synthetic measurement fields must not be described as verified MRTD/RTMR evidence.
+
+The temporary AWS instance, GCP CVM, and Azure resource group were removed after the run. The exact GCP container image and encrypted evidence objects were retained privately for reproducibility.
+
+## Historical Publication Summary
 
 | Platform | Machine | TEE | Model | Execution | AIR v1 | Negative | Compliance | Evidence | Status |
 |----------|---------|-----|-------|-----------|--------|----------|------------|----------|--------|
@@ -89,11 +103,11 @@ Attestation-chain recheck note (2026-05-07): Intel TDX, AMD SEV-SNP, and AWS Nit
 ### Attestation Model
 
 - **Provider:** Confidential Space Launcher JWT (fetched from `/run/container_launcher/teeserver.sock`)
-- **Format:** OIDC JWT with TDX quote embedded; `eat_nonce` for session binding
+- **Format:** OIDC JWT from the Confidential Space Launcher; `eat_nonce` for transport challenge binding
 - **JWT issuer:** `https://confidentialcomputing.googleapis.com`
-- **Measurements:** TDX MRTD + RTMRs (from Launcher measurement, not raw configfs-tsm — CS does not expose configfs-tsm inside the container)
-- **Key binding:** HPKE key hash in trust evidence bundle
-- **Verification:** Client verifies JWT signature; MRTD pinning via `EPHEMERALML_EXPECTED_MRTD` (not enforced in this test — `REQUIRE_MRTD=false`)
+- **Measurements:** The current `cs-tdx` client path does not return verified TDX measurements (`VerifiedAttestation.measurements` is empty). Receipt-side synthetic TDX-format evidence is not an independently verified MRTD/RTMR source.
+- **Key binding:** The expected transport challenge covers the session keys/nonce and must appear in the signed JWT `eat_nonce` claim.
+- **Verification:** Client verifies JWT signature, issuer, expiry, freshness, audience, transport challenge, and `swname`; optional image digest, project, and zone pins are fail-closed. The 2026-09-16 rerun enforced all four identity pins but explicitly did not enforce MRTD (`REQUIRE_MRTD=false`).
 
 ### Timing
 
@@ -113,7 +127,7 @@ Attestation-chain recheck note (2026-05-07): Intel TDX, AMD SEV-SNP, and AWS Nit
 |------|-------------|
 | `receipt.json` | Signed inference receipt (JSON) |
 | `receipt.pubkey` | Ed25519 public key (hex) |
-| `attestation.bin` | Raw TDX quote (764 bytes) |
+| `attestation.bin` | Receipt-side boot-evidence sidecar (764 bytes); in the current CS direct path this is synthetic TDX-format evidence, not a raw quote independently verified by the client |
 | `container_logs.txt` | Full container lifecycle from Cloud Logging |
 | `instance_describe.yaml` | CVM instance configuration |
 | `manifest.json` | Receipt/attestation manifest emitted by verifier |
@@ -242,6 +256,14 @@ Each E2E run should produce the following standard artifacts:
 6. **Nitro PCR parser fix** (`scripts/nitro_e2e.sh`) — resilient extraction of PCR JSON from `nitro-cli build-enclave` output that contains non-JSON log lines before the JSON block.
 7. **Nitro runtime entrypoint fixes** (`enclave/Dockerfile.enclave`) — absolute model path plus explicit pipeline ports (`5000/5001/5002`) to match host orchestrator expectations.
 
+### Fixes discovered during the 2026-09-16 rerun
+
+8. **GCP Cloud Build context** (`.gcloudignore`) — retained every root Cargo workspace member required by `Dockerfile.gcp`/`Dockerfile.gpu`; large artifacts remain excluded.
+9. **Local/bundled model hash propagation** (`scripts/gcp/deploy.sh`, `scripts/test_deploy_metadata.sh`) — `--model-hash` is now forwarded for `MODEL_SOURCE=local`, with a 15-check metadata regression suite.
+10. **Nitro Docker staging** (`scripts/nitro_e2e.sh`, `enclave/Dockerfile.enclave`) — explicitly stages the model files because `test_assets/` is excluded from the Docker context.
+11. **Nitro CLI and allocator initialization** (`scripts/nitro_e2e.sh`, AWS runbook/user-data scripts) — sets Nitro CLI artifact/blob paths for non-login SSM shells and writes allocator configuration before first service start.
+12. **GCP direct-mode verification policy** (`scripts/gcp/verify.sh`, `scripts/gcp/deploy.sh`) — documents the actual port 9000, automatically pins JWT project/zone, accepts an explicit image-digest pin, and warns when the image remains unpinned.
+
 ---
 
 ## Known Gaps and Next Steps
@@ -255,18 +277,19 @@ Each E2E run should produce the following standard artifacts:
 ### Test Gaps
 
 - [ ] Transport attestation key binding (`generate_attestation_for_transport`): the bridge contract (user_data embedding, receipt key propagation, error forwarding) is covered by 6 mock-mode unit tests in `attestation_bridge.rs`. However, verifying that the hardware attestation document contains the correct HPKE `public_key` field requires real TEE hardware (NSM IOCTL on Nitro, Launcher JWT on GCP). Validated via `nitro_e2e.sh` and `scripts/gcp/verify.sh` E2E runs.
-- [x] Deploy metadata regression test added (`scripts/test_deploy_metadata.sh`, 13 tests) — covers WIP audience presence for all model sources
+- [x] Deploy metadata regression test added (`scripts/test_deploy_metadata.sh`, 15 checks) — covers WIP audience and local/bundled model-hash propagation
 - [ ] No warm-inference GPU benchmark (only cold-start measured)
 
 ### Production Gaps
 
 - [x] KMS-gated model release tested in the AWS-native PoC path; the older bundled-EIF report remains as historical evidence
-- [ ] MRTD pinning not enforced on GCP runs (`REQUIRE_MRTD=false`)
-- [x] CS configfs-tsm not available inside container — current CS path uses the Launcher JWT bridge instead of silently falling back to synthetic TDX evidence
+- [ ] GCP `cs-tdx` has signed Launcher-JWT image/project/zone/audience pinning, but no independently verified MRTD/RTMR pin (`REQUIRE_MRTD=false` in live runs)
+- [x] CS configfs-tsm is not available inside the container — transport authentication uses the signed Launcher-JWT bridge; the separate receipt boot-evidence sidecar remains synthetic and is not treated as a verified measurement
 - [ ] No multi-enclave pipeline tested on either platform
 - [ ] Dockerfile base images not pinned to digest
 
 ### Cross-Platform
 
-- [ ] Azure SEV-SNP E2E not attempted (DCesv5 needs `ConfidentialVMTdxStatelessPreview` feature flag — stayed "Pending")
+- [x] Azure SEV-SNP vTPM/HCL transport attestation validated on `Standard_DC2as_v5` hardware (2026-09-16)
+- [ ] Azure application inference E2E is not implemented; the live Azure result is transport/attestation coverage only
 - [ ] Receipt format normalization between Nitro (JSON + raw `__receipt__` bytes captured by host) and GCP (JSON file written by client; raw wire bytes not saved by default)

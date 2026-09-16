@@ -48,7 +48,7 @@ Receipt (signed, per-inference)
   ├── attestation_doc_hash → SHA-256 of boot attestation bytes
   ├── model_id / model_version → matches model manifest
   └── destroy_evidence → optional self-reported cleanup actions (legacy product field, not AIR v1 proof)
-Boot Attestation (raw TDX quote, captured at boot)
+Boot/platform evidence bytes (provider- and deployment-specific)
   └── Binding: signing-key-attestation (receipt → attestation)
 Model Manifest (JSON, from GCS/local)
   └── Binding: model-manifest-receipt (receipt → manifest)
@@ -56,8 +56,16 @@ Model Manifest (JSON, from GCS/local)
 
 The client receives all three artifacts:
 - `receipt.json` — signed attestation receipt
-- `ephemeralml-attestation.bin` — raw boot attestation bytes
+- `ephemeralml-attestation.bin` — boot/platform-evidence sidecar bytes
 - `ephemeralml-manifest.json` — model manifest JSON
+
+The receipt hash proves which sidecar bytes accompanied the receipt; it does not
+by itself prove that those bytes are authentic hardware evidence. AWS Nitro runs
+verify the NSM attestation document and pinned PCRs. In the current Confidential
+Space direct path, the SecureChannel verifies a signed Launcher JWT with transport
+challenge and workload-identity pins, while the receipt-side `attestation.bin` is
+synthetic TDX-format boot evidence. Do not describe that sidecar as a verified raw
+TDX quote or its measurement fields as verified MRTD/RTMR values.
 
 The `compliance collect --strict` command verifies all evidence types are present
 before building the bundle.

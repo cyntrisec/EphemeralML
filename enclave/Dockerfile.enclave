@@ -17,10 +17,11 @@ WORKDIR /app
 # into docker-stage/ first (see scripts/nitro_e2e.sh step 3/4).
 COPY docker-stage/ephemeral-ml-enclave /app/enclave_app
 
-# 4. Copy model assets for inference (tokenizer, config, and weights)
-COPY test_assets/minilm/tokenizer.json /app/test_assets/minilm/tokenizer.json
-COPY test_assets/minilm/config.json /app/test_assets/minilm/config.json
-COPY test_assets/minilm/model.safetensors /app/test_assets/minilm/model.safetensors
+# 4. Copy model assets staged by scripts/nitro_e2e.sh. test_assets/ is
+# intentionally excluded from the general Docker context.
+COPY docker-stage/model/tokenizer.json /app/test_assets/minilm/tokenizer.json
+COPY docker-stage/model/config.json /app/test_assets/minilm/config.json
+COPY docker-stage/model/model.safetensors /app/test_assets/minilm/model.safetensors
 
 # 5. Set entrypoint
 # Use an absolute model path because the enclave runtime may not honor Docker WORKDIR.

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Test that deploy.sh metadata rendering includes WIP audience for all model sources.
+# Test deploy.sh metadata rendering for WIP audience and model-hash pins.
 #
 # This is a regression test for the fix where EPHEMERALML_GCP_WIP_AUDIENCE was
 # only passed to CVM metadata for --model-source=gcs-kms. Transport attestation
@@ -7,9 +7,6 @@
 #
 # Usage: bash scripts/test_deploy_metadata.sh
 set -euo pipefail
-
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 
 PASS=0
 FAIL=0
@@ -51,7 +48,7 @@ build_metadata() {
     local KMS_KEY="${3:-}"
     local GCS_BUCKET="${4:-ephemeralml-models}"
     local GCP_MODEL_PREFIX="${5:-models/minilm}"
-    local EXPECTED_MODEL_HASH="${6:-abc123}"
+    local EXPECTED_MODEL_HASH="${6-abc123}"
     local MODEL_FORMAT="${7:-safetensors}"
     local PROJECT="test-project"
     local ZONE="us-central1-a"
@@ -69,6 +66,8 @@ build_metadata() {
     if [[ "${MODEL_SOURCE}" == "gcs" || "${MODEL_SOURCE}" == "gcs-kms" ]]; then
         METADATA="${METADATA},tee-env-EPHEMERALML_GCS_BUCKET=${GCS_BUCKET}"
         METADATA="${METADATA},tee-env-EPHEMERALML_GCP_MODEL_PREFIX=${GCP_MODEL_PREFIX}"
+    fi
+    if [[ -n "${EXPECTED_MODEL_HASH}" ]]; then
         METADATA="${METADATA},tee-env-EPHEMERALML_EXPECTED_MODEL_HASH=${EXPECTED_MODEL_HASH}"
     fi
     if [[ "${MODEL_SOURCE}" == "gcs-kms" ]]; then
@@ -88,6 +87,7 @@ echo ""
 # Test 1: local mode with WIP audience
 META=$(build_metadata "local" "//iam.googleapis.com/projects/123/locations/global/workloadIdentityPools/pool/providers/prov")
 check "local + WIP: audience present" "tee-env-EPHEMERALML_GCP_WIP_AUDIENCE=//iam.googleapis.com" "$META"
+check "local: model hash present" "tee-env-EPHEMERALML_EXPECTED_MODEL_HASH=abc123" "$META"
 check_absent "local: no GCS bucket" "tee-env-EPHEMERALML_GCS_BUCKET" "$META"
 check_absent "local: no KMS key" "tee-env-EPHEMERALML_GCP_KMS_KEY" "$META"
 
@@ -108,7 +108,11 @@ check "gcs-kms: bucket present" "tee-env-EPHEMERALML_GCS_BUCKET" "$META"
 META=$(build_metadata "local" "")
 check_absent "local, no WIP: audience absent" "tee-env-EPHEMERALML_GCP_WIP_AUDIENCE" "$META"
 
-# Test 5: model source appears correctly
+# Test 5: an omitted local model hash remains omitted.
+META=$(build_metadata "local" "wip" "" "ephemeralml-models" "models/minilm" "")
+check_absent "local, no hash: model hash absent" "tee-env-EPHEMERALML_EXPECTED_MODEL_HASH" "$META"
+
+# Test 6: model source appears correctly
 META=$(build_metadata "local" "wip")
 check "model source local" "tee-env-EPHEMERALML_MODEL_SOURCE=local" "$META"
 META=$(build_metadata "gcs-kms" "wip" "key")

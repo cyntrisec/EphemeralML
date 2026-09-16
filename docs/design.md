@@ -125,12 +125,20 @@ sequenceDiagram
 | Host relationship | Untrusted, blind relay | No separate host |
 | Network from TEE | None (VSock only) | Full TCP/HTTPS |
 | Attestation hardware | NSM device | Intel TDX via CS Launcher JWT in Confidential Space containers; configfs-tsm in non-CS TDX VM paths |
-| Attestation format | COSE_Sign1 | TDX quote (ECDSA-P256, 8KB) |
-| Measurement registers | PCR0/1/2/8 (SHA-384) | MRTD + RTMR0-3 (SHA-384) |
+| Attestation format | COSE_Sign1 | Signed Launcher OIDC JWT in CS; raw TDX quote only in the non-CS configfs-tsm path |
+| Verified identity | Pinned PCR0/1/2 (SHA-384) in current E2E | Signed image digest/project/zone/audience pins in current CS E2E; MRTD/RTMR only in the separate raw-TDX path |
 | Key release | NSM attestation → AWS KMS RecipientInfo | `GcpKmsClient` (Attestation API → WIP/WIF → Cloud KMS), wired for `--model-source=gcs-kms` |
 | Model storage | S3 via host VSock proxy | GCS via direct HTTPS |
 
-### TDX Attestation Flow
+### Confidential Space Transport Attestation Flow
+
+1. The server constructs a domain-separated challenge over the X25519 handshake key, client nonce, receipt signing key, protocol/platform fields, and optional platform-evidence hash.
+2. The Confidential Space Launcher returns a fresh signed JWT carrying that challenge in `eat_nonce`.
+3. The server sends the JWT and the bound values in a deterministic `CsTransportAttestation` CBOR envelope.
+4. The client verifies the JWT signature, issuer, expiry/freshness, `swname`, audience, and challenge binding, then applies configured image-digest, project, and zone pins.
+5. This path does not return verified MRTD/RTMR values. `EPHEMERALML_EXPECTED_MRTD` applies to the separate raw-TDX path below, not to a `cs-tdx` Launcher-JWT envelope.
+
+### Raw TDX Attestation Flow (Non-CS configfs-tsm Path)
 
 1. Enclave generates ephemeral X25519 keypair and Ed25519 receipt signing key
 2. Enclave builds `TeeAttestationEnvelope` (CBOR): `{platform: "tdx", tdx_wire: <quote>, user_data: <JSON{hpke_pk, receipt_pk}>}`
@@ -154,9 +162,9 @@ Current implementation in `enclave/src/gcp_kms_client.rs` uses the Google Cloud 
 
 ### Measurement Pinning
 
-- Client can pin expected MRTD via `EPHEMERALML_EXPECTED_MRTD` environment variable (hex-encoded, 48 bytes)
-- `TdxEnvelopeVerifierBridge` passes this to `TdxVerifier` for hardware-level measurement enforcement
-- MRTD corresponds to the CVM's firmware/kernel measurement; RTMRs correspond to application-level measurements
+- In the non-CS raw-TDX path, the client can pin expected MRTD via `EPHEMERALML_EXPECTED_MRTD` (hex-encoded, 48 bytes); `TdxEnvelopeVerifierBridge` passes it to `TdxVerifier`.
+- In the Confidential Space `cs-tdx` path, pin the signed Launcher-JWT audience, image digest, project, and zone. The live path does not expose a raw quote to `TdxVerifier`, so an MRTD value is not validated there.
+- MRTD corresponds to the CVM launch measurement; RTMRs are runtime measurement registers. Neither should be claimed as client-verified for a Launcher-JWT-only run.
 
 ## AWS Credentials and SigV4 Signing
 

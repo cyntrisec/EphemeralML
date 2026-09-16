@@ -214,11 +214,12 @@ EphemeralML defaults to **fail-closed** for all security-sensitive settings. Pro
 
 | Setting | Default | Dev override | What it controls |
 |---------|---------|-------------|-----------------|
-| MRTD peer pinning | Required (`EPHEMERALML_EXPECTED_MRTD`) | `EPHEMERALML_REQUIRE_MRTD=false` | Client-side TDX measurement verification |
+| Raw-TDX MRTD peer pinning | Required (`EPHEMERALML_EXPECTED_MRTD`) | `EPHEMERALML_REQUIRE_MRTD=false` | Client-side measurement verification for the non-CS raw-TDX envelope path; it is not applied to a CS Launcher JWT |
+| CS Launcher-JWT identity | Audience required by default; image/project/zone pins are configurable | Explicit unpinned-audience development override | Signed Confidential Space workload identity; production clients should pin audience, image digest, project, and zone |
 | `--synthetic` flag | Rejected in release builds | Debug builds only | Entire attestation stack uses fake quotes |
 | KMS IAM binding | Image digest condition required | `--allow-broad-binding` in `setup_kms.sh` | Which containers can decrypt model keys |
 
-**Transport attestation vs KMS attestation**: These are separate trust anchors. The Launcher JWT is the Confidential Space attestation evidence used for KMS/WIP policy. Transport attestation (SecureChannel handshake) uses configfs-tsm TDX quotes when available, or the Launcher JWT via `CsTransportAttestationBridge` in Confidential Space containers where configfs-tsm is not exposed.
+**Transport attestation vs KMS attestation**: These are separate trust anchors. The Launcher JWT is Confidential Space evidence used for KMS/WIP policy and, through `CsTransportAttestationBridge`, for the SecureChannel handshake in CS containers where configfs-tsm is not exposed. Non-CS TDX deployments can use configfs-tsm quotes. An `EPHEMERALML_EXPECTED_MRTD` value is evaluated only for that raw-TDX quote path, not for a `cs-tdx` Launcher-JWT envelope.
 
 ## GCP Architecture Differences
 
