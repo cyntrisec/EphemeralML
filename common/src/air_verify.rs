@@ -105,6 +105,10 @@ pub enum AirCheckCode {
     EvaluationModeRejected,
     /// `measurement_type` does not match expected platform
     PlatformMismatch,
+    /// Receipt measurements do not match the verified attestation document
+    MeasurementReconciliationMismatch,
+    /// Verified attestation measurements do not match known-good reference values
+    MeasurementAppraisalMismatch,
     /// `eat_nonce` does not match expected challenge
     NonceMismatch,
     /// `eat_nonce` required but absent
@@ -149,6 +153,12 @@ impl std::fmt::Display for AirCheckCode {
             Self::SecurityModeMismatch => write!(f, "SECURITY_MODE_MISMATCH"),
             Self::EvaluationModeRejected => write!(f, "EVALUATION_MODE_REJECTED"),
             Self::PlatformMismatch => write!(f, "PLATFORM_MISMATCH"),
+            Self::MeasurementReconciliationMismatch => {
+                write!(f, "MEASUREMENT_RECONCILIATION_MISMATCH")
+            }
+            Self::MeasurementAppraisalMismatch => {
+                write!(f, "MEASUREMENT_APPRAISAL_MISMATCH")
+            }
             Self::NonceMismatch => write!(f, "NONCE_MISMATCH"),
             Self::NonceMissing => write!(f, "NONCE_MISSING"),
             Self::ReplayCti => write!(f, "REPLAY_CTI"),
@@ -233,9 +243,9 @@ pub enum AssuranceLevel {
     AirLocal,
     /// AIR-local checks passed **and** the receipt was bound to a verified
     /// platform attestation document (signing-key binding, attestation-doc-hash
-    /// binding, and measurement reconciliation). Only the chained verifier can
-    /// produce this; [`verify_air_v1_receipt`] alone always returns
-    /// [`AssuranceLevel::AirLocal`].
+    /// binding, measurement reconciliation, and appraisal against known-good
+    /// measurements). Only the chained verifier can produce this;
+    /// [`verify_air_v1_receipt`] alone always returns [`AssuranceLevel::AirLocal`].
     TeeProvenance,
 }
 
@@ -248,9 +258,9 @@ pub struct AirVerifyResult {
     /// [`AssuranceLevel::AirLocal`]; the chained verifier may raise it.
     pub assurance_level: AssuranceLevel,
     /// Identity checks (model hash/id, attestation-doc binding, platform,
-    /// nonce, replay) reported as `Skip` because the policy did not pin them.
-    /// Empty under an [`AirVerifyPolicy::strict`] policy. Surfaces the
-    /// "verified but nothing was pinned" footgun explicitly.
+    /// nonce, replay, and chained measurement appraisal) reported as `Skip`
+    /// because the policy did not pin them. Surfaces the "verified but nothing
+    /// was pinned" footgun explicitly.
     pub skipped_identity_checks: Vec<&'static str>,
     /// Individual check outcomes, ordered by layer.
     pub checks: Vec<AirCheck>,
@@ -295,6 +305,12 @@ pub struct AirVerifyPolicy {
     pub expected_response_hash: Option<[u8; 32]>,
     /// Expected `attestation_doc_hash`. If set, ADHASH check is enforced.
     pub expected_attestation_doc_hash: Option<[u8; 32]>,
+    /// Reference (known-good) platform measurement values. The chained verifier
+    /// uses these values to appraise a verified attestation document before
+    /// granting TEE provenance: reconciliation proves the receipt matches the
+    /// document, while appraisal proves the document matches the approved
+    /// workload. If `None`, the chained verifier remains AIR-local.
+    pub expected_measurements: Option<crate::types::PcrMeasurements>,
     /// Expected `model_id`. If set, MODEL check is enforced.
     pub expected_model_id: Option<String>,
     /// Expected `security_mode`. If set, SECURITY_MODE_POLICY check is enforced.
@@ -342,6 +358,7 @@ impl Default for AirVerifyPolicy {
             expected_request_hash: None,
             expected_response_hash: None,
             expected_attestation_doc_hash: None,
+            expected_measurements: None,
             expected_model_id: None,
             expected_security_mode: None,
             allow_evaluation_mode: false,
@@ -367,14 +384,25 @@ impl AirVerifyPolicy {
         }
     }
 
+    /// Pin known-good measurements for chained platform-attestation appraisal.
+    pub fn with_expected_measurements(
+        mut self,
+        expected_measurements: crate::types::PcrMeasurements,
+    ) -> Self {
+        self.expected_measurements = Some(expected_measurements);
+        self
+    }
+
     /// Build a strict, production-oriented policy that fails closed on missing
     /// identity evidence.
     ///
     /// Unlike [`Self::default`] — which performs only AIR-local checks and
     /// reports unpinned identity checks as `Skip` — `strict` pins every
-    /// identity-bearing claim and wires replay protection, so a receipt that
-    /// omits any of them fails verification. Use it to verify a known model on
-    /// a known platform, bound to a specific attestation document.
+    /// identity-bearing AIR claim and wires replay protection, so a receipt
+    /// that omits any of them fails verification. Use it to verify a known
+    /// model on a known platform, bound to a specific attestation document.
+    /// A chained verifier must additionally call
+    /// [`Self::with_expected_measurements`] to grant TEE provenance.
     ///
     /// The caller supplies the replay hook (`seen_cti`) and owns its durability
     /// scope; a process-local [`SeenCtiCache`] is a convenient default.

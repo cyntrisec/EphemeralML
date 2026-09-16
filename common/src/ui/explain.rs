@@ -154,6 +154,14 @@ fn explain_by_name(name: &str) -> Option<CheckExplanation> {
             why: "The measurement_type does not match the expected platform.",
             fix: "CLI: check --measurement-type (e.g. nitro-pcr, tdx-mrtd-rtmr, or any). API: check measurement_type in the request.",
         },
+        "MEAS_RECONCILE" => CheckExplanation {
+            why: "The receipt measurements do not match the verified platform attestation document.",
+            fix: "Verify that the receipt and attestation document came from the same workload session.",
+        },
+        "MEAS_APPRAISE" => CheckExplanation {
+            why: "The verified platform measurements do not match the configured known-good reference values.",
+            fix: "Check the deployed workload image and update the reference measurements only after validating the new build.",
+        },
         "NONCE" => CheckExplanation {
             why: "The eat_nonce in the receipt does not match the expected challenge nonce.",
             fix: "Verify the nonce you provided at request time matches.",
@@ -232,6 +240,8 @@ mod tests {
             "MODEL",
             "SECURITY_MODE_POLICY",
             "PLATFORM",
+            "MEAS_RECONCILE",
+            "MEAS_APPRAISE",
             "NONCE",
             "REPLAY",
         ];

@@ -132,6 +132,14 @@ pub fn air_check_meta(name: &str) -> VerificationCheckMeta {
             label: "Platform match",
             layer: Some("policy"),
         },
+        "MEAS_RECONCILE" => VerificationCheckMeta {
+            label: "Attestation measurement binding",
+            layer: Some("attestation"),
+        },
+        "MEAS_APPRAISE" => VerificationCheckMeta {
+            label: "Known-good measurement appraisal",
+            layer: Some("attestation"),
+        },
         "NONCE" => VerificationCheckMeta {
             label: "Nonce match",
             layer: Some("policy"),

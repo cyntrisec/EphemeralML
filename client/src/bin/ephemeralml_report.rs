@@ -271,6 +271,7 @@ fn build_air_report(
             "expected-response-hash",
         )?,
         expected_attestation_doc_hash,
+        expected_measurements: None,
         expected_model_id: args.expected_model.clone(),
         expected_security_mode: Some(args.expected_security_mode.clone()),
         allow_evaluation_mode: false,

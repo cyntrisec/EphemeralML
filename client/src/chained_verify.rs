@@ -15,8 +15,8 @@ use ed25519_dalek::VerifyingKey;
 use sha2::{Digest, Sha256};
 
 use ephemeral_ml_common::air_verify::{
-    verify_air_v1_receipt, AirCheck, AirCheckStatus, AirVerifyPolicy, AirVerifyResult,
-    AssuranceLevel,
+    verify_air_v1_receipt, AirCheck, AirCheckCode, AirCheckStatus, AirVerifyPolicy,
+    AirVerifyResult, AssuranceLevel,
 };
 use ephemeral_ml_common::PcrMeasurements;
 
@@ -80,19 +80,57 @@ fn bind_attestation(att_bytes: &[u8], allow_mock: bool) -> Result<DocBinding> {
 }
 
 /// TEE provenance requires a cryptographically verified document, successful
-/// measurement reconciliation, a passing AIR-local verification, and a
-/// production-mode receipt (an evaluation receipt is never TEE provenance,
-/// regardless of the caller's policy). Anything else is AIR-local.
+/// measurement reconciliation (the receipt did not lie about the document's
+/// registers), successful measurement *appraisal* (the document's registers
+/// match the caller's reference / known-good set), a passing AIR-local
+/// verification, and a production-labeled receipt. The self-asserted
+/// `security_mode` carries no positive weight by itself; it is only a
+/// fail-closed floor after the cryptographic and appraisal checks. Anything
+/// else is AIR-local.
 fn assurance_from(
     doc_verified: bool,
     reconciled: bool,
+    appraised: bool,
     air_verified: bool,
-    production: bool,
+    production_labeled: bool,
 ) -> AssuranceLevel {
-    if doc_verified && reconciled && air_verified && production {
+    if doc_verified && reconciled && appraised && air_verified && production_labeled {
         AssuranceLevel::TeeProvenance
     } else {
         AssuranceLevel::AirLocal
+    }
+}
+
+fn appraise_measurements(
+    document: Option<&PcrMeasurements>,
+    reference: Option<&PcrMeasurements>,
+) -> (AirCheckStatus, Option<String>, bool) {
+    match (document, reference) {
+        (Some(document), Some(reference)) if document == reference => {
+            (AirCheckStatus::Pass, None, true)
+        }
+        (Some(_), Some(_)) => (
+            AirCheckStatus::Fail,
+            Some(
+                "attestation measurements do not match the reference (known-good) values"
+                    .to_string(),
+            ),
+            false,
+        ),
+        (Some(_), None) => (
+            AirCheckStatus::Skip,
+            Some(
+                "no reference measurements supplied (policy.expected_measurements is None); \
+                 cannot establish TEE provenance"
+                    .to_string(),
+            ),
+            false,
+        ),
+        (None, _) => (
+            AirCheckStatus::Skip,
+            Some("no verifiable measurements in attestation document".to_string()),
+            false,
+        ),
     }
 }
 
@@ -103,8 +141,8 @@ fn assurance_from(
 ///    (Nitro COSE: signature + certificate chain vs the AWS Nitro root; a mock
 ///    CBOR map is accepted only when `allow_mock` is set).
 /// 2. Pin `expected_attestation_doc_hash = SHA-256(attestation_bytes)` into the
-///    policy (overriding any value the caller set), binding the receipt to this
-///    document.
+///    policy (requiring any value the caller already pinned to match), binding
+///    the receipt to this document.
 /// 3. Run the layered [`verify_air_v1_receipt`].
 /// 4. Reconcile the receipt's `enclave_measurements` against the verified
 ///    document's PCRs via `EnclaveMeasurements::reconcile_against` (shared with
@@ -113,10 +151,12 @@ fn assurance_from(
 ///    attestation identity exposes only PCR0/1/2. A mismatch fails verification;
 ///    an unverifiable/mock document is `Skip`.
 /// 5. Report [`AssuranceLevel::TeeProvenance`] only when the document was
-///    cryptographically verified, reconciliation passed, AIR-local verification
-///    passed, and the receipt is production-mode; otherwise
-///    [`AssuranceLevel::AirLocal`]. An evaluation receipt is never TEE
-///    provenance, even if the caller set `allow_evaluation_mode`.
+///    cryptographically verified, reconciliation passed, the measurements were
+///    appraised against the policy's reference values
+///    (`expected_measurements`), AIR-local verification passed, and the receipt
+///    is production-labeled; otherwise [`AssuranceLevel::AirLocal`]. The label
+///    grants no positive weight by itself; evaluation receipts are never TEE
+///    provenance.
 ///
 /// `TeeProvenance` asserts *platform* provenance (a verified, measured TEE) plus
 /// PCR0/1/2 reconciliation — not that the *expected model or session* ran. To
@@ -134,8 +174,18 @@ pub fn verify_air_v1_receipt_chained(
 ) -> Result<AirVerifyResult> {
     let binding = bind_attestation(attestation_bytes, allow_mock)?;
 
-    // The chained verifier owns the document-hash binding.
+    // Bind the receipt to the supplied document. If the caller pinned a
+    // known-good `expected_attestation_doc_hash`, it MUST equal the supplied
+    // document's hash -- do not silently override the caller's pin.
     let doc_hash: [u8; 32] = Sha256::digest(attestation_bytes).into();
+    if let Some(caller_pin) = policy.expected_attestation_doc_hash {
+        if caller_pin != doc_hash {
+            bail!(
+                "policy.expected_attestation_doc_hash does not match the supplied \
+                 attestation document"
+            );
+        }
+    }
     policy.expected_attestation_doc_hash = Some(doc_hash);
 
     let mut result = verify_air_v1_receipt(receipt_bytes, &binding.signing_key, &policy);
@@ -174,16 +224,45 @@ pub fn verify_air_v1_receipt_chained(
     result.checks.push(AirCheck {
         name: "MEAS_RECONCILE",
         status,
-        code: None,
+        code: reconcile_failed.then_some(AirCheckCode::MeasurementReconciliationMismatch),
         detail,
     });
     if reconcile_failed {
         result.verified = false;
     }
 
-    // Production-mode floor: an evaluation receipt is never TEE provenance,
-    // even if the caller's policy set allow_evaluation_mode = true.
-    let is_production = result
+    // Appraisal: does the verified document's measurement set match the caller's
+    // reference (known-good) values? Reconciliation above proves the receipt did
+    // not lie about the document's registers; appraisal proves the document's
+    // registers are the approved ones. Without a reference set, TEE provenance
+    // cannot be established and assurance remains AIR-local.
+    //
+    // Coverage is limited to the three registers exposed by `PcrMeasurements`.
+    // Reconciliation fails closed if the receipt asserts additional registers
+    // that the verified document representation cannot corroborate.
+    let (appraise_status, appraise_detail, appraised) = appraise_measurements(
+        binding.measurements.as_ref(),
+        policy.expected_measurements.as_ref(),
+    );
+    let appraise_failed = matches!(appraise_status, AirCheckStatus::Fail);
+    let appraise_skipped = matches!(appraise_status, AirCheckStatus::Skip);
+    result.checks.push(AirCheck {
+        name: "MEAS_APPRAISE",
+        status: appraise_status,
+        code: appraise_failed.then_some(AirCheckCode::MeasurementAppraisalMismatch),
+        detail: appraise_detail,
+    });
+    if appraise_failed {
+        result.verified = false;
+    }
+    if appraise_skipped && !result.skipped_identity_checks.contains(&"MEAS_APPRAISE") {
+        result.skipped_identity_checks.push("MEAS_APPRAISE");
+    }
+
+    // Fail closed on the exact production label. This claim grants no assurance
+    // by itself, but evaluation or any future mode must not inherit production
+    // provenance accidentally.
+    let production_labeled = result
         .claims
         .as_ref()
         .map(|c| c.security_mode == "production")
@@ -191,8 +270,9 @@ pub fn verify_air_v1_receipt_chained(
     result.assurance_level = assurance_from(
         binding.doc_verified,
         reconciled,
+        appraised,
         result.verified,
-        is_production,
+        production_labeled,
     );
 
     Ok(result)
@@ -202,7 +282,6 @@ pub fn verify_air_v1_receipt_chained(
 mod tests {
     use super::*;
     use ephemeral_ml_common::air_receipt::{build_air_v1, AirReceiptClaims};
-    use ephemeral_ml_common::air_verify::AirCheckCode;
     use ephemeral_ml_common::receipt_signing::ReceiptSigningKey;
     use ephemeral_ml_common::EnclaveMeasurements;
     use ephemeral_ml_common::WorkerAttestationUserData;
@@ -267,29 +346,72 @@ mod tests {
     }
 
     #[test]
-    fn assurance_decision_table() {
-        // Only a verified document + reconciled measurements + a passing
-        // AIR-local verification yields TEE provenance.
+    fn assurance_requires_appraisal_and_production_label() {
+        // Signature: (doc_verified, reconciled, appraised, air_verified, production_labeled).
         assert_eq!(
-            assurance_from(true, true, true, true),
+            assurance_from(true, true, true, true, true),
             AssuranceLevel::TeeProvenance
         );
+        // A verified, reconciled document that is not appraised against known-good
+        // measurements does not get provenance.
         assert_eq!(
-            assurance_from(false, true, true, true),
+            assurance_from(true, true, false, true, true),
             AssuranceLevel::AirLocal
-        ); // mock document
+        );
         assert_eq!(
-            assurance_from(true, false, true, true),
+            assurance_from(false, true, true, true, true),
             AssuranceLevel::AirLocal
-        ); // measurement mismatch
+        ); // mock / unverified document
         assert_eq!(
-            assurance_from(true, true, false, true),
+            assurance_from(true, false, true, true, true),
+            AssuranceLevel::AirLocal
+        ); // reconcile mismatch
+        assert_eq!(
+            assurance_from(true, true, true, false, true),
             AssuranceLevel::AirLocal
         ); // air-local failed
         assert_eq!(
-            assurance_from(true, true, true, false),
+            assurance_from(true, true, true, true, false),
             AssuranceLevel::AirLocal
         ); // evaluation receipt
+    }
+
+    #[test]
+    fn appraisal_requires_exact_reference_measurements() {
+        let document = PcrMeasurements::new(vec![1u8; 48], vec![2u8; 48], vec![3u8; 48]);
+        let matching = document.clone();
+        let mismatch = PcrMeasurements::new(vec![9u8; 48], vec![2u8; 48], vec![3u8; 48]);
+
+        let (status, _, appraised) = appraise_measurements(Some(&document), Some(&matching));
+        assert!(matches!(status, AirCheckStatus::Pass));
+        assert!(appraised);
+
+        let (status, _, appraised) = appraise_measurements(Some(&document), Some(&mismatch));
+        assert!(matches!(status, AirCheckStatus::Fail));
+        assert!(!appraised);
+
+        let (status, _, appraised) = appraise_measurements(Some(&document), None);
+        assert!(matches!(status, AirCheckStatus::Skip));
+        assert!(!appraised);
+    }
+
+    #[test]
+    fn production_receipt_without_reference_measurements_is_air_local() {
+        // A receipt self-marked security_mode="production" with no reference
+        // measurements in the policy must not reach provenance: MEAS_APPRAISE is
+        // skipped and assurance stays AIR-local.
+        let key = ReceiptSigningKey::generate().unwrap();
+        let att = mock_attestation_doc(key.public_key.to_bytes(), [0xAA; 32]);
+        let receipt = receipt_bound_to(&att, &key); // security_mode = "production"
+        let result =
+            verify_air_v1_receipt_chained(&receipt, &att, AirVerifyPolicy::unbounded(), true)
+                .unwrap();
+        assert_eq!(result.assurance_level, AssuranceLevel::AirLocal);
+        assert!(result
+            .checks
+            .iter()
+            .any(|c| c.name == "MEAS_APPRAISE" && matches!(c.status, AirCheckStatus::Skip)));
+        assert!(result.skipped_identity_checks.contains(&"MEAS_APPRAISE"));
     }
 
     #[test]
@@ -347,5 +469,20 @@ mod tests {
         );
         assert!(result.has_failure(&AirCheckCode::AttestationDocHashMismatch));
         assert_eq!(result.assurance_level, AssuranceLevel::AirLocal);
+    }
+
+    #[test]
+    fn chained_verify_rejects_conflicting_caller_document_pin() {
+        let key = ReceiptSigningKey::generate().unwrap();
+        let att = mock_attestation_doc(key.public_key.to_bytes(), [0xAA; 32]);
+        let receipt = receipt_bound_to(&att, &key);
+        let mut policy = AirVerifyPolicy::unbounded();
+        policy.expected_attestation_doc_hash = Some([0xFF; 32]);
+
+        let error = verify_air_v1_receipt_chained(&receipt, &att, policy, true)
+            .expect_err("a conflicting caller pin must not be overwritten");
+        assert!(error
+            .to_string()
+            .contains("does not match the supplied attestation document"));
     }
 }
