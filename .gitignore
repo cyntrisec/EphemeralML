@@ -112,26 +112,28 @@ htmlcov/
 *.orig
 *.tmp
 
-# AI tool configs
+# Local tool state
 .kiro/
-CLAUDE.md
-GEMINI.md
-Borys_Tsyrulnikov_Resume.md
+**/.claude/
 
-# Internal development files
-BUILD_REPRODUCIBILITY.md
-IMPLEMENTATION_GUIDE.md
-PROJECT_SUMMARY.md
-TASK_*_SUMMARY.md
-build.py
-validate_structure.py
-AGENTS/
-investor/
-QA_REPORT.md
-docs/tasks.md
-docs/STATUS_SUMMARY.md
-confidential-inference-gateway/tasks.md
-infra/hello-enclave/KMS_DEBUG_NOTES*.md
+# Local-only notes and scratch work. Put exact private filenames in
+# .git/info/exclude, not in this committed file.
+*.local
+*.local.*
+*.private
+*.private.*
+*.secret
+*.secret.*
+local/
+scratch/
+private/
+private-*/
+**/local/
+**/scratch/
+**/private/
+
+# Local infrastructure diagnostics
+infra/hello-enclave/*DEBUG_NOTES*.md
 infra/hello-enclave/DIAG*.md
 infra/hello-enclave/run_diag*.sh
 infra/hello-enclave/ssm_diag*.sh
@@ -142,18 +144,16 @@ infra/hello-enclave/tfplan
 keys/*_private*
 .signing_key.hex
 
-# Security audit (internal only)
-docs/security_audit_2025-01-31.md
-
 # Large reference docs (keep locally, don't commit)
 docs/aws-reference/
 docs/papers/
 docs/papers_llm/
-docs/E2E_DEPLOY_GUIDE.md
-docs/investors/*.pdf
 
 # kramdown-rfc reference cache
 .refcache/
+
+# IETF draft local render extras
+spec/v1/ietf/*.pdf
 
 # LaTeX build artifacts
 *.aux
@@ -163,9 +163,6 @@ audit
 
 # Benchmark run log (local troubleshooting notes)
 benchmark_run_log.md
-
-# Hardware test reports (internal only)
-docs/GCP_HARDWARE_TEST_REPORT.md
 
 # Ad-hoc evidence runs (transient; canonical evidence lives in evidence/publication-*)
 evidence/*
@@ -182,27 +179,26 @@ evidence/archives/
 # Local attestation captures (host-path and machine-specific)
 attestation-evidence/
 
-# Publication process docs (personal workflow records)
-docs/publication/submission/
-docs/publication/nist-2025-0035-comment.md
-docs/publication/nist-2025-0035-comment.txt
-docs/REAL_USER_FLOW_VALIDATION.md
-
 # Marketing local previews/backups
 site/marketing/index-preview.html
 site/marketing/index-backup-*.html
-site/marketing/index-investor.html
 site/marketing/logo-full-80.png
 site/marketing/logo-full.png
 site/marketing/logo-mark.png
 site/marketing/spec/
 
-# Local Claude config
-**/.claude/
-
 # Local release/build artifacts
 dist/
 docker-stage/
 
-# Local GCP preview smoke script
-scripts/gcp/g4_evidence_smoke.sh
+# Local-only scripts should use neutral names.
+scripts/**/local_*.sh
+scripts/**/*_local.sh
+scripts/**/scratch_*.sh
+scripts/**/*_scratch.sh
+
+# Local-only example harnesses should use neutral names.
+client/examples/local_*.rs
+client/examples/*_local.rs
+client/examples/scratch_*.rs
+client/examples/*_scratch.rs
