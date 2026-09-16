@@ -265,7 +265,7 @@ fn validate_text_claim(name: &str, value: &str, max_len: usize) -> Result<()> {
 fn encode_claims(claims: &AirReceiptClaims) -> Result<Vec<u8>> {
     let mut entries: Vec<(Value, Value)> = Vec::with_capacity(18);
 
-    // Keys sorted per RFC 8949 §4.2.1 (shorter encoded form first, then bytewise lexicographic)
+    // Keys sorted per RFC 8949 §4.2.1 (bytewise lexicographic order of the encoded keys)
     if let Some(ref scheme) = claims.model_hash_scheme {
         entries.push((
             Value::Integer(AIR_MODEL_HASH_SCHEME.into()),
@@ -346,7 +346,7 @@ fn encode_claims(claims: &AirReceiptClaims) -> Result<Vec<u8>> {
     ));
 
     // Sort by CBOR deterministic encoding rules (RFC 8949 §4.2.1):
-    // shorter encoded key sorts first, then bytewise lexicographic comparison.
+    // bytewise lexicographic order of the encoded keys (NOT §4.2.3 length-first).
     // For integer keys: positive (major type 0) sorts before negative (major type 1).
     entries.sort_by(|(k1, _), (k2, _)| crate::cbor::cmp_cbor_keys(k1, k2));
 

@@ -65,7 +65,7 @@ pub fn from_slice_exact<T: DeserializeOwned>(bytes: &[u8]) -> Result<T, CborErro
 /// Convert a serializable value to `ciborium::Value` with recursively sorted map keys.
 ///
 /// Replacement for `serde_cbor::value::to_value`. Map keys are sorted per
-/// RFC 8949 §4.2.1 (shorter encoded key first, then bytewise lexicographic),
+/// RFC 8949 §4.2.1 (bytewise lexicographic order of the encoded keys),
 /// ensuring deterministic canonical encoding for receipt signing.
 pub fn to_value<T: Serialize>(val: &T) -> Result<Value, CborError> {
     let value = Value::serialized(val).map_err(|e| CborError(e.to_string()))?;
@@ -90,10 +90,10 @@ fn sort_value_maps(val: Value) -> Value {
 
 /// Compare CBOR map keys per RFC 8949 Section 4.2.1 (Deterministically Encoded CBOR).
 ///
-/// Keys are compared by their encoded byte representations:
-/// shorter encoded key sorts first, then bytewise lexicographic comparison.
-/// This replaces the previous serde_cbor-derived ordering which incorrectly
-/// sorted integer keys by logical value (putting negatives before positives).
+/// Keys are compared by the bytewise lexicographic order of their deterministic
+/// encodings (RFC 8949 §4.2.1), NOT the §4.2.3 length-first ordering. This
+/// replaces the previous serde_cbor-derived ordering which incorrectly sorted
+/// integer keys by logical value (putting negatives before positives).
 pub fn cmp_cbor_keys(a: &Value, b: &Value) -> Ordering {
     fn encode_key(v: &Value) -> Vec<u8> {
         let mut buf = Vec::new();
@@ -103,12 +103,9 @@ pub fn cmp_cbor_keys(a: &Value, b: &Value) -> Ordering {
 
     let a_enc = encode_key(a);
     let b_enc = encode_key(b);
-    // RFC 8949 §4.2.1: shorter encoded form sorts first,
-    // then bytewise lexicographic comparison for equal lengths.
-    a_enc
-        .len()
-        .cmp(&b_enc.len())
-        .then_with(|| a_enc.cmp(&b_enc))
+    // RFC 8949 §4.2.1: bytewise lexicographic comparison of the encoded keys
+    // (NOT the §4.2.3 length-first ordering).
+    a_enc.cmp(&b_enc)
 }
 
 /// Serialize a `ciborium::Value` to CBOR bytes.
@@ -126,4 +123,43 @@ pub fn map_get<'a>(entries: &'a [(Value, Value)], key: &Value) -> Option<&'a Val
     entries
         .iter()
         .find_map(|(k, v)| if k == key { Some(v) } else { None })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::cmp::Ordering;
+
+    /// Locks RFC 8949 §4.2.1 (bytewise) ordering and guards against a regression
+    /// to §4.2.3 (length-first). The canonical example: integer key 100 encodes
+    /// as 0x18 0x64 (2 bytes) and -1 as 0x20 (1 byte). Under §4.2.1 bytewise,
+    /// 0x18.. < 0x20 so 100 sorts BEFORE -1; under §4.2.3 length-first, the
+    /// 1-byte -1 would sort first. This test fails if the comparator reverts.
+    #[test]
+    fn cmp_cbor_keys_is_bytewise_not_length_first() {
+        let k100 = Value::Integer(100.into());
+        let kneg1 = Value::Integer((-1).into());
+        assert_eq!(
+            cmp_cbor_keys(&k100, &kneg1),
+            Ordering::Less,
+            "RFC 8949 §4.2.1 bytewise: 100 (0x1864) MUST sort before -1 (0x20)"
+        );
+        assert_eq!(cmp_cbor_keys(&kneg1, &k100), Ordering::Greater);
+    }
+
+    /// A sorted map with divergence-zone keys ends up in bytewise (§4.2.1) order.
+    #[test]
+    fn sort_value_maps_uses_bytewise_order() {
+        let m = Value::Map(vec![
+            (Value::Integer((-1).into()), Value::Bool(true)),
+            (Value::Integer(100.into()), Value::Bool(false)),
+        ]);
+        if let Value::Map(entries) = sort_value_maps(m) {
+            // 100 (0x1864) sorts before -1 (0x20) under §4.2.1 bytewise.
+            assert_eq!(entries[0].0, Value::Integer(100.into()));
+            assert_eq!(entries[1].0, Value::Integer((-1).into()));
+        } else {
+            panic!("expected a Map");
+        }
+    }
 }
