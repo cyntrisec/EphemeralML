@@ -24,12 +24,11 @@ COPY ephemeralml-smoke-test/ ephemeralml-smoke-test/
 
 RUN cargo build --release --locked -p ephemeralml-verifier-api
 
-FROM debian:bookworm-slim@sha256:f3034a6ec3c1205360777c4aae76234998866ad18806ae62b63a3f84ccad782b
+FROM gcr.io/distroless/cc-debian13:nonroot@sha256:54df941ed0d06a1bd95ef5e0ce391fd8d9f94b64782dc9a60062727849ee3f97
 ARG CYNTRISEC_BUILD_SHA=unknown
 LABEL org.opencontainers.image.title="Cyntrisec Verification Center" \
       org.opencontainers.image.source="https://github.com/cyntrisec/EphemeralML" \
       org.opencontainers.image.revision="${CYNTRISEC_BUILD_SHA}"
-RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates && rm -rf /var/lib/apt/lists/*
 COPY --from=builder /build/target/release/ephemeralml-verifier /app/ephemeralml-verifier
 USER 65532:65532
 EXPOSE 8080
