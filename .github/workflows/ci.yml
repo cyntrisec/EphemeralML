@@ -194,15 +194,16 @@ jobs:
     name: Security Audit
     runs-on: ubuntu-latest
     permissions:
-      checks: write
       contents: read
     steps:
       - uses: actions/checkout@v6
-      - uses: rustsec/audit-check@v2.0.0
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          # No vulnerability exceptions. Unmaintained and yanked transitive
-          # dependencies are documented in docs/security/RISK_REGISTER.md.
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Install cargo-audit
+        run: cargo +stable install cargo-audit --version 0.22.2 --locked
+      - name: Audit dependencies
+        # No vulnerability exceptions. Unmaintained and yanked transitive
+        # dependencies are documented in docs/security/RISK_REGISTER.md.
+        run: cargo +stable audit
 
   shell-lint:
     name: Shell Lint
