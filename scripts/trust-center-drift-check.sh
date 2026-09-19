@@ -6,6 +6,14 @@ set -euo pipefail
 BASE_URL="${1:-https://verify.cyntrisec.com}"
 BASE_URL="${BASE_URL%/}"
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+CURL_CONFIG_ARGS=()
+if [[ -n "${TRUST_CENTER_CURL_CONFIG:-}" ]]; then
+    if [[ ! -r "$TRUST_CENTER_CURL_CONFIG" ]]; then
+        echo "ERROR: curl config is not readable: $TRUST_CENTER_CURL_CONFIG" >&2
+        exit 2
+    fi
+    CURL_CONFIG_ARGS=(--config "$TRUST_CENTER_CURL_CONFIG")
+fi
 
 expected_sha="${EXPECTED_BUILD_SHA:-}"
 if [[ -z "$expected_sha" ]]; then
@@ -21,7 +29,7 @@ if [[ -z "$expected_sha" ]]; then
     exit 2
 fi
 
-health="$(curl -fsS --max-time 20 "$BASE_URL/health")"
+health="$(curl "${CURL_CONFIG_ARGS[@]}" -fsS --max-time 20 "$BASE_URL/health")"
 actual_sha="$(jq -r '.build_sha // "unknown"' <<<"$health")"
 cloud_revision="$(jq -r '.cloud_revision // "unknown"' <<<"$health")"
 

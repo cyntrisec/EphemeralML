@@ -13,6 +13,14 @@ set -euo pipefail
 BASE_URL="${1:-https://verify.cyntrisec.com}"
 PASSED=0
 FAILED=0
+CURL_CONFIG_ARGS=()
+if [[ -n "${TRUST_CENTER_CURL_CONFIG:-}" ]]; then
+    if [[ ! -r "$TRUST_CENTER_CURL_CONFIG" ]]; then
+        echo "ERROR: curl config is not readable: $TRUST_CENTER_CURL_CONFIG" >&2
+        exit 2
+    fi
+    CURL_CONFIG_ARGS=(--config "$TRUST_CENTER_CURL_CONFIG")
+fi
 
 # ── Helpers ──────────────────────────────────────────────
 
@@ -22,7 +30,7 @@ fail() { FAILED=$((FAILED + 1)); echo "  [FAIL] $1"; }
 check_status() {
     local name="$1" url="$2" expected="$3"
     local status
-    status=$(curl -s -o /dev/null -w "%{http_code}" --max-time 10 "$url" 2>/dev/null || echo "000")
+    status=$(curl "${CURL_CONFIG_ARGS[@]}" -s -o /dev/null -w "%{http_code}" --max-time 10 "$url" 2>/dev/null || echo "000")
     if [ "$status" = "$expected" ]; then
         pass "$name (HTTP $status)"
     else
@@ -33,7 +41,7 @@ check_status() {
 check_json_field() {
     local name="$1" url="$2" field="$3" expected="$4"
     local value
-    value=$(curl -s --max-time 10 "$url" 2>/dev/null | jq -r "$field" 2>/dev/null || echo "ERROR")
+    value=$(curl "${CURL_CONFIG_ARGS[@]}" -s --max-time 10 "$url" 2>/dev/null | jq -r "$field" 2>/dev/null || echo "ERROR")
     if [ "$value" = "$expected" ]; then
         pass "$name ($field = $expected)"
     else
@@ -52,7 +60,7 @@ echo
 # 1. Landing page
 check_status "Landing page" "$BASE_URL/" "200"
 echo -n "  "
-LANDING=$(curl -s --max-time 10 "$BASE_URL/" 2>/dev/null || echo "")
+LANDING=$(curl "${CURL_CONFIG_ARGS[@]}" -s --max-time 10 "$BASE_URL/" 2>/dev/null || echo "")
 if [ -n "$LANDING" ] \
     && [[ "$LANDING" == *"retained for 30 days"* ]] \
     && [[ "$LANDING" == *"they do not contain request bodies"* ]] \
@@ -70,7 +78,7 @@ else
     fail "Privacy boundary — unexpected third-party page asset or disclosure mismatch"
 fi
 echo -n "  "
-HEADERS=$(curl -sS -D - -o /dev/null --max-time 10 "$BASE_URL/" 2>/dev/null || echo "")
+HEADERS=$(curl "${CURL_CONFIG_ARGS[@]}" -sS -D - -o /dev/null --max-time 10 "$BASE_URL/" 2>/dev/null || echo "")
 if [[ "$HEADERS" == *"object-src 'none'"* ]] \
     && [[ "$HEADERS" == *"base-uri 'none'"* ]] \
     && [[ "$HEADERS" == *"form-action 'self'"* ]] \
@@ -84,7 +92,7 @@ fi
 # 1b. AWS-native PoC evidence page (current 2026-05-03 packet, not stale 2026-04-30)
 check_status "AWS evidence page" "$BASE_URL/evidence/aws-native-poc" "200"
 echo -n "  "
-EVIDENCE=$(curl -s --max-time 10 "$BASE_URL/evidence/aws-native-poc" 2>/dev/null || echo "")
+EVIDENCE=$(curl "${CURL_CONFIG_ARGS[@]}" -s --max-time 10 "$BASE_URL/evidence/aws-native-poc" 2>/dev/null || echo "")
 if [ -n "$EVIDENCE" ] \
     && [[ "$EVIDENCE" == *"2026-05-03"* ]] \
     && [[ "$EVIDENCE" == *"aws-native-poc-20260503"* ]] \
@@ -105,7 +113,7 @@ check_json_field "Legacy sample format" "$BASE_URL/api/v1/samples/legacy" ".form
 
 # 5. AIR v1 round-trip verification
 echo -n "  "
-SAMPLE=$(curl -s --max-time 10 "$BASE_URL/api/v1/samples/valid" 2>/dev/null)
+SAMPLE=$(curl "${CURL_CONFIG_ARGS[@]}" -s --max-time 10 "$BASE_URL/api/v1/samples/valid" 2>/dev/null)
 B64=$(echo "$SAMPLE" | jq -r '.receipt_base64' 2>/dev/null)
 KEY=$(echo "$SAMPLE" | jq -r '.public_key' 2>/dev/null)
 AIR_RESULT="{}"
@@ -113,7 +121,7 @@ AIR_RESULT="{}"
 if [ -z "$B64" ] || [ "$B64" = "null" ] || [ -z "$KEY" ] || [ "$KEY" = "null" ]; then
     fail "AIR v1 verify — could not fetch sample"
 else
-    RESULT=$(curl -s --max-time 10 -X POST "$BASE_URL/api/v1/verify" \
+    RESULT=$(curl "${CURL_CONFIG_ARGS[@]}" -s --max-time 10 -X POST "$BASE_URL/api/v1/verify" \
         -H "Content-Type: application/json" \
         -d "{\"receipt\": \"$B64\", \"public_key\": \"$KEY\"}" 2>/dev/null)
     AIR_RESULT="$RESULT"
@@ -147,7 +155,7 @@ if [ -z "$B64" ] || [ "$B64" = "null" ]; then
 else
     MID=$((${#B64} / 2))
     TAMPERED="${B64:0:$MID}TAMPERED${B64:$((MID+8))}"
-    RESULT=$(curl -s --max-time 10 -X POST "$BASE_URL/api/v1/verify" \
+    RESULT=$(curl "${CURL_CONFIG_ARGS[@]}" -s --max-time 10 -X POST "$BASE_URL/api/v1/verify" \
         -H "Content-Type: application/json" \
         -d "{\"receipt\": \"$TAMPERED\", \"public_key\": \"$KEY\"}" 2>/dev/null)
     VERIFIED=$(echo "$RESULT" | jq -r '.verified' 2>/dev/null)
@@ -160,14 +168,14 @@ fi
 
 # 7. Legacy round-trip verification
 echo -n "  "
-LEG_SAMPLE=$(curl -s --max-time 10 "$BASE_URL/api/v1/samples/legacy" 2>/dev/null)
+LEG_SAMPLE=$(curl "${CURL_CONFIG_ARGS[@]}" -s --max-time 10 "$BASE_URL/api/v1/samples/legacy" 2>/dev/null)
 LEG_RECEIPT=$(echo "$LEG_SAMPLE" | jq -c '.receipt' 2>/dev/null)
 LEG_KEY=$(echo "$LEG_SAMPLE" | jq -r '.public_key' 2>/dev/null)
 
 if [ -z "$LEG_RECEIPT" ] || [ "$LEG_RECEIPT" = "null" ]; then
     fail "Legacy verify — could not fetch sample"
 else
-    RESULT=$(curl -s --max-time 10 -X POST "$BASE_URL/api/v1/verify" \
+    RESULT=$(curl "${CURL_CONFIG_ARGS[@]}" -s --max-time 10 -X POST "$BASE_URL/api/v1/verify" \
         -H "Content-Type: application/json" \
         -d "{\"receipt\": $LEG_RECEIPT, \"public_key\": \"$LEG_KEY\"}" 2>/dev/null)
     VERIFIED=$(echo "$RESULT" | jq -r '.verified' 2>/dev/null)

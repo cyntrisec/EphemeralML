@@ -289,7 +289,7 @@ URL remains disabled throughout.
 
 The supported deployment script performs the complete guarded sequence: a
 Cloud Build with verified provenance, HIGH/CRITICAL Trivy gate, SBOM export,
-immutable-digest deployment, candidate proxy tests, all 19 AIR vectors, build
+immutable-digest deployment, authenticated candidate tests, all 19 AIR vectors, build
 drift verification, deletion of the private candidate service, no-traffic
 production deployment, promotion, and automatic rollback on a failed
 post-promotion gate:

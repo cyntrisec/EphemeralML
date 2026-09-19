@@ -10,7 +10,6 @@ SERVICE="${TRUST_CENTER_SERVICE:-trust-center}"
 CANDIDATE_SERVICE="${TRUST_CENTER_CANDIDATE_SERVICE:-${SERVICE}-candidate}"
 RUNTIME_SERVICE_ACCOUNT="${TRUST_CENTER_RUNTIME_SERVICE_ACCOUNT:-trust-center-runner@${PROJECT_ID}.iam.gserviceaccount.com}"
 LIVE_URL="${TRUST_CENTER_LIVE_URL:-https://verify.cyntrisec.com}"
-PROXY_PORT="${TRUST_CENTER_PROXY_PORT:-18081}"
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 
 for command_name in curl gcloud git jq; do
@@ -69,19 +68,12 @@ if [[ -z "$image_digest" || "$image_digest" != *@sha256:* ]]; then
     exit 2
 fi
 
-proxy_log="$(mktemp /tmp/trust-center-proxy.XXXXXX)"
-proxy_pid=""
+auth_config=""
 candidate_created=false
-stop_proxy() {
-    if [[ -n "$proxy_pid" ]] && kill -0 "$proxy_pid" 2>/dev/null; then
-        kill "$proxy_pid" 2>/dev/null || true
-        wait "$proxy_pid" 2>/dev/null || true
-    fi
-    proxy_pid=""
-}
 cleanup() {
-    stop_proxy
-    rm -f "$proxy_log"
+    if [[ -n "$auth_config" ]]; then
+        rm -f "$auth_config"
+    fi
     if [[ "$candidate_created" == true ]]; then
         gcloud run services delete "$CANDIDATE_SERVICE" \
             --project "$PROJECT_ID" --region "$REGION" --quiet >/dev/null 2>&1 || \
@@ -111,35 +103,50 @@ gcloud run deploy "$CANDIDATE_SERVICE" \
     --startup-probe 'httpGet.path=/health,httpGet.port=8080,timeoutSeconds=5,periodSeconds=10,failureThreshold=12' \
     --liveness-probe 'httpGet.path=/health,httpGet.port=8080,initialDelaySeconds=5,timeoutSeconds=5,periodSeconds=30,failureThreshold=3'
 
-gcloud run services proxy "$CANDIDATE_SERVICE" \
-    --project "$PROJECT_ID" --region "$REGION" \
-    --port "$PROXY_PORT" >"$proxy_log" 2>&1 &
-proxy_pid=$!
+candidate_url="$(gcloud run services describe "$CANDIDATE_SERVICE" \
+    --project "$PROJECT_ID" --region "$REGION" --format='value(status.url)')"
+if [[ -z "$candidate_url" ]]; then
+    echo "ERROR: Cloud Run did not report the private candidate URL" >&2
+    exit 2
+fi
 
-candidate_url="http://127.0.0.1:${PROXY_PORT}"
+identity_token="$(gcloud auth print-identity-token)"
+if [[ -z "$identity_token" ]]; then
+    echo "ERROR: failed to obtain an identity token for candidate testing" >&2
+    exit 2
+fi
+
+auth_config="$(mktemp /tmp/trust-center-curl.XXXXXX)"
+chmod 600 "$auth_config"
+printf 'header = "Authorization: Bearer %s"\n' "$identity_token" >"$auth_config"
+unset identity_token
+
 ready=false
 for _ in $(seq 1 30); do
-    if curl -fsS --max-time 3 "$candidate_url/health" >/dev/null 2>&1; then
+    if curl --config "$auth_config" -fsS --max-time 3 \
+        "$candidate_url/health" >/dev/null 2>&1; then
         ready=true
         break
     fi
     sleep 2
 done
 if [[ "$ready" != true ]]; then
-    echo "ERROR: candidate proxy did not become healthy" >&2
-    sed -n '1,120p' "$proxy_log" >&2
+    echo "ERROR: authenticated candidate endpoint did not become healthy" >&2
     exit 1
 fi
 
-bash "$REPO_DIR/scripts/smoke-test.sh" "$candidate_url"
-bash "$REPO_DIR/scripts/trust-center-conformance.sh" "$candidate_url"
-EXPECTED_BUILD_SHA="$git_sha" bash "$REPO_DIR/scripts/trust-center-drift-check.sh" "$candidate_url"
+TRUST_CENTER_CURL_CONFIG="$auth_config" \
+    bash "$REPO_DIR/scripts/smoke-test.sh" "$candidate_url"
+TRUST_CENTER_CURL_CONFIG="$auth_config" \
+    bash "$REPO_DIR/scripts/trust-center-conformance.sh" "$candidate_url"
+TRUST_CENTER_CURL_CONFIG="$auth_config" EXPECTED_BUILD_SHA="$git_sha" \
+    bash "$REPO_DIR/scripts/trust-center-drift-check.sh" "$candidate_url"
 
-stop_proxy
+rm -f "$auth_config"
+auth_config=""
 gcloud run services delete "$CANDIDATE_SERVICE" \
     --project "$PROJECT_ID" --region "$REGION" --quiet
 candidate_created=false
-rm -f "$proxy_log"
 if gcloud run services describe "$CANDIDATE_SERVICE" \
     --project "$PROJECT_ID" --region "$REGION" >/dev/null 2>&1; then
     echo "ERROR: private candidate service still exists after cleanup" >&2

@@ -9,6 +9,14 @@ BASE_URL="${1:-https://verify.cyntrisec.com}"
 BASE_URL="${BASE_URL%/}"
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 VECTOR_DIR="${TRUST_CENTER_VECTOR_DIR:-$REPO_DIR/spec/v1/vectors}"
+CURL_CONFIG_ARGS=()
+if [[ -n "${TRUST_CENTER_CURL_CONFIG:-}" ]]; then
+    if [[ ! -r "$TRUST_CENTER_CURL_CONFIG" ]]; then
+        echo "ERROR: curl config is not readable: $TRUST_CENTER_CURL_CONFIG" >&2
+        exit 2
+    fi
+    CURL_CONFIG_ARGS=(--config "$TRUST_CENTER_CURL_CONFIG")
+fi
 
 for command_name in base64 curl jq xxd; do
     if ! command -v "$command_name" >/dev/null 2>&1; then
@@ -52,7 +60,7 @@ post_vector() {
     fi
 
     local http_status
-    if ! http_status="$(curl -sS --max-time 20 -o "$response_file" -w '%{http_code}' \
+    if ! http_status="$(curl "${CURL_CONFIG_ARGS[@]}" -sS --max-time 20 -o "$response_file" -w '%{http_code}' \
         -X POST "$BASE_URL/api/v1/verify" \
         -H 'Content-Type: application/json' \
         --data-binary "$payload")"; then
