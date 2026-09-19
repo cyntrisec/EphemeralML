@@ -36,7 +36,7 @@ impl InferenceHandler for CannedHandler {
                 [2; 32],
                 "v1".to_string(),
                 0,
-                input.model_id,
+                input.model_id.clone(),
                 "v1".to_string(),
                 0,
                 0,

@@ -1,6 +1,6 @@
 use confidential_ml_pipeline::{PipelineError, StageConfig, StageExecutor, StageRuntime};
 use std::collections::BTreeMap;
-use zeroize::{Zeroize, Zeroizing};
+use zeroize::{Zeroize, ZeroizeOnDrop, Zeroizing};
 
 /// Maximum retries for accepting control connections.
 /// Health checks, port scanners, and other non-handshake TCP connections
@@ -64,7 +64,7 @@ struct PlatformEvidenceResponse {
     platform_evidence_cbor_b64: String,
 }
 
-#[derive(serde::Deserialize)]
+#[derive(serde::Deserialize, ZeroizeOnDrop)]
 struct DirectInferenceRequest {
     model_id: String,
     input_data: Vec<u8>,
@@ -497,7 +497,7 @@ fn handle_direct_request<A: crate::AttestationProvider>(
 ) -> std::result::Result<DirectResult, Box<dyn std::error::Error + Send + Sync>> {
     use sha2::{Digest, Sha256};
 
-    let request: DirectInferenceRequest =
+    let mut request: DirectInferenceRequest =
         serde_json::from_slice(bytes).map_err(|e| format!("Bad request JSON: {}", e))?;
     let benchmark_mode = requested_benchmark_mode(&request);
     let timing_enabled = benchmark_mode.is_some();
@@ -569,6 +569,12 @@ fn handle_direct_request<A: crate::AttestationProvider>(
         (output, None)
     };
 
+    // The inference engine has consumed the owned input payload. Wipe it now
+    // instead of retaining prompt/tensor bytes through receipt construction
+    // and response serialization. ZeroizeOnDrop above covers every early-return
+    // path as a backstop.
+    request.input_data.zeroize();
+
     let exec_ms = start.elapsed().as_millis() as u64;
     if timing_enabled {
         timings.inference = Some(elapsed_us(start));
@@ -625,6 +631,10 @@ fn handle_direct_request<A: crate::AttestationProvider>(
     receipt.destroy_evidence = Some(ephemeral_ml_common::DestroyEvidence {
         timestamp: ephemeral_ml_common::current_timestamp()?,
         actions: vec![
+            ephemeral_ml_common::DestroyAction {
+                target: "request_input".to_string(),
+                mechanism: "explicit_zeroize".to_string(),
+            },
             ephemeral_ml_common::DestroyAction {
                 target: "output_bytes".to_string(),
                 mechanism: "explicit_zeroize".to_string(),
@@ -849,4 +859,16 @@ pub async fn run_stage_tcp<E: StageExecutor + 'static>(
             verifier,
         )
         .await
+}
+
+#[cfg(test)]
+mod tests {
+    use super::DirectInferenceRequest;
+
+    fn assert_zeroize_on_drop<T: zeroize::ZeroizeOnDrop>() {}
+
+    #[test]
+    fn direct_inference_request_zeroizes_on_every_drop_path() {
+        assert_zeroize_on_drop::<DirectInferenceRequest>();
+    }
 }

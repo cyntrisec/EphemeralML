@@ -778,7 +778,7 @@ Outputs:
 
   ProxyCommand:
     Description: One-line local proxy command.
-    Value: !Sub docker run -p 4000:4000 -e CYNTRISEC_PROXY_HOST=0.0.0.0 -e CYNTRISEC_MODEL_CAPABILITIES=embeddings -e CYNTRISEC_WORKER=tcp://${WorkerNlb.DNSName}:443 -e CYNTRISEC_WORKER_CHANNEL=secure -e CYNTRISEC_POLICY_PATH=/etc/cyntrisec/policy.json -e CYNTRISEC_MANIFEST_PATH=/etc/cyntrisec/model-manifest.json -v $(pwd)/cyntrisec-policy.json:/etc/cyntrisec/policy.json:ro -v $(pwd)/model-manifest.json:/etc/cyntrisec/model-manifest.json:ro public.ecr.aws/f4z4g3i5/proxy:${ReleaseTag}
+    Value: !Sub docker run -p 127.0.0.1:4000:4000 -e CYNTRISEC_PROXY_HOST=0.0.0.0 -e CYNTRISEC_INSECURE_NO_AUTH=true -e CYNTRISEC_MODEL_CAPABILITIES=embeddings -e CYNTRISEC_WORKER=tcp://${WorkerNlb.DNSName}:443 -e CYNTRISEC_WORKER_CHANNEL=secure -e CYNTRISEC_POLICY_PATH=/etc/cyntrisec/policy.json -e CYNTRISEC_MANIFEST_PATH=/etc/cyntrisec/model-manifest.json -v $(pwd)/cyntrisec-policy.json:/etc/cyntrisec/policy.json:ro -v $(pwd)/model-manifest.json:/etc/cyntrisec/model-manifest.json:ro public.ecr.aws/f4z4g3i5/proxy:${ReleaseTag}
 
   PolicyDownloadCommand:
     Description: Download the pinned worker policy for the local proxy.

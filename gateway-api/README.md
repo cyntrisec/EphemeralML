@@ -15,10 +15,12 @@ cargo run --release --features mock --bin ephemeral-ml-enclave -- \
 
 # Terminal 2: start the gateway
 cargo run --release -p ephemeralml-gateway --features mock -- \
-    --backend-addr 127.0.0.1:9000
+    --backend-addr 127.0.0.1:9000 --host 127.0.0.1 \
+    --api-key local-evaluation-only
 
 # Terminal 3: call it
 curl -s http://localhost:8090/v1/chat/completions \
+  -H "Authorization: Bearer local-evaluation-only" \
   -H "Content-Type: application/json" \
   -d '{
     "model": "gpt-4",
@@ -36,6 +38,7 @@ docker compose up --build
 # In another terminal:
 curl -s http://localhost:8090/health | jq .
 curl -s http://localhost:8090/v1/chat/completions \
+  -H "Authorization: Bearer local-evaluation-only" \
   -H "Content-Type: application/json" \
   -d '{"model":"gpt-4","messages":[{"role":"user","content":"Hello"}],"max_tokens":32}' | jq .
 ```
@@ -44,8 +47,10 @@ curl -s http://localhost:8090/v1/chat/completions \
 
 ```bash
 docker build -f gateway-api/Dockerfile -t ephemeralml-gateway .
-docker run -p 8090:8090 \
+docker run -p 127.0.0.1:8090:8090 \
   -e EPHEMERALML_BACKEND_ADDR=host.docker.internal:9000 \
+  -e EPHEMERALML_GATEWAY_HOST=0.0.0.0 \
+  -e EPHEMERALML_API_KEY=replace-with-a-random-key \
   ephemeralml-gateway
 ```
 
@@ -121,8 +126,9 @@ All configuration is via environment variables (or CLI flags):
 |----------|----------|---------|-------------|
 | `EPHEMERALML_BACKEND_ADDR` | Yes | — | Backend enclave address (`host:port`) |
 | `EPHEMERALML_DEFAULT_MODEL` | No | `stage-0` | Backend model ID for inference calls |
-| `EPHEMERALML_API_KEY` | No | — | Bearer token for gateway auth |
-| `EPHEMERALML_GATEWAY_HOST` | No | `0.0.0.0` | Listen host |
+| `EPHEMERALML_API_KEY` | For non-loopback binds | — | Bearer token for gateway auth |
+| `EPHEMERALML_INSECURE_NO_AUTH` | No | `false` | Development-only acknowledgment required to bind beyond loopback without auth |
+| `EPHEMERALML_GATEWAY_HOST` | No | `127.0.0.1` | Listen host; non-loopback requires auth or the explicit insecure override |
 | `EPHEMERALML_GATEWAY_PORT` | No | `8090` | Listen port |
 | `EPHEMERALML_REQUEST_TIMEOUT_SECS` | No | `120` | Per-request backend timeout |
 | `EPHEMERALML_INCLUDE_METADATA_JSON` | No | `false` | Include `_ephemeralml` in JSON body |
@@ -179,7 +185,7 @@ from openai import OpenAI
 
 client = OpenAI(
     base_url="http://localhost:8090/v1",
-    api_key="your-key-here",  # or "not-needed" if no auth configured
+    api_key="your-key-here",  # "not-needed" is valid only for a loopback-only gateway
 )
 
 # Chat completion

@@ -68,6 +68,7 @@ enclave.
 docker run -d --name gateway -p 8090:8090 \
   -e EPHEMERALML_BACKEND_ADDR=10.128.0.XX:9000 \
   -e EPHEMERALML_DEFAULT_MODEL=stage-0 \
+  -e EPHEMERALML_GATEWAY_HOST=0.0.0.0 \
   -e EPHEMERALML_API_KEY=your-production-key \
   -e EPHEMERALML_INCLUDE_METADATA_JSON=true \
   us-docker.pkg.dev/$PROJECT/ephemeralml/gateway:latest
@@ -79,8 +80,9 @@ docker run -d --name gateway -p 8090:8090 \
 |----------|----------|---------|-------|
 | `EPHEMERALML_BACKEND_ADDR` | Yes | — | Internal IP:port of enclave |
 | `EPHEMERALML_DEFAULT_MODEL` | No | `stage-0` | Must match enclave's `--model-id` |
-| `EPHEMERALML_API_KEY` | **Recommended** | — | Bearer auth; use in production |
-| `EPHEMERALML_GATEWAY_HOST` | No | `0.0.0.0` | Bind address |
+| `EPHEMERALML_API_KEY` | **Required for non-loopback binds** | — | Bearer auth; use a randomly generated secret |
+| `EPHEMERALML_INSECURE_NO_AUTH` | No | `false` | Development-only acknowledgment for a non-loopback listener without auth |
+| `EPHEMERALML_GATEWAY_HOST` | No | `127.0.0.1` | Bind address; non-loopback requires auth or the explicit insecure override |
 | `EPHEMERALML_GATEWAY_PORT` | No | `8090` | Listen port |
 | `EPHEMERALML_REQUEST_TIMEOUT_SECS` | No | `120` | Increase for large models |
 | `EPHEMERALML_INCLUDE_METADATA_JSON` | No | `false` | Embed `_ephemeralml` in body |
@@ -151,13 +153,16 @@ readinessProbe:
 
 ## Auth
 
-When `EPHEMERALML_API_KEY` is set, all endpoints except `/health` require:
+When `EPHEMERALML_API_KEY` is set, all endpoints except `/health` and `/readyz` require:
 
 ```
 Authorization: Bearer <key>
 ```
 
 The gateway uses constant-time comparison to prevent timing side-channels.
+An unauthenticated listener is allowed only on a loopback address unless the
+operator sets the explicit development-only `EPHEMERALML_INSECURE_NO_AUTH=true`
+acknowledgment. The shared bearer token is not per-tenant authorization.
 
 ## Forwarded Headers / Rate Limiting
 
@@ -172,9 +177,9 @@ identity.
 
 ## CORS
 
-CORS is permissive by default (all origins allowed). For production, place
-the gateway behind a reverse proxy (nginx, Cloud Run, ALB) and configure
-CORS there. The gateway itself does not restrict origins.
+Cross-origin browser access is disabled by default. Set one or more concrete
+origins with `EPHEMERALML_CORS_ORIGINS`; wildcard origins are rejected. For
+production, the same policy may instead be enforced by a trusted reverse proxy.
 
 ## Logging / PHI Safety
 
@@ -208,6 +213,11 @@ The gateway itself serves plain HTTP. For TLS:
 - **Cloud Run**: Automatic TLS termination
 - **K8s/ECS**: Use an ingress controller or ALB with TLS
 - **Standalone**: Put nginx or Caddy in front
+
+TLS is required between remote clients and a remotely deployed gateway: the
+gateway parses plaintext prompts and is part of that trust boundary. A
+customer-side local proxy can remain loopback-only and establish the attested
+SecureChannel directly to the enclave.
 
 The backend channel (gateway ↔ enclave) is always encrypted via
 SecureChannel (HPKE + ChaCha20-Poly1305), regardless of outer TLS.

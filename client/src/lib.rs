@@ -24,6 +24,7 @@ pub mod freshness;
 pub mod gcp;
 pub mod model_validation;
 pub mod policy;
+pub mod private_file;
 pub mod receipt_key;
 pub mod secure_client;
 #[deprecated(

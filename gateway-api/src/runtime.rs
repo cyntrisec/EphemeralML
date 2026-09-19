@@ -1,4 +1,4 @@
-use std::net::SocketAddr;
+use std::net::{IpAddr, SocketAddr};
 use std::time::Duration;
 
 use clap::Parser;
@@ -33,17 +33,28 @@ async fn run(local_proxy_mode: bool) -> anyhow::Result<()> {
         anyhow::bail!("Configuration error: {e}");
     }
 
-    // Empty api_key is rejected by validate() above, so here `is_none`
-    // is the only remaining unauthenticated state.
+    // Empty api_key and accidental unauthenticated non-loopback listeners are
+    // rejected by validate() above.
     if config.api_key.is_none() {
-        tracing::warn!(
-            "EPHEMERALML_API_KEY is not set -- gateway is running WITHOUT AUTHENTICATION. \
-             All inference endpoints are reachable by anyone who can connect to the listen \
-             address. Set EPHEMERALML_API_KEY for any non-loopback deployment."
-        );
+        if config.insecure_no_auth {
+            tracing::warn!(
+                listen_host = %config.host,
+                "INSECURE OVERRIDE ACTIVE: gateway is running without authentication. \
+                 Ensure the listener is contained by a host firewall or loopback-only \
+                 container port publication."
+            );
+        } else {
+            tracing::info!(
+                listen_host = %config.host,
+                "Gateway authentication disabled for loopback-only listener"
+            );
+        }
     }
 
-    let addr: SocketAddr = format!("{}:{}", config.host, config.port).parse()?;
+    // validate() has already required an IP literal. Constructing the socket
+    // address this way also handles IPv6 loopback correctly.
+    let listen_ip: IpAddr = config.host.parse()?;
+    let addr = SocketAddr::new(listen_ip, config.port);
 
     tracing::info!(
         listen = %addr,
@@ -60,7 +71,7 @@ async fn run(local_proxy_mode: bool) -> anyhow::Result<()> {
         "Starting Cyntrisec OpenAI-compatible proxy"
     );
 
-    if local_proxy_mode && (config.host != "127.0.0.1" && config.host != "localhost") {
+    if local_proxy_mode && !addr.ip().is_loopback() {
         tracing::warn!(
             listen_host = %config.host,
             "Local proxy is not bound to loopback. Prefer a sidecar in the same network namespace for multi-process deployments."

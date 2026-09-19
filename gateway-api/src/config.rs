@@ -3,6 +3,7 @@
 use clap::{Parser, ValueEnum};
 use serde::Serialize;
 use std::ffi::OsString;
+use std::net::IpAddr;
 use std::path::PathBuf;
 
 const ENV_ALIASES: &[(&str, &[&str])] = &[
@@ -16,6 +17,10 @@ const ENV_ALIASES: &[(&str, &[&str])] = &[
     ),
     ("EPHEMERALML_DEFAULT_MODEL", &["CYNTRISEC_DEFAULT_MODEL"]),
     ("EPHEMERALML_API_KEY", &["CYNTRISEC_API_KEY"]),
+    (
+        "EPHEMERALML_INSECURE_NO_AUTH",
+        &["CYNTRISEC_INSECURE_NO_AUTH"],
+    ),
     (
         "EPHEMERALML_GATEWAY_HOST",
         &["CYNTRISEC_PROXY_HOST", "CYNTRISEC_GATEWAY_HOST"],
@@ -160,8 +165,16 @@ pub struct GatewayConfig {
     #[arg(long, env = "EPHEMERALML_API_KEY")]
     pub api_key: Option<String>,
 
+    /// Explicitly allow an unauthenticated listener on a non-loopback host.
+    ///
+    /// This is intended only for tightly contained local development (for
+    /// example, a container published exclusively on 127.0.0.1). Production
+    /// deployments should configure EPHEMERALML_API_KEY instead.
+    #[arg(long, env = "EPHEMERALML_INSECURE_NO_AUTH", default_value = "false")]
+    pub insecure_no_auth: bool,
+
     /// Gateway listen host.
-    #[arg(long, env = "EPHEMERALML_GATEWAY_HOST", default_value = "0.0.0.0")]
+    #[arg(long, env = "EPHEMERALML_GATEWAY_HOST", default_value = "127.0.0.1")]
     pub host: String,
 
     /// Gateway listen port.
@@ -304,6 +317,14 @@ impl GatewayConfig {
     /// Validate config consistency at startup. Returns an error message if the
     /// configuration is invalid.
     pub fn validate(&self) -> Result<(), String> {
+        let listen_ip = self.host.parse::<IpAddr>().map_err(|_| {
+            format!(
+                "EPHEMERALML_GATEWAY_HOST must be an IP address (for example, \
+                 127.0.0.1, ::1, or 0.0.0.0), got '{}'",
+                self.host
+            )
+        })?;
+
         // Require explicit embedding model when a dedicated backend is configured
         // to prevent duplicate IDs in /v1/models.
         if self.embedding_backend_addr.is_some() && self.embedding_model.is_none() {
@@ -398,6 +419,20 @@ impl GatewayConfig {
             }
         }
 
+        // An OpenAI-compatible inference endpoint accepts the user's raw
+        // prompt. Accidentally exposing it without authentication is both an
+        // authorization and privacy failure, so non-loopback listeners fail
+        // closed unless the operator makes an explicit development override.
+        if self.api_key.is_none() && !listen_ip.is_loopback() && !self.insecure_no_auth {
+            return Err(format!(
+                "Refusing to expose an unauthenticated gateway on non-loopback host '{}'. \
+                 Set EPHEMERALML_API_KEY, bind EPHEMERALML_GATEWAY_HOST to a loopback address, \
+                 or explicitly acknowledge the development-only risk with \
+                 EPHEMERALML_INSECURE_NO_AUTH=true.",
+                self.host
+            ));
+        }
+
         for origin in &self.cors_origins {
             if origin == "*" {
                 return Err(
@@ -436,6 +471,36 @@ impl GatewayConfig {
 mod tests {
     use super::*;
 
+    fn test_config(host: &str, api_key: Option<&str>, insecure_no_auth: bool) -> GatewayConfig {
+        GatewayConfig {
+            backend_addr: "127.0.0.1:9000".to_string(),
+            default_model: "stage-0".to_string(),
+            api_key: api_key.map(str::to_string),
+            insecure_no_auth,
+            host: host.to_string(),
+            port: 8090,
+            request_timeout_secs: 120,
+            include_metadata_json: false,
+            receipt_header_full: false,
+            model_capabilities: "chat".to_string(),
+            embedding_backend_addr: None,
+            embedding_model: None,
+            max_concurrent_requests: 50,
+            rate_limit_per_ip: 60,
+            rate_limit_global: 0,
+            trust_proxy_headers: false,
+            cors_origins: vec![],
+            reconnect_enabled: true,
+            reconnect_backoff_base_ms: 100,
+            reconnect_backoff_cap_ms: 30_000,
+            reconnect_health_interval_secs: 5,
+            worker_channel_kind: WorkerChannelKind::Http,
+            preflight_policy_path: None,
+            preflight_manifest_path: None,
+            preflight_required: false,
+        }
+    }
+
     #[test]
     fn normalize_strips_tcp_prefix_for_worker_alias() {
         let value = normalize_alias_value(
@@ -454,5 +519,40 @@ mod tests {
             OsString::from("tcp://1.2.3.4:443"),
         );
         assert_eq!(value, OsString::from("tcp://1.2.3.4:443"));
+    }
+
+    #[test]
+    fn unauthenticated_non_loopback_listener_is_rejected() {
+        let error = test_config("0.0.0.0", None, false)
+            .validate()
+            .expect_err("public unauthenticated listener must fail closed");
+        assert!(error.contains("Refusing to expose an unauthenticated gateway"));
+    }
+
+    #[test]
+    fn unauthenticated_loopback_listener_is_allowed() {
+        assert!(test_config("127.0.0.1", None, false).validate().is_ok());
+        assert!(test_config("127.0.0.2", None, false).validate().is_ok());
+        assert!(test_config("::1", None, false).validate().is_ok());
+    }
+
+    #[test]
+    fn hostname_listener_is_rejected_with_clear_error() {
+        let error = test_config("localhost", Some("test-secret"), false)
+            .validate()
+            .expect_err("listener hostnames are not accepted");
+        assert!(error.contains("must be an IP address"));
+    }
+
+    #[test]
+    fn authenticated_non_loopback_listener_is_allowed() {
+        assert!(test_config("0.0.0.0", Some("test-secret"), false)
+            .validate()
+            .is_ok());
+    }
+
+    #[test]
+    fn explicit_insecure_override_allows_non_loopback_listener() {
+        assert!(test_config("0.0.0.0", None, true).validate().is_ok());
     }
 }

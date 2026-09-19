@@ -300,6 +300,7 @@ fn test_router(worker_addr: SocketAddr) -> axum::Router {
         backend_addr: worker_addr.to_string(),
         default_model: "stage-0".to_string(),
         api_key: None,
+        insecure_no_auth: false,
         host: "127.0.0.1".to_string(),
         port: 0,
         request_timeout_secs: 5,

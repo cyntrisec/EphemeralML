@@ -290,8 +290,9 @@ log "starting local proxy container: $PROXY_CONTAINER"
 docker rm -f "$PROXY_CONTAINER" >/dev/null 2>&1 || true
 docker run -d \
     --name "$PROXY_CONTAINER" \
-    -p "${PROXY_PORT}:4000" \
+    -p "127.0.0.1:${PROXY_PORT}:4000" \
     -e CYNTRISEC_PROXY_HOST=0.0.0.0 \
+    -e CYNTRISEC_INSECURE_NO_AUTH=true \
     -e CYNTRISEC_MODEL_CAPABILITIES=embeddings \
     -e CYNTRISEC_WORKER="$ENDPOINT_URL" \
     -e CYNTRISEC_WORKER_CHANNEL=secure \

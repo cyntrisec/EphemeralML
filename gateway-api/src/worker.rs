@@ -32,6 +32,7 @@ use serde::Serialize;
 use sha2::{Digest, Sha256};
 use tokio::net::TcpStream;
 use tokio::sync::{Mutex, Notify};
+use zeroize::{Zeroize, Zeroizing};
 
 use crate::config::{GatewayConfig, WorkerChannelKind};
 use crate::reconnect::CONNECT_TIMEOUT;
@@ -307,9 +308,12 @@ pub struct SecureChannelTransport {
 }
 
 enum BackendCall {
-    Generate { text: String, max_tokens: usize },
-    Text(String),
-    Tensor(Vec<f32>),
+    Generate {
+        text: Zeroizing<String>,
+        max_tokens: usize,
+    },
+    Text(Zeroizing<String>),
+    Tensor(Zeroizing<Vec<f32>>),
 }
 
 impl HttpBackendChannel {
@@ -680,7 +684,10 @@ impl WorkerChannel for HttpBackendChannel {
                     BackendCall::Text(text) => {
                         client.execute_inference_text(&model_id, &text).await
                     }
-                    BackendCall::Tensor(tensor) => {
+                    BackendCall::Tensor(mut tensor) => {
+                        // Move the tensor into a client method that installs
+                        // its own zeroize-on-drop backstop immediately.
+                        let tensor = std::mem::take(&mut *tensor);
                         client.execute_inference(&model_id, tensor).await
                     }
                 }
@@ -710,9 +717,9 @@ impl WorkerChannel for HttpBackendChannel {
         &self,
         req: EmbeddingRequest,
     ) -> Result<EmbeddingResponse, WorkerChannelError> {
-        let texts = match req.input {
-            EmbeddingInput::Single(s) => vec![s],
-            EmbeddingInput::Multiple(v) => v,
+        let texts: Vec<Zeroizing<String>> = match &req.input {
+            EmbeddingInput::Single(text) => vec![Zeroizing::new(text.clone())],
+            EmbeddingInput::Multiple(texts) => texts.iter().cloned().map(Zeroizing::new).collect(),
         };
         let mut data = Vec::with_capacity(texts.len());
         let mut total_tokens = 0;
@@ -731,7 +738,7 @@ impl WorkerChannel for HttpBackendChannel {
                     eat_nonce: None,
                 })
                 .await?;
-            total_tokens += estimate_tokens(text);
+            total_tokens += estimate_tokens(text.as_str());
             data.push(EmbeddingData {
                 object: "embedding",
                 embedding: output.output_tensor,
@@ -742,7 +749,7 @@ impl WorkerChannel for HttpBackendChannel {
         Ok(EmbeddingResponse {
             object: "list",
             data,
-            model: req.model,
+            model: req.model.clone(),
             usage: Usage {
                 prompt_tokens: total_tokens,
                 completion_tokens: 0,
@@ -807,13 +814,13 @@ impl WorkerChannel for SecureChannelTransport {
         &self,
         req: EmbeddingRequest,
     ) -> Result<EmbeddingResponse, WorkerChannelError> {
-        let texts = match req.input {
-            EmbeddingInput::Single(s) => vec![s],
-            EmbeddingInput::Multiple(v) => v,
+        let texts: Vec<Zeroizing<String>> = match &req.input {
+            EmbeddingInput::Single(text) => vec![Zeroizing::new(text.clone())],
+            EmbeddingInput::Multiple(texts) => texts.iter().cloned().map(Zeroizing::new).collect(),
         };
         let mut data = Vec::with_capacity(texts.len());
         let mut total_tokens = 0;
-        for text in texts {
+        for text in &texts {
             let output = self
                 .inference(InferenceHandlerInput {
                     model_id: req.model.clone(),
@@ -827,7 +834,7 @@ impl WorkerChannel for SecureChannelTransport {
                     eat_nonce: None,
                 })
                 .await?;
-            total_tokens += estimate_tokens(&text);
+            total_tokens += estimate_tokens(text.as_str());
             data.push(EmbeddingData {
                 object: "embedding",
                 embedding: output.output_tensor,
@@ -837,7 +844,7 @@ impl WorkerChannel for SecureChannelTransport {
         Ok(EmbeddingResponse {
             object: "list",
             data,
-            model: req.model,
+            model: req.model.clone(),
             usage: Usage {
                 prompt_tokens: total_tokens,
                 completion_tokens: 0,
@@ -883,25 +890,41 @@ fn inference_output_from_result(result: InferenceResult) -> InferenceHandlerOutp
 }
 
 fn normalize_inference_request(
-    req: InferenceHandlerInput,
+    mut req: InferenceHandlerInput,
 ) -> Result<(String, BackendCall), WorkerChannelError> {
     let model_id = req.model_id.clone();
+    let mut input_data = std::mem::take(&mut req.input_data);
     let call = if req.generate {
         BackendCall::Generate {
-            text: String::from_utf8(req.input_data).map_err(|e| {
-                WorkerChannelError::invalid_input(format!("generate input is not UTF-8: {e}"))
-            })?,
+            text: zeroizing_utf8(input_data, "generate")?,
             max_tokens: req.max_tokens.unwrap_or(256),
         }
     } else if req.input_shape.is_some() {
-        BackendCall::Tensor(f32_tensor_from_le_bytes(&req.input_data)?)
+        let tensor = f32_tensor_from_le_bytes(&input_data);
+        input_data.zeroize();
+        BackendCall::Tensor(Zeroizing::new(tensor?))
     } else {
-        BackendCall::Text(String::from_utf8(req.input_data).map_err(|e| {
-            WorkerChannelError::invalid_input(format!("text input is not UTF-8: {e}"))
-        })?)
+        BackendCall::Text(zeroizing_utf8(input_data, "text")?)
     };
 
     Ok((model_id, call))
+}
+
+fn zeroizing_utf8(
+    bytes: Vec<u8>,
+    input_kind: &str,
+) -> Result<Zeroizing<String>, WorkerChannelError> {
+    match String::from_utf8(bytes) {
+        Ok(text) => Ok(Zeroizing::new(text)),
+        Err(error) => {
+            let utf8_error = error.utf8_error();
+            let mut bytes = error.into_bytes();
+            bytes.zeroize();
+            Err(WorkerChannelError::invalid_input(format!(
+                "{input_kind} input is not UTF-8: {utf8_error}"
+            )))
+        }
+    }
 }
 
 fn f32_tensor_from_le_bytes(bytes: &[u8]) -> Result<Vec<f32>, WorkerChannelError> {
@@ -1068,7 +1091,7 @@ mod tests {
                     embedding: vec![1.0, 2.0],
                     index: 0,
                 }],
-                model: req.model,
+                model: req.model.clone(),
                 usage: Usage {
                     prompt_tokens: 1,
                     completion_tokens: 0,
@@ -1371,6 +1394,7 @@ mod tests {
             backend_addr: "127.0.0.1:9000".to_string(),
             default_model: "stage-0".to_string(),
             api_key: None,
+            insecure_no_auth: false,
             host: "127.0.0.1".to_string(),
             port: 4000,
             request_timeout_secs: 120,
@@ -1429,6 +1453,32 @@ mod tests {
             benchmark_mode: Some("development".to_string()),
             eat_nonce: None,
         }
+    }
+
+    #[test]
+    fn normalizing_text_uses_zeroizing_owned_buffer() {
+        let (_, call) = normalize_inference_request(sample_inference_input()).unwrap();
+        match call {
+            BackendCall::Generate { text, max_tokens } => {
+                assert_eq!(text.as_str(), "user: hello");
+                assert_eq!(max_tokens, 16);
+            }
+            _ => panic!("expected generation backend call"),
+        }
+    }
+
+    #[test]
+    fn invalid_utf8_is_rejected_without_echoing_input() {
+        let mut input = sample_inference_input();
+        input.generate = false;
+        input.input_data = vec![0xff, 0xfe];
+        let error = match normalize_inference_request(input) {
+            Ok(_) => panic!("invalid UTF-8 must be rejected"),
+            Err(error) => error,
+        };
+        assert_eq!(error.kind, WorkerErrorKind::InvalidInput);
+        assert!(error.message.contains("not UTF-8"));
+        assert!(!error.message.contains("255"));
     }
 
     fn mock_worker_output(model_id: &str) -> InferenceHandlerOutput {

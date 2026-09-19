@@ -6,6 +6,7 @@ use axum::http::{HeaderMap, HeaderValue, StatusCode};
 use axum::response::{IntoResponse, Json, Response};
 use sha2::{Digest, Sha256};
 use std::time::Instant;
+use zeroize::{Zeroize, Zeroizing};
 
 use ephemeral_ml_client::secure_client::{InferenceHandlerInput, InferenceHandlerOutput};
 use ephemeral_ml_client::InferenceResult;
@@ -318,7 +319,7 @@ pub async fn chat_completions(
     }
 
     // Build prompt from messages (concatenate role: content pairs)
-    let prompt = messages_to_prompt(&req.messages);
+    let prompt = Zeroizing::new(messages_to_prompt(&req.messages));
     let max_tokens = req.max_tokens.unwrap_or(256);
     let model_id = &state.config.default_model;
 
@@ -345,7 +346,7 @@ pub async fn chat_completions(
 
     let elapsed_ms = start.elapsed().as_millis();
 
-    let inference_result = match result {
+    let mut inference_result = match result {
         Ok(r) => inference_result_from_worker_output(r),
         Err(e) => {
             tracing::warn!(
@@ -359,13 +360,14 @@ pub async fn chat_completions(
         }
     };
 
-    let generated_text = inference_result.generated_text.clone().unwrap_or_default();
+    let generated_text =
+        Zeroizing::new(inference_result.generated_text.clone().unwrap_or_default());
 
     // Token estimate: chars/4 is a better approximation for English text than
     // whitespace splitting (GPT tokenizers average ~4 chars/token). This is
     // still an estimate — exact counting would require a tokenizer library.
     let prompt_tokens = estimate_tokens(&prompt);
-    let completion_tokens = estimate_tokens(&generated_text);
+    let completion_tokens = estimate_tokens(generated_text.as_str());
 
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -373,6 +375,7 @@ pub async fn chat_completions(
         .as_secs();
 
     let metadata = build_metadata(&state, &inference_result, &req.model, model_id);
+    zeroize_inference_output(&mut inference_result);
 
     tracing::info!(
         request_id = %request_id,
@@ -401,7 +404,7 @@ pub async fn chat_completions(
             &stream_id,
             &state.config.default_model,
             now,
-            &generated_text,
+            generated_text.as_str(),
             stream_metadata,
             headers,
         );
@@ -417,7 +420,7 @@ pub async fn chat_completions(
             index: 0,
             message: ChatMessage {
                 role: "assistant".to_string(),
-                content: generated_text,
+                content: generated_text.to_string(),
             },
             finish_reason: "stop",
         }],
@@ -512,7 +515,7 @@ pub async fn responses(
     }
 
     // Build prompt from input
-    let prompt = match &req.input {
+    let prompt = Zeroizing::new(match &req.input {
         ResponsesInput::Text(t) => {
             if t.is_empty() {
                 return error_response_with_id(
@@ -556,7 +559,7 @@ pub async fn responses(
             }
             p
         }
-    };
+    });
 
     let max_tokens = req.max_output_tokens.unwrap_or(256);
     let model_id = &state.config.default_model;
@@ -583,7 +586,7 @@ pub async fn responses(
 
     let elapsed_ms = start.elapsed().as_millis();
 
-    let inference_result = match result {
+    let mut inference_result = match result {
         Ok(r) => inference_result_from_worker_output(r),
         Err(e) => {
             tracing::warn!(
@@ -597,10 +600,11 @@ pub async fn responses(
         }
     };
 
-    let generated_text = inference_result.generated_text.clone().unwrap_or_default();
+    let generated_text =
+        Zeroizing::new(inference_result.generated_text.clone().unwrap_or_default());
 
     let prompt_tokens = estimate_tokens(&prompt);
-    let output_tokens = estimate_tokens(&generated_text);
+    let output_tokens = estimate_tokens(generated_text.as_str());
 
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -608,6 +612,7 @@ pub async fn responses(
         .as_secs();
 
     let metadata = build_metadata(&state, &inference_result, &req.model, model_id);
+    zeroize_inference_output(&mut inference_result);
 
     let output_item_id = format!("msg_{}", &request_id[..8]);
 
@@ -622,7 +627,7 @@ pub async fn responses(
             role: "assistant",
             content: vec![ResponsesContent {
                 content_type: "output_text",
-                text: generated_text,
+                text: generated_text.to_string(),
             }],
             status: "completed",
         }],
@@ -693,9 +698,9 @@ pub async fn embeddings(
         return error_response_with_id(StatusCode::BAD_REQUEST, err, &request_id);
     }
 
-    let texts = match &req.input {
-        EmbeddingInput::Single(s) => vec![s.clone()],
-        EmbeddingInput::Multiple(v) => v.clone(),
+    let texts: Vec<Zeroizing<String>> = match &req.input {
+        EmbeddingInput::Single(text) => vec![Zeroizing::new(text.clone())],
+        EmbeddingInput::Multiple(texts) => texts.iter().cloned().map(Zeroizing::new).collect(),
     };
 
     if texts.is_empty() {
@@ -766,7 +771,7 @@ pub async fn embeddings(
 
         let elapsed_ms = start.elapsed().as_millis();
 
-        let inference_result = match result {
+        let mut inference_result = match result {
             Ok(r) => inference_result_from_worker_output(r),
             Err(e) => {
                 tracing::warn!(
@@ -780,7 +785,7 @@ pub async fn embeddings(
             }
         };
 
-        let tokens = estimate_tokens(text);
+        let tokens = estimate_tokens(text.as_str());
         total_tokens += tokens;
 
         data.push(EmbeddingData {
@@ -789,6 +794,7 @@ pub async fn embeddings(
             index: i,
         });
 
+        zeroize_inference_output(&mut inference_result);
         last_result = Some(inference_result);
     }
 
@@ -851,6 +857,13 @@ fn benchmark_request_mode() -> Option<String> {
     match std::env::var("EPHEMERALML_BENCHMARK_MODE").ok().as_deref() {
         Some("development") => Some("development".to_string()),
         _ => None,
+    }
+}
+
+fn zeroize_inference_output(result: &mut InferenceResult) {
+    result.output_tensor.zeroize();
+    if let Some(text) = &mut result.generated_text {
+        text.zeroize();
     }
 }
 
@@ -1338,14 +1351,14 @@ mod tests {
     fn embedding_input_deserializes_single() {
         let json = serde_json::json!({"model": "m", "input": "hello"});
         let req: EmbeddingRequest = serde_json::from_value(json).unwrap();
-        assert!(matches!(req.input, EmbeddingInput::Single(_)));
+        assert!(matches!(&req.input, EmbeddingInput::Single(_)));
     }
 
     #[test]
     fn embedding_input_deserializes_multiple() {
         let json = serde_json::json!({"model": "m", "input": ["a", "b"]});
         let req: EmbeddingRequest = serde_json::from_value(json).unwrap();
-        assert!(matches!(req.input, EmbeddingInput::Multiple(_)));
+        assert!(matches!(&req.input, EmbeddingInput::Multiple(_)));
     }
 
     #[test]
@@ -1403,7 +1416,7 @@ mod tests {
             "input": "hello"
         });
         let req: ResponsesRequest = serde_json::from_value(json).unwrap();
-        assert!(matches!(req.input, ResponsesInput::Text(_)));
+        assert!(matches!(&req.input, ResponsesInput::Text(_)));
     }
 
     #[test]
@@ -1413,7 +1426,7 @@ mod tests {
             "input": [{"role": "user", "content": "hi"}]
         });
         let req: ResponsesRequest = serde_json::from_value(json).unwrap();
-        assert!(matches!(req.input, ResponsesInput::Messages(_)));
+        assert!(matches!(&req.input, ResponsesInput::Messages(_)));
     }
 
     #[test]

@@ -5,6 +5,7 @@
 //! at this gateway via `base_url`.
 
 use serde::{Deserialize, Serialize};
+use zeroize::Zeroize;
 
 // ---------------------------------------------------------------------------
 // Chat Completions
@@ -31,6 +32,25 @@ pub struct ChatCompletionRequest {
     pub tool_choice: Option<serde_json::Value>,
 }
 
+impl Drop for ChatCompletionRequest {
+    fn drop(&mut self) {
+        self.model.zeroize();
+        for message in &mut self.messages {
+            message.role.zeroize();
+            message.content.zeroize();
+        }
+        if let Some(user) = &mut self.user {
+            user.zeroize();
+        }
+        if let Some(tools) = &mut self.tools {
+            zeroize_json_value(tools);
+        }
+        if let Some(tool_choice) = &mut self.tool_choice {
+            zeroize_json_value(tool_choice);
+        }
+    }
+}
+
 #[derive(Deserialize, Serialize, Debug, Clone)]
 pub struct ChatMessage {
     pub role: String,
@@ -48,6 +68,16 @@ pub struct ChatCompletionResponse {
     #[serde(skip_serializing_if = "Option::is_none")]
     #[serde(rename = "_ephemeralml")]
     pub metadata: Option<EphemeralMetadata>,
+}
+
+impl Drop for ChatCompletionResponse {
+    fn drop(&mut self) {
+        self.model.zeroize();
+        for choice in &mut self.choices {
+            choice.message.role.zeroize();
+            choice.message.content.zeroize();
+        }
+    }
 }
 
 #[derive(Serialize, Debug)]
@@ -82,6 +112,30 @@ pub struct ResponsesRequest {
     pub instructions: Option<String>,
 }
 
+impl Drop for ResponsesRequest {
+    fn drop(&mut self) {
+        self.model.zeroize();
+        match &mut self.input {
+            ResponsesInput::Text(text) => text.zeroize(),
+            ResponsesInput::Messages(messages) => {
+                for message in messages {
+                    message.role.zeroize();
+                    message.content.zeroize();
+                }
+            }
+        }
+        if let Some(instructions) = &mut self.instructions {
+            instructions.zeroize();
+        }
+        if let Some(tools) = &mut self.tools {
+            zeroize_json_value(tools);
+        }
+        if let Some(tool_choice) = &mut self.tool_choice {
+            zeroize_json_value(tool_choice);
+        }
+    }
+}
+
 /// Input can be a plain string or an array of message objects.
 #[derive(Deserialize, Debug)]
 #[serde(untagged)]
@@ -108,6 +162,18 @@ pub struct ResponsesResponse {
     #[serde(skip_serializing_if = "Option::is_none")]
     #[serde(rename = "_ephemeralml")]
     pub metadata: Option<EphemeralMetadata>,
+}
+
+impl Drop for ResponsesResponse {
+    fn drop(&mut self) {
+        self.model.zeroize();
+        for output in &mut self.output {
+            output.id.zeroize();
+            for content in &mut output.content {
+                content.text.zeroize();
+            }
+        }
+    }
 }
 
 #[derive(Serialize, Debug)]
@@ -148,6 +214,22 @@ pub struct EmbeddingRequest {
     pub user: Option<String>,
 }
 
+impl Drop for EmbeddingRequest {
+    fn drop(&mut self) {
+        self.model.zeroize();
+        match &mut self.input {
+            EmbeddingInput::Single(text) => text.zeroize(),
+            EmbeddingInput::Multiple(texts) => texts.zeroize(),
+        }
+        if let Some(format) = &mut self.encoding_format {
+            format.zeroize();
+        }
+        if let Some(user) = &mut self.user {
+            user.zeroize();
+        }
+    }
+}
+
 #[derive(Deserialize, Debug)]
 #[serde(untagged)]
 pub enum EmbeddingInput {
@@ -164,6 +246,15 @@ pub struct EmbeddingResponse {
     #[serde(skip_serializing_if = "Option::is_none")]
     #[serde(rename = "_ephemeralml")]
     pub metadata: Option<EphemeralMetadata>,
+}
+
+impl Drop for EmbeddingResponse {
+    fn drop(&mut self) {
+        self.model.zeroize();
+        for item in &mut self.data {
+            item.embedding.zeroize();
+        }
+    }
 }
 
 #[derive(Serialize, Debug)]
@@ -260,6 +351,25 @@ pub struct ErrorBody {
     pub error_type: String,
     pub param: Option<String>,
     pub code: Option<String>,
+}
+
+fn zeroize_json_value(value: &mut serde_json::Value) {
+    match value {
+        serde_json::Value::String(text) => text.zeroize(),
+        serde_json::Value::Array(values) => {
+            for value in values {
+                zeroize_json_value(value);
+            }
+        }
+        serde_json::Value::Object(values) => {
+            let values = std::mem::take(values);
+            for (mut key, mut value) in values {
+                key.zeroize();
+                zeroize_json_value(&mut value);
+            }
+        }
+        serde_json::Value::Null | serde_json::Value::Bool(_) | serde_json::Value::Number(_) => {}
+    }
 }
 
 impl ErrorResponse {

@@ -1,5 +1,7 @@
 #[cfg(feature = "mock")]
 use ephemeral_ml_client::mock::MockSecureClient;
+#[cfg(feature = "gcp")]
+use ephemeral_ml_client::private_file::{path_with_suffix, write_private_file};
 #[cfg(any(feature = "mock", feature = "gcp"))]
 use ephemeral_ml_client::secure_client::SecureClient;
 
@@ -51,8 +53,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         let addr = std::env::var("EPHEMERALML_ENCLAVE_ADDR")
             .unwrap_or_else(|_| "127.0.0.1:9000".to_string());
 
-        let receipt_path = std::env::var("EPHEMERALML_RECEIPT_PATH")
-            .unwrap_or_else(|_| "/tmp/ephemeralml-receipt.json".to_string());
+        let receipt_path = std::path::PathBuf::from(
+            std::env::var("EPHEMERALML_RECEIPT_PATH")
+                .unwrap_or_else(|_| "/tmp/ephemeralml-receipt.json".to_string()),
+        );
         let model_id = std::env::var("EPHEMERALML_GCP_VERIFY_MODEL_ID")
             .unwrap_or_else(|_| "stage-0".to_string());
 
@@ -62,9 +66,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
                 // Save the server's receipt signing public key for offline verification
                 if let Some(pk) = client.server_receipt_signing_key() {
-                    let pk_path = format!("{}.pubkey", receipt_path);
-                    std::fs::write(&pk_path, hex::encode(pk)).ok();
-                    println!("Receipt public key saved to {}", pk_path);
+                    let pk_path = path_with_suffix(&receipt_path, ".pubkey");
+                    let encoded = hex::encode(pk);
+                    if let Err(e) = write_private_file(&pk_path, encoded.as_bytes()) {
+                        eprintln!("Warning: failed to save receipt public key: {}", e);
+                    } else {
+                        println!("Receipt public key saved to {}", pk_path.display());
+                    }
                 }
 
                 // Run inference with dummy input matching MiniLM-L6-v2 (384-dim)
@@ -84,10 +92,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         // Save receipt to disk
                         match serde_json::to_string_pretty(&result.receipt) {
                             Ok(json) => {
-                                if let Err(e) = std::fs::write(&receipt_path, &json) {
+                                if let Err(e) = write_private_file(&receipt_path, json.as_bytes()) {
                                     eprintln!("Warning: failed to save receipt: {}", e);
                                 } else {
-                                    println!("Receipt saved to {}", receipt_path);
+                                    println!("Receipt saved to {}", receipt_path.display());
                                     println!("Receipt ID: {}", result.receipt.receipt_id);
                                 }
                             }
@@ -100,7 +108,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                             match base64::engine::general_purpose::STANDARD.decode(air_b64) {
                                 Ok(cbor_bytes) => {
                                     let cbor_path = "/tmp/ephemeralml-receipt.cbor";
-                                    if let Err(e) = std::fs::write(cbor_path, &cbor_bytes) {
+                                    if let Err(e) = write_private_file(cbor_path, &cbor_bytes) {
                                         eprintln!("Warning: failed to save AIR v1 receipt: {}", e);
                                     } else {
                                         println!("AIR v1 receipt saved to {}", cbor_path);
@@ -122,7 +130,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                 base64::engine::general_purpose::STANDARD.decode(att_b64)
                             {
                                 let att_path = "/tmp/ephemeralml-attestation.bin";
-                                if let Err(e) = std::fs::write(att_path, &att_bytes) {
+                                if let Err(e) = write_private_file(att_path, &att_bytes) {
                                     eprintln!("Warning: failed to save attestation: {}", e);
                                 } else {
                                     println!("Attestation saved to {}", att_path);
@@ -131,7 +139,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         }
                         if let Some(ref manifest_json) = result.model_manifest_json {
                             let manifest_path = "/tmp/ephemeralml-manifest.json";
-                            if let Err(e) = std::fs::write(manifest_path, manifest_json) {
+                            if let Err(e) =
+                                write_private_file(manifest_path, manifest_json.as_bytes())
+                            {
                                 eprintln!("Warning: failed to save manifest: {}", e);
                             } else {
                                 println!("Manifest saved to {}", manifest_path);

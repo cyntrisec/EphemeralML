@@ -1,7 +1,7 @@
 //! Polished demo CLI for EphemeralML confidential inference.
 //!
 //! Usage:
-//!   ephemeralml infer --addr 203.0.113.10:9000 --text "Patient presents with..."
+//!   ephemeralml infer --addr 203.0.113.10:9000 --text "hello"
 //!   ephemeralml infer --addr 127.0.0.1:9000 --file client/demo/radiology-report.txt
 //!   ephemeralml verify-pipeline pipeline-proof-bundle.json --public-key <hex>
 //!   ephemeralml-verify receipt.json --public-key-file receipt.pubkey
@@ -10,6 +10,7 @@ use anyhow::{bail, Context, Result};
 use clap::{Parser, Subcommand};
 use ed25519_dalek::VerifyingKey;
 use ephemeral_ml_client::gcp::{self, GcpArgs, GcpCommand};
+use ephemeral_ml_client::private_file::{path_with_suffix, write_private_file};
 use ephemeral_ml_client::{AttestationReceipt, SecureClient, SecureEnclaveClient};
 use ephemeral_ml_common::receipt_verify::CheckStatus;
 use ephemeral_ml_common::ui::{GhostState, Ui, UiConfig};
@@ -18,6 +19,7 @@ use std::fs;
 use std::io::IsTerminal;
 use std::path::{Path, PathBuf};
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
+use zeroize::Zeroizing;
 
 #[derive(Parser)]
 #[command(
@@ -58,7 +60,8 @@ struct InferArgs {
     #[arg(long)]
     addr: String,
 
-    /// Input text to send for inference
+    /// Input text to send for inference. For sensitive input, prefer --file:
+    /// command-line values may be retained in shell history or process listings.
     #[arg(long, conflicts_with = "file")]
     text: Option<String>,
 
@@ -86,6 +89,11 @@ struct InferArgs {
     /// Must be >= 1.
     #[arg(long, default_value = "1", value_parser = clap::value_parser!(u32).range(1..))]
     count: u32,
+
+    /// Display the first 120 input characters. Off by default to avoid copying
+    /// sensitive prompts into terminal scrollback and captured logs.
+    #[arg(long)]
+    show_input_preview: bool,
 }
 
 #[derive(Parser)]
@@ -154,16 +162,16 @@ async fn main() -> Result<()> {
     }
 }
 
-async fn run_infer(ui: &mut Ui, args: InferArgs) -> Result<()> {
+async fn run_infer(ui: &mut Ui, mut args: InferArgs) -> Result<()> {
     ui.ghost(GhostState::Idle);
 
     // Resolve input text
-    let text = match (&args.text, &args.file) {
-        (Some(t), _) => t.clone(),
+    let text = Zeroizing::new(match (args.text.take(), &args.file) {
+        (Some(text), _) => text,
         (_, Some(path)) => fs::read_to_string(path)
             .with_context(|| format!("Failed to read {}", path.display()))?,
         _ => bail!("Provide either --text or --file"),
-    };
+    });
 
     ui.blank();
     ui.header("EphemeralML Confidential Inference");
@@ -197,21 +205,25 @@ async fn run_infer(ui: &mut Ui, args: InferArgs) -> Result<()> {
 
     // Save public key if available
     if let Some(pk_bytes) = client.server_receipt_signing_key() {
-        let pubkey_path = format!("{}.pubkey", args.receipt.display());
-        fs::write(&pubkey_path, pk_bytes)
-            .with_context(|| format!("Failed to write {}", pubkey_path))?;
+        let pubkey_path = path_with_suffix(&args.receipt, ".pubkey");
+        write_private_file(&pubkey_path, &pk_bytes)
+            .with_context(|| format!("Failed to write {}", pubkey_path.display()))?;
     }
 
-    // Show input summary
+    // Show only a non-sensitive input summary unless the operator explicitly
+    // requests a preview.
     ui.blank();
-    let preview = if text.len() > 120 {
-        format!("{}...", &text[..120])
+    ui.info(&format!("Input: {} bytes (content hidden)", text.len()));
+    if args.show_input_preview {
+        let mut preview: String = text.chars().take(120).collect();
+        if text.chars().count() > 120 {
+            preview.push_str("...");
+        }
+        let preview_display: String = preview.split_whitespace().collect::<Vec<_>>().join(" ");
+        ui.info(&format!("  \"{}\"", preview_display));
     } else {
-        text.clone()
-    };
-    let preview_display: String = preview.split_whitespace().collect::<Vec<_>>().join(" ");
-    ui.info(&format!("Input ({} bytes):", text.len()));
-    ui.info(&format!("  \"{}\"", preview_display));
+        ui.info("  Use --show-input-preview only when terminal output is safe to retain.");
+    }
 
     // Inference loop (--count N sends N requests over the same channel)
     let total_count = args.count as usize;
@@ -312,7 +324,7 @@ async fn run_infer(ui: &mut Ui, args: InferArgs) -> Result<()> {
             // Save receipt as JSON
             let receipt_json = serde_json::to_string_pretty(&result.receipt)
                 .context("Failed to serialize receipt")?;
-            fs::write(&args.receipt, &receipt_json)
+            write_private_file(&args.receipt, receipt_json.as_bytes())
                 .with_context(|| format!("Failed to write {}", args.receipt.display()))?;
             ui.kv("Saved to", &args.receipt.display().to_string());
 
@@ -321,14 +333,14 @@ async fn run_infer(ui: &mut Ui, args: InferArgs) -> Result<()> {
                 use base64::Engine as _;
                 if let Ok(att_bytes) = base64::engine::general_purpose::STANDARD.decode(att_b64) {
                     let att_path = "/tmp/ephemeralml-attestation.bin";
-                    fs::write(att_path, &att_bytes)
+                    write_private_file(att_path, &att_bytes)
                         .with_context(|| format!("Failed to write {}", att_path))?;
                     ui.kv("Attestation", att_path);
                 }
             }
             if let Some(ref manifest_json) = result.model_manifest_json {
                 let manifest_path = "/tmp/ephemeralml-manifest.json";
-                fs::write(manifest_path, manifest_json)
+                write_private_file(manifest_path, manifest_json.as_bytes())
                     .with_context(|| format!("Failed to write {}", manifest_path))?;
                 ui.kv("Manifest", manifest_path);
             }
@@ -355,7 +367,7 @@ async fn run_infer(ui: &mut Ui, args: InferArgs) -> Result<()> {
             if req_i == total_count - 1 {
                 let receipt_json = serde_json::to_string_pretty(&result.receipt)
                     .context("Failed to serialize receipt")?;
-                fs::write(&args.receipt, &receipt_json)
+                write_private_file(&args.receipt, receipt_json.as_bytes())
                     .with_context(|| format!("Failed to write {}", args.receipt.display()))?;
             }
         }
@@ -731,5 +743,37 @@ mod tests {
         assert_eq!(keys.len(), 3);
         assert_eq!(keys[0].to_bytes(), keys[1].to_bytes());
         assert_eq!(keys[1].to_bytes(), keys[2].to_bytes());
+    }
+
+    #[test]
+    fn input_preview_is_opt_in() {
+        let cli = Cli::try_parse_from([
+            "ephemeralml",
+            "infer",
+            "--addr",
+            "127.0.0.1:9000",
+            "--text",
+            "sensitive prompt",
+        ])
+        .expect("parse infer command");
+        let Commands::Infer(args) = cli.command else {
+            panic!("expected infer command");
+        };
+        assert!(!args.show_input_preview);
+
+        let cli = Cli::try_parse_from([
+            "ephemeralml",
+            "infer",
+            "--addr",
+            "127.0.0.1:9000",
+            "--text",
+            "sensitive prompt",
+            "--show-input-preview",
+        ])
+        .expect("parse infer command with preview");
+        let Commands::Infer(args) = cli.command else {
+            panic!("expected infer command");
+        };
+        assert!(args.show_input_preview);
     }
 }

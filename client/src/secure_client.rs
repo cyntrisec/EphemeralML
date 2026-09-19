@@ -10,6 +10,7 @@ pub use ephemeral_ml_common::{InferenceHandlerInput, InferenceHandlerOutput};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use tokio::net::TcpStream;
+use zeroize::{Zeroize, Zeroizing};
 
 #[derive(Deserialize)]
 struct InferenceHandlerError {
@@ -544,6 +545,9 @@ impl SecureClient for SecureEnclaveClient {
         model_id: &str,
         input_tensor: Vec<f32>,
     ) -> Result<InferenceResult> {
+        // Install a drop backstop before any fallible operation so the caller's
+        // owned tensor is wiped even when no channel has been established.
+        let mut input_tensor = Zeroizing::new(input_tensor);
         let channel = self.channel.as_mut().ok_or_else(|| {
             ClientError::Client(EphemeralError::InvalidInput(
                 "Channel not established".to_string(),
@@ -552,6 +556,7 @@ impl SecureClient for SecureEnclaveClient {
 
         // 1. Build plaintext request
         let input_data: Vec<u8> = input_tensor.iter().map(|&x| (x * 255.0) as u8).collect();
+        input_tensor.zeroize();
         let benchmark_mode = benchmark_request_mode();
 
         let input = InferenceHandlerInput {

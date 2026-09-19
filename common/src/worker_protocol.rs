@@ -7,10 +7,11 @@
 use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
+use zeroize::ZeroizeOnDrop;
 
 use crate::AttestationReceipt;
 
-#[derive(Clone, Serialize, Deserialize, Debug)]
+#[derive(Clone, Serialize, Deserialize, Debug, ZeroizeOnDrop)]
 pub struct InferenceHandlerInput {
     pub model_id: String,
     pub input_data: Vec<u8>,
@@ -94,4 +95,16 @@ impl WorkerInferenceError {
 pub enum WorkerResponse {
     Ok(Box<InferenceHandlerOutput>),
     Err(WorkerInferenceError),
+}
+
+#[cfg(test)]
+mod tests {
+    use super::InferenceHandlerInput;
+
+    fn assert_zeroize_on_drop<T: zeroize::ZeroizeOnDrop>() {}
+
+    #[test]
+    fn inference_input_zeroizes_on_drop() {
+        assert_zeroize_on_drop::<InferenceHandlerInput>();
+    }
 }

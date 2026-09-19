@@ -35,8 +35,17 @@ the AWS BYOC stack is the pilot deployment surface.
 | AWS host instance | SecureChannel terminates inside the enclave; host-side relays are byte-forwarding and egress helpers constrained by IAM, KMS, S3 bucket policy, and allowlists |
 | Cloud operator | Cannot access workload memory (TDX), cannot modify the CS image (dm-verity), constrained by CS trust model |
 | Host OS | TDX provides hardware memory encryption; the host OS cannot read CVM memory |
-| Network | End-to-end encrypted channel (HPKE + ChaCha20-Poly1305) between client and enclave |
+| Network | End-to-end encrypted channel (HPKE + ChaCha20-Poly1305) between the SecureChannel client and enclave |
 | Model supply chain | Manifest signature + SHA-256 hash pins the exact model loaded |
+
+Here, **client** means `SecureEnclaveClient` or the customer-controlled local
+`cyntrisec-proxy`. The generic OpenAI-compatible HTTP gateway necessarily
+parses plaintext prompts. If that gateway is deployed on a cloud-side host,
+that host is inside the plaintext trust boundary; HTTPS protects the network
+hop but does not hide prompts from the gateway process or its host operator.
+For the strongest privacy boundary, run `cyntrisec-proxy` on the customer side
+and use its attested SecureChannel to the enclave. Do not describe a remote
+plaintext-terminating gateway as client-to-enclave end-to-end encryption.
 
 ## Complete Evidence Chain
 
@@ -58,6 +67,11 @@ The client receives all three artifacts:
 - `receipt.json` — signed attestation receipt
 - `ephemeralml-attestation.bin` — boot/platform-evidence sidecar bytes
 - `ephemeralml-manifest.json` — model manifest JSON
+
+CLI inference artifacts are written atomically and, on Unix, created with mode
+`0600`. The writer replaces rather than follows a destination symlink. These
+controls reduce accidental local disclosure; callers remain responsible for
+the containing directory, backups, retention, and deletion policy.
 
 The receipt hash proves which sidecar bytes accompanied the receipt; it does not
 by itself prove that those bytes are authentic hardware evidence. AWS Nitro runs
@@ -98,19 +112,20 @@ hardware and cryptographic mechanisms; others are best-effort software measures.
 | CVM memory encryption key destruction | Intel TDX: VM termination destroys the hardware memory encryption key | Hardware guarantee — no software evidence possible |
 | CVM non-restart | `tee-restart-policy=Never` in instance metadata; CS Launcher enforces | Verifiable via instance metadata |
 | DEK zeroization | `Zeroizing<Vec<u8>>` wrapper on decrypted DEK bytes | Source: `enclave/src/model_loader.rs` |
-| Inference buffer cleanup | `zeroize()` on output tensors and response buffers; request bytes are hashed and processed in memory but are not currently independently zeroized as an owned buffer | Source: `enclave/src/server.rs` |
+| Inference buffer cleanup | `zeroize()` on the deserialized request input, output tensors, and response buffers | Source: `enclave/src/server.rs` |
 
 #### Best-effort (software, not independently verifiable)
 
 | What | Limitation | Why |
 |------|-----------|-----|
 | Model weights in memory | Weights are loaded into `candle` tensor storage; no `zeroize` on candle's internal buffers | candle does not expose memory management hooks |
+| Serialized request frame | The parsed request input is zeroized, but the transport frame is held by `bytes::Bytes`; its allocator backing is released on drop and is not independently guaranteed to be overwritten | `bytes::Bytes` does not expose guaranteed in-place zeroization across all ownership states |
 | GPU memory (H100 CC-mode) | NVIDIA CC-mode clears GPU memory on context destroy, but we cannot independently verify this | Depends on NVIDIA firmware correctness |
 | Plaintext in transport buffers | `BytesMut`/`Bytes` from the `bytes` crate use ref-counted allocations that do not implement `Zeroize` | Transport-layer tensors use `Bytes`; wiped where ownership allows |
 | OS page cache / swap | TDX encrypts memory, but the guest OS may page data to encrypted swap | No swap is configured in the CS image, but this is not enforced by EphemeralML |
 | Cloud Logging | CS debug images write container stdout/stderr to Cloud Logging; production images do not | Use `confidential-space` (not `-debug`) image for production |
 | GCS model artifacts | Encrypted model + wrapped DEK persist in GCS after inference | Caller must delete GCS objects if post-inference cleanup is required |
-| Receipt persistence | Receipts are saved to the client filesystem and are not auto-deleted | Receipts are durable per-inference evidence records; they are not a complete audit log by themselves |
+| Receipt persistence | Receipts are saved to the client filesystem with owner-only file mode on Unix and are not auto-deleted | Receipts are durable per-inference evidence records; callers must define retention and backup policy, and receipts are not a complete audit log by themselves |
 
 #### What we do NOT claim
 
@@ -120,8 +135,8 @@ hardware and cryptographic mechanisms; others are best-effort software measures.
 - **GPU memory scrubbing**: NVIDIA H100 CC-mode provides memory isolation and encryption,
   but EphemeralML cannot independently verify that GPU memory is scrubbed on release.
 - **Compiler/allocator residuals**: The Rust allocator (`jemalloc` or system) may retain
-  freed memory in thread-local caches. `zeroize` overwrites the buffer before free, but
-  the allocator may still hold the freed page.
+  freed memory in thread-local caches. `zeroize` overwrites covered buffers before free,
+  but not every framework- or transport-owned copy exposes a zeroization API.
 
 ## Threat Model
 
