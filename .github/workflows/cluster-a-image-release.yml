@@ -314,7 +314,7 @@ jobs:
 
       - name: Build proxy image
         id: build
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: .
           file: deploy/release/images/Dockerfile.proxy
