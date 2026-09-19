@@ -9,7 +9,7 @@ The EphemeralML Verifier API is a hosted HTTP service for verifying attested exe
 | Method | Path | Auth | Description |
 |--------|------|------|-------------|
 | `GET` | `/` | No | Landing page (HTML form) |
-| `GET` | `/health` | No | Liveness probe |
+| `GET` | `/health` | No | Liveness probe with version, build SHA, and Cloud Run revision |
 | `GET` | `/api/v1/samples/valid` | No | Fresh AIR v1 sample receipt |
 | `GET` | `/api/v1/samples/legacy` | No | Fresh legacy sample receipt |
 | `POST` | `/api/v1/verify` | Depends on mode | Verify receipt (JSON body) |
@@ -37,6 +37,18 @@ The verify endpoints require an API key only in `secured-api` mode. In `public-t
 - If neither mode nor `--insecure-no-auth`: **startup fails** with instructions (fail-closed).
 
 Health (`/health`), landing page (`/`), and sample endpoints (`/api/v1/samples/*`) never require auth.
+
+The health response identifies the exact deployed source and runtime revision:
+
+```json
+{
+  "status": "ok",
+  "service": "ephemeralml-verifier",
+  "version": "0.2.9",
+  "build_sha": "<40-character-git-sha>",
+  "cloud_revision": "trust-center-git-<short-sha>"
+}
+```
 
 ## Rate Limiting
 
@@ -76,6 +88,7 @@ This limiter is a local guardrail, not a replacement for edge abuse controls. Pu
   "expected_model_hash_hex": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
   "expected_request_hash_hex": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
   "expected_response_hash_hex": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+  "expected_nonce_hex": "deadbeefcafebabe",
   "expected_security_mode": "production",
   "max_age_secs": 3600,
   "measurement_type": "any",
@@ -92,6 +105,7 @@ This limiter is a local guardrail, not a replacement for edge abuse controls. Pu
 | `expected_model_hash_hex` | string | No | skip | Expected AIR `model_hash` (32-byte hex) |
 | `expected_request_hash_hex` | string | No | skip | Expected AIR `request_hash` (32-byte hex) |
 | `expected_response_hash_hex` | string | No | skip | Expected AIR `response_hash` (32-byte hex) |
+| `expected_nonce_hex` | string | No | skip | Expected AIR `eat_nonce` (8–64 bytes encoded as hex) |
 | `expected_security_mode` | string | No | skip | Expected AIR `security_mode`; this production verifier accepts only `production` |
 | `max_age_secs` | u64 | No | `0` (skip) | Max receipt age |
 | `measurement_type` | string | No | `"any"` | Expected measurement type |
@@ -99,7 +113,7 @@ This limiter is a local guardrail, not a replacement for edge abuse controls. Pu
 | `expected_image_digest` | string | No | skip | e.g. `"sha256:abc123"` |
 | `expected_pcr0_hex` / `expected_pcr1_hex` / `expected_pcr2_hex` | string | No | skip | Expected Nitro runtime measurements; must be supplied together |
 
-**Response (200) — Trust Center response:**
+**Response (200) — Verification Center response:**
 
 ```json
 {
@@ -242,7 +256,7 @@ curl -X POST http://localhost:8080/api/v1/verify \
 
 ## Production Deployment
 
-### Public trust center
+### Public Verification Center
 
 ```bash
 export EPHEMERALML_VERIFIER_RATE_LIMIT=60
@@ -269,13 +283,25 @@ ephemeralml-verifier \
 
 For `verify.cyntrisec.com`, deploy through a no-traffic candidate first, smoke-test the tagged URL, shift traffic only after a clean smoke test, then clear the tag.
 
+The supported deployment script performs the complete guarded sequence: a
+Cloud Build with verified provenance, HIGH/CRITICAL Trivy gate, SBOM export,
+immutable-digest deployment, candidate proxy tests, all 19 AIR vectors, build
+drift verification, promotion, and automatic rollback on a failed post-promotion
+gate:
+
+```bash
+bash scripts/gcp/deploy-trust-center.sh PROJECT_ID us-central1
+```
+
 Recommended public posture until an external load balancer and Cloud Armor are added:
 
 - Use a dedicated runtime service account with no project-level IAM roles.
 - Disable the default `run.app` URL after the custom domain is verified.
 - Keep `max-instances=1` if relying on the in-process rate limiter.
 - Keep low concurrency and timeout values, for example `concurrency=20` and `timeout=30`.
-- Treat Cloud Run platform request logs as operational metadata that may include client IP, path, status, and trace fields.
+- Treat Cloud Run platform request logs as operational metadata that includes client IP, path, user agent, request/response sizes, status, latency, and trace fields. Request bodies are not included; the current `_Default` log bucket retains this metadata for 30 days.
+- Keep the public HTML self-contained: do not automatically load third-party fonts, scripts, analytics, or images.
+- Keep an HTTPS uptime check and alert policy on `/health`; the scheduled GitHub workflow separately exercises the full receipt and drift gates.
 
 Example hardening commands:
 

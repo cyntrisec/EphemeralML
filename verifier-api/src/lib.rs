@@ -185,9 +185,9 @@ fn build_router_inner(cors: CorsLayer, state: AppState) -> Router {
             axum::http::header::CONTENT_SECURITY_POLICY,
             HeaderValue::from_static(
                 "default-src 'self'; script-src 'self' 'unsafe-inline'; \
-                 style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; \
-                 font-src https://fonts.gstatic.com; \
-                 img-src 'self' https://cyntrisec.com; \
+                 style-src 'self' 'unsafe-inline'; \
+                 font-src 'self'; \
+                 img-src 'self' data:; \
                  connect-src 'self'; \
                  object-src 'none'; base-uri 'none'; form-action 'self'; \
                  frame-ancestors 'none'",

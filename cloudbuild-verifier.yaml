@@ -1,0 +1,64 @@
+# Reproducible, scanned build for the public Verification Center image.
+#
+# Example:
+#   gcloud builds submit --config=cloudbuild-verifier.yaml \
+#     --substitutions=_GIT_SHA="$(git rev-parse HEAD)",_IMAGE="REGION-docker.pkg.dev/PROJECT/REPOSITORY/trust-center:TAG" .
+
+steps:
+  - id: build
+    name: gcr.io/cloud-builders/docker
+    args:
+      - build
+      - --build-arg
+      - CYNTRISEC_BUILD_SHA=${_GIT_SHA}
+      - --file
+      - Dockerfile.verifier
+      - --tag
+      - ${_IMAGE}
+      - .
+
+  # Trivy is pinned to the linux/amd64 manifest for v0.74.0. Fail the build
+  # on any HIGH or CRITICAL OS/application vulnerability, including unfixed
+  # findings. Cargo dependencies are also covered by the repository audit job.
+  - id: vulnerability-scan
+    name: aquasec/trivy@sha256:ee940acbf1f58ebadb42d01434ce4609530bf1b52536afbd1eee66cd7123c5c9
+    entrypoint: trivy
+    args:
+      - image
+      - --cache-dir=/workspace/.trivy-cache
+      - --exit-code=1
+      - --severity=HIGH,CRITICAL
+      - --scanners=vuln
+      - --no-progress
+      - ${_IMAGE}
+
+  - id: sbom
+    name: aquasec/trivy@sha256:ee940acbf1f58ebadb42d01434ce4609530bf1b52536afbd1eee66cd7123c5c9
+    entrypoint: trivy
+    args:
+      - image
+      - --cache-dir=/workspace/.trivy-cache
+      - --format=cyclonedx
+      - --output=/workspace/trust-center-sbom-${_GIT_SHA}.cdx.json
+      - --no-progress
+      - ${_IMAGE}
+
+images:
+  - ${_IMAGE}
+
+artifacts:
+  objects:
+    location: gs://${PROJECT_ID}_cloudbuild/trust-center/sbom/${_GIT_SHA}/
+    paths:
+      - trust-center-sbom-${_GIT_SHA}.cdx.json
+
+options:
+  machineType: E2_HIGHCPU_8
+  dynamicSubstitutions: true
+  requestedVerifyOption: VERIFIED
+
+substitutions:
+  _GIT_SHA: unknown
+  _IMAGE: us-central1-docker.pkg.dev/${PROJECT_ID}/cloud-run-source-deploy/trust-center:manual
+
+timeout: 1800s

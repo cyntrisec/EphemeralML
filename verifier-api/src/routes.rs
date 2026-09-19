@@ -19,9 +19,15 @@ pub async fn aws_native_poc_evidence() -> Html<&'static str> {
     Html(AWS_NATIVE_POC_HTML)
 }
 
-/// `GET /health` — liveness probe.
+/// `GET /health` — liveness probe with immutable build identity.
 pub async fn health() -> Json<serde_json::Value> {
-    Json(serde_json::json!({"status": "ok"}))
+    Json(serde_json::json!({
+        "status": "ok",
+        "service": "ephemeralml-verifier",
+        "version": env!("CARGO_PKG_VERSION"),
+        "build_sha": option_env!("CYNTRISEC_BUILD_SHA").unwrap_or("unknown"),
+        "cloud_revision": std::env::var("K_REVISION").ok(),
+    }))
 }
 
 /// `POST /api/v1/verify` — verify a receipt from JSON body.

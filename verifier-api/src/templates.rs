@@ -9,10 +9,7 @@ pub const LANDING_HTML: &str = r##"<!DOCTYPE html>
   <meta property="og:description" content="Verify AIR v1 and legacy receipts from confidential AI inference. Checks signatures, receipt structure, and optional caller-supplied policy bindings."/>
   <meta property="og:type" content="website"/>
   <meta name="theme-color" content="#000000"/>
-  <link rel="icon" href="https://cyntrisec.com/logo-mark-64.png" type="image/png"/>
   <style>
-    @import url("https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&display=swap");
-
     *{margin:0;padding:0;box-sizing:border-box;font-variant-ligatures:none}
     :root{
       --bg:#000;
@@ -34,7 +31,7 @@ pub const LANDING_HTML: &str = r##"<!DOCTYPE html>
       --red-dim:rgba(255,90,90,.10);
       --amber:#ffb84a;
       --amber-dim:rgba(255,184,74,.10);
-      --font:"IBM Plex Mono","Menlo","Monaco",monospace;
+      --font:ui-monospace,"SFMono-Regular","Cascadia Code","Roboto Mono","Menlo","Monaco","Consolas","Liberation Mono",monospace;
       --max:1200px;
       --pad:20px;
     }
@@ -138,7 +135,16 @@ pub const LANDING_HTML: &str = r##"<!DOCTYPE html>
       letter-spacing:.18em;
       text-transform:uppercase;
     }
-    .brand img{width:20px;height:20px;display:block}
+    .brand-mark{
+      width:20px;
+      height:20px;
+      display:grid;
+      place-items:center;
+      border:1px solid var(--ink);
+      color:var(--ink);
+      font:700 11px/1 var(--font);
+      letter-spacing:0;
+    }
     .brand em{
       font-style:normal;
       font-weight:500;
@@ -579,7 +585,7 @@ pub const LANDING_HTML: &str = r##"<!DOCTYPE html>
 <header>
   <div class="hdr">
     <a class="brand" href="https://cyntrisec.com">
-      <img src="https://cyntrisec.com/logo-ikeda.svg" alt="" width="20" height="20"/>
+      <span class="brand-mark" aria-hidden="true">C</span>
       <span>CYNTRISEC <em>// VERIFICATION CENTER</em></span>
     </a>
     <nav>
@@ -713,7 +719,7 @@ pub const LANDING_HTML: &str = r##"<!DOCTYPE html>
 
   <div class="privacy">
     <strong>Privacy:</strong>
-    Uploaded receipts are processed in memory and are not stored by the verifier application. No app analytics or tracking scripts are used. The hosted Cloud Run service may emit minimal platform request metadata such as path, status, trace ID, and client IP under the project logging policy. Source: <a href="https://github.com/cyntrisec/EphemeralML">github.com/cyntrisec/EphemeralML</a>
+    Uploaded receipts are processed in memory and are not persisted by the verifier application. Cloud Run request logs contain metadata such as path, status, trace ID, user agent, request size, and client IP; they do not contain request bodies and are retained for 30 days. This is not a proof of memory zeroization or deletion. No app analytics, tracking scripts, or third-party page assets are used. Source: <a href="https://github.com/cyntrisec/EphemeralML">github.com/cyntrisec/EphemeralML</a>
   </div>
 
   <footer>
@@ -1032,10 +1038,7 @@ pub const AWS_NATIVE_POC_HTML: &str = r##"<!DOCTYPE html>
   <meta name="description" content="Redacted AWS Nitro Verification Center evidence packet. Runtime Passport and Execution Report from the 2026-05-03 internal PoC run. Internal PoC, not production buyer evidence."/>
   <meta name="robots" content="noindex"/>
   <meta name="theme-color" content="#000000"/>
-  <link rel="icon" href="https://cyntrisec.com/logo-mark-64.png" type="image/png"/>
   <style>
-    @import url("https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&display=swap");
-
     *{margin:0;padding:0;box-sizing:border-box;font-variant-ligatures:none}
     :root{
       --bg:#000;
@@ -1057,7 +1060,7 @@ pub const AWS_NATIVE_POC_HTML: &str = r##"<!DOCTYPE html>
       --red-dim:rgba(255,90,90,.10);
       --amber:#ffb84a;
       --amber-dim:rgba(255,184,74,.12);
-      --font:"IBM Plex Mono","Menlo","Monaco",monospace;
+      --font:ui-monospace,"SFMono-Regular","Cascadia Code","Roboto Mono","Menlo","Monaco","Consolas","Liberation Mono",monospace;
       --max:1200px;
       --pad:20px;
     }
@@ -1159,7 +1162,16 @@ pub const AWS_NATIVE_POC_HTML: &str = r##"<!DOCTYPE html>
       letter-spacing:.18em;
       text-transform:uppercase;
     }
-    .brand img{width:20px;height:20px;display:block}
+    .brand-mark{
+      width:20px;
+      height:20px;
+      display:grid;
+      place-items:center;
+      border:1px solid var(--ink);
+      color:var(--ink);
+      font:700 11px/1 var(--font);
+      letter-spacing:0;
+    }
     .brand em{
       font-style:normal;
       font-weight:500;
@@ -1527,7 +1539,7 @@ pub const AWS_NATIVE_POC_HTML: &str = r##"<!DOCTYPE html>
 <header>
   <div class="hdr">
     <a class="brand" href="https://cyntrisec.com">
-      <img src="https://cyntrisec.com/logo-ikeda.svg" alt="" width="20" height="20"/>
+      <span class="brand-mark" aria-hidden="true">C</span>
       <span>CYNTRISEC <em>// VERIFICATION CENTER</em></span>
     </a>
     <nav>

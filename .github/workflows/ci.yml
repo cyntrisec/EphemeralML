@@ -212,7 +212,9 @@ jobs:
       - uses: actions/checkout@v6
       - name: Syntax check
         run: |
-          bash -n scripts/lib/ui.sh scripts/gcp/*.sh
+          bash -n scripts/lib/ui.sh scripts/gcp/*.sh \
+            scripts/trust-center-conformance.sh \
+            scripts/trust-center-drift-check.sh
           if compgen -G "scripts/security/*.sh" > /dev/null; then
             bash -n scripts/security/*.sh
           fi
@@ -225,6 +227,10 @@ jobs:
           fi
       - name: ShellCheck (gcp scripts, advisory)
         run: shellcheck scripts/gcp/*.sh || true
+      - name: ShellCheck (Verification Center scripts)
+        run: |
+          shellcheck scripts/trust-center-conformance.sh
+          shellcheck scripts/trust-center-drift-check.sh
       - name: Deploy metadata regression test
         run: bash scripts/test_deploy_metadata.sh
 

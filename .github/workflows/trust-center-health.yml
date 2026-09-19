@@ -1,0 +1,32 @@
+name: Verification Center Health
+
+on:
+  schedule:
+    - cron: "23 */6 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: verification-center-health
+  cancel-in-progress: true
+
+jobs:
+  live-health:
+    name: Live smoke, AIR vectors, and deployment drift
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Smoke test
+        run: bash scripts/smoke-test.sh https://verify.cyntrisec.com
+
+      - name: AIR v1 live conformance
+        run: bash scripts/trust-center-conformance.sh https://verify.cyntrisec.com
+
+      - name: Deployment drift
+        run: bash scripts/trust-center-drift-check.sh https://verify.cyntrisec.com

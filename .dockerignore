@@ -6,6 +6,9 @@ test_assets/
 .github/
 .terraform/
 .claude/
+.env
+.env.*
+keys/
 benchmark_results*/
 docs/
 demo-artifacts/

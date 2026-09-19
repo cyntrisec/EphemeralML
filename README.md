@@ -12,7 +12,7 @@ In production hardware deployments, inference runs inside a hardware-isolated TE
 
 ---
 
-**[cyntrisec.com](https://cyntrisec.com)** · **[Docs](https://cyntrisec.com/docs)** · **[Trust Center](https://verify.cyntrisec.com)** · **[AIR v1 Spec](spec/v1/README.md)**
+**[cyntrisec.com](https://cyntrisec.com)** · **[Docs](https://cyntrisec.com/docs)** · **[Verification Center](https://verify.cyntrisec.com)** · **[AIR v1 Spec](spec/v1/README.md)**
 
 ---
 

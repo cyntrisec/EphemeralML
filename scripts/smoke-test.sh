@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Trust Center Smoke Test
+# Verification Center Smoke Test
 #
 # Usage:
 #   bash scripts/smoke-test.sh                                          # Test live Cloud Run
@@ -44,7 +44,7 @@ check_json_field() {
 # ── Tests ────────────────────────────────────────────────
 
 echo
-echo "  Cyntrisec Trust Center Smoke Test"
+echo "  Cyntrisec Verification Center Smoke Test"
 echo "  Target: $BASE_URL"
 echo "  ──────────────────────────────────────"
 echo
@@ -54,17 +54,28 @@ check_status "Landing page" "$BASE_URL/" "200"
 echo -n "  "
 LANDING=$(curl -s --max-time 10 "$BASE_URL/" 2>/dev/null || echo "")
 if [ -n "$LANDING" ] \
-    && [[ "$LANDING" == *"Cloud Run service may emit minimal platform request metadata"* ]] \
+    && [[ "$LANDING" == *"retained for 30 days"* ]] \
+    && [[ "$LANDING" == *"they do not contain request bodies"* ]] \
     && [[ "$LANDING" != *"discarded within minutes"* ]]; then
-    pass "Privacy copy — platform request logging disclosed, stale IP-discard claim absent"
+    pass "Privacy copy — metadata fields and 30-day retention disclosed"
 else
-    fail "Privacy copy — expected platform logging disclosure and no stale IP-discard claim"
+    fail "Privacy copy — expected body exclusion and 30-day metadata retention disclosure"
+fi
+echo -n "  "
+if [[ "$LANDING" != *"fonts.googleapis.com"* ]] \
+    && [[ "$LANDING" != *'src="https://'* ]] \
+    && [[ "$LANDING" == *"No app analytics, tracking scripts, or third-party page assets are used"* ]]; then
+    pass "Privacy boundary — no automatically loaded third-party page assets"
+else
+    fail "Privacy boundary — unexpected third-party page asset or disclosure mismatch"
 fi
 echo -n "  "
 HEADERS=$(curl -sS -D - -o /dev/null --max-time 10 "$BASE_URL/" 2>/dev/null || echo "")
 if [[ "$HEADERS" == *"object-src 'none'"* ]] \
     && [[ "$HEADERS" == *"base-uri 'none'"* ]] \
-    && [[ "$HEADERS" == *"form-action 'self'"* ]]; then
+    && [[ "$HEADERS" == *"form-action 'self'"* ]] \
+    && [[ "$HEADERS" == *"font-src 'self'"* ]] \
+    && [[ "$HEADERS" != *"fonts.googleapis.com"* ]]; then
     pass "Security headers — hardened CSP directives present"
 else
     fail "Security headers — expected object-src/base-uri/form-action CSP directives"
@@ -97,6 +108,7 @@ echo -n "  "
 SAMPLE=$(curl -s --max-time 10 "$BASE_URL/api/v1/samples/valid" 2>/dev/null)
 B64=$(echo "$SAMPLE" | jq -r '.receipt_base64' 2>/dev/null)
 KEY=$(echo "$SAMPLE" | jq -r '.public_key' 2>/dev/null)
+AIR_RESULT="{}"
 
 if [ -z "$B64" ] || [ "$B64" = "null" ] || [ -z "$KEY" ] || [ "$KEY" = "null" ]; then
     fail "AIR v1 verify — could not fetch sample"
@@ -104,6 +116,7 @@ else
     RESULT=$(curl -s --max-time 10 -X POST "$BASE_URL/api/v1/verify" \
         -H "Content-Type: application/json" \
         -d "{\"receipt\": \"$B64\", \"public_key\": \"$KEY\"}" 2>/dev/null)
+    AIR_RESULT="$RESULT"
     VERIFIED=$(echo "$RESULT" | jq -r '.verified' 2>/dev/null)
     FORMAT=$(echo "$RESULT" | jq -r '.format' 2>/dev/null)
     if [ "$VERIFIED" = "true" ] && [ "$FORMAT" = "air_v1" ]; then
@@ -111,6 +124,20 @@ else
     else
         fail "AIR v1 verify — verified=$VERIFIED, format=$FORMAT"
     fi
+fi
+
+# 5b. AIR-local must not be presented as overall confidential-AI provenance.
+echo -n "  "
+ASSURANCE=$(echo "$AIR_RESULT" | jq -r '.assurance_level' 2>/dev/null)
+TEE_PROVENANCE=$(echo "$AIR_RESULT" | jq -r '.tee_provenance_verified' 2>/dev/null)
+OVERALL_CONFIDENTIAL_AI=$(echo "$AIR_RESULT" | jq -r '.verdict_matrix.overall_confidential_ai.status' 2>/dev/null)
+if [ "$ASSURANCE" = "air_local" ] \
+    && [ "$TEE_PROVENANCE" = "false" ] \
+    && [ "$OVERALL_CONFIDENTIAL_AI" != "pass" ] \
+    && [ "$OVERALL_CONFIDENTIAL_AI" != "null" ]; then
+    pass "Assurance UX — AIR-local is distinct from confidential-AI provenance"
+else
+    fail "Assurance UX — assurance=$ASSURANCE, tee=$TEE_PROVENANCE, overall=$OVERALL_CONFIDENTIAL_AI"
 fi
 
 # 6. Tamper detection

@@ -1,40 +1,36 @@
-FROM rust:1-bookworm AS builder
+FROM rust:1.95.0-bookworm@sha256:4c2fd73ef19c5ef9d54bee03b06b2839a392604fbfcd578ed948b71b37c1d7fb AS builder
 WORKDIR /build
+
+ARG CYNTRISEC_BUILD_SHA=unknown
+ENV CYNTRISEC_BUILD_SHA=${CYNTRISEC_BUILD_SHA}
 
 # Copy workspace root files
 COPY Cargo.toml Cargo.lock ./
 
-# Copy only the crates needed for verifier-api.
+# Copy the verifier dependency graph first.
 COPY common/ common/
 COPY client/ client/
 COPY verifier-api/ verifier-api/
 
-# Create stub crates for workspace members that are excluded from context
-# so Cargo can resolve the workspace without their source
-RUN mkdir -p host/src enclave/src gateway-api/src compliance/src \
-    ephemeralml-doctor/src ephemeralml-smoke-test/src \
-    && echo 'fn main() {}' > host/src/main.rs \
-    && echo 'fn main() {}' > enclave/src/main.rs \
-    && echo 'fn main() {}' > gateway-api/src/main.rs \
-    && echo 'fn main() {}' > compliance/src/main.rs \
-    && echo 'fn main() {}' > ephemeralml-doctor/src/main.rs \
-    && echo 'fn main() {}' > ephemeralml-smoke-test/src/main.rs
+# Cargo validates every workspace member before building a selected package.
+# Use the real manifests and sources so --locked verifies the committed lockfile
+# instead of silently resolving against synthetic workspace packages.
+COPY host/ host/
+COPY enclave/ enclave/
+COPY gateway-api/ gateway-api/
+COPY compliance/ compliance/
+COPY ephemeralml-doctor/ ephemeralml-doctor/
+COPY ephemeralml-smoke-test/ ephemeralml-smoke-test/
 
-# Copy stub Cargo.tomls for missing workspace members
-# These just need [package] name and version to satisfy the workspace resolver
-RUN for crate in host enclave gateway-api compliance ephemeralml-doctor ephemeralml-smoke-test; do \
-    if [ ! -f "$crate/Cargo.toml" ]; then \
-        echo "[package]" > "$crate/Cargo.toml" \
-        && echo "name = \"ephemeral-ml-$crate\"" >> "$crate/Cargo.toml" \
-        && echo "version = \"0.1.0\"" >> "$crate/Cargo.toml" \
-        && echo "edition = \"2021\"" >> "$crate/Cargo.toml"; \
-    fi; \
-done
+RUN cargo build --release --locked -p ephemeralml-verifier-api
 
-RUN cargo build --release -p ephemeralml-verifier-api
-
-FROM debian:bookworm-slim
+FROM debian:bookworm-slim@sha256:f3034a6ec3c1205360777c4aae76234998866ad18806ae62b63a3f84ccad782b
+ARG CYNTRISEC_BUILD_SHA=unknown
+LABEL org.opencontainers.image.title="Cyntrisec Verification Center" \
+      org.opencontainers.image.source="https://github.com/cyntrisec/EphemeralML" \
+      org.opencontainers.image.revision="${CYNTRISEC_BUILD_SHA}"
 RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates && rm -rf /var/lib/apt/lists/*
 COPY --from=builder /build/target/release/ephemeralml-verifier /app/ephemeralml-verifier
+USER 65532:65532
 EXPOSE 8080
 ENTRYPOINT ["/app/ephemeralml-verifier"]

@@ -135,6 +135,9 @@ async fn test_health() {
     assert_eq!(resp.status(), 200);
     let body: serde_json::Value = resp.json().await.unwrap();
     assert_eq!(body["status"], "ok");
+    assert_eq!(body["service"], "ephemeralml-verifier");
+    assert_eq!(body["version"], env!("CARGO_PKG_VERSION"));
+    assert!(body["build_sha"].as_str().is_some());
 }
 
 #[tokio::test]
