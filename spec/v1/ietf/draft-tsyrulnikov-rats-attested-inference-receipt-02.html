@@ -13,7 +13,9 @@ per the Entity Attestation Token (EAT) framework. An AIR receipt
 binds model identity, input/output hashes, attestation-linked
 metadata, and operational telemetry into a single signed artifact
 suitable for independent third-party verification of a confidential
-AI inference event. 
+AI inference. An AIR receipt is Attester-signed Evidence, not an
+appraisal verdict: a RATS Verifier must appraise the referenced platform
+attestation before the receipt establishes TEE provenance.
        AIR v1 targets single-inference receipts emitted by workloads running
 inside hardware-isolated Trusted Execution Environments (TEEs). AIR
 is attestation-linked: it carries measurements and a hash reference to
@@ -1240,11 +1242,11 @@ li > p:last-of-type:only-child {
 <thead><tr>
 <td class="left">Internet-Draft</td>
 <td class="center">AIR v1</td>
-<td class="right">May 2026</td>
+<td class="right">July 2026</td>
 </tr></thead>
 <tfoot><tr>
 <td class="left">Tsyrulnikov</td>
-<td class="center">Expires 23 November 2026</td>
+<td class="center">Expires 6 January 2027</td>
 <td class="right">[Page]</td>
 </tr></tfoot>
 </table>
@@ -1257,12 +1259,12 @@ li > p:last-of-type:only-child {
 <dd class="internet-draft">draft-tsyrulnikov-rats-attested-inference-receipt-02</dd>
 <dt class="label-published">Published:</dt>
 <dd class="published">
-<time datetime="2026-05-22" class="published">22 May 2026</time>
+<time datetime="2026-07-05" class="published">5 July 2026</time>
     </dd>
 <dt class="label-intended-status">Intended Status:</dt>
 <dd class="intended-status">Informational</dd>
 <dt class="label-expires">Expires:</dt>
-<dd class="expires"><time datetime="2026-11-23">23 November 2026</time></dd>
+<dd class="expires"><time datetime="2027-01-06">6 January 2027</time></dd>
 <dt class="label-authors">Author:</dt>
 <dd class="authors">
 <div class="author">
@@ -1281,7 +1283,9 @@ per the Entity Attestation Token (EAT) framework. An AIR receipt
 binds model identity, input/output hashes, attestation-linked
 metadata, and operational telemetry into a single signed artifact
 suitable for independent third-party verification of a confidential
-AI inference event.<a href="#section-abstract-1" class="pilcrow">¶</a></p>
+AI inference. An AIR receipt is Attester-signed Evidence, not an
+appraisal verdict: a RATS Verifier must appraise the referenced platform
+attestation before the receipt establishes TEE provenance.<a href="#section-abstract-1" class="pilcrow">¶</a></p>
 <p id="section-abstract-2">AIR v1 targets single-inference receipts emitted by workloads running
 inside hardware-isolated Trusted Execution Environments (TEEs). AIR
 is attestation-linked: it carries measurements and a hash reference to
@@ -1313,7 +1317,7 @@ claim or platform profiles are out of scope.<a href="#section-abstract-2" class=
         time. It is inappropriate to use Internet-Drafts as reference
         material or to cite them other than as "work in progress."<a href="#section-boilerplate.1-3" class="pilcrow">¶</a></p>
 <p id="section-boilerplate.1-4">
-        This Internet-Draft will expire on 23 November 2026.<a href="#section-boilerplate.1-4" class="pilcrow">¶</a></p>
+        This Internet-Draft will expire on 6 January 2027.<a href="#section-boilerplate.1-4" class="pilcrow">¶</a></p>
 </section>
 </div>
 <div id="copyright">
@@ -1492,135 +1496,155 @@ claim or platform profiles are out of scope.<a href="#section-abstract-2" class=
                 <p id="section-toc.1-1.9.2.1.1"><a href="#section-9.1" class="auto internal xref">9.1</a>.  <a href="#name-draft-messous-eat-ai" class="internal xref">draft-messous-eat-ai</a></p>
 </li>
               <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.9.2.2">
-                <p id="section-toc.1-1.9.2.2.1"><a href="#section-9.2" class="auto internal xref">9.2</a>.  <a href="#name-scitt" class="internal xref">SCITT</a></p>
+                <p id="section-toc.1-1.9.2.2.1"><a href="#section-9.2" class="auto internal xref">9.2</a>.  <a href="#name-concurrent-ai-attestation-w" class="internal xref">Concurrent AI-Attestation Work</a></p>
 </li>
               <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.9.2.3">
-                <p id="section-toc.1-1.9.2.3.1"><a href="#section-9.3" class="auto internal xref">9.3</a>.  <a href="#name-rats-architecture" class="internal xref">RATS Architecture</a></p>
+                <p id="section-toc.1-1.9.2.3.1"><a href="#section-9.3" class="auto internal xref">9.3</a>.  <a href="#name-scitt" class="internal xref">SCITT</a></p>
+</li>
+              <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.9.2.4">
+                <p id="section-toc.1-1.9.2.4.1"><a href="#section-9.4" class="auto internal xref">9.4</a>.  <a href="#name-rats-architecture" class="internal xref">RATS Architecture</a></p>
 </li>
             </ul>
 </li>
           <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.10">
-            <p id="section-toc.1-1.10.1"><a href="#section-10" class="auto internal xref">10</a>. <a href="#name-security-considerations" class="internal xref">Security Considerations</a></p>
+            <p id="section-toc.1-1.10.1"><a href="#section-10" class="auto internal xref">10</a>. <a href="#name-future-profile-candidates" class="internal xref">Future Profile Candidates</a></p>
 <ul class="compact toc ulBare ulEmpty">
 <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.10.2.1">
-                <p id="section-toc.1-1.10.2.1.1"><a href="#section-10.1" class="auto internal xref">10.1</a>.  <a href="#name-trust-assumptions" class="internal xref">Trust Assumptions</a></p>
+                <p id="section-toc.1-1.10.2.1.1"><a href="#section-10.1" class="auto internal xref">10.1</a>.  <a href="#name-decoding-and-sampling-param" class="internal xref">Decoding and Sampling Parameters</a></p>
 </li>
               <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.10.2.2">
-                <p id="section-toc.1-1.10.2.2.1"><a href="#section-10.2" class="auto internal xref">10.2</a>.  <a href="#name-receipt-integrity" class="internal xref">Receipt Integrity</a></p>
-</li>
-              <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.10.2.3">
-                <p id="section-toc.1-1.10.2.3.1"><a href="#section-10.3" class="auto internal xref">10.3</a>.  <a href="#name-algorithm-pinning" class="internal xref">Algorithm Pinning</a></p>
-</li>
-              <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.10.2.4">
-                <p id="section-toc.1-1.10.2.4.1"><a href="#section-10.4" class="auto internal xref">10.4</a>.  <a href="#name-replay-protection" class="internal xref">Replay Protection</a></p>
-<ul class="compact toc ulBare ulEmpty">
-<li class="compact toc ulBare ulEmpty" id="section-toc.1-1.10.2.4.2.1">
-                    <p id="section-toc.1-1.10.2.4.2.1.1"><a href="#section-10.4.1" class="auto internal xref">10.4.1</a>.  <a href="#name-freshness-boundary" class="internal xref">Freshness Boundary</a></p>
-</li>
-                </ul>
-</li>
-              <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.10.2.5">
-                <p id="section-toc.1-1.10.2.5.1"><a href="#section-10.5" class="auto internal xref">10.5</a>.  <a href="#name-model-hash-limitations" class="internal xref">Model Hash Limitations</a></p>
-</li>
-              <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.10.2.6">
-                <p id="section-toc.1-1.10.2.6.1"><a href="#section-10.6" class="auto internal xref">10.6</a>.  <a href="#name-attestation-document-not-ve" class="internal xref">Attestation Document Not Verified by Receipt</a></p>
-</li>
-              <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.10.2.7">
-                <p id="section-toc.1-1.10.2.7.1"><a href="#section-10.7" class="auto internal xref">10.7</a>.  <a href="#name-workload-honesty-and-eviden" class="internal xref">Workload Honesty and Evidence Scope</a></p>
-</li>
-              <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.10.2.8">
-                <p id="section-toc.1-1.10.2.8.1"><a href="#section-10.8" class="auto internal xref">10.8</a>.  <a href="#name-claim-trust-classes" class="internal xref">Claim Trust Classes</a></p>
-</li>
-              <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.10.2.9">
-                <p id="section-toc.1-1.10.2.9.1"><a href="#section-10.9" class="auto internal xref">10.9</a>.  <a href="#name-key-substitution-attack" class="internal xref">Key Substitution Attack</a></p>
-</li>
-              <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.10.2.10">
-                <p id="section-toc.1-1.10.2.10.1"><a href="#section-10.10" class="auto internal xref">10.10</a>. <a href="#name-signing-key-reuse" class="internal xref">Signing Key Reuse</a></p>
-</li>
-              <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.10.2.11">
-                <p id="section-toc.1-1.10.2.11.1"><a href="#section-10.11" class="auto internal xref">10.11</a>. <a href="#name-tee-compromise" class="internal xref">TEE Compromise</a></p>
-</li>
-              <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.10.2.12">
-                <p id="section-toc.1-1.10.2.12.1"><a href="#section-10.12" class="auto internal xref">10.12</a>. <a href="#name-clock-integrity" class="internal xref">Clock Integrity</a></p>
-</li>
-              <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.10.2.13">
-                <p id="section-toc.1-1.10.2.13.1"><a href="#section-10.13" class="auto internal xref">10.13</a>. <a href="#name-deterministic-encoding" class="internal xref">Deterministic Encoding</a></p>
-</li>
-              <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.10.2.14">
-                <p id="section-toc.1-1.10.2.14.1"><a href="#section-10.14" class="auto internal xref">10.14</a>. <a href="#name-closed-claims-map" class="internal xref">Closed Claims Map</a></p>
+                <p id="section-toc.1-1.10.2.2.1"><a href="#section-10.2" class="auto internal xref">10.2</a>.  <a href="#name-structured-context-commitme" class="internal xref">Structured Context Commitments</a></p>
 </li>
             </ul>
 </li>
           <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.11">
-            <p id="section-toc.1-1.11.1"><a href="#section-11" class="auto internal xref">11</a>. <a href="#name-privacy-considerations" class="internal xref">Privacy Considerations</a></p>
+            <p id="section-toc.1-1.11.1"><a href="#section-11" class="auto internal xref">11</a>. <a href="#name-security-considerations" class="internal xref">Security Considerations</a></p>
 <ul class="compact toc ulBare ulEmpty">
 <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.11.2.1">
-                <p id="section-toc.1-1.11.2.1.1"><a href="#section-11.1" class="auto internal xref">11.1</a>.  <a href="#name-input-output-hashes" class="internal xref">Input/Output Hashes</a></p>
+                <p id="section-toc.1-1.11.2.1.1"><a href="#section-11.1" class="auto internal xref">11.1</a>.  <a href="#name-trust-assumptions" class="internal xref">Trust Assumptions</a></p>
 </li>
               <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.11.2.2">
-                <p id="section-toc.1-1.11.2.2.1"><a href="#section-11.2" class="auto internal xref">11.2</a>.  <a href="#name-correlation-metadata" class="internal xref">Correlation Metadata</a></p>
+                <p id="section-toc.1-1.11.2.2.1"><a href="#section-11.2" class="auto internal xref">11.2</a>.  <a href="#name-receipt-integrity" class="internal xref">Receipt Integrity</a></p>
 </li>
               <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.11.2.3">
-                <p id="section-toc.1-1.11.2.3.1"><a href="#section-11.3" class="auto internal xref">11.3</a>.  <a href="#name-nonce-privacy" class="internal xref">Nonce Privacy</a></p>
+                <p id="section-toc.1-1.11.2.3.1"><a href="#section-11.3" class="auto internal xref">11.3</a>.  <a href="#name-algorithm-pinning" class="internal xref">Algorithm Pinning</a></p>
 </li>
               <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.11.2.4">
-                <p id="section-toc.1-1.11.2.4.1"><a href="#section-11.4" class="auto internal xref">11.4</a>.  <a href="#name-issuer-identity" class="internal xref">Issuer Identity</a></p>
+                <p id="section-toc.1-1.11.2.4.1"><a href="#section-11.4" class="auto internal xref">11.4</a>.  <a href="#name-replay-protection" class="internal xref">Replay Protection</a></p>
+<ul class="compact toc ulBare ulEmpty">
+<li class="compact toc ulBare ulEmpty" id="section-toc.1-1.11.2.4.2.1">
+                    <p id="section-toc.1-1.11.2.4.2.1.1"><a href="#section-11.4.1" class="auto internal xref">11.4.1</a>.  <a href="#name-freshness-boundary" class="internal xref">Freshness Boundary</a></p>
+</li>
+                </ul>
+</li>
+              <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.11.2.5">
+                <p id="section-toc.1-1.11.2.5.1"><a href="#section-11.5" class="auto internal xref">11.5</a>.  <a href="#name-model-hash-limitations" class="internal xref">Model Hash Limitations</a></p>
+</li>
+              <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.11.2.6">
+                <p id="section-toc.1-1.11.2.6.1"><a href="#section-11.6" class="auto internal xref">11.6</a>.  <a href="#name-attestation-document-not-ve" class="internal xref">Attestation Document Not Verified by Receipt</a></p>
+</li>
+              <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.11.2.7">
+                <p id="section-toc.1-1.11.2.7.1"><a href="#section-11.7" class="auto internal xref">11.7</a>.  <a href="#name-accelerator-attestation-sco" class="internal xref">Accelerator Attestation Scope</a></p>
+</li>
+              <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.11.2.8">
+                <p id="section-toc.1-1.11.2.8.1"><a href="#section-11.8" class="auto internal xref">11.8</a>.  <a href="#name-workload-honesty-and-eviden" class="internal xref">Workload Honesty and Evidence Scope</a></p>
+</li>
+              <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.11.2.9">
+                <p id="section-toc.1-1.11.2.9.1"><a href="#section-11.9" class="auto internal xref">11.9</a>.  <a href="#name-claim-trust-classes" class="internal xref">Claim Trust Classes</a></p>
+</li>
+              <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.11.2.10">
+                <p id="section-toc.1-1.11.2.10.1"><a href="#section-11.10" class="auto internal xref">11.10</a>. <a href="#name-key-substitution-attack" class="internal xref">Key Substitution Attack</a></p>
+</li>
+              <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.11.2.11">
+                <p id="section-toc.1-1.11.2.11.1"><a href="#section-11.11" class="auto internal xref">11.11</a>. <a href="#name-signing-key-reuse" class="internal xref">Signing Key Reuse</a></p>
+</li>
+              <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.11.2.12">
+                <p id="section-toc.1-1.11.2.12.1"><a href="#section-11.12" class="auto internal xref">11.12</a>. <a href="#name-tee-compromise" class="internal xref">TEE Compromise</a></p>
+</li>
+              <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.11.2.13">
+                <p id="section-toc.1-1.11.2.13.1"><a href="#section-11.13" class="auto internal xref">11.13</a>. <a href="#name-clock-integrity" class="internal xref">Clock Integrity</a></p>
+</li>
+              <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.11.2.14">
+                <p id="section-toc.1-1.11.2.14.1"><a href="#section-11.14" class="auto internal xref">11.14</a>. <a href="#name-deterministic-encoding" class="internal xref">Deterministic Encoding</a></p>
+</li>
+              <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.11.2.15">
+                <p id="section-toc.1-1.11.2.15.1"><a href="#section-11.15" class="auto internal xref">11.15</a>. <a href="#name-closed-claims-map" class="internal xref">Closed Claims Map</a></p>
 </li>
             </ul>
 </li>
           <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.12">
-            <p id="section-toc.1-1.12.1"><a href="#section-12" class="auto internal xref">12</a>. <a href="#name-iana-considerations" class="internal xref">IANA Considerations</a></p>
-</li>
-          <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.13">
-            <p id="section-toc.1-1.13.1"><a href="#section-13" class="auto internal xref">13</a>. <a href="#name-implementation-status" class="internal xref">Implementation Status</a></p>
+            <p id="section-toc.1-1.12.1"><a href="#section-12" class="auto internal xref">12</a>. <a href="#name-privacy-considerations" class="internal xref">Privacy Considerations</a></p>
 <ul class="compact toc ulBare ulEmpty">
-<li class="compact toc ulBare ulEmpty" id="section-toc.1-1.13.2.1">
-                <p id="section-toc.1-1.13.2.1.1"><a href="#section-13.1" class="auto internal xref">13.1</a>.  <a href="#name-reference-implementation-ru" class="internal xref">Reference Implementation (Rust)</a></p>
+<li class="compact toc ulBare ulEmpty" id="section-toc.1-1.12.2.1">
+                <p id="section-toc.1-1.12.2.1.1"><a href="#section-12.1" class="auto internal xref">12.1</a>.  <a href="#name-input-output-hashes" class="internal xref">Input/Output Hashes</a></p>
 </li>
-              <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.13.2.2">
-                <p id="section-toc.1-1.13.2.2.1"><a href="#section-13.2" class="auto internal xref">13.2</a>.  <a href="#name-python-interop-verifier" class="internal xref">Python Interop Verifier</a></p>
+              <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.12.2.2">
+                <p id="section-toc.1-1.12.2.2.1"><a href="#section-12.2" class="auto internal xref">12.2</a>.  <a href="#name-correlation-metadata" class="internal xref">Correlation Metadata</a></p>
 </li>
-              <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.13.2.3">
-                <p id="section-toc.1-1.13.2.3.1"><a href="#section-13.3" class="auto internal xref">13.3</a>.  <a href="#name-client-nonce-conveyance" class="internal xref">Client Nonce Conveyance</a></p>
+              <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.12.2.3">
+                <p id="section-toc.1-1.12.2.3.1"><a href="#section-12.3" class="auto internal xref">12.3</a>.  <a href="#name-nonce-privacy" class="internal xref">Nonce Privacy</a></p>
 </li>
-              <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.13.2.4">
-                <p id="section-toc.1-1.13.2.4.1"><a href="#section-13.4" class="auto internal xref">13.4</a>.  <a href="#name-e2e-validation" class="internal xref">E2E Validation</a></p>
+              <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.12.2.4">
+                <p id="section-toc.1-1.12.2.4.1"><a href="#section-12.4" class="auto internal xref">12.4</a>.  <a href="#name-issuer-identity" class="internal xref">Issuer Identity</a></p>
+</li>
+              <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.12.2.5">
+                <p id="section-toc.1-1.12.2.5.1"><a href="#section-12.5" class="auto internal xref">12.5</a>.  <a href="#name-signing-key-and-identifier-" class="internal xref">Signing Key and Identifier Linkability</a></p>
 </li>
             </ul>
 </li>
+          <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.13">
+            <p id="section-toc.1-1.13.1"><a href="#section-13" class="auto internal xref">13</a>. <a href="#name-iana-considerations" class="internal xref">IANA Considerations</a></p>
+</li>
           <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.14">
-            <p id="section-toc.1-1.14.1"><a href="#section-14" class="auto internal xref">14</a>. <a href="#name-examples" class="internal xref">Examples</a></p>
+            <p id="section-toc.1-1.14.1"><a href="#section-14" class="auto internal xref">14</a>. <a href="#name-implementation-status" class="internal xref">Implementation Status</a></p>
 <ul class="compact toc ulBare ulEmpty">
 <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.14.2.1">
-                <p id="section-toc.1-1.14.2.1.1"><a href="#section-14.1" class="auto internal xref">14.1</a>.  <a href="#name-valid-receipt-walkthrough" class="internal xref">Valid Receipt Walkthrough</a></p>
+                <p id="section-toc.1-1.14.2.1.1"><a href="#section-14.1" class="auto internal xref">14.1</a>.  <a href="#name-reference-implementation-ru" class="internal xref">Reference Implementation (Rust)</a></p>
 </li>
               <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.14.2.2">
-                <p id="section-toc.1-1.14.2.2.1"><a href="#section-14.2" class="auto internal xref">14.2</a>.  <a href="#name-invalid-receipt-categories" class="internal xref">Invalid Receipt Categories</a></p>
+                <p id="section-toc.1-1.14.2.2.1"><a href="#section-14.2" class="auto internal xref">14.2</a>.  <a href="#name-python-interop-verifier" class="internal xref">Python Interop Verifier</a></p>
+</li>
+              <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.14.2.3">
+                <p id="section-toc.1-1.14.2.3.1"><a href="#section-14.3" class="auto internal xref">14.3</a>.  <a href="#name-client-nonce-conveyance" class="internal xref">Client Nonce Conveyance</a></p>
+</li>
+              <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.14.2.4">
+                <p id="section-toc.1-1.14.2.4.1"><a href="#section-14.4" class="auto internal xref">14.4</a>.  <a href="#name-e2e-validation" class="internal xref">E2E Validation</a></p>
 </li>
             </ul>
 </li>
           <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.15">
-            <p id="section-toc.1-1.15.1"><a href="#section-15" class="auto internal xref">15</a>. <a href="#name-references" class="internal xref">References</a></p>
+            <p id="section-toc.1-1.15.1"><a href="#section-15" class="auto internal xref">15</a>. <a href="#name-examples" class="internal xref">Examples</a></p>
 <ul class="compact toc ulBare ulEmpty">
 <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.15.2.1">
-                <p id="section-toc.1-1.15.2.1.1"><a href="#section-15.1" class="auto internal xref">15.1</a>.  <a href="#name-normative-references" class="internal xref">Normative References</a></p>
+                <p id="section-toc.1-1.15.2.1.1"><a href="#section-15.1" class="auto internal xref">15.1</a>.  <a href="#name-valid-receipt-walkthrough" class="internal xref">Valid Receipt Walkthrough</a></p>
 </li>
               <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.15.2.2">
-                <p id="section-toc.1-1.15.2.2.1"><a href="#section-15.2" class="auto internal xref">15.2</a>.  <a href="#name-informative-references" class="internal xref">Informative References</a></p>
+                <p id="section-toc.1-1.15.2.2.1"><a href="#section-15.2" class="auto internal xref">15.2</a>.  <a href="#name-invalid-receipt-categories" class="internal xref">Invalid Receipt Categories</a></p>
 </li>
             </ul>
 </li>
           <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.16">
-            <p id="section-toc.1-1.16.1"><a href="#appendix-A" class="auto internal xref">Appendix A</a>.  <a href="#name-full-cddl-schema" class="internal xref">Full CDDL Schema</a></p>
+            <p id="section-toc.1-1.16.1"><a href="#section-16" class="auto internal xref">16</a>. <a href="#name-references" class="internal xref">References</a></p>
+<ul class="compact toc ulBare ulEmpty">
+<li class="compact toc ulBare ulEmpty" id="section-toc.1-1.16.2.1">
+                <p id="section-toc.1-1.16.2.1.1"><a href="#section-16.1" class="auto internal xref">16.1</a>.  <a href="#name-normative-references" class="internal xref">Normative References</a></p>
+</li>
+              <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.16.2.2">
+                <p id="section-toc.1-1.16.2.2.1"><a href="#section-16.2" class="auto internal xref">16.2</a>.  <a href="#name-informative-references" class="internal xref">Informative References</a></p>
+</li>
+            </ul>
 </li>
           <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.17">
-            <p id="section-toc.1-1.17.1"><a href="#appendix-B" class="auto internal xref">Appendix B</a>.  <a href="#name-golden-vector-summary" class="internal xref">Golden Vector Summary</a></p>
+            <p id="section-toc.1-1.17.1"><a href="#appendix-A" class="auto internal xref">Appendix A</a>.  <a href="#name-full-cddl-schema" class="internal xref">Full CDDL Schema</a></p>
 </li>
           <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.18">
-            <p id="section-toc.1-1.18.1"><a href="#appendix-C" class="auto internal xref"></a><a href="#name-acknowledgments" class="internal xref">Acknowledgments</a></p>
+            <p id="section-toc.1-1.18.1"><a href="#appendix-B" class="auto internal xref">Appendix B</a>.  <a href="#name-golden-vector-summary" class="internal xref">Golden Vector Summary</a></p>
 </li>
           <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.19">
-            <p id="section-toc.1-1.19.1"><a href="#appendix-D" class="auto internal xref"></a><a href="#name-authors-address" class="internal xref">Author's Address</a></p>
+            <p id="section-toc.1-1.19.1"><a href="#appendix-C" class="auto internal xref"></a><a href="#name-acknowledgments" class="internal xref">Acknowledgments</a></p>
+</li>
+          <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.20">
+            <p id="section-toc.1-1.20.1"><a href="#appendix-D" class="auto internal xref"></a><a href="#name-authors-address" class="internal xref">Author's Address</a></p>
 </li>
         </ul>
 </nav>
@@ -1727,7 +1751,14 @@ Workloads running on accelerator-equipped platforms such as
 NVIDIA H100 Confidential Compute can emit AIR v1 receipts, but
 those receipts cover only the CPU-side attestation; accelerator
 attestation is verified out of band and is not embedded in the
-receipt.<a href="#section-1.2-2.7.1" class="pilcrow">¶</a></p>
+receipt. A future composite-attester AIR profile would pair the
+CPU-side receipt with device-side Evidence such as the EAT Device
+Assignment profile (<span>[<a href="#I-D.poirier-rats-eat-da" class="cite xref">I-D.poirier-rats-eat-da</a>]</span>); the RATS
+Conceptual Messages Wrapper (<span>[<a href="#I-D.ietf-rats-msg-wrap" class="cite xref">I-D.ietf-rats-msg-wrap</a>]</span>) is a
+candidate standard conveyance for carrying platform Evidence and an
+AIR receipt together. An AIR v1 receipt emitted on such a platform
+<span class="bcp14">MUST NOT</span> be presented as evidence that the accelerator was in a
+confidential-computing mode; see <a href="#accelerator-scope" class="auto internal xref">Section 11.7</a>.<a href="#section-1.2-2.7.1" class="pilcrow">¶</a></p>
 </li>
           <li class="normal" id="section-1.2-2.8">
             <p id="section-1.2-2.8.1">Define verifier-emitted Attestation Results. Where a deployment
@@ -1759,7 +1790,7 @@ appear in all capitals, as shown here.<a href="#section-2-1" class="pilcrow">¶<
 <p id="section-3-1">In this document, the term "verifier" (lowercase, or "Verifiers" when
 used at the start of a sentence) refers to the AIR Receipt Validator
 defined below. This is distinct from the RATS Verifier role defined
-in <span>[<a href="#RFC9334" class="cite xref">RFC9334</a>]</span> Section 6.4. Where this document needs to refer to the
+in <span>[<a href="#RFC9334" class="cite xref">RFC9334</a>]</span> Section 4.1. Where this document needs to refer to the
 RATS Verifier role, it uses the explicit phrase "RATS Verifier."<a href="#section-3-1" class="pilcrow">¶</a></p>
 <span class="break"></span><dl class="dlParallel" id="section-3-2">
         <dt id="section-3-2.1">Attested Inference Receipt (AIR):</dt>
@@ -1784,7 +1815,7 @@ Attester.<a href="#section-3-2.4.1" class="pilcrow">¶</a></p>
 signature verification, claim structure validation, and policy
 evaluation on receipt contents (see <a href="#verification-procedure" class="auto internal xref">Section 8</a>).
 The AIR Receipt Validator is distinct from the RATS Verifier role
-in <span>[<a href="#RFC9334" class="cite xref">RFC9334</a>]</span> Section 6.4. A RATS Verifier appraises Evidence
+in <span>[<a href="#RFC9334" class="cite xref">RFC9334</a>]</span> Section 4.1. A RATS Verifier appraises Evidence
 against reference values and endorsements to produce Attestation
 Results; the AIR Receipt Validator does not perform that appraisal.
 Full TEE assurance additionally requires platform-specific
@@ -1852,7 +1883,7 @@ COSE_Sign1 = [
 ]
 </pre><a href="#section-4.1-2" class="pilcrow">¶</a>
 </div>
-<p id="section-4.1-3">The signature covers <code>Sig_structure1 = ["Signature1", protected,
+<p id="section-4.1-3">The signature covers <code>Sig_structure = ["Signature1", protected,
 external_aad, payload]</code> where <code>external_aad</code> is empty (<code>h''</code>).<a href="#section-4.1-3" class="pilcrow">¶</a></p>
 <p id="section-4.1-4">Verifiers <span class="bcp14">MUST</span> reject untagged COSE_Sign1 structures. The CBOR tag 18
 is mandatory.<a href="#section-4.1-4" class="pilcrow">¶</a></p>
@@ -1918,8 +1949,8 @@ verifiers <span class="bcp14">MUST</span> reject receipts with non-empty unprote
 <a href="#section-4.4" class="section-number selfRef">4.4. </a><a href="#name-payload-cwt-claims-map" class="section-name selfRef">Payload: CWT Claims Map</a>
         </h3>
 <p id="section-4.4-1">The payload is a CBOR-encoded CWT claims map. The map uses
-deterministic encoding per <span>[<a href="#RFC8949" class="cite xref">RFC8949</a>]</span> Section 4.2.1 (shorter encoded
-key sorts first, then bytewise lexicographic comparison).<a href="#section-4.4-1" class="pilcrow">¶</a></p>
+deterministic encoding per <span>[<a href="#RFC8949" class="cite xref">RFC8949</a>]</span> Section 4.2.1: map keys are
+sorted in the bytewise lexicographic order of their encoded form.<a href="#section-4.4-1" class="pilcrow">¶</a></p>
 <p id="section-4.4-2">The claims map is closed: verifiers <span class="bcp14">MUST</span> reject maps containing
 unknown integer keys. Duplicate keys <span class="bcp14">MUST</span> be rejected.<a href="#section-4.4-2" class="pilcrow">¶</a></p>
 </section>
@@ -1952,7 +1983,7 @@ air-claims = {
   6   =&gt; uint,                  ; iat: issued-at (Unix seconds)
   7   =&gt; bstr .size 16,         ; cti: CWT ID (UUID v4, 16 bytes)
   265 =&gt; "https://spec.cyntrisec.com/air/v1",  ; eat_profile
-  ? 10 =&gt; bstr,                 ; eat_nonce (optional)
+  ? 10 =&gt; bstr .size (8..64),   ; eat_nonce (optional)
 
   ; --- AIR private claims ---
   -65537 =&gt; tstr,               ; model_id
@@ -2062,8 +2093,11 @@ Verifiers <span class="bcp14">MUST</span> reject receipts with unknown eat_profi
 <a href="#section-5.1.5" class="section-number selfRef">5.1.5. </a><a href="#name-eat_nonce-key-10" class="section-name selfRef">eat_nonce -- key 10</a>
           </h4>
 <p id="section-5.1.5-1">An optional binary string (8-64 bytes per <span>[<a href="#RFC9711" class="cite xref">RFC9711</a>]</span> Section 4.1)
-provided by the client to bind the receipt to a specific request
-session. If the verifier supplied a nonce, it <span class="bcp14">MUST</span> check that
+provided by the verifier or relying party to bind the receipt to a
+specific request session. Per <span>[<a href="#RFC9711" class="cite xref">RFC9711</a>]</span> Section 4.1 the nonce <span class="bcp14">MUST</span>
+have at least 64 bits of entropy. The nonce <span class="bcp14">MUST</span> be supplied by the
+party checking freshness; an Attester-generated nonce provides no
+replay protection. If the verifier supplied a nonce, it <span class="bcp14">MUST</span> check that
 eat_nonce matches. This is the primary replay resistance mechanism
 when verifier-side cti deduplication is not feasible.<a href="#section-5.1.5-1" class="pilcrow">¶</a></p>
 </section>
@@ -2133,6 +2167,12 @@ can recompute and compare.<a href="#section-5.2.4-1" class="pilcrow">¶</a></p>
           </h4>
 <p id="section-5.2.5-1">A 32-byte SHA-256 hash of the inference response payload. Binds the
 receipt to a specific output.<a href="#section-5.2.5-1" class="pilcrow">¶</a></p>
+<p id="section-5.2.5-2"><code>request_hash</code> and <code>response_hash</code> commit to specific input and output
+byte strings. They do not prove that the response is the model's output
+for that input, and each hash is computed over the request or response
+payload as the workload defines it, which <span class="bcp14">MAY</span> differ from the
+pre-processed (for example, tokenized or normalized) bytes the model
+actually consumed or produced.<a href="#section-5.2.5-2" class="pilcrow">¶</a></p>
 </section>
 </div>
 <div id="attestationdochash-key-65542">
@@ -2172,12 +2212,29 @@ reproduces this digest by obtaining the same raw attestation artifact;
 it <span class="bcp14">SHOULD</span> also independently verify that artifact -- its signature and
 trust chain -- before relying on it, then compare the artifact's
 SHA-256 to this claim.<a href="#section-5.2.6-6" class="pilcrow">¶</a></p>
-<p id="section-5.2.6-7">A conformant AIR receipt <span class="bcp14">MUST</span> set <code>attestation_doc_hash</code> to the
+<p id="section-5.2.6-7">For a receipt asserting end-to-end TEE provenance, <code>attestation_doc_hash</code>
+            <span class="bcp14">MUST</span> reference the same attestation document that carries the
+signing-key binding of <a href="#key-binding" class="auto internal xref">Section 7</a> and the measurement registers
+reconciled by the validator (see <a href="#validator-behavior" class="auto internal xref">Section 7.3</a>). A receipt used
+only as an application-layer signed log (AIR-local, asserting no TEE
+provenance) <span class="bcp14">MAY</span> reference a different or boot-time document, but <span class="bcp14">MUST NOT</span>
+be presented as TEE-provenance evidence. A split model that combines a
+boot-time <code>attestation_doc_hash</code> with a separate per-session key-binding
+quote is out of scope for AIR v1 and may be defined by a future profile.<a href="#section-5.2.6-7" class="pilcrow">¶</a></p>
+<p id="section-5.2.6-8">Even in the single-document model, the attestation is typically captured
+at workload start, not per inference. A provenance-checked AIR receipt
+therefore demonstrates that a key bound to an attested workload signed
+these claims; it does NOT by itself demonstrate that this specific
+inference executed at the time the attestation was captured. Deployments
+needing per-inference or contemporaneous binding require a mechanism
+beyond AIR v1 (a fresh per-session attestation, or the external
+transparency/sequencing layer discussed in <a href="#replay-protection" class="auto internal xref">Section 11.4</a>).<a href="#section-5.2.6-8" class="pilcrow">¶</a></p>
+<p id="section-5.2.6-9">A conformant AIR receipt <span class="bcp14">MUST</span> set <code>attestation_doc_hash</code> to the
 per-platform preimage defined above. Populating the field with any
 other value -- for example, a digest of the receipt signing key used
 as an internal placeholder -- does not produce a conformant
 attestation-bound AIR receipt, and such a receipt <span class="bcp14">MUST NOT</span> be
-presented as one.<a href="#section-5.2.6-7" class="pilcrow">¶</a></p>
+presented as one.<a href="#section-5.2.6-9" class="pilcrow">¶</a></p>
 </section>
 </div>
 <div id="measurements">
@@ -2401,7 +2458,7 @@ session but are NOT a receipt-verification failure.<a href="#section-5.2.9-3.3.1
 <p id="section-5.2.9-4">Verifiers <span class="bcp14">MUST NOT</span> treat <code>sequence_number</code> in isolation as evidence
 of freshness or as a replay-detection signal. Replay resistance
 comes from <code>cti</code> deduplication and, where applicable, <code>eat_nonce</code>
-challenge-binding; see <a href="#replay-protection" class="auto internal xref">Section 10.4</a>.<a href="#section-5.2.9-4" class="pilcrow">¶</a></p>
+challenge-binding; see <a href="#replay-protection" class="auto internal xref">Section 11.4</a>.<a href="#section-5.2.9-4" class="pilcrow">¶</a></p>
 </section>
 </div>
 <div id="executiontimems-key-65546">
@@ -2465,14 +2522,32 @@ allowlisted production set.<a href="#section-5.2.12-4" class="pilcrow">¶</a></p
 revisions <span class="bcp14">MAY</span> define additional values. AIR v1 implementations <span class="bcp14">MUST NOT</span> invent new values; an implementation needing a value outside the
 defined set should use a future AIR revision or a vendor-specific
 extension outside the AIR profile.<a href="#section-5.2.12-5" class="pilcrow">¶</a></p>
-<p id="section-5.2.12-6">The <code>security_mode</code> claim is a signed textual indicator. It does not
-substitute for attestation-based trust decisions; a verifier that
-requires TEE provenance <span class="bcp14">MUST NOT</span> rely on <code>security_mode</code> alone to
-conclude the workload is in a trustworthy state.<a href="#section-5.2.12-6" class="pilcrow">¶</a></p>
-<p id="section-5.2.12-7">Product- or deployment-specific submodes (for example, vendor-defined
+<p id="section-5.2.12-6">The <code>security_mode</code> claim is self-asserted: it is written and signed by
+the workload and states only the configuration the workload believes it
+is in. It is not the output of any appraisal and conveys no positive
+assurance. A Verifier or Relying Party <span class="bcp14">MUST NOT</span> treat any <code>security_mode</code>
+value -- including <code>"production"</code> -- as evidence of a secure or
+production posture, and <span class="bcp14">MUST NOT</span> base a positive trust decision on it.
+Its only sound use is fail-closed: a verifier configured for production
+trust decisions <span class="bcp14">MUST</span> reject <code>"evaluation"</code> (and <span class="bcp14">MAY</span> reject any
+non-allowlisted value), so that a receipt an honest workload self-marks
+as non-production cannot be accepted. A workload's actual security
+posture is established solely by verifying the referenced platform
+attestation and appraising its measurements, TCB, and debug state
+against reference values (see <a href="#validator-behavior" class="auto internal xref">Section 7.3</a>).<a href="#section-5.2.12-6" class="pilcrow">¶</a></p>
+<p id="section-5.2.12-7">This design is deliberate. Earlier EAT work carried a self-asserted
+<code>security-level</code> claim that the RATS working group removed before
+RFC 9711, precisely because a device asserting its own security level
+proves nothing. <code>security_mode</code> is not a graded positive security
+level; it is a binary fail-closed sentinel whose only effect is to let
+an honest emitter downgrade itself (<code>"evaluation"</code>) so verifiers reject
+it. A lying workload gains nothing by writing <code>"production"</code>, because no
+positive weight is placed on the value: trust comes only from the
+attestation appraisal (see <a href="#claim-trust-classes" class="auto internal xref">Section 11.9</a>).<a href="#section-5.2.12-7" class="pilcrow">¶</a></p>
+<p id="section-5.2.12-8">Product- or deployment-specific submodes (for example, vendor-defined
 production profiles) are out of scope for AIR v1. Implementations
 needing such distinctions <span class="bcp14">SHOULD</span> map them to the generic AIR v1 value
-space for interoperability.<a href="#section-5.2.12-7" class="pilcrow">¶</a></p>
+space for interoperability.<a href="#section-5.2.12-8" class="pilcrow">¶</a></p>
 </section>
 </div>
 <div id="mhscheme">
@@ -2530,8 +2605,10 @@ new scheme values.<a href="#section-5.2.13-5" class="pilcrow">¶</a></p>
       <h2 id="name-eat-profile-declaration">
 <a href="#section-6" class="section-number selfRef">6. </a><a href="#name-eat-profile-declaration" class="section-name selfRef">EAT Profile Declaration</a>
       </h2>
-<p id="section-6-1">This section consolidates the mandatory profile positions per
-<span>[<a href="#RFC9711" class="cite xref">RFC9711</a>]</span> Section 6.3.<a href="#section-6-1" class="pilcrow">¶</a></p>
+<p id="section-6-1"><span>[<a href="#RFC9711" class="cite xref">RFC9711</a>]</span> Section 6.2 requires a full profile to be complete enough
+that a receiver can decode, verify, and check the freshness of a
+receipt; Section 6.3 lists the profile issues a profile should address.
+This section states AIR v1's position on each.<a href="#section-6-1" class="pilcrow">¶</a></p>
 <ol start="1" type="1" class="normal type-1" id="section-6-2">
 <li id="section-6-2.1">
           <p id="section-6-2.1.1"><strong>Profile identifier</strong>: URI
@@ -2553,7 +2630,13 @@ Untagged COSE_Sign1 <span class="bcp14">MUST</span> be rejected.<a href="#sectio
         <li id="section-6-2.5">
           <p id="section-6-2.5.1"><strong>HTTP media type</strong>: <code>application/eat+cwt</code> (<span>[<a href="#RFC9782" class="cite xref">RFC9782</a>]</span>).
 Receivers <span class="bcp14">SHOULD</span> accept both <code>application/cwt</code> and
-<code>application/eat+cwt</code>.<a href="#section-6-2.5.1" class="pilcrow">¶</a></p>
+<code>application/eat+cwt</code>. Senders <span class="bcp14">MAY</span> include the <code>eat_profile</code>
+media-type parameter defined by <span>[<a href="#RFC9782" class="cite xref">RFC9782</a>]</span> --
+<code>application/eat+cwt; eat_profile="https://spec.cyntrisec.com/air/v1"</code>
+-- so that receivers can route on the profile without decoding the
+receipt body. An AIR receipt <span class="bcp14">MAY</span> also be carried inside a RATS
+Conceptual Messages Wrapper (<span>[<a href="#I-D.ietf-rats-msg-wrap" class="cite xref">I-D.ietf-rats-msg-wrap</a>]</span>) when it is
+conveyed alongside other attestation messages.<a href="#section-6-2.5.1" class="pilcrow">¶</a></p>
 </li>
         <li id="section-6-2.6">
           <p id="section-6-2.6.1"><strong>Signing algorithm</strong>: Ed25519 only (COSE alg = -8). Signatures
@@ -2591,8 +2674,8 @@ resistance (<span>[<a href="#RFC9711" class="cite xref">RFC9711</a>]</span> Sect
 </li>
         <li id="section-6-2.12">
           <p id="section-6-2.12.1"><strong>Deterministic encoding</strong>: Required. Map keys sorted per
-<span>[<a href="#RFC8949" class="cite xref">RFC8949</a>]</span> Section 4.2.1 (shorter encoded form first, then
-bytewise lexicographic).<a href="#section-6-2.12.1" class="pilcrow">¶</a></p>
+<span>[<a href="#RFC8949" class="cite xref">RFC8949</a>]</span> Section 4.2.1 (bytewise lexicographic order of the
+encoded map keys).<a href="#section-6-2.12.1" class="pilcrow">¶</a></p>
 </li>
         <li id="section-6-2.13">
           <p id="section-6-2.13.1"><strong>Closed claims map</strong>: The claims map is closed. Unknown integer
@@ -2608,6 +2691,18 @@ unprotected headers <span class="bcp14">MUST</span> be rejected.<a href="#sectio
 in the CWT private-use range (<span>[<a href="#RFC8392" class="cite xref">RFC8392</a>]</span>). No IANA registration
 is required. AIR v1 defines no extension mechanism or additional
 private claim keys beyond this set.<a href="#section-6-2.15.1" class="pilcrow">¶</a></p>
+</li>
+        <li id="section-6-2.16">
+          <p id="section-6-2.16.1"><strong>Endorsement / reference-value identification</strong>: Out of scope for
+the AIR receipt. An AIR receipt carries no endorsement or
+reference-value identifiers; reference values and endorsements are
+supplied to and appraised by a RATS Verifier (see
+<a href="#validator-behavior" class="auto internal xref">Section 7.3</a> and Trust Assumption TA-4 in
+<a href="#trust-assumptions" class="auto internal xref">Section 11.1</a>), not by the AIR Receipt Validator, keeping
+the receipt strictly Evidence and not an Attestation Result. The
+standard EAT entity-identity claims (<code>ueid</code>, <code>sueids</code>, <code>oemid</code>,
+<code>hwmodel</code>, <code>hwversion</code>) are not used and are prohibited by the
+closed claims map.<a href="#section-6-2.16.1" class="pilcrow">¶</a></p>
 </li>
       </ol>
 </section>
@@ -2690,22 +2785,55 @@ is a SHA-512 digest -- placed as the full REPORTDATA -- over a
 domain-separated, length-prefixed encoding of: a domain label,
 the platform identifier, the protocol version, the transport
 handshake public key, the Ed25519 receipt signing key, the
-session nonce, and an optional platform-evidence hash. A verifier
+session nonce, and an optional platform-evidence hash.<a href="#section-7.2-2.2.1" class="pilcrow">¶</a></p>
+<p id="section-7.2-2.2.2">
+To make the binding independently reproducible, one interoperable
+construction pins the SHA-512 preimage exactly as the concatenation,
+in order, of: (1) the domain label, length-prefixed; (2) the
+platform identifier (a UTF-8 string, for example <code>"gcp-cs-tdx"</code>),
+length-prefixed; (3) the protocol version as a 4-octet unsigned
+big-endian integer (fixed width, not length-prefixed); (4) the
+32-octet transport handshake public key, length-prefixed; (5) the
+32-octet Ed25519 receipt signing key, length-prefixed; (6) the
+32-octet session nonce, length-prefixed; and (7) a 1-octet
+platform-evidence flag -- <code>0x01</code> followed by the 32-octet
+platform-evidence hash when present, or <code>0x00</code> alone when absent.
+"Length-prefixed" means a 4-octet unsigned big-endian octet count
+immediately preceding the field it describes; the handshake key,
+receipt signing key, and nonce <span class="bcp14">MUST</span> each be exactly 32 octets. The
+REPORTDATA is the 64-octet SHA-512 digest of this preimage, and the
+domain label (for this construction, the ASCII string
+<code>"cyntrisec-tdx-envelope-v2"</code>) distinguishes it from any other use
+of the same input shape. A verifier
 validates the quote via DCAP against the Intel SGX and TDX trust
 chains, recomputes the SHA-512 binding from the attestation
 envelope's stated inputs, and rejects the quote unless the result
-equals the quote's REPORTDATA.<a href="#section-7.2-2.2.1" class="pilcrow">¶</a></p>
+equals the quote's REPORTDATA.<a href="#section-7.2-2.2.2" class="pilcrow">¶</a></p>
 </li>
         </ol>
 <p id="section-7.2-3">These constructions describe the key-binding attestation itself. In
 AIR v1, whether a receipt's <code>attestation_doc_hash</code> references that
 same per-session attestation -- rather than a separate boot-time
-attestation -- is a profile-versioning question that AIR v1 does not
-settle and that a future AIR profile may address.<a href="#section-7.2-3" class="pilcrow">¶</a></p>
+attestation -- is a profile-versioning question. For a receipt
+asserting end-to-end TEE provenance, <a href="#validator-behavior" class="auto internal xref">Section 7.3</a> requires
+<code>attestation_doc_hash</code> to reference the same document that carries this
+key binding; a profile that separates the two (a boot-time
+<code>attestation_doc_hash</code> plus a per-session key-binding quote) is out of
+scope for AIR v1 and may be addressed by a future profile.<a href="#section-7.2-3" class="pilcrow">¶</a></p>
 <p id="section-7.2-4">Other constructions <span class="bcp14">MAY</span> be used where the target attestation platform
 supports them. Implementers <span class="bcp14">SHOULD</span> consult
 <span>[<a href="#I-D.reddy-rats-key-binding" class="cite xref">I-D.reddy-rats-key-binding</a>]</span> for a general treatment of key binding
-in RATS as that work matures.<a href="#section-7.2-4" class="pilcrow">¶</a></p>
+in RATS as that work matures. The Nitro and TDX constructions above
+instantiate the "combined" key-binding model of
+<span>[<a href="#I-D.reddy-rats-key-binding" class="cite xref">I-D.reddy-rats-key-binding</a>]</span> -- the attestation Evidence and the
+key binding are produced together by the Attester -- and a future AIR
+profile could align this binding with that draft's confirmation
+(<code>cnf</code>) claim encoding once it stabilizes. AIR v1 binds the key through
+the platform quote (REPORTDATA / <code>user_data</code>) rather than a receipt-level
+<code>cnf</code> claim because the binding must be rooted in the hardware-signed
+attestation itself: the Attester generates the ephemeral signing key
+inside the TEE and commits it into the quote the vendor signs, which a
+<code>cnf</code> claim signed only by the workload cannot by itself provide.<a href="#section-7.2-4" class="pilcrow">¶</a></p>
 </section>
 </div>
 <div id="validator-behavior">
@@ -2713,24 +2841,32 @@ in RATS as that work matures.<a href="#section-7.2-4" class="pilcrow">¶</a></p>
         <h3 id="name-validator-behavior">
 <a href="#section-7.3" class="section-number selfRef">7.3. </a><a href="#name-validator-behavior" class="section-name selfRef">Validator Behavior</a>
         </h3>
-<p id="section-7.3-1">An AIR Receipt Validator configured for end-to-end TEE assurance:<a href="#section-7.3-1" class="pilcrow">¶</a></p>
+<p id="section-7.3-1">For the end-to-end TEE assurance procedure below, the attestation
+document referenced by <code>attestation_doc_hash</code> <span class="bcp14">MUST</span> be the same document
+that carries the key binding (<a href="#key-binding" class="auto internal xref">Section 7</a>) and the measurement
+registers reconciled below. AIR v1 does not define a provenance
+procedure for a deployment whose key-binding attestation and
+<code>attestation_doc_hash</code> are different documents (for example, a
+per-session key-binding quote plus a separate boot-time attestation);
+such a split is left to a future profile.<a href="#section-7.3-1" class="pilcrow">¶</a></p>
+<p id="section-7.3-2">An AIR Receipt Validator configured for end-to-end TEE assurance:<a href="#section-7.3-2" class="pilcrow">¶</a></p>
 <ul class="normal">
-<li class="normal" id="section-7.3-2.1">
-            <p id="section-7.3-2.1.1"><span class="bcp14">MUST</span> obtain the platform attestation document referenced by
+<li class="normal" id="section-7.3-3.1">
+            <p id="section-7.3-3.1.1"><span class="bcp14">MUST</span> obtain the platform attestation document referenced by
 <code>attestation_doc_hash</code> and validate it via platform-specific
-procedures before accepting the receipt.<a href="#section-7.3-2.1.1" class="pilcrow">¶</a></p>
+procedures before accepting the receipt.<a href="#section-7.3-3.1.1" class="pilcrow">¶</a></p>
 </li>
-          <li class="normal" id="section-7.3-2.2">
-            <p id="section-7.3-2.2.1"><span class="bcp14">MUST</span> check the binding described in the construction above:
+          <li class="normal" id="section-7.3-3.2">
+            <p id="section-7.3-3.2.1"><span class="bcp14">MUST</span> check the binding described in the construction above:
 the public key used to verify the AIR signature matches the
 public-key value embedded in the attestation document (or its
-hash, depending on the construction).<a href="#section-7.3-2.2.1" class="pilcrow">¶</a></p>
+hash, depending on the construction).<a href="#section-7.3-3.2.1" class="pilcrow">¶</a></p>
 </li>
-          <li class="normal" id="section-7.3-2.3">
-            <p id="section-7.3-2.3.1"><span class="bcp14">MUST</span> reject the receipt if the binding check fails.<a href="#section-7.3-2.3.1" class="pilcrow">¶</a></p>
+          <li class="normal" id="section-7.3-3.3">
+            <p id="section-7.3-3.3.1"><span class="bcp14">MUST</span> reject the receipt if the binding check fails.<a href="#section-7.3-3.3.1" class="pilcrow">¶</a></p>
 </li>
-          <li class="normal" id="section-7.3-2.4">
-            <p id="section-7.3-2.4.1"><span class="bcp14">MUST</span> reconcile the receipt's <code>enclave_measurements</code> claim against
+          <li class="normal" id="section-7.3-3.4">
+            <p id="section-7.3-3.4.1"><span class="bcp14">MUST</span> reconcile the receipt's <code>enclave_measurements</code> claim against
 the measurement registers carried in the validated attestation
 document. Every measurement register present in
 <code>enclave_measurements</code> <span class="bcp14">MUST</span> equal, byte for byte, the
@@ -2741,14 +2877,62 @@ in <code>enclave_measurements</code> is unequal to, or cannot be reconciled
 against, the validated attestation document (fail-closed). The
 <code>enclave_measurements</code> claim is signed only by the workload's own
 key; it is corroborated platform evidence only after this
-reconciliation succeeds (see <a href="#claim-trust-classes" class="auto internal xref">Section 10.8</a>).<a href="#section-7.3-2.4.1" class="pilcrow">¶</a></p>
+reconciliation succeeds (see <a href="#claim-trust-classes" class="auto internal xref">Section 11.9</a>).<a href="#section-7.3-3.4.1" class="pilcrow">¶</a></p>
+</li>
+          <li class="normal" id="section-7.3-3.5">
+            <p id="section-7.3-3.5.1"><span class="bcp14">MUST</span> require the presence of every measurement register its policy
+deems security-critical, and <span class="bcp14">MUST</span> reject a receipt that omits such
+a register (fail-closed). Byte-for-byte reconciliation quantifies
+only over the registers present in <code>enclave_measurements</code>, and the
+emitting workload chooses that set; a validator that does not
+enforce required-register presence can be handed a receipt that
+omits a workload- or runtime-identifying register. On Intel TDX in
+particular, the application and guest-runtime measurements are
+carried in the <span class="bcp14">OPTIONAL</span> RTMR2/RTMR3 slots, so a validator asserting
+that a specific workload executed <span class="bcp14">MUST</span> require the register(s) that
+identify that workload rather than only the mandatory MRTD/RTMR0/
+RTMR1 platform registers.<a href="#section-7.3-3.5.1" class="pilcrow">¶</a></p>
+</li>
+          <li class="normal" id="section-7.3-3.6">
+            <p id="section-7.3-3.6.1"><span class="bcp14">MUST NOT</span> treat successful reconciliation as workload
+acceptability. Reconciliation establishes only that the receipt's
+measurement values match the validated attestation document
+(hardware-rootedness), not that those values, the platform TCB, or
+the debug state are acceptable. A validator asserting end-to-end
+TEE assurance <span class="bcp14">MUST</span> additionally appraise the reconciled
+measurements and the platform TCB/debug state against its
+reference-value policy -- or defer that appraisal to a RATS
+Verifier that performs it -- and <span class="bcp14">MUST</span> reject unacceptable values.
+In particular, a validator asserting a production security posture
+<span class="bcp14">MUST</span> reject a TEE that reports a debug or development mode (for
+example, Intel TDX <code>TD_ATTRIBUTES.DEBUG</code> set, or an SGX enclave in
+DEBUG mode), and <span class="bcp14">MUST</span> reject a platform whose TCB is out of date or
+revoked, unless the deployment explicitly accepts such a platform
+for a non-production purpose.<a href="#section-7.3-3.6.1" class="pilcrow">¶</a></p>
+</li>
+          <li class="normal" id="section-7.3-3.7">
+            <p id="section-7.3-3.7.1"><span class="bcp14">MUST</span> require the receipt to bind at least one freshness mechanism
+-- a verifier-supplied <code>eat_nonce</code> or <code>cti</code> deduplication -- before
+asserting end-to-end TEE provenance. <span>[<a href="#RFC9711" class="cite xref">RFC9711</a>]</span> Section 9.3 requires
+an EAT to have a freshness mechanism to prevent replay and reuse; a
+provenance claim over a receipt carrying no freshness binding is
+vulnerable to replay of a pre-signed receipt (see
+<a href="#replay-protection" class="auto internal xref">Section 11.4</a>).<a href="#section-7.3-3.7.1" class="pilcrow">¶</a></p>
+</li>
+          <li class="normal" id="section-7.3-3.8">
+            <p id="section-7.3-3.8.1"><span class="bcp14">MUST</span>, when the key-binding construction commits a session nonce into
+the platform quote (for example, TDX REPORTDATA) and the receipt
+also carries <code>eat_nonce</code>, check that the quote-bound nonce and
+<code>eat_nonce</code> are equal, so that the receipt and the underlying
+platform attestation share one freshness challenge.<a href="#section-7.3-3.8.1" class="pilcrow">¶</a></p>
 </li>
         </ul>
-<p id="section-7.3-3">An AIR Receipt Validator that does not require end-to-end TEE
+<p id="section-7.3-4">An AIR Receipt Validator that does not require end-to-end TEE
 assurance (for example, in a deployment that uses AIR only as a
 signed log bound by application-layer trust decisions) <span class="bcp14">MAY</span> skip the
-binding check. Such a validator <span class="bcp14">MUST NOT</span> claim TEE provenance from
-the receipt alone.<a href="#section-7.3-3" class="pilcrow">¶</a></p>
+checks in this section (key binding, measurement reconciliation,
+appraisal, and required-register presence). Such a validator <span class="bcp14">MUST NOT</span>
+claim TEE provenance from the receipt alone.<a href="#section-7.3-4" class="pilcrow">¶</a></p>
 </section>
 </div>
 </section>
@@ -2774,15 +2958,22 @@ AIR claims; Layer 4 applies relying-party policy checks.<a href="#section-8-3" c
 requires full TEE assurance <span class="bcp14">MUST</span> additionally obtain and verify the
 underlying platform attestation evidence and the binding between that
 evidence and the AIR signing key using platform-specific procedures.<a href="#section-8-4" class="pilcrow">¶</a></p>
-<p id="section-8-5">Each AIR-local layer <span class="bcp14">MUST</span> complete successfully before proceeding to
+<p id="section-8-5">A conformant verifier <span class="bcp14">MUST</span> indicate, in its result, which assurance
+level it established: AIR-local verification (Layers 1-4 of this
+section only) or end-to-end TEE assurance (Layers 1-4 plus the full set
+of checks in <a href="#validator-behavior" class="auto internal xref">Section 7.3</a> -- key binding, measurement
+reconciliation, required-register presence, and measurement/TCB/debug
+appraisal). An AIR-local result <span class="bcp14">MUST NOT</span> be presented or recorded as
+TEE provenance.<a href="#section-8-5" class="pilcrow">¶</a></p>
+<p id="section-8-6">Each AIR-local layer <span class="bcp14">MUST</span> complete successfully before proceeding to
 the next. If any check fails, the verifier <span class="bcp14">MUST</span> reject the receipt and
-<span class="bcp14">SHOULD</span> report the specific failure.<a href="#section-8-5" class="pilcrow">¶</a></p>
-<p id="section-8-6">A verifier <span class="bcp14">MUST NOT</span> decode the payload CBOR or interpret any claim
+<span class="bcp14">SHOULD</span> report the specific failure.<a href="#section-8-6" class="pilcrow">¶</a></p>
+<p id="section-8-7">A verifier <span class="bcp14">MUST NOT</span> decode the payload CBOR or interpret any claim
 value before the Layer 2 signature check succeeds. Layers 1 and 2
 operate only on the COSE_Sign1 structure, the protected header, and the
 payload as an opaque byte string; the CWT claims are decoded and
 validated in Layer 3, only after the signature over them has been
-verified.<a href="#section-8-6" class="pilcrow">¶</a></p>
+verified.<a href="#section-8-7" class="pilcrow">¶</a></p>
 <div id="layer-1-cose-structure-and-header-validation">
 <section id="section-8.1">
         <h3 id="name-layer-1-cose-structure-and-">
@@ -2832,7 +3023,7 @@ is not decoded until Layer 3, after signature verification.<a href="#section-8.1
         </h3>
 <ol start="1" type="1" class="normal type-1" id="section-8.2-1">
 <li id="section-8.2-1.1">
-            <p id="section-8.2-1.1.1">Construct Sig_structure1 = ["Signature1", protected, h'',
+            <p id="section-8.2-1.1.1">Construct Sig_structure = ["Signature1", protected, h'',
 payload] per <span>[<a href="#RFC9052" class="cite xref">RFC9052</a>]</span> Section 4.4. The result is the message M
 over which the signature is verified.<a href="#section-8.2-1.1.1" class="pilcrow">¶</a></p>
 </li>
@@ -2855,7 +3046,8 @@ c.  Reject if A is a small-order point, or if R is a small-order
     point (a point of order 1, 2, 4, or 8).<a href="#section-8.2-1.2.4" class="pilcrow">¶</a></p>
 <p id="section-8.2-1.2.5">
 d.  Compute k = SHA-512(R || A || M), interpreted as a
-    little-endian integer modulo L. Verify the cofactorless group
+    little-endian integer (its reduction modulo L is implicit in
+    the scalar multiplication [k]A). Verify the cofactorless group
     equation [S]B = R + [k]A, where B is the Ed25519 base
     point. Reject if it does not hold. The cofactored equation
     <span class="bcp14">MUST NOT</span> be used in place of the cofactorless equation.<a href="#section-8.2-1.2.5" class="pilcrow">¶</a></p>
@@ -2887,7 +3079,12 @@ point-encoding canonicalization.<a href="#section-8.2-3" class="pilcrow">¶</a><
 entered only after the Layer 2 signature check has succeeded.<a href="#section-8.3-1" class="pilcrow">¶</a></p>
 <ol start="1" type="1" class="normal type-1" id="section-8.3-2">
 <li id="section-8.3-2.1">
-            <p id="section-8.3-2.1.1">Decode the payload. Confirm it is a well-formed CBOR map.<a href="#section-8.3-2.1.1" class="pilcrow">¶</a></p>
+            <p id="section-8.3-2.1.1">Decode the payload. Confirm it is a well-formed CBOR map.
+Confirm that every mandatory claim enumerated in the CDDL
+(<a href="#cddl" class="auto internal xref">Section 4.5</a>) and the EAT Profile Declaration is present; reject the
+receipt if any mandatory claim is absent. The closed-claims-map
+check below rejects unknown keys but does not by itself guarantee
+that the mandatory claims are present.<a href="#section-8.3-2.1.1" class="pilcrow">¶</a></p>
 </li>
           <li id="section-8.3-2.2">
             <p id="section-8.3-2.2.1">Confirm <code>eat_profile</code> (key 265) equals
@@ -2938,8 +3135,19 @@ rejected.<a href="#section-8.3-2.11.1" class="pilcrow">¶</a></p>
 be rejected (fail-closed).<a href="#section-8.3-2.12.1" class="pilcrow">¶</a></p>
 </li>
           <li id="section-8.3-2.13">
-            <p id="section-8.3-2.13.1">Confirm the claims map contains no unknown integer keys and no
-duplicate keys.<a href="#section-8.3-2.13.1" class="pilcrow">¶</a></p>
+            <p id="section-8.3-2.13.1">Confirm <code>request_hash</code> (key -65540), <code>response_hash</code> (key
+-65541), and <code>attestation_doc_hash</code> (key -65542) are each exactly
+32 bytes, and that <code>sequence_number</code> (key -65545),
+<code>execution_time_ms</code> (key -65546), and <code>memory_peak_mb</code> (key
+-65547) are each unsigned integers.<a href="#section-8.3-2.13.1" class="pilcrow">¶</a></p>
+</li>
+          <li id="section-8.3-2.14">
+            <p id="section-8.3-2.14.1">Confirm the claims map contains no unknown integer keys and no
+duplicate keys.<a href="#section-8.3-2.14.1" class="pilcrow">¶</a></p>
+</li>
+          <li id="section-8.3-2.15">
+            <p id="section-8.3-2.15.1">If <code>eat_nonce</code> (key 10) is present, confirm it is between 8
+and 64 bytes inclusive; reject otherwise (<span>[<a href="#RFC9711" class="cite xref">RFC9711</a>]</span> Section 4.1).<a href="#section-8.3-2.15.1" class="pilcrow">¶</a></p>
 </li>
         </ol>
 </section>
@@ -3011,7 +3219,11 @@ deduplication. This is acceptable for deployments that do not
 require challenge-binding, but <span class="bcp14">MUST</span> be understood as weaker than
 challenge-bound freshness: a compromised workload can pre-sign
 receipts, and verifiers relying only on <code>iat</code> gain no defense
-beyond clock skew.<a href="#section-8.5-2.2.1" class="pilcrow">¶</a></p>
+beyond clock skew. A validator operating in this mode <span class="bcp14">MUST</span> apply a
+bounded acceptance window (a <code>max_age</code> policy) and treat the result
+as recentness, not freshness: it conveys that a receipt is no older
+than the window, not that it was produced in response to a live
+challenge.<a href="#section-8.5-2.2.1" class="pilcrow">¶</a></p>
 </li>
         </ul>
 <p id="section-8.5-3">Attester-generated nonce values (nonce values not supplied by a
@@ -3040,32 +3252,55 @@ be considered in a future revision.<a href="#section-8.5-4" class="pilcrow">¶</
 <a href="#section-9.1" class="section-number selfRef">9.1. </a><a href="#name-draft-messous-eat-ai" class="section-name selfRef">draft-messous-eat-ai</a>
         </h3>
 <p id="section-9.1-1"><span>[<a href="#I-D.messous-eat-ai" class="cite xref">I-D.messous-eat-ai</a>]</span> defines AI-related claims for EAT,
-including model identification, training metadata, and performance
-metrics. AIR v1 is complementary: where draft-messous-eat-ai focuses
+including model identification, training metadata, and data-handling policy and SBOM
+references. AIR v1 is complementary: where draft-messous-eat-ai focuses
 on per-agent identity, provenance, and authorization metadata, AIR v1
 focuses narrowly on per-inference execution evidence from a
 confidential workload. AIR intentionally binds a specific request/
 response event to attestation-linked metadata; it is not a general AI
 agent identity profile. A future version of AIR could adopt
 registered claim keys from draft-messous-eat-ai once they stabilize,
-replacing the current private-use integer keys.<a href="#section-9.1-1" class="pilcrow">¶</a></p>
+replacing the current private-use integer keys. The two drafts do not
+collide in the private-use key space -- draft-messous-eat-ai uses keys
+in the -75000 range while AIR uses -65537 through -65549 -- but a future
+coordinated registration <span class="bcp14">SHOULD</span> align them.<a href="#section-9.1-1" class="pilcrow">¶</a></p>
+</section>
+</div>
+<div id="concurrent-ai-attestation-work">
+<section id="section-9.2">
+        <h3 id="name-concurrent-ai-attestation-w">
+<a href="#section-9.2" class="section-number selfRef">9.2. </a><a href="#name-concurrent-ai-attestation-w" class="section-name selfRef">Concurrent AI-Attestation Work</a>
+        </h3>
+<p id="section-9.2-1">Several concurrent efforts address adjacent parts of the AI-attestation
+problem. <span>[<a href="#I-D.sharif-ai-model-lifecycle-attestation" class="cite xref">I-D.sharif-ai-model-lifecycle-attestation</a>]</span> spans the whole
+model lifecycle -- from training-data attestation through per-inference
+output signing; AIR v1 is narrower, defining only the per-inference
+receipt wire format and its verification, and could serve as the
+receipt object such a lifecycle framework emits. In the research
+literature, AEX (arXiv:2603.14283) attests LLM API request/response
+provenance at the API boundary, and "Notarized Agents"
+(arXiv:2606.04193) defines receiver-attested receipts for AI agent
+actions. AIR's specific contribution is a closed, fail-closed
+COSE_Sign1 / CWT / EAT profile for a single confidential inference; it
+is not the only or first per-inference evidence scheme, and a future
+version could align its claim keys with these efforts.<a href="#section-9.2-1" class="pilcrow">¶</a></p>
 </section>
 </div>
 <div id="scitt">
-<section id="section-9.2">
+<section id="section-9.3">
         <h3 id="name-scitt">
-<a href="#section-9.2" class="section-number selfRef">9.2. </a><a href="#name-scitt" class="section-name selfRef">SCITT</a>
+<a href="#section-9.3" class="section-number selfRef">9.3. </a><a href="#name-scitt" class="section-name selfRef">SCITT</a>
         </h3>
-<p id="section-9.2-1">The Supply Chain Integrity, Transparency and Trust framework
-(<span>[<a href="#I-D.ietf-scitt-architecture" class="cite xref">I-D.ietf-scitt-architecture</a>]</span>) uses "Receipt" to mean a
+<p id="section-9.3-1">The Supply Chain Integrity, Transparency and Trust framework
+(<span>[<a href="#RFC9943" class="cite xref">RFC9943</a>]</span>) uses "Receipt" to mean a
 Merkle-tree inclusion proof produced by a Transparency Service for a
 Signed Statement submitted to it. In AIR, "receipt" means a
 workload-signed per-inference evidence object. These are different
 artifacts despite the shared word; this document uses "AIR receipt"
 throughout to refer to the AIR v1 COSE_Sign1 artifact defined here,
 and "SCITT Receipt" when referring to a Transparency-Service
-inclusion proof.<a href="#section-9.2-1" class="pilcrow">¶</a></p>
-<p id="section-9.2-2">AIR receipts are candidate <strong>payloads</strong> for SCITT Signed Statements,
+inclusion proof.<a href="#section-9.3-1" class="pilcrow">¶</a></p>
+<p id="section-9.3-2">AIR receipts are candidate <strong>payloads</strong> for SCITT Signed Statements,
 not Signed Statements themselves. A SCITT Signed Statement is a
 COSE_Sign1 structure carrying specific CWT claims (issuer, subject,
 etc.) that a Transparency Service uses for registration-policy
@@ -3074,106 +3309,162 @@ registration-relevant claims. Deployments wishing to anchor AIR
 receipts in a SCITT Transparency Service should wrap an AIR COSE_Sign1
 as the payload of an outer Signed Statement produced by the issuer,
 with the outer envelope supplying the claims required by the
-Transparency Service's registration policy.<a href="#section-9.2-2" class="pilcrow">¶</a></p>
-<p id="section-9.2-3">TEE-backed Transparency Service profiles such as
+Transparency Service's registration policy.<a href="#section-9.3-2" class="pilcrow">¶</a></p>
+<p id="section-9.3-3">TEE-backed Transparency Service profiles such as
 <span>[<a href="#I-D.ietf-scitt-receipts-ccf-profile" class="cite xref">I-D.ietf-scitt-receipts-ccf-profile</a>]</span> are natural complements to
 AIR's TEE-attested workload model. Complementary work by
 <span>[<a href="#I-D.kamimura-scitt-refusal-events" class="cite xref">I-D.kamimura-scitt-refusal-events</a>]</span> covers the refusal-event side
 of AI inference auditing, which pairs with AIR's successful-inference
-scope to give broader audit coverage.<a href="#section-9.2-3" class="pilcrow">¶</a></p>
-<p id="section-9.2-4">A SCITT Transparency Service can provide an independent inclusion time
+scope to give broader audit coverage.<a href="#section-9.3-3" class="pilcrow">¶</a></p>
+<p id="section-9.3-4">A SCITT Transparency Service can provide an independent inclusion time
 and ordering record for AIR receipts that are submitted to it. It does
 not, by itself, prove when the underlying inference ran, and it does
 not detect a receipt that the issuer never submitted. Completeness
 requires a deployment policy on top of transparency logging, such as
 mandatory submission, monotonic counters, per-session manifests, or
-client-enforced inclusion proofs.<a href="#section-9.2-4" class="pilcrow">¶</a></p>
-<p id="section-9.2-5">AIR v1 does not define the outer Signed Statement wrapping or a
+client-enforced inclusion proofs.<a href="#section-9.3-4" class="pilcrow">¶</a></p>
+<p id="section-9.3-5">AIR v1 does not define the outer Signed Statement wrapping or a
 registration profile for a SCITT Transparency Service. Future
-revisions may define such a profile.<a href="#section-9.2-5" class="pilcrow">¶</a></p>
+revisions may define such a profile.<a href="#section-9.3-5" class="pilcrow">¶</a></p>
 </section>
 </div>
 <div id="rats-architecture">
-<section id="section-9.3">
+<section id="section-9.4">
         <h3 id="name-rats-architecture">
-<a href="#section-9.3" class="section-number selfRef">9.3. </a><a href="#name-rats-architecture" class="section-name selfRef">RATS Architecture</a>
+<a href="#section-9.4" class="section-number selfRef">9.4. </a><a href="#name-rats-architecture" class="section-name selfRef">RATS Architecture</a>
         </h3>
-<p id="section-9.3-1">AIR receipts fit the RATS <span>[<a href="#RFC9334" class="cite xref">RFC9334</a>]</span> architecture as follows:<a href="#section-9.3-1" class="pilcrow">¶</a></p>
+<p id="section-9.4-1">AIR receipts fit the RATS <span>[<a href="#RFC9334" class="cite xref">RFC9334</a>]</span> architecture as follows:<a href="#section-9.4-1" class="pilcrow">¶</a></p>
 <ul class="normal">
-<li class="normal" id="section-9.3-2.1">
-            <p id="section-9.3-2.1.1">The confidential workload is the <strong>Attester</strong>. AIR receipts are
+<li class="normal" id="section-9.4-2.1">
+            <p id="section-9.4-2.1.1">The confidential workload is the <strong>Attester</strong>. AIR receipts are
 Attester-generated claims; they are Evidence in the general sense
 of <span>[<a href="#RFC9334" class="cite xref">RFC9334</a>]</span> Section 4.2, specialized to a per-inference
-application scope.<a href="#section-9.3-2.1.1" class="pilcrow">¶</a></p>
+application scope.<a href="#section-9.4-2.1.1" class="pilcrow">¶</a></p>
 </li>
-          <li class="normal" id="section-9.3-2.2">
-            <p id="section-9.3-2.2.1">The <strong>AIR Receipt Validator</strong> (see <a href="#terminology" class="auto internal xref">Section 3</a>) performs
+          <li class="normal" id="section-9.4-2.2">
+            <p id="section-9.4-2.2.1">The <strong>AIR Receipt Validator</strong> (see <a href="#terminology" class="auto internal xref">Section 3</a>) performs
 AIR-local checks (signature, claim structure, local policy). The
 AIR Receipt Validator is not the RATS Verifier of <span>[<a href="#RFC9334" class="cite xref">RFC9334</a>]</span>
-Section 6.4; it does not appraise platform Evidence against
-reference values or produce Attestation Results.<a href="#section-9.3-2.2.1" class="pilcrow">¶</a></p>
+Section 4.1; it does not appraise platform Evidence against
+reference values or produce Attestation Results.<a href="#section-9.4-2.2.1" class="pilcrow">¶</a></p>
 </li>
-          <li class="normal" id="section-9.3-2.3">
-            <p id="section-9.3-2.3.1">A <strong>RATS Verifier</strong> appraises the platform attestation evidence
+          <li class="normal" id="section-9.4-2.3">
+            <p id="section-9.4-2.3.1">A <strong>RATS Verifier</strong> appraises the platform attestation evidence
 referenced by <code>attestation_doc_hash</code> using platform-specific
 procedures and reference values. AIR v1 does not define those
-procedures.<a href="#section-9.3-2.3.1" class="pilcrow">¶</a></p>
+procedures.<a href="#section-9.4-2.3.1" class="pilcrow">¶</a></p>
 </li>
-          <li class="normal" id="section-9.3-2.4">
-            <p id="section-9.3-2.4.1">The end user, auditor, or compliance officer is the <strong>Relying
+          <li class="normal" id="section-9.4-2.4">
+            <p id="section-9.4-2.4.1">The end user, auditor, or compliance officer is the <strong>Relying
 Party</strong>. In a deployment that combines AIR with platform attestation,
 the Relying Party consumes both the AIR receipt and any platform
-Attestation Results.<a href="#section-9.3-2.4.1" class="pilcrow">¶</a></p>
+Attestation Results.<a href="#section-9.4-2.4.1" class="pilcrow">¶</a></p>
 </li>
-          <li class="normal" id="section-9.3-2.5">
-            <p id="section-9.3-2.5.1">The TEE hardware vendor (AWS, Intel) is the <strong>Endorser</strong>; their
-attestation infrastructure anchors trust in the platform evidence.<a href="#section-9.3-2.5.1" class="pilcrow">¶</a></p>
+          <li class="normal" id="section-9.4-2.5">
+            <p id="section-9.4-2.5.1">The TEE hardware vendor (AWS, Intel) is the <strong>Endorser</strong>; their
+attestation infrastructure anchors trust in the platform evidence.<a href="#section-9.4-2.5.1" class="pilcrow">¶</a></p>
 </li>
         </ul>
-<p id="section-9.3-3">AIR v1 is a workload-emitted artifact, not a Verifier-emitted
-Attestation Result. It is therefore distinct from IETF EAR (EAT
-Attestation Result), which is produced by a Verifier after evaluating
+<p id="section-9.4-3">AIR v1 is a workload-emitted artifact, not a Verifier-emitted
+Attestation Result. It is therefore distinct from IETF EAR (<span>[<a href="#I-D.ietf-rats-ear" class="cite xref">I-D.ietf-rats-ear</a>]</span>, EAT
+Attestation Results), which is produced by a Verifier after evaluating
 platform Evidence. In a complete deployment, a Verifier may evaluate
 platform Evidence and an AIR receipt together, and an EAR may reference
-an AIR receipt as part of the evidence it considered.<a href="#section-9.3-3" class="pilcrow">¶</a></p>
-<p id="section-9.3-4">This version of AIR assumes a single Attester producing one
+an AIR receipt as part of the evidence it considered.<a href="#section-9.4-3" class="pilcrow">¶</a></p>
+<p id="section-9.4-4">This version of AIR assumes a single Attester producing one
 attestation document per receipt. Patterns for composite attesters
 (multiple sub-attesters in one environment, e.g., CPU TEE + GPU
 confidential compute) and multi-verifier orchestration are the
 subject of active RATS WG work; see
 <span>[<a href="#I-D.richardson-rats-composite-attesters" class="cite xref">I-D.richardson-rats-composite-attesters</a>]</span> and
-<span>[<a href="#I-D.deshpande-rats-multi-verifier" class="cite xref">I-D.deshpande-rats-multi-verifier</a>]</span>. AIR v1 does not support these
+<span>[<a href="#I-D.ietf-rats-multi-verifier" class="cite xref">I-D.ietf-rats-multi-verifier</a>]</span>. AIR v1 does not support these
 patterns; future versions may define how AIR receipts compose across
-such environments.<a href="#section-9.3-4" class="pilcrow">¶</a></p>
+such environments.<a href="#section-9.4-4" class="pilcrow">¶</a></p>
+</section>
+</div>
+</section>
+</div>
+<div id="future-profile-candidates">
+<section id="section-10">
+      <h2 id="name-future-profile-candidates">
+<a href="#section-10" class="section-number selfRef">10. </a><a href="#name-future-profile-candidates" class="section-name selfRef">Future Profile Candidates</a>
+      </h2>
+<p id="section-10-1">AIR v1 defines an intentionally closed claims map with no extension
+registry (<a href="#non-goals" class="auto internal xref">Section 1.2</a>). This section records claim families that
+implementation experience and reviewer feedback have identified as
+candidates for a FUTURE AIR profile. It defines no new claims and adds
+no wire-format requirements; a future revision <span class="bcp14">MAY</span> define some or all
+of them, and this document commits to no delivery date. The purpose is
+to reserve the design space and to record the trust analysis any such
+claims would inherit.<a href="#section-10-1" class="pilcrow">¶</a></p>
+<div id="decoding-and-sampling-parameters">
+<section id="section-10.1">
+        <h3 id="name-decoding-and-sampling-param">
+<a href="#section-10.1" class="section-number selfRef">10.1. </a><a href="#name-decoding-and-sampling-param" class="section-name selfRef">Decoding and Sampling Parameters</a>
+        </h3>
+<p id="section-10.1-1">A future profile could carry the decoding configuration of the
+inference -- for example temperature, top_p, top_k, a random seed, and
+the stop-sequence set. Under the AIR trust model these are
+workload-asserted values (Trust Assumption TA-2, <a href="#trust-assumptions" class="auto internal xref">Section 11.1</a>):
+a verifier can policy-pin them -- reject a receipt whose asserted
+decoding configuration is not the expected one -- but generally cannot
+recompute the response to confirm the configuration was actually
+applied, because production inference on hardware accelerators is not
+bit-reproducible across runs. Such claims therefore add policy-pinning
+value, not independent verifiability, and a profile defining them
+<span class="bcp14">SHOULD</span> state this explicitly so that a Relying Party does not read a
+pinned decoding claim as proof of the decoding that occurred.<a href="#section-10.1-1" class="pilcrow">¶</a></p>
+</section>
+</div>
+<div id="structured-context-commitments">
+<section id="section-10.2">
+        <h3 id="name-structured-context-commitme">
+<a href="#section-10.2" class="section-number selfRef">10.2. </a><a href="#name-structured-context-commitme" class="section-name selfRef">Structured Context Commitments</a>
+        </h3>
+<p id="section-10.2-1">AIR v1's <code>request_hash</code> commits to the request payload as a single
+opaque byte string. A future profile could decompose the context into
+separately committed parts -- for example distinct hashes for the user
+input, the system prompt, retrieved context (as in retrieval-augmented
+generation), and a tool-call / tool-result log -- and could add a
+prior-receipt hash to chain multi-step or multi-turn interactions.
+These share the decoding parameters' trust class: they are
+workload-asserted and corroborable only against artifacts a Relying
+Party independently holds. This design space overlaps with the agent
+identity and provenance claims of <span>[<a href="#I-D.messous-eat-ai" class="cite xref">I-D.messous-eat-ai</a>]</span> and with
+recent work on attestation and provenance for LLM API
+request/response outputs (for example, AEX, arXiv:2603.14283); a future
+AIR profile <span class="bcp14">SHOULD</span> reuse registered claim
+keys from that work where they exist rather than minting private-use
+keys.<a href="#section-10.2-1" class="pilcrow">¶</a></p>
 </section>
 </div>
 </section>
 </div>
 <div id="security-considerations">
-<section id="section-10">
+<section id="section-11">
       <h2 id="name-security-considerations">
-<a href="#section-10" class="section-number selfRef">10. </a><a href="#name-security-considerations" class="section-name selfRef">Security Considerations</a>
+<a href="#section-11" class="section-number selfRef">11. </a><a href="#name-security-considerations" class="section-name selfRef">Security Considerations</a>
       </h2>
 <div id="trust-assumptions">
-<section id="section-10.1">
+<section id="section-11.1">
         <h3 id="name-trust-assumptions">
-<a href="#section-10.1" class="section-number selfRef">10.1. </a><a href="#name-trust-assumptions" class="section-name selfRef">Trust Assumptions</a>
+<a href="#section-11.1" class="section-number selfRef">11.1. </a><a href="#name-trust-assumptions" class="section-name selfRef">Trust Assumptions</a>
         </h3>
-<p id="section-10.1-1">The security properties of AIR verification depend on the following
+<p id="section-11.1-1">The security properties of AIR verification depend on the following
 Trust Assumptions. If any of these assumptions is broken, the
-corresponding AIR guarantees are void.<a href="#section-10.1-1" class="pilcrow">¶</a></p>
+corresponding AIR guarantees are void.<a href="#section-11.1-1" class="pilcrow">¶</a></p>
 <ul class="normal">
-<li class="normal" id="section-10.1-2.1">
-            <p id="section-10.1-2.1.1"><strong>TA-1 (TEE hardware correctness):</strong> the TEE hardware computes
+<li class="normal" id="section-11.1-2.1">
+            <p id="section-11.1-2.1.1"><strong>TA-1 (TEE hardware correctness):</strong> the TEE hardware computes
 measurements faithfully, isolates enclave memory from the host
 and hypervisor as specified, and protects the attestation
 signing key. A hardware vulnerability, firmware bug, or supply
 chain compromise affecting the TEE voids all AIR TEE-provenance
 guarantees. AIR v1 does not define revocation mechanisms for
-compromised platforms.<a href="#section-10.1-2.1.1" class="pilcrow">¶</a></p>
+compromised platforms.<a href="#section-11.1-2.1.1" class="pilcrow">¶</a></p>
 </li>
-          <li class="normal" id="section-10.1-2.2">
-            <p id="section-10.1-2.2.1"><strong>TA-2 (Workload honesty and evidence scope):</strong> the signing
+          <li class="normal" id="section-11.1-2.2">
+            <p id="section-11.1-2.2.1"><strong>TA-2 (Workload honesty and evidence scope):</strong> the signing
 workload computes the hashes it signs over the data it actually
 processed, and populates claims consistently with the inference
 it actually performed. An AIR receipt only speaks for what the
@@ -3181,188 +3472,235 @@ signing workload observed and emitted. A malicious or
 misconfigured workload can produce syntactically valid receipts
 that do not correspond to a genuine inference; AIR does not
 protect against such a signer. This assumption is meaningful
-only when combined with TA-3.<a href="#section-10.1-2.2.1" class="pilcrow">¶</a></p>
+only when combined with TA-3. Moreover, because
+<code>attestation_doc_hash</code> <span class="bcp14">MAY</span> reference a reused boot-time attestation
+rather than a per-inference one (see the <code>attestation_doc_hash</code>
+claim definition), a valid receipt does not establish that a
+specific inference occurred at a specific time, even when TA-1
+through TA-4 all hold.<a href="#section-11.1-2.2.1" class="pilcrow">¶</a></p>
 </li>
-          <li class="normal" id="section-10.1-2.3">
-            <p id="section-10.1-2.3.1"><strong>TA-3 (Key binding enforced out of band):</strong> for deployments
+          <li class="normal" id="section-11.1-2.3">
+            <p id="section-11.1-2.3.1"><strong>TA-3 (Key binding enforced out of band):</strong> for deployments
 asserting end-to-end TEE provenance, the Ed25519 signing key is
 cryptographically bound to the attested workload per
 <a href="#key-binding" class="auto internal xref">Section 7</a>. Without this binding, key substitution attacks
-(see <a href="#key-substitution-attack" class="auto internal xref">Section 10.9</a>) defeat the TEE-provenance
-claim regardless of TA-1 and TA-2.<a href="#section-10.1-2.3.1" class="pilcrow">¶</a></p>
+(see <a href="#key-substitution-attack" class="auto internal xref">Section 11.10</a>) defeat the TEE-provenance
+claim regardless of TA-1 and TA-2.<a href="#section-11.1-2.3.1" class="pilcrow">¶</a></p>
 </li>
-          <li class="normal" id="section-10.1-2.4">
-            <p id="section-10.1-2.4.1"><strong>TA-4 (Platform attestation verifiable via Endorser trust
+          <li class="normal" id="section-11.1-2.4">
+            <p id="section-11.1-2.4.1"><strong>TA-4 (Platform attestation verifiable via Endorser trust
 chain):</strong> the attestation document referenced by
 <code>attestation_doc_hash</code> can be obtained and validated by a RATS
 Verifier against the platform vendor's trust chain (for
 example, the AWS Nitro root CA, or the Intel DCAP / Provisioning
 Certification Service). AIR v1 does not define these procedures
-and relies on platform-specific verifiers.<a href="#section-10.1-2.4.1" class="pilcrow">¶</a></p>
+and relies on platform-specific verifiers.<a href="#section-11.1-2.4.1" class="pilcrow">¶</a></p>
 </li>
         </ul>
-<p id="section-10.1-3">AIR-local verification (Layers 1-4 of <a href="#verification-procedure" class="auto internal xref">Section 8</a>)
+<p id="section-11.1-3">AIR-local verification (Layers 1-4 of <a href="#verification-procedure" class="auto internal xref">Section 8</a>)
 proves only TA-independent properties: receipt well-formedness,
 signature validity under a provided public key, claim structural
 correctness, and policy match. Claims of TEE provenance require
 TA-1 through TA-4 to hold, with TA-3 enforced by the Validator and
-TA-4 enforced by a RATS Verifier.<a href="#section-10.1-3" class="pilcrow">¶</a></p>
+TA-4 enforced by a RATS Verifier.<a href="#section-11.1-3" class="pilcrow">¶</a></p>
 </section>
 </div>
 <div id="receipt-integrity">
-<section id="section-10.2">
+<section id="section-11.2">
         <h3 id="name-receipt-integrity">
-<a href="#section-10.2" class="section-number selfRef">10.2. </a><a href="#name-receipt-integrity" class="section-name selfRef">Receipt Integrity</a>
+<a href="#section-11.2" class="section-number selfRef">11.2. </a><a href="#name-receipt-integrity" class="section-name selfRef">Receipt Integrity</a>
         </h3>
-<p id="section-10.2-1">The Ed25519 signature over the COSE Sig_structure1 protects the
+<p id="section-11.2-1">The Ed25519 signature over the COSE Sig_structure protects the
 protected header and all claims against tampering. The unprotected
 header is not covered by the signature; AIR v1 requires it to be
-empty (Section 4.3).<a href="#section-10.2-1" class="pilcrow">¶</a></p>
+empty (Section 4.3).<a href="#section-11.2-1" class="pilcrow">¶</a></p>
 </section>
 </div>
 <div id="algorithm-pinning">
-<section id="section-10.3">
+<section id="section-11.3">
         <h3 id="name-algorithm-pinning">
-<a href="#section-10.3" class="section-number selfRef">10.3. </a><a href="#name-algorithm-pinning" class="section-name selfRef">Algorithm Pinning</a>
+<a href="#section-11.3" class="section-number selfRef">11.3. </a><a href="#name-algorithm-pinning" class="section-name selfRef">Algorithm Pinning</a>
         </h3>
-<p id="section-10.3-1">AIR v1 pins the signing algorithm to Ed25519 (alg = -8). The
+<p id="section-11.3-1">AIR v1 pins the signing algorithm to Ed25519 (alg = -8). The
 algorithm identifier is carried in the protected header and is
 therefore signed. This prevents algorithm confusion attacks where an
-attacker substitutes a weaker algorithm.<a href="#section-10.3-1" class="pilcrow">¶</a></p>
+attacker substitutes a weaker algorithm.<a href="#section-11.3-1" class="pilcrow">¶</a></p>
+<p id="section-11.3-2">As of <span>[<a href="#RFC9864" class="cite xref">RFC9864</a>]</span>, the generic EdDSA algorithm identifier -8 is no
+longer marked "Recommended" in the IANA COSE Algorithms registry (its
+Recommended status is "Deprecated") in favor of algorithm-specific
+identifiers. AIR v1 pins -8 for interoperability with currently
+deployed COSE tooling; a future AIR profile <span class="bcp14">MAY</span> adopt the
+Ed25519-specific algorithm identifier. Algorithm agility in AIR is
+handled by profile versioning, not in-band negotiation: a future
+revision needing a different or post-quantum signature scheme defines a
+new profile identifier (the <code>eat_profile</code> value), so a verifier never
+has to accept an algorithm the profile did not pin.<a href="#section-11.3-2" class="pilcrow">¶</a></p>
 </section>
 </div>
 <div id="replay-protection">
-<section id="section-10.4">
+<section id="section-11.4">
         <h3 id="name-replay-protection">
-<a href="#section-10.4" class="section-number selfRef">10.4. </a><a href="#name-replay-protection" class="section-name selfRef">Replay Protection</a>
+<a href="#section-11.4" class="section-number selfRef">11.4. </a><a href="#name-replay-protection" class="section-name selfRef">Replay Protection</a>
         </h3>
-<p id="section-10.4-1">Replay protection in AIR v1 is a shared responsibility:<a href="#section-10.4-1" class="pilcrow">¶</a></p>
+<p id="section-11.4-1">Replay protection in AIR v1 is a shared responsibility:<a href="#section-11.4-1" class="pilcrow">¶</a></p>
 <ul class="normal">
-<li class="normal" id="section-10.4-2.1">
-            <p id="section-10.4-2.1.1">The <code>cti</code> claim provides a unique receipt identifier. Verifiers
+<li class="normal" id="section-11.4-2.1">
+            <p id="section-11.4-2.1.1">The <code>cti</code> claim provides a unique receipt identifier. Verifiers
 maintaining state <span class="bcp14">SHOULD</span> track observed cti values and reject
-duplicates.<a href="#section-10.4-2.1.1" class="pilcrow">¶</a></p>
+duplicates.<a href="#section-11.4-2.1.1" class="pilcrow">¶</a></p>
 </li>
-          <li class="normal" id="section-10.4-2.2">
-            <p id="section-10.4-2.2.1">The <code>eat_nonce</code> claim (optional) provides challenge-response
+          <li class="normal" id="section-11.4-2.2">
+            <p id="section-11.4-2.2.1">The <code>eat_nonce</code> claim (optional) provides challenge-response
 freshness. When present, it binds the receipt to a specific
-verifier-supplied challenge, preventing replay to other verifiers.<a href="#section-10.4-2.2.1" class="pilcrow">¶</a></p>
+verifier-supplied challenge, preventing replay to other verifiers.<a href="#section-11.4-2.2.1" class="pilcrow">¶</a></p>
 </li>
-          <li class="normal" id="section-10.4-2.3">
-            <p id="section-10.4-2.3.1">The <code>sequence_number</code> claim provides monotonicity within an
+          <li class="normal" id="section-11.4-2.3">
+            <p id="section-11.4-2.3.1">The <code>sequence_number</code> claim provides monotonicity within an
 observed session. Gaps indicate missing sequence numbers within
 that observed stream; absence of a gap does not prove that every
-receipt was submitted.<a href="#section-10.4-2.3.1" class="pilcrow">¶</a></p>
+receipt was submitted.<a href="#section-11.4-2.3.1" class="pilcrow">¶</a></p>
 </li>
         </ul>
-<p id="section-10.4-3">Verifiers not maintaining state and not using eat_nonce have limited
+<p id="section-11.4-3">Verifiers not maintaining state and not using eat_nonce have limited
 replay protection (only iat-based freshness). Deployments requiring
 strong replay resistance <span class="bcp14">MUST</span> use at least one of cti deduplication
-or eat_nonce.<a href="#section-10.4-3" class="pilcrow">¶</a></p>
+or eat_nonce. A verifier configured with neither cti deduplication nor
+eat_nonce checking <span class="bcp14">SHOULD</span> surface a warning that the receipt has no
+replay protection beyond iat-based freshness.<a href="#section-11.4-3" class="pilcrow">¶</a></p>
 <div id="freshness-boundary">
-<section id="section-10.4.1">
+<section id="section-11.4.1">
           <h4 id="name-freshness-boundary">
-<a href="#section-10.4.1" class="section-number selfRef">10.4.1. </a><a href="#name-freshness-boundary" class="section-name selfRef">Freshness Boundary</a>
+<a href="#section-11.4.1" class="section-number selfRef">11.4.1. </a><a href="#name-freshness-boundary" class="section-name selfRef">Freshness Boundary</a>
           </h4>
-<p id="section-10.4.1-1">The freshness an AIR receipt conveys is bounded by who holds the
+<p id="section-11.4.1-1">The freshness an AIR receipt conveys is bounded by who holds the
 nonce. <code>eat_nonce</code> demonstrates freshness only to the party that
 issued the nonce; a later auditor who did not issue or observe that
 nonce cannot infer freshness from it. The <code>iat</code> claim is a
 workload-asserted time -- useful for verifier policy such as an age
 bound, but not an externally attested timestamp, and a compromised
-workload can assert any value.<a href="#section-10.4.1-1" class="pilcrow">¶</a></p>
-<p id="section-10.4.1-2">An AIR receipt therefore does not, on its own, give an after-the-fact
+workload can assert any value.<a href="#section-11.4.1-1" class="pilcrow">¶</a></p>
+<p id="section-11.4.1-2">An AIR receipt therefore does not, on its own, give an after-the-fact
 auditor verifiable freshness, nor evidence that the set of receipts is
 complete. Audit-time freshness and non-omission require an external
 mechanism -- for example, a transparency log that countersigns
 receipts with an independent timestamp, or an external sequencing
-authority -- layered on AIR. AIR v1 does not define that layer.<a href="#section-10.4.1-2" class="pilcrow">¶</a></p>
+authority -- layered on AIR. AIR v1 does not define that layer.<a href="#section-11.4.1-2" class="pilcrow">¶</a></p>
 </section>
 </div>
 </section>
 </div>
 <div id="model-hash-limitations">
-<section id="section-10.5">
+<section id="section-11.5">
         <h3 id="name-model-hash-limitations">
-<a href="#section-10.5" class="section-number selfRef">10.5. </a><a href="#name-model-hash-limitations" class="section-name selfRef">Model Hash Limitations</a>
+<a href="#section-11.5" class="section-number selfRef">11.5. </a><a href="#name-model-hash-limitations" class="section-name selfRef">Model Hash Limitations</a>
         </h3>
-<p id="section-10.5-1">The <code>model_hash</code> claim proves byte-level identity for the model
+<p id="section-11.5-1">The <code>model_hash</code> claim proves byte-level identity for the model
 artifact set as defined by <code>model_hash_scheme</code>, not model correctness,
 bias, or safety. Two distinct artifact sets with identical hashes are
 computationally infeasible, but a model with a correct hash may still
-produce harmful or incorrect outputs.<a href="#section-10.5-1" class="pilcrow">¶</a></p>
-<p id="section-10.5-2">The <code>model_hash_scheme</code> claim (<a href="#mhscheme" class="auto internal xref">Section 5.2.13</a>) declares how the hash
+produce harmful or incorrect outputs.<a href="#section-11.5-1" class="pilcrow">¶</a></p>
+<p id="section-11.5-2"><code>model_hash</code> identifies the serialized model artifact set, not the
+in-memory computational form actually executed. Quantization, kernel
+fusion, speculative decoding, and other runtime optimizations can make
+the executing model differ numerically from the hashed artifacts;
+<code>model_hash</code> binds which artifacts were referenced, not the exact
+computation performed.<a href="#section-11.5-2" class="pilcrow">¶</a></p>
+<p id="section-11.5-3">The <code>model_hash_scheme</code> claim (<a href="#mhscheme" class="auto internal xref">Section 5.2.13</a>) declares how the hash
 was computed. Unknown scheme values <span class="bcp14">MUST</span> be rejected. This prevents
 a verifier from accepting a hash computed with an unrecognized method
-that might weaken integrity guarantees.<a href="#section-10.5-2" class="pilcrow">¶</a></p>
-<p id="section-10.5-3">The <code>model_hash</code> claim is application-layer evidence. By itself it
+that might weaken integrity guarantees.<a href="#section-11.5-3" class="pilcrow">¶</a></p>
+<p id="section-11.5-4">The <code>model_hash</code> claim is application-layer evidence. By itself it
 does not prove that the corresponding artifacts were loaded or
 executed inside a hardware-attested environment; that requires
-verification of the attested workload and its model-loading path.<a href="#section-10.5-3" class="pilcrow">¶</a></p>
+verification of the attested workload and its model-loading path.<a href="#section-11.5-4" class="pilcrow">¶</a></p>
 </section>
 </div>
 <div id="attestation-document-not-verified-by-receipt">
-<section id="section-10.6">
+<section id="section-11.6">
         <h3 id="name-attestation-document-not-ve">
-<a href="#section-10.6" class="section-number selfRef">10.6. </a><a href="#name-attestation-document-not-ve" class="section-name selfRef">Attestation Document Not Verified by Receipt</a>
+<a href="#section-11.6" class="section-number selfRef">11.6. </a><a href="#name-attestation-document-not-ve" class="section-name selfRef">Attestation Document Not Verified by Receipt</a>
         </h3>
-<p id="section-10.6-1">The <code>attestation_doc_hash</code> claim is a SHA-256 hash of the platform
+<p id="section-11.6-1">The <code>attestation_doc_hash</code> claim is a SHA-256 hash of the platform
 attestation document. AIR v1 does not embed or verify the attestation
 document. AIR-local verification alone is therefore insufficient to
 establish TEE assurance. Verifiers requiring such assurance <span class="bcp14">MUST</span>
 independently obtain and verify the attestation document using
 platform-specific procedures (e.g., Nitro COSE verification against
-the AWS root CA, Intel TDX DCAP verification against Intel PCS).<a href="#section-10.6-1" class="pilcrow">¶</a></p>
+the AWS root CA, Intel TDX DCAP verification against Intel PCS).<a href="#section-11.6-1" class="pilcrow">¶</a></p>
+</section>
+</div>
+<div id="accelerator-scope">
+<section id="section-11.7">
+        <h3 id="name-accelerator-attestation-sco">
+<a href="#section-11.7" class="section-number selfRef">11.7. </a><a href="#name-accelerator-attestation-sco" class="section-name selfRef">Accelerator Attestation Scope</a>
+        </h3>
+<p id="section-11.7-1">An AIR v1 receipt attests the CPU-side TEE only. On a platform that
+also provides accelerator (for example, GPU) confidential computing,
+the accelerator's confidential-computing mode, device identity, and
+memory-protection state are NOT covered by the receipt, and are not
+implied by a successful <code>enclave_measurements</code> reconciliation. A
+Relying Party <span class="bcp14">MUST NOT</span> infer accelerator confidentiality from an AIR v1
+receipt, and a party presenting such a receipt <span class="bcp14">MUST NOT</span> represent it as
+covering accelerator confidentiality. Where accelerator confidentiality
+is part of the trust decision, it <span class="bcp14">MUST</span> be established out of band from
+device-side Evidence (see the composite-attester note in <a href="#non-goals" class="auto internal xref">Section 1.2</a>)
+and <span class="bcp14">MUST NOT</span> be assumed from the presence of an AIR receipt. A future
+composite-attester AIR profile may bind CPU-side and accelerator-side
+Evidence into a single verifiable object.<a href="#section-11.7-1" class="pilcrow">¶</a></p>
 </section>
 </div>
 <div id="workload-honesty-and-evidence-scope">
-<section id="section-10.7">
+<section id="section-11.8">
         <h3 id="name-workload-honesty-and-eviden">
-<a href="#section-10.7" class="section-number selfRef">10.7. </a><a href="#name-workload-honesty-and-eviden" class="section-name selfRef">Workload Honesty and Evidence Scope</a>
+<a href="#section-11.8" class="section-number selfRef">11.8. </a><a href="#name-workload-honesty-and-eviden" class="section-name selfRef">Workload Honesty and Evidence Scope</a>
         </h3>
-<p id="section-10.7-1">An AIR receipt only speaks for what the signing workload observed and
+<p id="section-11.8-1">An AIR receipt only speaks for what the signing workload observed and
 emitted. If the workload is malicious, misconfigured, or signs hashes
 for data that did not come from the claimed inference path, AIR can
 still produce a syntactically valid receipt. AIR therefore does not
 protect against an untrusted signer or against semantics outside the
-measured workload boundary.<a href="#section-10.7-1" class="pilcrow">¶</a></p>
-<p id="section-10.7-2">Deployments that rely on AIR for end-to-end assurance <span class="bcp14">MUST</span> treat the
+measured workload boundary.<a href="#section-11.8-1" class="pilcrow">¶</a></p>
+<p id="section-11.8-2">Deployments that rely on AIR for end-to-end assurance <span class="bcp14">MUST</span> treat the
 receipt as meaningful only when the signing key is bound to an
 attested workload whose measurement set and execution policy are
-acceptable to the verifier.<a href="#section-10.7-2" class="pilcrow">¶</a></p>
+acceptable to the verifier.<a href="#section-11.8-2" class="pilcrow">¶</a></p>
 </section>
 </div>
 <div id="claim-trust-classes">
-<section id="section-10.8">
+<section id="section-11.9">
         <h3 id="name-claim-trust-classes">
-<a href="#section-10.8" class="section-number selfRef">10.8. </a><a href="#name-claim-trust-classes" class="section-name selfRef">Claim Trust Classes</a>
+<a href="#section-11.9" class="section-number selfRef">11.9. </a><a href="#name-claim-trust-classes" class="section-name selfRef">Claim Trust Classes</a>
         </h3>
-<p id="section-10.8-1">Every claim in an AIR receipt is covered by the receipt signature, but
+<p id="section-11.9-1">Every claim in an AIR receipt is covered by the receipt signature, but
 that signature proves only that the <em>workload</em> asserted the claim. It
 does not, on its own, make the claim true. Claims differ in whether,
 and how, a verifier or Relying Party can corroborate them against
 evidence outside the receipt. This section classifies every AIR v1
 claim so that implementers and Relying Parties do not mistake a
-workload self-assertion for independently established fact.<a href="#section-10.8-1" class="pilcrow">¶</a></p>
-<p id="section-10.8-2">Three trust classes are used:<a href="#section-10.8-2" class="pilcrow">¶</a></p>
+workload self-assertion for independently established fact.<a href="#section-11.9-1" class="pilcrow">¶</a></p>
+<p id="section-11.9-2">In RATS terms (<span>[<a href="#RFC9334" class="cite xref">RFC9334</a>]</span>), a claim is corroborated hardware Evidence
+only when an Attesting Environment measured it and a Verifier appraises
+it against reference values; the remaining claims are workload
+assertions that the receipt signature authenticates but does not make
+true. Three trust classes are used:<a href="#section-11.9-2" class="pilcrow">¶</a></p>
 <ul class="normal">
-<li class="normal" id="section-10.8-3.1">
-            <p id="section-10.8-3.1.1"><strong>Self-asserted:</strong> backed only by the workload's signature. A
+<li class="normal" id="section-11.9-3.1">
+            <p id="section-11.9-3.1.1"><strong>Self-asserted:</strong> backed only by the workload's signature. A
 malicious or misconfigured workload can place any syntactically
 valid value in the claim; the receipt signature does not elevate
-such a claim beyond "the workload stated this."<a href="#section-10.8-3.1.1" class="pilcrow">¶</a></p>
+such a claim beyond "the workload stated this."<a href="#section-11.9-3.1.1" class="pilcrow">¶</a></p>
 </li>
-          <li class="normal" id="section-10.8-3.2">
-            <p id="section-10.8-3.2.1"><strong>Externally corroborable:</strong> a Relying Party that independently
+          <li class="normal" id="section-11.9-3.2">
+            <p id="section-11.9-3.2.1"><strong>Externally corroborable:</strong> a Relying Party that independently
 holds the corresponding artifact (a known-good reference value,
 the request or response bytes, or a verifier-supplied nonce) can
-confirm the claim by recomputation or comparison.<a href="#section-10.8-3.2.1" class="pilcrow">¶</a></p>
+confirm the claim by recomputation or comparison.<a href="#section-11.9-3.2.1" class="pilcrow">¶</a></p>
 </li>
-          <li class="normal" id="section-10.8-3.3">
-            <p id="section-10.8-3.3.1"><strong>Attestation-corroborable:</strong> the claim is meaningful only after a
+          <li class="normal" id="section-11.9-3.3">
+            <p id="section-11.9-3.3.1"><strong>Attestation-corroborable:</strong> the claim is meaningful only after a
 verifier obtains and validates the platform attestation document
 and reconciles the claim against it per <a href="#validator-behavior" class="auto internal xref">Section 7.3</a>.
-Before that reconciliation the claim is self-asserted.<a href="#section-10.8-3.3.1" class="pilcrow">¶</a></p>
+Before that reconciliation the claim is self-asserted.<a href="#section-11.9-3.3.1" class="pilcrow">¶</a></p>
 </li>
         </ul>
 <table class="center" id="table-6">
@@ -3387,7 +3725,7 @@ Before that reconciliation the claim is self-asserted.<a href="#section-10.8-3.3
                 <code>iat</code>
 </td>
               <td class="text-left" rowspan="1" colspan="1">Self-asserted</td>
-              <td class="text-left" rowspan="1" colspan="1">None; workload clock (see <a href="#replay-protection" class="auto internal xref">Section 10.4</a> and Clock Integrity)</td>
+              <td class="text-left" rowspan="1" colspan="1">None; workload clock (see <a href="#replay-protection" class="auto internal xref">Section 11.4</a> and Clock Integrity)</td>
             </tr>
             <tr>
               <td class="text-left" rowspan="1" colspan="1">
@@ -3450,7 +3788,7 @@ Before that reconciliation the claim is self-asserted.<a href="#section-10.8-3.3
                 <code>attestation_doc_hash</code>
 </td>
               <td class="text-left" rowspan="1" colspan="1">Attestation-corroborable</td>
-              <td class="text-left" rowspan="1" colspan="1">Re-hash the independently obtained attestation document</td>
+              <td class="text-left" rowspan="1" colspan="1">Re-hash the independently obtained attestation document. For a TEE-provenance receipt this is the same document that carries the key binding and reconciled measurements; it is typically boot-time, so it shows execution <em>in</em> the attested workload, not <em>at the time of</em> this inference (see the <code>attestation_doc_hash</code> claim definition).</td>
             </tr>
             <tr>
               <td class="text-left" rowspan="1" colspan="1">
@@ -3503,7 +3841,7 @@ Before that reconciliation the claim is self-asserted.<a href="#section-10.8-3.3
             </tr>
           </tbody>
         </table>
-<p id="section-10.8-5">The <code>enclave_measurements</code> claim warrants specific attention. It
+<p id="section-11.9-5">The <code>enclave_measurements</code> claim warrants specific attention. It
 carries platform measurement registers (PCR or MRTD/RTMR values) and
 therefore resembles hardware-rooted evidence, but within the receipt
 it is a Self-asserted claim: the values are written and signed by the
@@ -3512,157 +3850,167 @@ corroborated platform evidence only after the <a href="#validator-behavior" clas
 reconciliation against the validated attestation document. A verifier
 that presents <code>enclave_measurements</code> to a Relying Party as a verified
 measurement, without performing that reconciliation, misrepresents a
-workload self-assertion as hardware evidence.<a href="#section-10.8-5" class="pilcrow">¶</a></p>
+workload self-assertion as hardware evidence.<a href="#section-11.9-5" class="pilcrow">¶</a></p>
 </section>
 </div>
 <div id="key-substitution-attack">
-<section id="section-10.9">
+<section id="section-11.10">
         <h3 id="name-key-substitution-attack">
-<a href="#section-10.9" class="section-number selfRef">10.9. </a><a href="#name-key-substitution-attack" class="section-name selfRef">Key Substitution Attack</a>
+<a href="#section-11.10" class="section-number selfRef">11.10. </a><a href="#name-key-substitution-attack" class="section-name selfRef">Key Substitution Attack</a>
         </h3>
-<p id="section-10.9-1">If an implementation does not enforce key binding as described in
+<p id="section-11.10-1">If an implementation does not enforce key binding as described in
 <a href="#key-binding" class="auto internal xref">Section 7</a>, a workload compromise enables a key-substitution
-attack. An attacker with code execution in the workload may:<a href="#section-10.9-1" class="pilcrow">¶</a></p>
-<ol start="1" type="1" class="normal type-1" id="section-10.9-2">
-<li id="section-10.9-2.1">
-            <p id="section-10.9-2.1.1">Extract the Ed25519 signing private key.<a href="#section-10.9-2.1.1" class="pilcrow">¶</a></p>
+attack. An attacker with code execution in the workload may:<a href="#section-11.10-1" class="pilcrow">¶</a></p>
+<ol start="1" type="1" class="normal type-1" id="section-11.10-2">
+<li id="section-11.10-2.1">
+            <p id="section-11.10-2.1.1">Extract the Ed25519 signing private key.<a href="#section-11.10-2.1.1" class="pilcrow">¶</a></p>
 </li>
-          <li id="section-10.9-2.2">
-            <p id="section-10.9-2.2.1">Obtain or generate a fresh platform attestation document with a
+          <li id="section-11.10-2.2">
+            <p id="section-11.10-2.2.1">Obtain or generate a fresh platform attestation document with a
 different REPORTDATA (or equivalent field), which may correspond
-to a different measurement or a different workload image.<a href="#section-10.9-2.2.1" class="pilcrow">¶</a></p>
+to a different measurement or a different workload image.<a href="#section-11.10-2.2.1" class="pilcrow">¶</a></p>
 </li>
-          <li id="section-10.9-2.3">
-            <p id="section-10.9-2.3.1">Sign AIR receipts with the extracted key and populate
+          <li id="section-11.10-2.3">
+            <p id="section-11.10-2.3.1">Sign AIR receipts with the extracted key and populate
 <code>attestation_doc_hash</code> with the hash of the new attestation
-document.<a href="#section-10.9-2.3.1" class="pilcrow">¶</a></p>
+document.<a href="#section-11.10-2.3.1" class="pilcrow">¶</a></p>
 </li>
         </ol>
-<p id="section-10.9-3">A verifier that checks only the AIR signature and the
+<p id="section-11.10-3">A verifier that checks only the AIR signature and the
 <code>attestation_doc_hash</code> field cannot distinguish such receipts from
 receipts produced by the attested workload. AIR-local verification
 remains valid in the narrow sense that the signature and claim
-structure are well-formed, but end-to-end TEE provenance is broken.<a href="#section-10.9-3" class="pilcrow">¶</a></p>
-<p id="section-10.9-4">Deployments that claim end-to-end TEE provenance from AIR receipts
+structure are well-formed, but end-to-end TEE provenance is broken.<a href="#section-11.10-3" class="pilcrow">¶</a></p>
+<p id="section-11.10-4">Deployments that claim end-to-end TEE provenance from AIR receipts
 <span class="bcp14">MUST</span> therefore enforce key binding per <a href="#key-binding" class="auto internal xref">Section 7</a>, and verifiers
 enforcing such claims <span class="bcp14">MUST</span> check that binding using platform-specific
-procedures.<a href="#section-10.9-4" class="pilcrow">¶</a></p>
+procedures.<a href="#section-11.10-4" class="pilcrow">¶</a></p>
 </section>
 </div>
 <div id="signing-key-reuse">
-<section id="section-10.10">
+<section id="section-11.11">
         <h3 id="name-signing-key-reuse">
-<a href="#section-10.10" class="section-number selfRef">10.10. </a><a href="#name-signing-key-reuse" class="section-name selfRef">Signing Key Reuse</a>
+<a href="#section-11.11" class="section-number selfRef">11.11. </a><a href="#name-signing-key-reuse" class="section-name selfRef">Signing Key Reuse</a>
         </h3>
-<p id="section-10.10-1"><a href="#key-binding" class="auto internal xref">Section 7</a> requires the attested AIR signing key to be
+<p id="section-11.11-1"><a href="#key-binding" class="auto internal xref">Section 7</a> requires the attested AIR signing key to be
 single-purpose. Ed25519 unforgeability is analyzed for a key used in a
 single signing role; reusing the attested key across protocols falls
 outside that model and can enable cross-protocol signature confusion,
 in which a signature produced for another protocol is presented as an
 AIR receipt, or an AIR receipt signature is replayed into another
-protocol.<a href="#section-10.10-1" class="pilcrow">¶</a></p>
+protocol.<a href="#section-11.11-1" class="pilcrow">¶</a></p>
 </section>
 </div>
 <div id="tee-compromise">
-<section id="section-10.11">
+<section id="section-11.12">
         <h3 id="name-tee-compromise">
-<a href="#section-10.11" class="section-number selfRef">10.11. </a><a href="#name-tee-compromise" class="section-name selfRef">TEE Compromise</a>
+<a href="#section-11.12" class="section-number selfRef">11.12. </a><a href="#name-tee-compromise" class="section-name selfRef">TEE Compromise</a>
         </h3>
-<p id="section-10.11-1">See TA-1 in <a href="#trust-assumptions" class="auto internal xref">Section 10.1</a>. Operators of verifiers <span class="bcp14">SHOULD</span>
+<p id="section-11.12-1">See TA-1 in <a href="#trust-assumptions" class="auto internal xref">Section 11.1</a>. Operators of verifiers <span class="bcp14">SHOULD</span>
 consult platform-vendor advisories and maintain an allowlist or
 denylist of accepted platform measurements and TCB versions to
 respond to disclosed hardware or firmware vulnerabilities. AIR v1
 does not itself define revocation or TCB-rollback signaling; this is
 typically performed by the platform-specific RATS Verifier against
-its reference-value store.<a href="#section-10.11-1" class="pilcrow">¶</a></p>
+its reference-value store.<a href="#section-11.12-1" class="pilcrow">¶</a></p>
 </section>
 </div>
 <div id="clock-integrity">
-<section id="section-10.12">
+<section id="section-11.13">
         <h3 id="name-clock-integrity">
-<a href="#section-10.12" class="section-number selfRef">10.12. </a><a href="#name-clock-integrity" class="section-name selfRef">Clock Integrity</a>
+<a href="#section-11.13" class="section-number selfRef">11.13. </a><a href="#name-clock-integrity" class="section-name selfRef">Clock Integrity</a>
         </h3>
-<p id="section-10.12-1">The <code>iat</code> claim depends on the workload's system clock. On AWS
+<p id="section-11.13-1">The <code>iat</code> claim depends on the workload's system clock. On AWS
 Nitro, the enclave uses the host clock (no independent time source).
 On Intel TDX, the CVM has a TSC but it is subject to frequency
 scaling. AIR v1 freshness checks are only as accurate as the
-platform clock.<a href="#section-10.12-1" class="pilcrow">¶</a></p>
+platform clock.<a href="#section-11.13-1" class="pilcrow">¶</a></p>
 </section>
 </div>
 <div id="deterministic-encoding">
-<section id="section-10.13">
+<section id="section-11.14">
         <h3 id="name-deterministic-encoding">
-<a href="#section-10.13" class="section-number selfRef">10.13. </a><a href="#name-deterministic-encoding" class="section-name selfRef">Deterministic Encoding</a>
+<a href="#section-11.14" class="section-number selfRef">11.14. </a><a href="#name-deterministic-encoding" class="section-name selfRef">Deterministic Encoding</a>
         </h3>
-<p id="section-10.13-1">AIR v1 requires deterministic CBOR encoding (<span>[<a href="#RFC8949" class="cite xref">RFC8949</a>]</span> Section
+<p id="section-11.14-1">AIR v1 requires deterministic CBOR encoding (<span>[<a href="#RFC8949" class="cite xref">RFC8949</a>]</span> Section
 4.2.1). This ensures that the same claims always produce the same
 payload bytes, preventing signature-valid variants of the same
 receipt. Implementations <span class="bcp14">MUST</span> sort map keys per the CBOR
-deterministic encoding rules.<a href="#section-10.13-1" class="pilcrow">¶</a></p>
+deterministic encoding rules.<a href="#section-11.14-1" class="pilcrow">¶</a></p>
 </section>
 </div>
 <div id="closed-claims-map">
-<section id="section-10.14">
+<section id="section-11.15">
         <h3 id="name-closed-claims-map">
-<a href="#section-10.14" class="section-number selfRef">10.14. </a><a href="#name-closed-claims-map" class="section-name selfRef">Closed Claims Map</a>
+<a href="#section-11.15" class="section-number selfRef">11.15. </a><a href="#name-closed-claims-map" class="section-name selfRef">Closed Claims Map</a>
         </h3>
-<p id="section-10.14-1">The claims map is closed: unknown integer keys <span class="bcp14">MUST</span> be rejected.
+<p id="section-11.15-1">The claims map is closed: unknown integer keys <span class="bcp14">MUST</span> be rejected.
 This prevents downgrade attacks where an attacker adds unrecognized
 claims that a naive verifier might silently accept as benign. This
 closed-scope behavior is intentional in AIR v1; future extensions
-require a revised profile.<a href="#section-10.14-1" class="pilcrow">¶</a></p>
+require a revised profile.<a href="#section-11.15-1" class="pilcrow">¶</a></p>
 </section>
 </div>
 </section>
 </div>
 <div id="privacy-considerations">
-<section id="section-11">
+<section id="section-12">
       <h2 id="name-privacy-considerations">
-<a href="#section-11" class="section-number selfRef">11. </a><a href="#name-privacy-considerations" class="section-name selfRef">Privacy Considerations</a>
+<a href="#section-12" class="section-number selfRef">12. </a><a href="#name-privacy-considerations" class="section-name selfRef">Privacy Considerations</a>
       </h2>
 <div id="inputoutput-hashes">
-<section id="section-11.1">
+<section id="section-12.1">
         <h3 id="name-input-output-hashes">
-<a href="#section-11.1" class="section-number selfRef">11.1. </a><a href="#name-input-output-hashes" class="section-name selfRef">Input/Output Hashes</a>
+<a href="#section-12.1" class="section-number selfRef">12.1. </a><a href="#name-input-output-hashes" class="section-name selfRef">Input/Output Hashes</a>
         </h3>
-<p id="section-11.1-1">The request_hash and response_hash claims contain SHA-256 hashes,
+<p id="section-12.1-1">The request_hash and response_hash claims contain SHA-256 hashes,
 not plaintext inputs or outputs. However, for low-entropy inputs
 (e.g., binary classification queries, yes/no questions), an
 adversary with knowledge of the input space could brute-force the
 hash to recover the original input. Deployments handling sensitive
 low-entropy data <span class="bcp14">SHOULD</span> consider whether receipt exposure risks
-input recovery.<a href="#section-11.1-1" class="pilcrow">¶</a></p>
+input recovery.<a href="#section-12.1-1" class="pilcrow">¶</a></p>
+<p id="section-12.1-2">A deployment <span class="bcp14">MAY</span> mitigate this by folding a per-receipt secret salt
+(for example, the <code>eat_nonce</code>, or a random value retained by the
+issuer) into the hashed preimage, so that <code>request_hash</code> and
+<code>response_hash</code> are not dictionary-confirmable by an observer who does
+not hold the salt. This is a deliberate trade-off: a salted hash is no
+longer independently recomputable by a Relying Party that holds only
+the request or response bytes, so the claim's trust class shifts from
+externally-corroborable to corroborable-only-with-the-salt (see
+<a href="#claim-trust-classes" class="auto internal xref">Section 11.9</a>). A profile that defines salting <span class="bcp14">MUST</span> specify
+how the salt is conveyed to authorized verifiers.<a href="#section-12.1-2" class="pilcrow">¶</a></p>
 </section>
 </div>
 <div id="correlation-metadata">
-<section id="section-11.2">
+<section id="section-12.2">
         <h3 id="name-correlation-metadata">
-<a href="#section-11.2" class="section-number selfRef">11.2. </a><a href="#name-correlation-metadata" class="section-name selfRef">Correlation Metadata</a>
+<a href="#section-12.2" class="section-number selfRef">12.2. </a><a href="#name-correlation-metadata" class="section-name selfRef">Correlation Metadata</a>
         </h3>
-<p id="section-11.2-1">AIR receipts contain timestamps (iat), sequence numbers, and
+<p id="section-12.2-1">AIR receipts contain timestamps (iat), sequence numbers, and
 identifiers (cti, iss) that could be used to correlate activity
 across receipts. In privacy-sensitive deployments, operators <span class="bcp14">SHOULD</span>
 consider whether the combination of receipt metadata enables
-unwanted profiling.<a href="#section-11.2-1" class="pilcrow">¶</a></p>
+unwanted profiling.<a href="#section-12.2-1" class="pilcrow">¶</a></p>
 </section>
 </div>
 <div id="nonce-privacy">
-<section id="section-11.3">
+<section id="section-12.3">
         <h3 id="name-nonce-privacy">
-<a href="#section-11.3" class="section-number selfRef">11.3. </a><a href="#name-nonce-privacy" class="section-name selfRef">Nonce Privacy</a>
+<a href="#section-12.3" class="section-number selfRef">12.3. </a><a href="#name-nonce-privacy" class="section-name selfRef">Nonce Privacy</a>
         </h3>
-<p id="section-11.3-1">The eat_nonce claim, when present, may leak correlation data if the
+<p id="section-12.3-1">The eat_nonce claim, when present, may leak correlation data if the
 same nonce is reused across sessions or if the nonce encodes
 client-identifying information. Verifiers <span class="bcp14">SHOULD</span> use random nonces
-and avoid embedding client identifiers in nonce values.<a href="#section-11.3-1" class="pilcrow">¶</a></p>
+and avoid embedding client identifiers in nonce values.<a href="#section-12.3-1" class="pilcrow">¶</a></p>
 </section>
 </div>
 <div id="issuer-identity">
-<section id="section-11.4">
+<section id="section-12.4">
         <h3 id="name-issuer-identity">
-<a href="#section-11.4" class="section-number selfRef">11.4. </a><a href="#name-issuer-identity" class="section-name selfRef">Issuer Identity</a>
+<a href="#section-12.4" class="section-number selfRef">12.4. </a><a href="#name-issuer-identity" class="section-name selfRef">Issuer Identity</a>
         </h3>
-<p id="section-11.4-1">The <code>iss</code> claim identifies the emitting entity. If the deployment
+<p id="section-12.4-1">The <code>iss</code> claim identifies the emitting entity. If the deployment
 assigns <code>iss</code> a human-readable value such as an organization name,
 the resulting receipts disclose the issuer's identity to anyone who
 can read them. For receipts that flow to auditors or relying parties
@@ -3670,138 +4018,185 @@ outside the trust boundary of the issuer, this is usually intended
 and acceptable. For receipts that may be shared further (for
 example, aggregated in a transparency log, forwarded to external
 regulators, or included in public audit artifacts), the human-readable
-issuer identity may exceed the intended disclosure scope.<a href="#section-11.4-1" class="pilcrow">¶</a></p>
-<p id="section-11.4-2">Deployments requiring issuer pseudonymity <span class="bcp14">SHOULD</span> use opaque <code>iss</code>
+issuer identity may exceed the intended disclosure scope.<a href="#section-12.4-1" class="pilcrow">¶</a></p>
+<p id="section-12.4-2">Deployments requiring issuer pseudonymity <span class="bcp14">SHOULD</span> use opaque <code>iss</code>
 values (for example, UUIDs or randomly-generated identifiers) and
 distribute issuer mappings out of band to the parties that need
-them.<a href="#section-11.4-2" class="pilcrow">¶</a></p>
+them.<a href="#section-12.4-2" class="pilcrow">¶</a></p>
+</section>
+</div>
+<div id="signing-key-and-identifier-linkability">
+<section id="section-12.5">
+        <h3 id="name-signing-key-and-identifier-">
+<a href="#section-12.5" class="section-number selfRef">12.5. </a><a href="#name-signing-key-and-identifier-" class="section-name selfRef">Signing Key and Identifier Linkability</a>
+        </h3>
+<p id="section-12.5-1">The Ed25519 receipt signing key is, in effect, a persistent pseudonym:
+every receipt a given attested workload emits is signed by the same
+key, so an observer can link all of that workload's inferences to one
+another and, via the key binding, to one attested environment. The
+<code>model_id</code> and <code>enclave_measurements</code> claims are likewise stable
+cross-receipt correlators. Where unlinkability across receipts or
+across relying parties matters, a deployment <span class="bcp14">SHOULD</span> use
+per-relying-party or rotating signing keys, each separately attested,
+accepting the additional attestation cost. AIR v1 does not use the EAT
+<code>ueid</code>, <code>sueids</code>, <code>oemid</code>, <code>hwmodel</code>, or <code>hwversion</code> claims -- the
+closed claims map prohibits them -- which avoids the permanent-
+hardware-identifier linkability discussed in <span>[<a href="#RFC9711" class="cite xref">RFC9711</a>]</span> Section 8. The
+<code>cti</code> claim <span class="bcp14">SHOULD</span> be a random 128-bit value rather than a counter (see
+its claim definition); <code>sequence_number</code> is a deliberately
+session-linkable field, and because it is informational only a
+deployment concerned with linkability <span class="bcp14">MAY</span> emit a constant value for it.<a href="#section-12.5-1" class="pilcrow">¶</a></p>
 </section>
 </div>
 </section>
 </div>
 <div id="iana-considerations">
-<section id="section-12">
+<section id="section-13">
       <h2 id="name-iana-considerations">
-<a href="#section-12" class="section-number selfRef">12. </a><a href="#name-iana-considerations" class="section-name selfRef">IANA Considerations</a>
+<a href="#section-13" class="section-number selfRef">13. </a><a href="#name-iana-considerations" class="section-name selfRef">IANA Considerations</a>
       </h2>
-<p id="section-12-1">This document has no IANA actions at this time.<a href="#section-12-1" class="pilcrow">¶</a></p>
-<p id="section-12-2">AIR v1 uses negative integer keys in the CWT private-use range
+<p id="section-13-1">This document has no IANA actions at this time.<a href="#section-13-1" class="pilcrow">¶</a></p>
+<p id="section-13-2">AIR v1 uses negative integer keys in the CWT private-use range
 (keys -65537 through -65549). If AIR gains adoption, a future
 version may request registration of these claims in the CWT Claims
 registry established by <span>[<a href="#RFC8392" class="cite xref">RFC8392</a>]</span>. The eat_profile URI
 (<code>"https://spec.cyntrisec.com/air/v1"</code>) follows the EAT profile
 naming conventions in <span>[<a href="#RFC9711" class="cite xref">RFC9711</a>]</span> but is not registered in any
-IANA registry.<a href="#section-12-2" class="pilcrow">¶</a></p>
-<p id="section-12-3">The HTTP media type <code>application/eat+cwt</code> referenced in Section 6
-is registered by <span>[<a href="#RFC9782" class="cite xref">RFC9782</a>]</span>.<a href="#section-12-3" class="pilcrow">¶</a></p>
+IANA registry.<a href="#section-13-2" class="pilcrow">¶</a></p>
+<p id="section-13-3">The HTTP media type <code>application/eat+cwt</code> referenced in Section 6
+is registered by <span>[<a href="#RFC9782" class="cite xref">RFC9782</a>]</span>.<a href="#section-13-3" class="pilcrow">¶</a></p>
 </section>
 </div>
 <div id="implementation-status">
-<section id="section-13">
+<section id="section-14">
       <h2 id="name-implementation-status">
-<a href="#section-13" class="section-number selfRef">13. </a><a href="#name-implementation-status" class="section-name selfRef">Implementation Status</a>
+<a href="#section-14" class="section-number selfRef">14. </a><a href="#name-implementation-status" class="section-name selfRef">Implementation Status</a>
       </h2>
-<p id="section-13-1">Note to RFC Editor: Please remove this section before publication.<a href="#section-13-1" class="pilcrow">¶</a></p>
-<p id="section-13-2">This section records the status of known implementations of the
+<p id="section-14-1">Note to RFC Editor: Please remove this section before publication.<a href="#section-14-1" class="pilcrow">¶</a></p>
+<p id="section-14-2">This section records the status of known implementations of the
 protocol defined by this specification at the time of posting, per
-<span>[<a href="#RFC7942" class="cite xref">RFC7942</a>]</span>.<a href="#section-13-2" class="pilcrow">¶</a></p>
+<span>[<a href="#RFC7942" class="cite xref">RFC7942</a>]</span>.<a href="#section-14-2" class="pilcrow">¶</a></p>
 <div id="reference-implementation-rust">
-<section id="section-13.1">
+<section id="section-14.1">
         <h3 id="name-reference-implementation-ru">
-<a href="#section-13.1" class="section-number selfRef">13.1. </a><a href="#name-reference-implementation-ru" class="section-name selfRef">Reference Implementation (Rust)</a>
+<a href="#section-14.1" class="section-number selfRef">14.1. </a><a href="#name-reference-implementation-ru" class="section-name selfRef">Reference Implementation (Rust)</a>
         </h3>
-<span class="break"></span><dl class="dlParallel" id="section-13.1-1">
-          <dt id="section-13.1-1.1">Organization:</dt>
-          <dd style="margin-left: 1.5em" id="section-13.1-1.2">
-            <p id="section-13.1-1.2.1">Cyntrisec<a href="#section-13.1-1.2.1" class="pilcrow">¶</a></p>
+<span class="break"></span><dl class="dlParallel" id="section-14.1-1">
+          <dt id="section-14.1-1.1">Organization:</dt>
+          <dd style="margin-left: 1.5em" id="section-14.1-1.2">
+            <p id="section-14.1-1.2.1">Cyntrisec<a href="#section-14.1-1.2.1" class="pilcrow">¶</a></p>
 </dd>
           <dd class="break"></dd>
-<dt id="section-13.1-1.3">Implementation:</dt>
-          <dd style="margin-left: 1.5em" id="section-13.1-1.4">
-            <p id="section-13.1-1.4.1">EphemeralML (<code>common/src/air_receipt.rs</code>, <code>common/src/air_verify.rs</code>)<a href="#section-13.1-1.4.1" class="pilcrow">¶</a></p>
+<dt id="section-14.1-1.3">Implementation:</dt>
+          <dd style="margin-left: 1.5em" id="section-14.1-1.4">
+            <p id="section-14.1-1.4.1">EphemeralML (<code>common/src/air_receipt.rs</code>, <code>common/src/air_verify.rs</code>)<a href="#section-14.1-1.4.1" class="pilcrow">¶</a></p>
 </dd>
           <dd class="break"></dd>
-<dt id="section-13.1-1.5">Description:</dt>
-          <dd style="margin-left: 1.5em" id="section-13.1-1.6">
-            <p id="section-13.1-1.6.1">Full AIR v1 emitter and 4-layer verifier. Generates COSE_Sign1
+<dt id="section-14.1-1.5">Description:</dt>
+          <dd style="margin-left: 1.5em" id="section-14.1-1.6">
+            <p id="section-14.1-1.6.1">Full AIR v1 emitter and 4-layer verifier. Generates COSE_Sign1
 receipts with deterministic CBOR encoding and Ed25519 signing.
 Verifier implements all four layers (parse, crypto, claims, policy)
-with structured error codes.<a href="#section-13.1-1.6.1" class="pilcrow">¶</a></p>
+with structured error codes.<a href="#section-14.1-1.6.1" class="pilcrow">¶</a></p>
 </dd>
           <dd class="break"></dd>
-<dt id="section-13.1-1.7">Maturity:</dt>
-          <dd style="margin-left: 1.5em" id="section-13.1-1.8">
-            <p id="section-13.1-1.8.1">Production. Emitted in E2E paths on three platforms.<a href="#section-13.1-1.8.1" class="pilcrow">¶</a></p>
+<dt id="section-14.1-1.7">Maturity:</dt>
+          <dd style="margin-left: 1.5em" id="section-14.1-1.8">
+            <p id="section-14.1-1.8.1">Demonstration. The implementation emits AIR v1 receipts and performs
+AIR-local verification on the Nitro, TDX, and GCP Confidential Space
+paths. Enforced single-document AIR TEE provenance per
+<a href="#validator-behavior" class="auto internal xref">Section 7.3</a> is implemented for Nitro: the AIR signing key is
+extracted from the AWS-signed NSM attestation document referenced by
+<code>attestation_doc_hash</code>, and the client reconciles and appraises that
+document's measurement registers against caller-supplied reference
+values before asserting provenance. On TDX and GCP Confidential Space
+today, the receipt's <code>attestation_doc_hash</code> references a boot-time
+quote, while the receipt-signing-key binding and DCAP/platform
+verification are carried through a separate transport attestation and
+platform-evidence bundle. That is exactly the split model
+<a href="#validator-behavior" class="auto internal xref">Section 7.3</a> places out of scope for AIR v1 TEE provenance,
+so those receipts are treated as AIR-local. Binding the
+receipt-signing key into the <code>attestation_doc_hash</code> quote and a
+TDX/GCP AIR chained verifier that validates that quote and appraises
+its MRTD/RTMR registers against reference values are future work.<a href="#section-14.1-1.8.1" class="pilcrow">¶</a></p>
 </dd>
           <dd class="break"></dd>
-<dt id="section-13.1-1.9">Coverage:</dt>
-          <dd style="margin-left: 1.5em" id="section-13.1-1.10">
-            <p id="section-13.1-1.10.1">575 tests passing (including 16 AIR v1 conformance vector tests).<a href="#section-13.1-1.10.1" class="pilcrow">¶</a></p>
+<dt id="section-14.1-1.9">Coverage:</dt>
+          <dd style="margin-left: 1.5em" id="section-14.1-1.10">
+            <p id="section-14.1-1.10.1">The reference implementation passes its test suite, including the
+AIR v1 golden conformance vectors (<a href="#appendix-vectors" class="auto internal xref">Appendix B</a>).<a href="#section-14.1-1.10.1" class="pilcrow">¶</a></p>
 </dd>
           <dd class="break"></dd>
-<dt id="section-13.1-1.11">Contact:</dt>
-          <dd style="margin-left: 1.5em" id="section-13.1-1.12">
-            <p id="section-13.1-1.12.1">borys@cyntrisec.com<a href="#section-13.1-1.12.1" class="pilcrow">¶</a></p>
+<dt id="section-14.1-1.11">Contact:</dt>
+          <dd style="margin-left: 1.5em" id="section-14.1-1.12">
+            <p id="section-14.1-1.12.1">borys@cyntrisec.com<a href="#section-14.1-1.12.1" class="pilcrow">¶</a></p>
 </dd>
         <dd class="break"></dd>
 </dl>
 </section>
 </div>
 <div id="python-interop-verifier">
-<section id="section-13.2">
+<section id="section-14.2">
         <h3 id="name-python-interop-verifier">
-<a href="#section-13.2" class="section-number selfRef">13.2. </a><a href="#name-python-interop-verifier" class="section-name selfRef">Python Interop Verifier</a>
+<a href="#section-14.2" class="section-number selfRef">14.2. </a><a href="#name-python-interop-verifier" class="section-name selfRef">Python Interop Verifier</a>
         </h3>
-<span class="break"></span><dl class="dlParallel" id="section-13.2-1">
-          <dt id="section-13.2-1.1">Organization:</dt>
-          <dd style="margin-left: 1.5em" id="section-13.2-1.2">
-            <p id="section-13.2-1.2.1">Cyntrisec (same team, independent implementation)<a href="#section-13.2-1.2.1" class="pilcrow">¶</a></p>
+<span class="break"></span><dl class="dlParallel" id="section-14.2-1">
+          <dt id="section-14.2-1.1">Organization:</dt>
+          <dd style="margin-left: 1.5em" id="section-14.2-1.2">
+            <p id="section-14.2-1.2.1">Cyntrisec (same team, independent implementation)<a href="#section-14.2-1.2.1" class="pilcrow">¶</a></p>
 </dd>
           <dd class="break"></dd>
-<dt id="section-13.2-1.3">Implementation:</dt>
-          <dd style="margin-left: 1.5em" id="section-13.2-1.4">
-            <p id="section-13.2-1.4.1"><code>spec/v1/scripts/interop_test.py</code><a href="#section-13.2-1.4.1" class="pilcrow">¶</a></p>
+<dt id="section-14.2-1.3">Implementation:</dt>
+          <dd style="margin-left: 1.5em" id="section-14.2-1.4">
+            <p id="section-14.2-1.4.1"><code>spec/v1/scripts/interop_test.py</code><a href="#section-14.2-1.4.1" class="pilcrow">¶</a></p>
 </dd>
           <dd class="break"></dd>
-<dt id="section-13.2-1.5">Description:</dt>
-          <dd style="margin-left: 1.5em" id="section-13.2-1.6">
-            <p id="section-13.2-1.6.1">Minimal Python verifier using <code>pycose</code> and <code>cbor2</code> libraries.
+<dt id="section-14.2-1.5">Description:</dt>
+          <dd style="margin-left: 1.5em" id="section-14.2-1.6">
+            <p id="section-14.2-1.6.1">Minimal Python verifier using <code>pycose</code> and <code>cbor2</code> libraries.
 Validates COSE_Sign1 structure, Ed25519 signature, and claim
-presence.<a href="#section-13.2-1.6.1" class="pilcrow">¶</a></p>
+presence.<a href="#section-14.2-1.6.1" class="pilcrow">¶</a></p>
 </dd>
           <dd class="break"></dd>
-<dt id="section-13.2-1.7">Maturity:</dt>
-          <dd style="margin-left: 1.5em" id="section-13.2-1.8">
-            <p id="section-13.2-1.8.1">Test/interop.<a href="#section-13.2-1.8.1" class="pilcrow">¶</a></p>
+<dt id="section-14.2-1.7">Maturity:</dt>
+          <dd style="margin-left: 1.5em" id="section-14.2-1.8">
+            <p id="section-14.2-1.8.1">Test/interop.<a href="#section-14.2-1.8.1" class="pilcrow">¶</a></p>
 </dd>
         <dd class="break"></dd>
 </dl>
 </section>
 </div>
 <div id="client-nonce-conveyance">
-<section id="section-13.3">
+<section id="section-14.3">
         <h3 id="name-client-nonce-conveyance">
-<a href="#section-13.3" class="section-number selfRef">13.3. </a><a href="#name-client-nonce-conveyance" class="section-name selfRef">Client Nonce Conveyance</a>
+<a href="#section-14.3" class="section-number selfRef">14.3. </a><a href="#name-client-nonce-conveyance" class="section-name selfRef">Client Nonce Conveyance</a>
         </h3>
-<p id="section-13.3-1">The reference gateway accepts an optional client-supplied challenge
+<p id="section-14.3-1">The reference gateway accepts an optional client-supplied challenge
 nonce on its OpenAI-compatible HTTP endpoints via a request header,
 <code>X-Cyntrisec-Air-Nonce</code> (a hex string). When the header is present and
 within the RFC 9711 length bounds, the gateway conveys the nonce to
-the workload, which binds it into the receipt's <code>eat_nonce</code> claim.<a href="#section-13.3-1" class="pilcrow">¶</a></p>
-<p id="section-13.3-2">This header is an implementation convention of the reference gateway
+the workload, which binds it into the receipt's <code>eat_nonce</code> claim.<a href="#section-14.3-1" class="pilcrow">¶</a></p>
+<p id="section-14.3-2">This header is an implementation convention of the reference gateway
 only. It is not part of the AIR receipt format, is not required for
 conformance, and a different deployment may convey the nonce by any
 means. AIR v1 defines the <code>eat_nonce</code> claim; it does not define how a
-nonce reaches the workload.<a href="#section-13.3-2" class="pilcrow">¶</a></p>
+nonce reaches the workload.<a href="#section-14.3-2" class="pilcrow">¶</a></p>
 </section>
 </div>
 <div id="e2e-validation">
-<section id="section-13.4">
+<section id="section-14.4">
         <h3 id="name-e2e-validation">
-<a href="#section-13.4" class="section-number selfRef">13.4. </a><a href="#name-e2e-validation" class="section-name selfRef">E2E Validation</a>
+<a href="#section-14.4" class="section-number selfRef">14.4. </a><a href="#name-e2e-validation" class="section-name selfRef">E2E Validation</a>
         </h3>
-<p id="section-13.4-1">The reference implementation has been validated end-to-end on three
-confidential computing platforms:<a href="#section-13.4-1" class="pilcrow">¶</a></p>
+<p id="section-14.4-1">The reference implementation has been exercised on three confidential
+computing platforms. "PASS" below means AIR receipt emission plus
+AIR-local verification plus measurement hardware-rootedness. Nitro
+additionally exercises the enforced single-document AIR TEE-provenance
+path of <a href="#validator-behavior" class="auto internal xref">Section 7.3</a>. On TDX and GCP Confidential Space the
+evidence is currently split between the boot-time <code>attestation_doc_hash</code>
+quote and the separate transport / platform-evidence verifier; full
+single-document Validator Behavior on those platforms is future work
+(see Maturity above):<a href="#section-14.4-1" class="pilcrow">¶</a></p>
 <table class="center" id="table-7">
           <caption><a href="#table-7" class="selfRef">Table 7</a></caption>
 <thead>
@@ -3838,19 +4233,19 @@ confidential computing platforms:<a href="#section-13.4-1" class="pilcrow">¶</a
 </section>
 </div>
 <div id="examples">
-<section id="section-14">
+<section id="section-15">
       <h2 id="name-examples">
-<a href="#section-14" class="section-number selfRef">14. </a><a href="#name-examples" class="section-name selfRef">Examples</a>
+<a href="#section-15" class="section-number selfRef">15. </a><a href="#name-examples" class="section-name selfRef">Examples</a>
       </h2>
 <div id="valid-receipt-walkthrough">
-<section id="section-14.1">
+<section id="section-15.1">
         <h3 id="name-valid-receipt-walkthrough">
-<a href="#section-14.1" class="section-number selfRef">14.1. </a><a href="#name-valid-receipt-walkthrough" class="section-name selfRef">Valid Receipt Walkthrough</a>
+<a href="#section-15.1" class="section-number selfRef">15.1. </a><a href="#name-valid-receipt-walkthrough" class="section-name selfRef">Valid Receipt Walkthrough</a>
         </h3>
-<p id="section-14.1-1">The following describes a valid AIR v1 receipt in diagnostic
-notation. This corresponds to the <code>v1-nitro-no-nonce</code> golden vector.<a href="#section-14.1-1" class="pilcrow">¶</a></p>
-<p id="section-14.1-2">The COSE_Sign1 envelope (tagged with CBOR tag 18):<a href="#section-14.1-2" class="pilcrow">¶</a></p>
-<div class="alignLeft art-text artwork" id="section-14.1-3">
+<p id="section-15.1-1">The following describes a valid AIR v1 receipt in diagnostic
+notation. This corresponds to the <code>v1-nitro-no-nonce</code> golden vector.<a href="#section-15.1-1" class="pilcrow">¶</a></p>
+<p id="section-15.1-2">The COSE_Sign1 envelope (tagged with CBOR tag 18):<a href="#section-15.1-2" class="pilcrow">¶</a></p>
+<div class="alignLeft art-text artwork" id="section-15.1-3">
 <pre>
 18([
   h'A2012703183D',           / protected: {1: -8, 3: 61} /
@@ -3858,20 +4253,20 @@ notation. This corresponds to the <code>v1-nitro-no-nonce</code> golden vector.<
   h'B0...',                   / payload: CWT claims map /
   h'&lt;64 bytes&gt;'               / signature: Ed25519 /
 ])
-</pre><a href="#section-14.1-3" class="pilcrow">¶</a>
+</pre><a href="#section-15.1-3" class="pilcrow">¶</a>
 </div>
-<p id="section-14.1-4">The protected header decodes to:<a href="#section-14.1-4" class="pilcrow">¶</a></p>
-<div class="alignLeft art-text artwork" id="section-14.1-5">
+<p id="section-15.1-4">The protected header decodes to:<a href="#section-15.1-4" class="pilcrow">¶</a></p>
+<div class="alignLeft art-text artwork" id="section-15.1-5">
 <pre>
 {
   1: -8,    / alg: EdDSA /
   3: 61     / content type: application/cwt /
 }
-</pre><a href="#section-14.1-5" class="pilcrow">¶</a>
+</pre><a href="#section-15.1-5" class="pilcrow">¶</a>
 </div>
-<p id="section-14.1-6">The payload (CWT claims map) includes 16 required claims plus the
-EAT profile:<a href="#section-14.1-6" class="pilcrow">¶</a></p>
-<div class="alignLeft art-text artwork" id="section-14.1-7">
+<p id="section-15.1-6">The payload (CWT claims map) includes 16 required claims, including the
+EAT profile:<a href="#section-15.1-6" class="pilcrow">¶</a></p>
+<div class="alignLeft art-text artwork" id="section-15.1-7">
 <pre>
 {
   1: "cyntrisec.com",                          / iss /
@@ -3896,20 +4291,20 @@ EAT profile:<a href="#section-14.1-6" class="pilcrow">¶</a></p>
   -65547: 0,                                   / memory_peak_mb /
   -65548: "production"                         / security_mode /
 }
-</pre><a href="#section-14.1-7" class="pilcrow">¶</a>
+</pre><a href="#section-15.1-7" class="pilcrow">¶</a>
 </div>
-<p id="section-14.1-8">Verification with the corresponding Ed25519 public key succeeds
-through all four layers.<a href="#section-14.1-8" class="pilcrow">¶</a></p>
+<p id="section-15.1-8">Verification with the corresponding Ed25519 public key succeeds
+through all four layers.<a href="#section-15.1-8" class="pilcrow">¶</a></p>
 </section>
 </div>
 <div id="invalid-receipt-categories">
-<section id="section-14.2">
+<section id="section-15.2">
         <h3 id="name-invalid-receipt-categories">
-<a href="#section-14.2" class="section-number selfRef">14.2. </a><a href="#name-invalid-receipt-categories" class="section-name selfRef">Invalid Receipt Categories</a>
+<a href="#section-15.2" class="section-number selfRef">15.2. </a><a href="#name-invalid-receipt-categories" class="section-name selfRef">Invalid Receipt Categories</a>
         </h3>
-<p id="section-14.2-1">The specification includes invalid golden vectors covering failure
+<p id="section-15.2-1">The specification includes invalid golden vectors covering failure
 modes across all verification layers. The structural and policy
-vectors are:<a href="#section-14.2-1" class="pilcrow">¶</a></p>
+vectors are:<a href="#section-15.2-1" class="pilcrow">¶</a></p>
 <table class="center" id="table-8">
           <caption><a href="#table-8" class="selfRef">Table 8</a></caption>
 <thead>
@@ -3962,10 +4357,10 @@ vectors are:<a href="#section-14.2-1" class="pilcrow">¶</a></p>
             </tr>
           </tbody>
         </table>
-<p id="section-14.2-3">The signature-strictness vectors exercise the strict Ed25519
+<p id="section-15.2-3">The signature-strictness vectors exercise the strict Ed25519
 verification algorithm of <a href="#verification-procedure" class="auto internal xref">Section 8</a> Layer 2. Each is a
 valid receipt body whose 64-octet signature violates one Layer 2 check
-(the letters reference the checks enumerated in that section):<a href="#section-14.2-3" class="pilcrow">¶</a></p>
+(the letters reference the checks enumerated in that section):<a href="#section-15.2-3" class="pilcrow">¶</a></p>
 <table class="center" id="table-9">
           <caption><a href="#table-9" class="selfRef">Table 9</a></caption>
 <thead>
@@ -4003,22 +4398,22 @@ valid receipt body whose 64-octet signature violates one Layer 2 check
             </tr>
           </tbody>
         </table>
-<p id="section-14.2-5">Complete vector files (JSON with hex-encoded COSE bytes, expected
+<p id="section-15.2-5">Complete vector files (JSON with hex-encoded COSE bytes, expected
 failure codes, and policy overrides) are available in the reference
-implementation repository.<a href="#section-14.2-5" class="pilcrow">¶</a></p>
+implementation repository.<a href="#section-15.2-5" class="pilcrow">¶</a></p>
 </section>
 </div>
 </section>
 </div>
 <div id="sec-combined-references">
-<section id="section-15">
+<section id="section-16">
       <h2 id="name-references">
-<a href="#section-15" class="section-number selfRef">15. </a><a href="#name-references" class="section-name selfRef">References</a>
+<a href="#section-16" class="section-number selfRef">16. </a><a href="#name-references" class="section-name selfRef">References</a>
       </h2>
 <div id="sec-normative-references">
-<section id="section-15.1">
+<section id="section-16.1">
         <h3 id="name-normative-references">
-<a href="#section-15.1" class="section-number selfRef">15.1. </a><a href="#name-normative-references" class="section-name selfRef">Normative References</a>
+<a href="#section-16.1" class="section-number selfRef">16.1. </a><a href="#name-normative-references" class="section-name selfRef">Normative References</a>
         </h3>
 <dl class="references">
 <dt id="FIPS180-4">[FIPS180-4]</dt>
@@ -4065,34 +4460,38 @@ implementation repository.<a href="#section-14.2-5" class="pilcrow">¶</a></p>
 </section>
 </div>
 <div id="sec-informative-references">
-<section id="section-15.2">
+<section id="section-16.2">
         <h3 id="name-informative-references">
-<a href="#section-15.2" class="section-number selfRef">15.2. </a><a href="#name-informative-references" class="section-name selfRef">Informative References</a>
+<a href="#section-16.2" class="section-number selfRef">16.2. </a><a href="#name-informative-references" class="section-name selfRef">Informative References</a>
         </h3>
 <dl class="references">
-<dt id="I-D.deshpande-rats-multi-verifier">[I-D.deshpande-rats-multi-verifier]</dt>
+<dt id="I-D.ietf-rats-ear">[I-D.ietf-rats-ear]</dt>
         <dd>
-<span class="refAuthor">Deshpande, Y.</span>, <span class="refTitle">"Multi-Verifier Attestation"</span>, <time datetime="2026" class="refDate">2026</time>. </dd>
+<span class="refAuthor">Fossati, T.</span>, <span class="refAuthor">Voit, E.</span>, <span class="refAuthor">Trofimov, S.</span>, and <span class="refAuthor">H. Birkholz</span>, <span class="refTitle">"EAT Attestation Results"</span>, <time datetime="2026" class="refDate">2026</time>. </dd>
 <dd class="break"></dd>
 <dt id="I-D.ietf-rats-eat-measured-component">[I-D.ietf-rats-eat-measured-component]</dt>
         <dd>
-<span class="refAuthor">Birkholz, H.</span>, <span class="refTitle">"EAT Measured Component"</span>, <time datetime="2026" class="refDate">2026</time>. </dd>
+<span class="refAuthor">Frost, S.</span>, <span class="refAuthor">Fossati, T.</span>, <span class="refAuthor">Tschofenig, H.</span>, and <span class="refAuthor">H. Birkholz</span>, <span class="refTitle">"Entity Attestation Token (EAT) Measured Component"</span>, <time datetime="2026" class="refDate">2026</time>. </dd>
 <dd class="break"></dd>
 <dt id="I-D.ietf-rats-epoch-markers">[I-D.ietf-rats-epoch-markers]</dt>
         <dd>
-<span class="refAuthor">Birkholz, H.</span>, <span class="refTitle">"Epoch Markers"</span>, <time datetime="2026" class="refDate">2026</time>. </dd>
+<span class="refAuthor">Birkholz, H.</span>, <span class="refAuthor">Fossati, T.</span>, <span class="refAuthor">Pan, W.</span>, <span class="refAuthor">Mihalcea, I.</span>, and <span class="refAuthor">C. Bormann</span>, <span class="refTitle">"Epoch Markers"</span>, <time datetime="2026" class="refDate">2026</time>. </dd>
+<dd class="break"></dd>
+<dt id="I-D.ietf-rats-msg-wrap">[I-D.ietf-rats-msg-wrap]</dt>
+        <dd>
+<span class="refAuthor">Birkholz, H.</span>, <span class="refAuthor">Smith, N.</span>, <span class="refAuthor">Fossati, T.</span>, <span class="refAuthor">Tschofenig, H.</span>, and <span class="refAuthor">D. Glaze</span>, <span class="refTitle">"RATS Conceptual Messages Wrapper (CMW)"</span>, <time datetime="2026" class="refDate">2026</time>. </dd>
+<dd class="break"></dd>
+<dt id="I-D.ietf-rats-multi-verifier">[I-D.ietf-rats-multi-verifier]</dt>
+        <dd>
+<span class="refAuthor">Deshpande, Y.</span>, <span class="refAuthor">Zhang, J.</span>, <span class="refAuthor">Labiod, H.</span>, and <span class="refAuthor">H. Birkholz</span>, <span class="refTitle">"Remote Attestation with Multiple Verifiers"</span>, <time datetime="2026" class="refDate">2026</time>. </dd>
 <dd class="break"></dd>
 <dt id="I-D.ietf-rats-reference-interaction-models">[I-D.ietf-rats-reference-interaction-models]</dt>
         <dd>
-<span class="refAuthor">Birkholz, H.</span>, <span class="refTitle">"Reference Interaction Models for Remote Attestation Procedures"</span>, <time datetime="2026" class="refDate">2026</time>. </dd>
-<dd class="break"></dd>
-<dt id="I-D.ietf-scitt-architecture">[I-D.ietf-scitt-architecture]</dt>
-        <dd>
-<span class="refAuthor">Birkholz, H.</span>, <span class="refTitle">"An Architecture for Trustworthy and Transparent Digital Supply Chains"</span>, <time datetime="2026" class="refDate">2026</time>. </dd>
+<span class="refAuthor">Birkholz, H.</span>, <span class="refAuthor">Eckel, M.</span>, <span class="refAuthor">Pan, W.</span>, and <span class="refAuthor">E. Voit</span>, <span class="refTitle">"Reference Interaction Models for Remote Attestation Procedures"</span>, <time datetime="2026" class="refDate">2026</time>. </dd>
 <dd class="break"></dd>
 <dt id="I-D.ietf-scitt-receipts-ccf-profile">[I-D.ietf-scitt-receipts-ccf-profile]</dt>
         <dd>
-<span class="refAuthor">Birkholz, H.</span>, <span class="refTitle">"SCITT Receipts: Confidential Consortium Framework Profile"</span>, <time datetime="2026" class="refDate">2026</time>. </dd>
+<span class="refAuthor">Birkholz, H.</span>, <span class="refAuthor">Delignat-Lavaud, A.</span>, <span class="refAuthor">Fournet, C.</span>, and <span class="refAuthor">A. Chamayou</span>, <span class="refTitle">"CCF Profile for COSE Receipts"</span>, <time datetime="2026" class="refDate">2026</time>. </dd>
 <dd class="break"></dd>
 <dt id="I-D.kamimura-scitt-refusal-events">[I-D.kamimura-scitt-refusal-events]</dt>
         <dd>
@@ -4100,15 +4499,23 @@ implementation repository.<a href="#section-14.2-5" class="pilcrow">¶</a></p>
 <dd class="break"></dd>
 <dt id="I-D.messous-eat-ai">[I-D.messous-eat-ai]</dt>
         <dd>
-<span class="refAuthor">Messous, A.</span> and <span class="refAuthor">N. Smith</span>, <span class="refTitle">"AI Claims for Entity Attestation Token (EAT)"</span>, <time datetime="2026" class="refDate">2026</time>. </dd>
+<span class="refAuthor">Messous, A.</span>, <span class="refAuthor">Morand, L.</span>, and <span class="refAuthor">P. C. Liu</span>, <span class="refTitle">"Entity Attestation Token (EAT) Profile for Autonomous AI Agents"</span>, <time datetime="2026" class="refDate">2026</time>. </dd>
+<dd class="break"></dd>
+<dt id="I-D.poirier-rats-eat-da">[I-D.poirier-rats-eat-da]</dt>
+        <dd>
+<span class="refAuthor">Poirier, M.</span>, <span class="refAuthor">Birkholz, H.</span>, and <span class="refAuthor">T. Fossati</span>, <span class="refTitle">"An EAT Profile for Trustworthy Device Assignment"</span>, <time datetime="2026" class="refDate">2026</time>. </dd>
 <dd class="break"></dd>
 <dt id="I-D.reddy-rats-key-binding">[I-D.reddy-rats-key-binding]</dt>
         <dd>
-<span class="refAuthor">Reddy, T.</span>, <span class="refTitle">"Key Binding for Remote Attestation"</span>, <time datetime="2026" class="refDate">2026</time>. </dd>
+<span class="refAuthor">Reddy, T.</span>, <span class="refAuthor">Tschofenig, H.</span>, <span class="refAuthor">Fossati, T.</span>, and <span class="refAuthor">I. Mihalcea</span>, <span class="refTitle">"Key Attestation for Entity Attestation Tokens (EAT)"</span>, <time datetime="2026" class="refDate">2026</time>. </dd>
 <dd class="break"></dd>
 <dt id="I-D.richardson-rats-composite-attesters">[I-D.richardson-rats-composite-attesters]</dt>
         <dd>
-<span class="refAuthor">Richardson, M.</span>, <span class="refTitle">"Taxonomy of Composite Attesters"</span>, <time datetime="2026" class="refDate">2026</time>. </dd>
+<span class="refAuthor">Richardson, M.</span>, <span class="refAuthor">Birkholz, H.</span>, <span class="refAuthor">Deshpande, Y.</span>, and <span class="refAuthor">T. Fossati</span>, <span class="refTitle">"Taxonomy of Composite Attesters"</span>, <time datetime="2026" class="refDate">2026</time>. </dd>
+<dd class="break"></dd>
+<dt id="I-D.sharif-ai-model-lifecycle-attestation">[I-D.sharif-ai-model-lifecycle-attestation]</dt>
+        <dd>
+<span class="refAuthor">Sharif, R.</span>, <span class="refTitle">"Cryptographic Attestation for AI Model Lifecycle: From Training Data to Inference Output"</span>, <time datetime="2026" class="refDate">2026</time>. </dd>
 <dd class="break"></dd>
 <dt id="RFC7942">[RFC7942]</dt>
         <dd>
@@ -4117,6 +4524,14 @@ implementation repository.<a href="#section-14.2-5" class="pilcrow">¶</a></p>
 <dt id="RFC9782">[RFC9782]</dt>
         <dd>
 <span class="refAuthor">Lundblade, L.</span>, <span class="refAuthor">Birkholz, H.</span>, and <span class="refAuthor">T. Fossati</span>, <span class="refTitle">"Entity Attestation Token (EAT) Media Types"</span>, <span class="seriesInfo">RFC 9782</span>, <span class="seriesInfo">DOI 10.17487/RFC9782</span>, <time datetime="2025-05" class="refDate">May 2025</time>, <span>&lt;<a href="https://www.rfc-editor.org/rfc/rfc9782">https://www.rfc-editor.org/rfc/rfc9782</a>&gt;</span>. </dd>
+<dd class="break"></dd>
+<dt id="RFC9864">[RFC9864]</dt>
+        <dd>
+<span class="refAuthor">Jones, M.B.</span> and <span class="refAuthor">O. Steele</span>, <span class="refTitle">"Fully-Specified Algorithms for JSON Object Signing and Encryption (JOSE) and CBOR Object Signing and Encryption (COSE)"</span>, <span class="seriesInfo">RFC 9864</span>, <span class="seriesInfo">DOI 10.17487/RFC9864</span>, <time datetime="2025" class="refDate">2025</time>, <span>&lt;<a href="https://www.rfc-editor.org/rfc/rfc9864">https://www.rfc-editor.org/rfc/rfc9864</a>&gt;</span>. </dd>
+<dd class="break"></dd>
+<dt id="RFC9943">[RFC9943]</dt>
+        <dd>
+<span class="refAuthor">Birkholz, H.</span>, <span class="refAuthor">Delignat-Lavaud, A.</span>, <span class="refAuthor">Fournet, C.</span>, <span class="refAuthor">Deshpande, Y.</span>, and <span class="refAuthor">S. Lasker</span>, <span class="refTitle">"An Architecture for Trustworthy and Transparent Digital Supply Chains"</span>, <span class="seriesInfo">RFC 9943</span>, <span class="seriesInfo">DOI 10.17487/RFC9943</span>, <time datetime="2026-06" class="refDate">June 2026</time>, <span>&lt;<a href="https://www.rfc-editor.org/rfc/rfc9943">https://www.rfc-editor.org/rfc/rfc9943</a>&gt;</span>. </dd>
 <dd class="break"></dd>
 <dt id="SCITT">[SCITT]</dt>
       <dd>
@@ -4137,7 +4552,7 @@ convenience.<a href="#appendix-A-1" class="pilcrow">¶</a></p>
 <div class="breakable lang-cddl sourcecode" id="appendix-A-2">
 <pre>
 ; Attested Inference Receipt (AIR) v1 -- CDDL Schema
-; Status: v1.0 FROZEN
+; Status: v1.0 -- closed claim set, single-inference scope
 ; References: RFC 9052, RFC 8392, RFC 9711, RFC 8949, RFC 8610
 
 air-receipt = #6.18([
@@ -4160,7 +4575,7 @@ air-claims = {
   6   =&gt; uint,                  ; iat: issued-at (Unix seconds)
   7   =&gt; bstr .size 16,         ; cti: CWT ID (UUID v4, 16 bytes)
   265 =&gt; "https://spec.cyntrisec.com/air/v1",  ; eat_profile
-  ? 10 =&gt; bstr,                 ; eat_nonce (optional)
+  ? 10 =&gt; bstr .size (8..64),   ; eat_nonce (optional)
 
   ; --- AIR private claims ---
   -65537 =&gt; tstr,               ; model_id
@@ -4212,8 +4627,8 @@ tdx-measurements = {
       <h2 id="name-golden-vector-summary">
 <a href="#appendix-B" class="section-number selfRef">Appendix B. </a><a href="#name-golden-vector-summary" class="section-name selfRef">Golden Vector Summary</a>
       </h2>
-<p id="appendix-B-1">The reference implementation includes 10 golden test vectors (2
-valid, 8 invalid) generated with a deterministic Ed25519 key pair:<a href="#appendix-B-1" class="pilcrow">¶</a></p>
+<p id="appendix-B-1">The reference implementation includes 19 golden test vectors (2 valid,
+17 invalid) generated with a deterministic Ed25519 key pair:<a href="#appendix-B-1" class="pilcrow">¶</a></p>
 <ul class="normal">
 <li class="normal" id="appendix-B-2.1">
           <p id="appendix-B-2.1.1">Seed: <code>2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a</code><a href="#appendix-B-2.1.1" class="pilcrow">¶</a></p>
@@ -4237,13 +4652,15 @@ tests. They are available in the repository under <code>spec/v1/vectors/</code>.
 </li>
       </ul>
 <p id="appendix-B-6">Invalid vectors exercise specific failure modes across all four
-verification layers:<a href="#appendix-B-6" class="pilcrow">¶</a></p>
+verification layers. The following are a representative subset; the
+complete set (including the signature-strictness, trailing-byte, and
+duplicate-key vectors) is in the repository under <code>spec/v1/vectors/</code>:<a href="#appendix-B-6" class="pilcrow">¶</a></p>
 <ul class="normal">
 <li class="normal" id="appendix-B-7.1">
           <p id="appendix-B-7.1.1"><code>v1-wrong-key.json</code> (L2: SIG_FAILED)<a href="#appendix-B-7.1.1" class="pilcrow">¶</a></p>
 </li>
         <li class="normal" id="appendix-B-7.2">
-          <p id="appendix-B-7.2.1"><code>v1-wrong-alg.json</code> (L2: BAD_ALG)<a href="#appendix-B-7.2.1" class="pilcrow">¶</a></p>
+          <p id="appendix-B-7.2.1"><code>v1-wrong-alg.json</code> (L1: BAD_ALG)<a href="#appendix-B-7.2.1" class="pilcrow">¶</a></p>
 </li>
         <li class="normal" id="appendix-B-7.3">
           <p id="appendix-B-7.3.1"><code>v1-zero-model-hash.json</code> (L3: ZERO_MODEL_HASH)<a href="#appendix-B-7.3.1" class="pilcrow">¶</a></p>

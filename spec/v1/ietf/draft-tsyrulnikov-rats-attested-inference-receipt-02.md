@@ -47,49 +47,85 @@ normative:
 informative:
   RFC7942:
   RFC9782:
+  RFC9864:
+  RFC9943:
   I-D.messous-eat-ai:
-    title: "AI Claims for Entity Attestation Token (EAT)"
+    title: "Entity Attestation Token (EAT) Profile for Autonomous AI Agents"
     author:
       -
         ins: A. Messous
       -
-        ins: N. Smith
+        ins: L. Morand
+      -
+        ins: P. C. Liu
+    date: 2026
+  I-D.sharif-ai-model-lifecycle-attestation:
+    title: "Cryptographic Attestation for AI Model Lifecycle: From Training Data to Inference Output"
+    author:
+      -
+        ins: R. Sharif
     date: 2026
   I-D.reddy-rats-key-binding:
-    title: "Key Binding for Remote Attestation"
+    title: "Key Attestation for Entity Attestation Tokens (EAT)"
     author:
       -
         ins: T. Reddy
+      -
+        ins: H. Tschofenig
+      -
+        ins: T. Fossati
+      -
+        ins: I. Mihalcea
     date: 2026
   I-D.ietf-rats-reference-interaction-models:
     title: "Reference Interaction Models for Remote Attestation Procedures"
     author:
       -
         ins: H. Birkholz
+      -
+        ins: M. Eckel
+      -
+        ins: W. Pan
+      -
+        ins: E. Voit
     date: 2026
   I-D.ietf-rats-epoch-markers:
     title: "Epoch Markers"
     author:
       -
         ins: H. Birkholz
+      -
+        ins: T. Fossati
+      -
+        ins: W. Pan
+      -
+        ins: I. Mihalcea
+      -
+        ins: C. Bormann
     date: 2026
   I-D.ietf-rats-eat-measured-component:
-    title: "EAT Measured Component"
+    title: "Entity Attestation Token (EAT) Measured Component"
     author:
       -
-        ins: H. Birkholz
-    date: 2026
-  I-D.ietf-scitt-architecture:
-    title: "An Architecture for Trustworthy and Transparent Digital Supply Chains"
-    author:
+        ins: S. Frost
+      -
+        ins: T. Fossati
+      -
+        ins: H. Tschofenig
       -
         ins: H. Birkholz
     date: 2026
   I-D.ietf-scitt-receipts-ccf-profile:
-    title: "SCITT Receipts: Confidential Consortium Framework Profile"
+    title: "CCF Profile for COSE Receipts"
     author:
       -
         ins: H. Birkholz
+      -
+        ins: A. Delignat-Lavaud
+      -
+        ins: C. Fournet
+      -
+        ins: A. Chamayou
     date: 2026
   I-D.kamimura-scitt-refusal-events:
     title: "Verifiable AI Refusal Events using SCITT"
@@ -97,17 +133,65 @@ informative:
       -
         ins: T. Kamimura
     date: 2026
-  I-D.deshpande-rats-multi-verifier:
-    title: "Multi-Verifier Attestation"
+  I-D.ietf-rats-multi-verifier:
+    title: "Remote Attestation with Multiple Verifiers"
     author:
       -
         ins: Y. Deshpande
+      -
+        ins: J. Zhang
+      -
+        ins: H. Labiod
+      -
+        ins: H. Birkholz
     date: 2026
   I-D.richardson-rats-composite-attesters:
     title: "Taxonomy of Composite Attesters"
     author:
       -
         ins: M. Richardson
+      -
+        ins: H. Birkholz
+      -
+        ins: Y. Deshpande
+      -
+        ins: T. Fossati
+    date: 2026
+  I-D.poirier-rats-eat-da:
+    title: "An EAT Profile for Trustworthy Device Assignment"
+    author:
+      -
+        ins: M. Poirier
+      -
+        ins: H. Birkholz
+      -
+        ins: T. Fossati
+    date: 2026
+  I-D.ietf-rats-msg-wrap:
+    title: "RATS Conceptual Messages Wrapper (CMW)"
+    author:
+      -
+        ins: H. Birkholz
+      -
+        ins: N. Smith
+      -
+        ins: T. Fossati
+      -
+        ins: H. Tschofenig
+      -
+        ins: D. Glaze
+    date: 2026
+  I-D.ietf-rats-ear:
+    title: "EAT Attestation Results"
+    author:
+      -
+        ins: T. Fossati
+      -
+        ins: E. Voit
+      -
+        ins: S. Trofimov
+      -
+        ins: H. Birkholz
     date: 2026
   SCITT:
     title: "Supply Chain Integrity, Transparency and Trust (SCITT)"
@@ -121,7 +205,9 @@ per the Entity Attestation Token (EAT) framework. An AIR receipt
 binds model identity, input/output hashes, attestation-linked
 metadata, and operational telemetry into a single signed artifact
 suitable for independent third-party verification of a confidential
-AI inference event.
+AI inference. An AIR receipt is Attester-signed Evidence, not an
+appraisal verdict: a RATS Verifier must appraise the referenced platform
+attestation before the receipt establishes TEE provenance.
 
 AIR v1 targets single-inference receipts emitted by workloads running
 inside hardware-isolated Trusted Execution Environments (TEEs). AIR
@@ -212,7 +298,14 @@ AIR v1 explicitly does not:
     NVIDIA H100 Confidential Compute can emit AIR v1 receipts, but
     those receipts cover only the CPU-side attestation; accelerator
     attestation is verified out of band and is not embedded in the
-    receipt.
+    receipt. A future composite-attester AIR profile would pair the
+    CPU-side receipt with device-side Evidence such as the EAT Device
+    Assignment profile ({{I-D.poirier-rats-eat-da}}); the RATS
+    Conceptual Messages Wrapper ({{I-D.ietf-rats-msg-wrap}}) is a
+    candidate standard conveyance for carrying platform Evidence and an
+    AIR receipt together. An AIR v1 receipt emitted on such a platform
+    MUST NOT be presented as evidence that the accelerator was in a
+    confidential-computing mode; see {{accelerator-scope}}.
 -   Define verifier-emitted Attestation Results. Where a deployment
     needs a Verifier-signed appraisal alongside an AIR receipt, an
     EAT Attestation Result (EAR, draft-ietf-rats-ear) is the natural
@@ -229,7 +322,7 @@ AIR v1 explicitly does not:
 In this document, the term "verifier" (lowercase, or "Verifiers" when
 used at the start of a sentence) refers to the AIR Receipt Validator
 defined below. This is distinct from the RATS Verifier role defined
-in {{RFC9334}} Section 6.4. Where this document needs to refer to the
+in {{RFC9334}} Section 4.1. Where this document needs to refer to the
 RATS Verifier role, it uses the explicit phrase "RATS Verifier."
 
 Attested Inference Receipt (AIR):
@@ -249,7 +342,7 @@ AIR Receipt Validator:
   signature verification, claim structure validation, and policy
   evaluation on receipt contents (see {{verification-procedure}}).
   The AIR Receipt Validator is distinct from the RATS Verifier role
-  in {{RFC9334}} Section 6.4. A RATS Verifier appraises Evidence
+  in {{RFC9334}} Section 4.1. A RATS Verifier appraises Evidence
   against reference values and endorsements to produce Attestation
   Results; the AIR Receipt Validator does not perform that appraisal.
   Full TEE assurance additionally requires platform-specific
@@ -300,7 +393,7 @@ COSE_Sign1 = [
 ]
 ~~~
 
-The signature covers `Sig_structure1 = ["Signature1", protected,
+The signature covers `Sig_structure = ["Signature1", protected,
 external_aad, payload]` where `external_aad` is empty (`h''`).
 
 Verifiers MUST reject untagged COSE_Sign1 structures. The CBOR tag 18
@@ -337,8 +430,8 @@ verifiers MUST reject receipts with non-empty unprotected headers.
 ## Payload: CWT Claims Map
 
 The payload is a CBOR-encoded CWT claims map. The map uses
-deterministic encoding per {{RFC8949}} Section 4.2.1 (shorter encoded
-key sorts first, then bytewise lexicographic comparison).
+deterministic encoding per {{RFC8949}} Section 4.2.1: map keys are
+sorted in the bytewise lexicographic order of their encoded form.
 
 The claims map is closed: verifiers MUST reject maps containing
 unknown integer keys. Duplicate keys MUST be rejected.
@@ -368,7 +461,7 @@ air-claims = {
   6   => uint,                  ; iat: issued-at (Unix seconds)
   7   => bstr .size 16,         ; cti: CWT ID (UUID v4, 16 bytes)
   265 => "https://spec.cyntrisec.com/air/v1",  ; eat_profile
-  ? 10 => bstr,                 ; eat_nonce (optional)
+  ? 10 => bstr .size (8..64),   ; eat_nonce (optional)
 
   ; --- AIR private claims ---
   -65537 => tstr,               ; model_id
@@ -452,8 +545,11 @@ Verifiers MUST reject receipts with unknown eat_profile values.
 ### eat_nonce -- key 10
 
 An optional binary string (8-64 bytes per {{RFC9711}} Section 4.1)
-provided by the client to bind the receipt to a specific request
-session. If the verifier supplied a nonce, it MUST check that
+provided by the verifier or relying party to bind the receipt to a
+specific request session. Per {{RFC9711}} Section 4.1 the nonce MUST
+have at least 64 bits of entropy. The nonce MUST be supplied by the
+party checking freshness; an Attester-generated nonce provides no
+replay protection. If the verifier supplied a nonce, it MUST check that
 eat_nonce matches. This is the primary replay resistance mechanism
 when verifier-side cti deduplication is not feasible.
 
@@ -501,6 +597,13 @@ can recompute and compare.
 A 32-byte SHA-256 hash of the inference response payload. Binds the
 receipt to a specific output.
 
+`request_hash` and `response_hash` commit to specific input and output
+byte strings. They do not prove that the response is the model's output
+for that input, and each hash is computed over the request or response
+payload as the workload defines it, which MAY differ from the
+pre-processed (for example, tokenized or normalized) bytes the model
+actually consumed or produced.
+
 ### attestation_doc_hash -- key -65542
 
 A 32-byte SHA-256 digest that links the receipt to the platform
@@ -536,6 +639,25 @@ reproduces this digest by obtaining the same raw attestation artifact;
 it SHOULD also independently verify that artifact -- its signature and
 trust chain -- before relying on it, then compare the artifact's
 SHA-256 to this claim.
+
+For a receipt asserting end-to-end TEE provenance, `attestation_doc_hash`
+MUST reference the same attestation document that carries the
+signing-key binding of {{key-binding}} and the measurement registers
+reconciled by the validator (see {{validator-behavior}}). A receipt used
+only as an application-layer signed log (AIR-local, asserting no TEE
+provenance) MAY reference a different or boot-time document, but MUST NOT
+be presented as TEE-provenance evidence. A split model that combines a
+boot-time `attestation_doc_hash` with a separate per-session key-binding
+quote is out of scope for AIR v1 and may be defined by a future profile.
+
+Even in the single-document model, the attestation is typically captured
+at workload start, not per inference. A provenance-checked AIR receipt
+therefore demonstrates that a key bound to an attested workload signed
+these claims; it does NOT by itself demonstrate that this specific
+inference executed at the time the attestation was captured. Deployments
+needing per-inference or contemporaneous binding require a mechanism
+beyond AIR v1 (a fresh per-session attestation, or the external
+transparency/sequencing layer discussed in {{replay-protection}}).
 
 A conformant AIR receipt MUST set `attestation_doc_hash` to the
 per-platform preimage defined above. Populating the field with any
@@ -668,10 +790,29 @@ NOT invent new values; an implementation needing a value outside the
 defined set should use a future AIR revision or a vendor-specific
 extension outside the AIR profile.
 
-The `security_mode` claim is a signed textual indicator. It does not
-substitute for attestation-based trust decisions; a verifier that
-requires TEE provenance MUST NOT rely on `security_mode` alone to
-conclude the workload is in a trustworthy state.
+The `security_mode` claim is self-asserted: it is written and signed by
+the workload and states only the configuration the workload believes it
+is in. It is not the output of any appraisal and conveys no positive
+assurance. A Verifier or Relying Party MUST NOT treat any `security_mode`
+value -- including `"production"` -- as evidence of a secure or
+production posture, and MUST NOT base a positive trust decision on it.
+Its only sound use is fail-closed: a verifier configured for production
+trust decisions MUST reject `"evaluation"` (and MAY reject any
+non-allowlisted value), so that a receipt an honest workload self-marks
+as non-production cannot be accepted. A workload's actual security
+posture is established solely by verifying the referenced platform
+attestation and appraising its measurements, TCB, and debug state
+against reference values (see {{validator-behavior}}).
+
+This design is deliberate. Earlier EAT work carried a self-asserted
+`security-level` claim that the RATS working group removed before
+RFC 9711, precisely because a device asserting its own security level
+proves nothing. `security_mode` is not a graded positive security
+level; it is a binary fail-closed sentinel whose only effect is to let
+an honest emitter downgrade itself (`"evaluation"`) so verifiers reject
+it. A lying workload gains nothing by writing `"production"`, because no
+positive weight is placed on the value: trust comes only from the
+attestation appraisal (see {{claim-trust-classes}}).
 
 Product- or deployment-specific submodes (for example, vendor-defined
 production profiles) are out of scope for AIR v1. Implementations
@@ -703,8 +844,10 @@ new scheme values.
 
 # EAT Profile Declaration
 
-This section consolidates the mandatory profile positions per
-{{RFC9711}} Section 6.3.
+{{RFC9711}} Section 6.2 requires a full profile to be complete enough
+that a receiver can decode, verify, and check the freshness of a
+receipt; Section 6.3 lists the profile issues a profile should address.
+This section states AIR v1's position on each.
 
 1.  **Profile identifier**: URI
     `"https://spec.cyntrisec.com/air/v1"` (carried in eat_profile,
@@ -721,7 +864,13 @@ This section consolidates the mandatory profile positions per
 
 5.  **HTTP media type**: `application/eat+cwt` ({{RFC9782}}).
     Receivers SHOULD accept both `application/cwt` and
-    `application/eat+cwt`.
+    `application/eat+cwt`. Senders MAY include the `eat_profile`
+    media-type parameter defined by {{RFC9782}} --
+    `application/eat+cwt; eat_profile="https://spec.cyntrisec.com/air/v1"`
+    -- so that receivers can route on the profile without decoding the
+    receipt body. An AIR receipt MAY also be carried inside a RATS
+    Conceptual Messages Wrapper ({{I-D.ietf-rats-msg-wrap}}) when it is
+    conveyed alongside other attestation messages.
 
 6.  **Signing algorithm**: Ed25519 only (COSE alg = -8). Signatures
     MUST be verified with the strict procedure of
@@ -752,8 +901,8 @@ This section consolidates the mandatory profile positions per
     resistance ({{RFC9711}} Section 4.1, 8-64 bytes).
 
 12. **Deterministic encoding**: Required. Map keys sorted per
-    {{RFC8949}} Section 4.2.1 (shorter encoded form first, then
-    bytewise lexicographic).
+    {{RFC8949}} Section 4.2.1 (bytewise lexicographic order of the
+    encoded map keys).
 
 13. **Closed claims map**: The claims map is closed. Unknown integer
     keys MUST be rejected. Duplicate keys MUST be rejected.
@@ -766,6 +915,17 @@ This section consolidates the mandatory profile positions per
     in the CWT private-use range ({{RFC8392}}). No IANA registration
     is required. AIR v1 defines no extension mechanism or additional
     private claim keys beyond this set.
+
+16. **Endorsement / reference-value identification**: Out of scope for
+    the AIR receipt. An AIR receipt carries no endorsement or
+    reference-value identifiers; reference values and endorsements are
+    supplied to and appraised by a RATS Verifier (see
+    {{validator-behavior}} and Trust Assumption TA-4 in
+    {{trust-assumptions}}), not by the AIR Receipt Validator, keeping
+    the receipt strictly Evidence and not an Attestation Result. The
+    standard EAT entity-identity claims (`ueid`, `sueids`, `oemid`,
+    `hwmodel`, `hwversion`) are not used and are prohibited by the
+    closed claims map.
 
 
 # Key Binding {#key-binding}
@@ -830,7 +990,26 @@ the platform's trust chain:
     domain-separated, length-prefixed encoding of: a domain label,
     the platform identifier, the protocol version, the transport
     handshake public key, the Ed25519 receipt signing key, the
-    session nonce, and an optional platform-evidence hash. A verifier
+    session nonce, and an optional platform-evidence hash.
+
+    To make the binding independently reproducible, one interoperable
+    construction pins the SHA-512 preimage exactly as the concatenation,
+    in order, of: (1) the domain label, length-prefixed; (2) the
+    platform identifier (a UTF-8 string, for example `"gcp-cs-tdx"`),
+    length-prefixed; (3) the protocol version as a 4-octet unsigned
+    big-endian integer (fixed width, not length-prefixed); (4) the
+    32-octet transport handshake public key, length-prefixed; (5) the
+    32-octet Ed25519 receipt signing key, length-prefixed; (6) the
+    32-octet session nonce, length-prefixed; and (7) a 1-octet
+    platform-evidence flag -- `0x01` followed by the 32-octet
+    platform-evidence hash when present, or `0x00` alone when absent.
+    "Length-prefixed" means a 4-octet unsigned big-endian octet count
+    immediately preceding the field it describes; the handshake key,
+    receipt signing key, and nonce MUST each be exactly 32 octets. The
+    REPORTDATA is the 64-octet SHA-512 digest of this preimage, and the
+    domain label (for this construction, the ASCII string
+    `"cyntrisec-tdx-envelope-v2"`) distinguishes it from any other use
+    of the same input shape. A verifier
     validates the quote via DCAP against the Intel SGX and TDX trust
     chains, recomputes the SHA-512 binding from the attestation
     envelope's stated inputs, and rejects the quote unless the result
@@ -839,15 +1018,38 @@ the platform's trust chain:
 These constructions describe the key-binding attestation itself. In
 AIR v1, whether a receipt's `attestation_doc_hash` references that
 same per-session attestation -- rather than a separate boot-time
-attestation -- is a profile-versioning question that AIR v1 does not
-settle and that a future AIR profile may address.
+attestation -- is a profile-versioning question. For a receipt
+asserting end-to-end TEE provenance, {{validator-behavior}} requires
+`attestation_doc_hash` to reference the same document that carries this
+key binding; a profile that separates the two (a boot-time
+`attestation_doc_hash` plus a per-session key-binding quote) is out of
+scope for AIR v1 and may be addressed by a future profile.
 
 Other constructions MAY be used where the target attestation platform
 supports them. Implementers SHOULD consult
 {{I-D.reddy-rats-key-binding}} for a general treatment of key binding
-in RATS as that work matures.
+in RATS as that work matures. The Nitro and TDX constructions above
+instantiate the "combined" key-binding model of
+{{I-D.reddy-rats-key-binding}} -- the attestation Evidence and the
+key binding are produced together by the Attester -- and a future AIR
+profile could align this binding with that draft's confirmation
+(`cnf`) claim encoding once it stabilizes. AIR v1 binds the key through
+the platform quote (REPORTDATA / `user_data`) rather than a receipt-level
+`cnf` claim because the binding must be rooted in the hardware-signed
+attestation itself: the Attester generates the ephemeral signing key
+inside the TEE and commits it into the quote the vendor signs, which a
+`cnf` claim signed only by the workload cannot by itself provide.
 
 ## Validator Behavior {#validator-behavior}
+
+For the end-to-end TEE assurance procedure below, the attestation
+document referenced by `attestation_doc_hash` MUST be the same document
+that carries the key binding ({{key-binding}}) and the measurement
+registers reconciled below. AIR v1 does not define a provenance
+procedure for a deployment whose key-binding attestation and
+`attestation_doc_hash` are different documents (for example, a
+per-session key-binding quote plus a separate boot-time attestation);
+such a split is left to a future profile.
 
 An AIR Receipt Validator configured for end-to-end TEE assurance:
 
@@ -872,11 +1074,55 @@ An AIR Receipt Validator configured for end-to-end TEE assurance:
     key; it is corroborated platform evidence only after this
     reconciliation succeeds (see {{claim-trust-classes}}).
 
+-   MUST require the presence of every measurement register its policy
+    deems security-critical, and MUST reject a receipt that omits such
+    a register (fail-closed). Byte-for-byte reconciliation quantifies
+    only over the registers present in `enclave_measurements`, and the
+    emitting workload chooses that set; a validator that does not
+    enforce required-register presence can be handed a receipt that
+    omits a workload- or runtime-identifying register. On Intel TDX in
+    particular, the application and guest-runtime measurements are
+    carried in the OPTIONAL RTMR2/RTMR3 slots, so a validator asserting
+    that a specific workload executed MUST require the register(s) that
+    identify that workload rather than only the mandatory MRTD/RTMR0/
+    RTMR1 platform registers.
+
+-   MUST NOT treat successful reconciliation as workload
+    acceptability. Reconciliation establishes only that the receipt's
+    measurement values match the validated attestation document
+    (hardware-rootedness), not that those values, the platform TCB, or
+    the debug state are acceptable. A validator asserting end-to-end
+    TEE assurance MUST additionally appraise the reconciled
+    measurements and the platform TCB/debug state against its
+    reference-value policy -- or defer that appraisal to a RATS
+    Verifier that performs it -- and MUST reject unacceptable values.
+    In particular, a validator asserting a production security posture
+    MUST reject a TEE that reports a debug or development mode (for
+    example, Intel TDX `TD_ATTRIBUTES.DEBUG` set, or an SGX enclave in
+    DEBUG mode), and MUST reject a platform whose TCB is out of date or
+    revoked, unless the deployment explicitly accepts such a platform
+    for a non-production purpose.
+
+-   MUST require the receipt to bind at least one freshness mechanism
+    -- a verifier-supplied `eat_nonce` or `cti` deduplication -- before
+    asserting end-to-end TEE provenance. {{RFC9711}} Section 9.3 requires
+    an EAT to have a freshness mechanism to prevent replay and reuse; a
+    provenance claim over a receipt carrying no freshness binding is
+    vulnerable to replay of a pre-signed receipt (see
+    {{replay-protection}}).
+
+-   MUST, when the key-binding construction commits a session nonce into
+    the platform quote (for example, TDX REPORTDATA) and the receipt
+    also carries `eat_nonce`, check that the quote-bound nonce and
+    `eat_nonce` are equal, so that the receipt and the underlying
+    platform attestation share one freshness challenge.
+
 An AIR Receipt Validator that does not require end-to-end TEE
 assurance (for example, in a deployment that uses AIR only as a
 signed log bound by application-layer trust decisions) MAY skip the
-binding check. Such a validator MUST NOT claim TEE provenance from
-the receipt alone.
+checks in this section (key binding, measurement reconciliation,
+appraisal, and required-register presence). Such a validator MUST NOT
+claim TEE provenance from the receipt alone.
 
 # Verification Procedure {#verification-procedure}
 
@@ -895,6 +1141,14 @@ These layers define AIR-local verification only. A deployment that
 requires full TEE assurance MUST additionally obtain and verify the
 underlying platform attestation evidence and the binding between that
 evidence and the AIR signing key using platform-specific procedures.
+
+A conformant verifier MUST indicate, in its result, which assurance
+level it established: AIR-local verification (Layers 1-4 of this
+section only) or end-to-end TEE assurance (Layers 1-4 plus the full set
+of checks in {{validator-behavior}} -- key binding, measurement
+reconciliation, required-register presence, and measurement/TCB/debug
+appraisal). An AIR-local result MUST NOT be presented or recorded as
+TEE provenance.
 
 Each AIR-local layer MUST complete successfully before proceeding to
 the next. If any check fails, the verifier MUST reject the receipt and
@@ -938,7 +1192,7 @@ is not decoded until Layer 3, after signature verification.
 
 ## Layer 2: Signature Verification
 
-1.  Construct Sig_structure1 = \["Signature1", protected, h'',
+1.  Construct Sig_structure = \["Signature1", protected, h'',
     payload\] per {{RFC9052}} Section 4.4. The result is the message M
     over which the signature is verified.
 
@@ -960,7 +1214,8 @@ is not decoded until Layer 3, after signature verification.
         point (a point of order 1, 2, 4, or 8).
 
     d.  Compute k = SHA-512(R || A || M), interpreted as a
-        little-endian integer modulo L. Verify the cofactorless group
+        little-endian integer (its reduction modulo L is implicit in
+        the scalar multiplication [k]A). Verify the cofactorless group
         equation \[S\]B = R + \[k\]A, where B is the Ed25519 base
         point. Reject if it does not hold. The cofactored equation
         MUST NOT be used in place of the cofactorless equation.
@@ -988,6 +1243,11 @@ Layer 3 is the first layer that decodes the payload CBOR, and it is
 entered only after the Layer 2 signature check has succeeded.
 
 1.  Decode the payload. Confirm it is a well-formed CBOR map.
+    Confirm that every mandatory claim enumerated in the CDDL
+    ({{cddl}}) and the EAT Profile Declaration is present; reject the
+    receipt if any mandatory claim is absent. The closed-claims-map
+    check below rejects unknown keys but does not by itself guarantee
+    that the mandatory claims are present.
 
 2.  Confirm `eat_profile` (key 265) equals
     `"https://spec.cyntrisec.com/air/v1"`. Reject receipts with
@@ -1026,8 +1286,17 @@ entered only after the Layer 2 signature check has succeeded.
     (`"production"`, `"evaluation"`). Unknown values MUST
     be rejected (fail-closed).
 
-13. Confirm the claims map contains no unknown integer keys and no
+13. Confirm `request_hash` (key -65540), `response_hash` (key
+    -65541), and `attestation_doc_hash` (key -65542) are each exactly
+    32 bytes, and that `sequence_number` (key -65545),
+    `execution_time_ms` (key -65546), and `memory_peak_mb` (key
+    -65547) are each unsigned integers.
+
+14. Confirm the claims map contains no unknown integer keys and no
     duplicate keys.
+
+15. If `eat_nonce` (key 10) is present, confirm it is between 8 and 64
+    bytes inclusive; reject otherwise ({{RFC9711}} Section 4.1).
 
 ## Layer 4: Policy Evaluation
 
@@ -1070,7 +1339,11 @@ Challenge/Response and Uni-Directional interaction models of
     require challenge-binding, but MUST be understood as weaker than
     challenge-bound freshness: a compromised workload can pre-sign
     receipts, and verifiers relying only on `iat` gain no defense
-    beyond clock skew.
+    beyond clock skew. A validator operating in this mode MUST apply a
+    bounded acceptance window (a `max_age` policy) and treat the result
+    as recentness, not freshness: it conveys that a receipt is no older
+    than the window, not that it was produced in response to a live
+    challenge.
 
 Attester-generated nonce values (nonce values not supplied by a
 verifier) provide no replay protection and SHOULD NOT be placed in
@@ -1091,20 +1364,39 @@ be considered in a future revision.
 ## draft-messous-eat-ai
 
 {{I-D.messous-eat-ai}} defines AI-related claims for EAT,
-including model identification, training metadata, and performance
-metrics. AIR v1 is complementary: where draft-messous-eat-ai focuses
+including model identification, training metadata, and data-handling policy and SBOM
+references. AIR v1 is complementary: where draft-messous-eat-ai focuses
 on per-agent identity, provenance, and authorization metadata, AIR v1
 focuses narrowly on per-inference execution evidence from a
 confidential workload. AIR intentionally binds a specific request/
 response event to attestation-linked metadata; it is not a general AI
 agent identity profile. A future version of AIR could adopt
 registered claim keys from draft-messous-eat-ai once they stabilize,
-replacing the current private-use integer keys.
+replacing the current private-use integer keys. The two drafts do not
+collide in the private-use key space -- draft-messous-eat-ai uses keys
+in the -75000 range while AIR uses -65537 through -65549 -- but a future
+coordinated registration SHOULD align them.
+
+## Concurrent AI-Attestation Work
+
+Several concurrent efforts address adjacent parts of the AI-attestation
+problem. {{I-D.sharif-ai-model-lifecycle-attestation}} spans the whole
+model lifecycle -- from training-data attestation through per-inference
+output signing; AIR v1 is narrower, defining only the per-inference
+receipt wire format and its verification, and could serve as the
+receipt object such a lifecycle framework emits. In the research
+literature, AEX (arXiv:2603.14283) attests LLM API request/response
+provenance at the API boundary, and "Notarized Agents"
+(arXiv:2606.04193) defines receiver-attested receipts for AI agent
+actions. AIR's specific contribution is a closed, fail-closed
+COSE_Sign1 / CWT / EAT profile for a single confidential inference; it
+is not the only or first per-inference evidence scheme, and a future
+version could align its claim keys with these efforts.
 
 ## SCITT
 
 The Supply Chain Integrity, Transparency and Trust framework
-({{I-D.ietf-scitt-architecture}}) uses "Receipt" to mean a
+({{RFC9943}}) uses "Receipt" to mean a
 Merkle-tree inclusion proof produced by a Transparency Service for a
 Signed Statement submitted to it. In AIR, "receipt" means a
 workload-signed per-inference evidence object. These are different
@@ -1154,7 +1446,7 @@ AIR receipts fit the RATS {{RFC9334}} architecture as follows:
 - The **AIR Receipt Validator** (see {{terminology}}) performs
   AIR-local checks (signature, claim structure, local policy). The
   AIR Receipt Validator is not the RATS Verifier of {{RFC9334}}
-  Section 6.4; it does not appraise platform Evidence against
+  Section 4.1; it does not appraise platform Evidence against
   reference values or produce Attestation Results.
 - A **RATS Verifier** appraises the platform attestation evidence
   referenced by `attestation_doc_hash` using platform-specific
@@ -1168,8 +1460,8 @@ AIR receipts fit the RATS {{RFC9334}} architecture as follows:
   attestation infrastructure anchors trust in the platform evidence.
 
 AIR v1 is a workload-emitted artifact, not a Verifier-emitted
-Attestation Result. It is therefore distinct from IETF EAR (EAT
-Attestation Result), which is produced by a Verifier after evaluating
+Attestation Result. It is therefore distinct from IETF EAR ({{I-D.ietf-rats-ear}}, EAT
+Attestation Results), which is produced by a Verifier after evaluating
 platform Evidence. In a complete deployment, a Verifier may evaluate
 platform Evidence and an AIR receipt together, and an EAR may reference
 an AIR receipt as part of the evidence it considered.
@@ -1180,9 +1472,54 @@ attestation document per receipt. Patterns for composite attesters
 confidential compute) and multi-verifier orchestration are the
 subject of active RATS WG work; see
 {{I-D.richardson-rats-composite-attesters}} and
-{{I-D.deshpande-rats-multi-verifier}}. AIR v1 does not support these
+{{I-D.ietf-rats-multi-verifier}}. AIR v1 does not support these
 patterns; future versions may define how AIR receipts compose across
 such environments.
+
+
+# Future Profile Candidates {#future-profile-candidates}
+
+AIR v1 defines an intentionally closed claims map with no extension
+registry ({{non-goals}}). This section records claim families that
+implementation experience and reviewer feedback have identified as
+candidates for a FUTURE AIR profile. It defines no new claims and adds
+no wire-format requirements; a future revision MAY define some or all
+of them, and this document commits to no delivery date. The purpose is
+to reserve the design space and to record the trust analysis any such
+claims would inherit.
+
+## Decoding and Sampling Parameters
+
+A future profile could carry the decoding configuration of the
+inference -- for example temperature, top_p, top_k, a random seed, and
+the stop-sequence set. Under the AIR trust model these are
+workload-asserted values (Trust Assumption TA-2, {{trust-assumptions}}):
+a verifier can policy-pin them -- reject a receipt whose asserted
+decoding configuration is not the expected one -- but generally cannot
+recompute the response to confirm the configuration was actually
+applied, because production inference on hardware accelerators is not
+bit-reproducible across runs. Such claims therefore add policy-pinning
+value, not independent verifiability, and a profile defining them
+SHOULD state this explicitly so that a Relying Party does not read a
+pinned decoding claim as proof of the decoding that occurred.
+
+## Structured Context Commitments
+
+AIR v1's `request_hash` commits to the request payload as a single
+opaque byte string. A future profile could decompose the context into
+separately committed parts -- for example distinct hashes for the user
+input, the system prompt, retrieved context (as in retrieval-augmented
+generation), and a tool-call / tool-result log -- and could add a
+prior-receipt hash to chain multi-step or multi-turn interactions.
+These share the decoding parameters' trust class: they are
+workload-asserted and corroborable only against artifacts a Relying
+Party independently holds. This design space overlaps with the agent
+identity and provenance claims of {{I-D.messous-eat-ai}} and with
+recent work on attestation and provenance for LLM API
+request/response outputs (for example, AEX, arXiv:2603.14283); a future
+AIR profile SHOULD reuse registered claim
+keys from that work where they exist rather than minting private-use
+keys.
 
 
 # Security Considerations
@@ -1209,7 +1546,12 @@ corresponding AIR guarantees are void.
     misconfigured workload can produce syntactically valid receipts
     that do not correspond to a genuine inference; AIR does not
     protect against such a signer. This assumption is meaningful
-    only when combined with TA-3.
+    only when combined with TA-3. Moreover, because
+    `attestation_doc_hash` MAY reference a reused boot-time attestation
+    rather than a per-inference one (see the `attestation_doc_hash`
+    claim definition), a valid receipt does not establish that a
+    specific inference occurred at a specific time, even when TA-1
+    through TA-4 all hold.
 
 -   **TA-3 (Key binding enforced out of band):** for deployments
     asserting end-to-end TEE provenance, the Ed25519 signing key is
@@ -1235,7 +1577,7 @@ TA-4 enforced by a RATS Verifier.
 
 ## Receipt Integrity
 
-The Ed25519 signature over the COSE Sig_structure1 protects the
+The Ed25519 signature over the COSE Sig_structure protects the
 protected header and all claims against tampering. The unprotected
 header is not covered by the signature; AIR v1 requires it to be
 empty (Section 4.3).
@@ -1246,6 +1588,17 @@ AIR v1 pins the signing algorithm to Ed25519 (alg = -8). The
 algorithm identifier is carried in the protected header and is
 therefore signed. This prevents algorithm confusion attacks where an
 attacker substitutes a weaker algorithm.
+
+As of {{RFC9864}}, the generic EdDSA algorithm identifier -8 is no
+longer marked "Recommended" in the IANA COSE Algorithms registry (its
+Recommended status is "Deprecated") in favor of algorithm-specific
+identifiers. AIR v1 pins -8 for interoperability with currently
+deployed COSE tooling; a future AIR profile MAY adopt the
+Ed25519-specific algorithm identifier. Algorithm agility in AIR is
+handled by profile versioning, not in-band negotiation: a future
+revision needing a different or post-quantum signature scheme defines a
+new profile identifier (the `eat_profile` value), so a verifier never
+has to accept an algorithm the profile did not pin.
 
 ## Replay Protection {#replay-protection}
 
@@ -1267,7 +1620,9 @@ Replay protection in AIR v1 is a shared responsibility:
 Verifiers not maintaining state and not using eat_nonce have limited
 replay protection (only iat-based freshness). Deployments requiring
 strong replay resistance MUST use at least one of cti deduplication
-or eat_nonce.
+or eat_nonce. A verifier configured with neither cti deduplication nor
+eat_nonce checking SHOULD surface a warning that the receipt has no
+replay protection beyond iat-based freshness.
 
 ### Freshness Boundary
 
@@ -1294,6 +1649,13 @@ bias, or safety. Two distinct artifact sets with identical hashes are
 computationally infeasible, but a model with a correct hash may still
 produce harmful or incorrect outputs.
 
+`model_hash` identifies the serialized model artifact set, not the
+in-memory computational form actually executed. Quantization, kernel
+fusion, speculative decoding, and other runtime optimizations can make
+the executing model differ numerically from the hashed artifacts;
+`model_hash` binds which artifacts were referenced, not the exact
+computation performed.
+
 The `model_hash_scheme` claim ({{mhscheme}}) declares how the hash
 was computed. Unknown scheme values MUST be rejected. This prevents
 a verifier from accepting a hash computed with an unrecognized method
@@ -1313,6 +1675,22 @@ establish TEE assurance. Verifiers requiring such assurance MUST
 independently obtain and verify the attestation document using
 platform-specific procedures (e.g., Nitro COSE verification against
 the AWS root CA, Intel TDX DCAP verification against Intel PCS).
+
+## Accelerator Attestation Scope {#accelerator-scope}
+
+An AIR v1 receipt attests the CPU-side TEE only. On a platform that
+also provides accelerator (for example, GPU) confidential computing,
+the accelerator's confidential-computing mode, device identity, and
+memory-protection state are NOT covered by the receipt, and are not
+implied by a successful `enclave_measurements` reconciliation. A
+Relying Party MUST NOT infer accelerator confidentiality from an AIR v1
+receipt, and a party presenting such a receipt MUST NOT represent it as
+covering accelerator confidentiality. Where accelerator confidentiality
+is part of the trust decision, it MUST be established out of band from
+device-side Evidence (see the composite-attester note in {{non-goals}})
+and MUST NOT be assumed from the presence of an AIR receipt. A future
+composite-attester AIR profile may bind CPU-side and accelerator-side
+Evidence into a single verifiable object.
 
 ## Workload Honesty and Evidence Scope
 
@@ -1338,7 +1716,11 @@ evidence outside the receipt. This section classifies every AIR v1
 claim so that implementers and Relying Parties do not mistake a
 workload self-assertion for independently established fact.
 
-Three trust classes are used:
+In RATS terms ({{RFC9334}}), a claim is corroborated hardware Evidence
+only when an Attesting Environment measured it and a Verifier appraises
+it against reference values; the remaining claims are workload
+assertions that the receipt signature authenticates but does not make
+true. Three trust classes are used:
 
 -   **Self-asserted:** backed only by the workload's signature. A
     malicious or misconfigured workload can place any syntactically
@@ -1365,7 +1747,7 @@ Three trust classes are used:
 | `model_hash` | Externally corroborable | Compare against a known-good reference hash |
 | `request_hash` | Externally corroborable | Recompute from the request bytes the Relying Party holds |
 | `response_hash` | Externally corroborable | Recompute from the response bytes the Relying Party holds |
-| `attestation_doc_hash` | Attestation-corroborable | Re-hash the independently obtained attestation document |
+| `attestation_doc_hash` | Attestation-corroborable | Re-hash the independently obtained attestation document. For a TEE-provenance receipt this is the same document that carries the key binding and reconciled measurements; it is typically boot-time, so it shows execution *in* the attested workload, not *at the time of* this inference (see the `attestation_doc_hash` claim definition). |
 | `enclave_measurements` | Attestation-corroborable | Reconcile against the validated attestation document per {{validator-behavior}}; self-asserted until then |
 | `policy_version` | Self-asserted | None; operator-assigned |
 | `sequence_number` | Self-asserted | None; informational only (see its claim definition) |
@@ -1467,6 +1849,17 @@ hash to recover the original input. Deployments handling sensitive
 low-entropy data SHOULD consider whether receipt exposure risks
 input recovery.
 
+A deployment MAY mitigate this by folding a per-receipt secret salt
+(for example, the `eat_nonce`, or a random value retained by the
+issuer) into the hashed preimage, so that `request_hash` and
+`response_hash` are not dictionary-confirmable by an observer who does
+not hold the salt. This is a deliberate trade-off: a salted hash is no
+longer independently recomputable by a Relying Party that holds only
+the request or response bytes, so the claim's trust class shifts from
+externally-corroborable to corroborable-only-with-the-salt (see
+{{claim-trust-classes}}). A profile that defines salting MUST specify
+how the salt is conveyed to authorized verifiers.
+
 ## Correlation Metadata
 
 AIR receipts contain timestamps (iat), sequence numbers, and
@@ -1498,6 +1891,25 @@ Deployments requiring issuer pseudonymity SHOULD use opaque `iss`
 values (for example, UUIDs or randomly-generated identifiers) and
 distribute issuer mappings out of band to the parties that need
 them.
+
+## Signing Key and Identifier Linkability
+
+The Ed25519 receipt signing key is, in effect, a persistent pseudonym:
+every receipt a given attested workload emits is signed by the same
+key, so an observer can link all of that workload's inferences to one
+another and, via the key binding, to one attested environment. The
+`model_id` and `enclave_measurements` claims are likewise stable
+cross-receipt correlators. Where unlinkability across receipts or
+across relying parties matters, a deployment SHOULD use
+per-relying-party or rotating signing keys, each separately attested,
+accepting the additional attestation cost. AIR v1 does not use the EAT
+`ueid`, `sueids`, `oemid`, `hwmodel`, or `hwversion` claims -- the
+closed claims map prohibits them -- which avoids the permanent-
+hardware-identifier linkability discussed in {{RFC9711}} Section 8. The
+`cti` claim SHOULD be a random 128-bit value rather than a counter (see
+its claim definition); `sequence_number` is a deliberately
+session-linkable field, and because it is informational only a
+deployment concerned with linkability MAY emit a constant value for it.
 
 
 # IANA Considerations
@@ -1539,10 +1951,27 @@ Description:
   with structured error codes.
 
 Maturity:
-: Production. Emitted in E2E paths on three platforms.
+: Demonstration. The implementation emits AIR v1 receipts and performs
+  AIR-local verification on the Nitro, TDX, and GCP Confidential Space
+  paths. Enforced single-document AIR TEE provenance per
+  {{validator-behavior}} is implemented for Nitro: the AIR signing key is
+  extracted from the AWS-signed NSM attestation document referenced by
+  `attestation_doc_hash`, and the client reconciles and appraises that
+  document's measurement registers against caller-supplied reference
+  values before asserting provenance. On TDX and GCP Confidential Space
+  today, the receipt's `attestation_doc_hash` references a boot-time
+  quote, while the receipt-signing-key binding and DCAP/platform
+  verification are carried through a separate transport attestation and
+  platform-evidence bundle. That is exactly the split model
+  {{validator-behavior}} places out of scope for AIR v1 TEE provenance,
+  so those receipts are treated as AIR-local. Binding the
+  receipt-signing key into the `attestation_doc_hash` quote and a
+  TDX/GCP AIR chained verifier that validates that quote and appraises
+  its MRTD/RTMR registers against reference values are future work.
 
 Coverage:
-: 575 tests passing (including 16 AIR v1 conformance vector tests).
+: The reference implementation passes its test suite, including the
+  AIR v1 golden conformance vectors ({{appendix-vectors}}).
 
 Contact:
 : borys@cyntrisec.com
@@ -1579,8 +2008,15 @@ nonce reaches the workload.
 
 ## E2E Validation
 
-The reference implementation has been validated end-to-end on three
-confidential computing platforms:
+The reference implementation has been exercised on three confidential
+computing platforms. "PASS" below means AIR receipt emission plus
+AIR-local verification plus measurement hardware-rootedness. Nitro
+additionally exercises the enforced single-document AIR TEE-provenance
+path of {{validator-behavior}}. On TDX and GCP Confidential Space the
+evidence is currently split between the boot-time `attestation_doc_hash`
+quote and the separate transport / platform-evidence verifier; full
+single-document Validator Behavior on those platforms is future work
+(see Maturity above):
 
 | Platform                  | Status | Date       | Notes |
 |:--------------------------|:-------|:-----------|:------|
@@ -1616,7 +2052,7 @@ The protected header decodes to:
 }
 ~~~
 
-The payload (CWT claims map) includes 16 required claims plus the
+The payload (CWT claims map) includes 16 required claims, including the
 EAT profile:
 
 ~~~
@@ -1691,7 +2127,7 @@ convenience.
 
 ~~~ cddl
 ; Attested Inference Receipt (AIR) v1 -- CDDL Schema
-; Status: v1.0 FROZEN
+; Status: v1.0 -- closed claim set, single-inference scope
 ; References: RFC 9052, RFC 8392, RFC 9711, RFC 8949, RFC 8610
 
 air-receipt = #6.18([
@@ -1714,7 +2150,7 @@ air-claims = {
   6   => uint,                  ; iat: issued-at (Unix seconds)
   7   => bstr .size 16,         ; cti: CWT ID (UUID v4, 16 bytes)
   265 => "https://spec.cyntrisec.com/air/v1",  ; eat_profile
-  ? 10 => bstr,                 ; eat_nonce (optional)
+  ? 10 => bstr .size (8..64),   ; eat_nonce (optional)
 
   ; --- AIR private claims ---
   -65537 => tstr,               ; model_id
@@ -1762,8 +2198,8 @@ tdx-measurements = {
 
 # Golden Vector Summary {#appendix-vectors}
 
-The reference implementation includes 10 golden test vectors (2
-valid, 8 invalid) generated with a deterministic Ed25519 key pair:
+The reference implementation includes 19 golden test vectors (2 valid,
+17 invalid) generated with a deterministic Ed25519 key pair:
 
 - Seed: `2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a`
 - Public key: `197f6b23e16c8532c6abc838facd5ea789be0c76b2920334039bfa8b3d368d61`
@@ -1781,10 +2217,12 @@ Valid vectors:
     (tests nonce binding and TDX measurement variant).
 
 Invalid vectors exercise specific failure modes across all four
-verification layers:
+verification layers. The following are a representative subset; the
+complete set (including the signature-strictness, trailing-byte, and
+duplicate-key vectors) is in the repository under `spec/v1/vectors/`:
 
 -   `v1-wrong-key.json` (L2: SIG_FAILED)
--   `v1-wrong-alg.json` (L2: BAD_ALG)
+-   `v1-wrong-alg.json` (L1: BAD_ALG)
 -   `v1-zero-model-hash.json` (L3: ZERO_MODEL_HASH)
 -   `v1-bad-measurement-length.json` (L3: BAD_MEASUREMENT_LENGTH)
 -   `v1-nonce-mismatch.json` (L4: NONCE_MISMATCH)

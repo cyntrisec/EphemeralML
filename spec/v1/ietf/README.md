@@ -42,13 +42,17 @@ xml2rfc --html draft-tsyrulnikov-rats-attested-inference-receipt-02.xml
 
 - AIR `-00` **was submitted** and is posted on Datatracker as `draft-tsyrulnikov-rats-attested-inference-receipt-00`.
 - AIR `-01` **was submitted** after `-00`.
-- AIR `-02` is currently local prep in this directory (`draft-tsyrulnikov-rats-attested-inference-receipt-02.*`).
-- `rats@ietf.org` intro email / announcement has **not** been sent yet.
-- Final local readiness check for `-02` passed on 2026-04-25; see `air-02-readiness-check-2026-04-25.md`.
+- AIR `-02` **was submitted** on 2026-07-05 and is posted on
+  [Datatracker](https://datatracker.ietf.org/doc/draft-tsyrulnikov-rats-attested-inference-receipt/).
+- The committed Markdown source and XML/text artifacts mirror the published
+  `-02` submission. HTML rendering can vary with the `xml2rfc` version.
+- The pre-submission readiness check is retained for history; see
+  `air-02-readiness-check-2026-04-25.md`.
 
-Planned sequencing:
+Revision policy:
 
-1. Decide whether to hold for the A-197 / BYOC evidence gate or submit `-02` immediately.
-2. If submitting now, upload `draft-tsyrulnikov-rats-attested-inference-receipt-02.xml` to Datatracker.
-3. Send the RATS mailing list introduction / review request after the Datatracker page is live.
-4. Use `rats-intro-email-draft.md` as the starting point for the mailing list note.
+1. Preserve the posted `-02` source and generated artifacts as a reproducible
+   publication snapshot.
+2. Put subsequent semantic changes in a new Internet-Draft revision rather
+   than silently rewriting the posted `-02` snapshot.
+3. Use `rats-intro-email-draft.md` as historical input for future RATS outreach.
