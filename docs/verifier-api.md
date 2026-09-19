@@ -281,13 +281,18 @@ ephemeralml-verifier \
 
 ### Cloud Run public deployment guardrails
 
-For `verify.cyntrisec.com`, deploy through a no-traffic candidate first, smoke-test the tagged URL, shift traffic only after a clean smoke test, then clear the tag.
+For `verify.cyntrisec.com`, test the immutable image in a temporary,
+IAM-protected Cloud Run service first. Delete that service after its gates pass,
+then deploy the same digest as a no-traffic production revision and shift traffic
+only after Cloud Run reports it ready. The public service's default `run.app`
+URL remains disabled throughout.
 
 The supported deployment script performs the complete guarded sequence: a
 Cloud Build with verified provenance, HIGH/CRITICAL Trivy gate, SBOM export,
 immutable-digest deployment, candidate proxy tests, all 19 AIR vectors, build
-drift verification, promotion, and automatic rollback on a failed post-promotion
-gate:
+drift verification, deletion of the private candidate service, no-traffic
+production deployment, promotion, and automatic rollback on a failed
+post-promotion gate:
 
 ```bash
 bash scripts/gcp/deploy-trust-center.sh PROJECT_ID us-central1

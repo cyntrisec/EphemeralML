@@ -7,6 +7,7 @@ set -euo pipefail
 PROJECT_ID="${1:?usage: $0 PROJECT_ID [REGION]}"
 REGION="${2:-us-central1}"
 SERVICE="${TRUST_CENTER_SERVICE:-trust-center}"
+CANDIDATE_SERVICE="${TRUST_CENTER_CANDIDATE_SERVICE:-${SERVICE}-candidate}"
 RUNTIME_SERVICE_ACCOUNT="${TRUST_CENTER_RUNTIME_SERVICE_ACCOUNT:-trust-center-runner@${PROJECT_ID}.iam.gserviceaccount.com}"
 LIVE_URL="${TRUST_CENTER_LIVE_URL:-https://verify.cyntrisec.com}"
 PROXY_PORT="${TRUST_CENTER_PROXY_PORT:-18081}"
@@ -35,11 +36,25 @@ fi
 
 short_sha="${git_sha:0:12}"
 image_tag="${REGION}-docker.pkg.dev/${PROJECT_ID}/cloud-run-source-deploy/trust-center:verify-${short_sha}"
-candidate_tag="candidate-${short_sha}"
+
+if [[ "$CANDIDATE_SERVICE" == "$SERVICE" ]]; then
+    echo "ERROR: the candidate and production Cloud Run services must be different" >&2
+    exit 2
+fi
+
+if gcloud run services describe "$CANDIDATE_SERVICE" \
+    --project "$PROJECT_ID" --region "$REGION" >/dev/null 2>&1; then
+    echo "ERROR: refusing to replace existing candidate service: $CANDIDATE_SERVICE" >&2
+    exit 2
+fi
 
 previous_revision="$(gcloud run services describe "$SERVICE" \
     --project "$PROJECT_ID" --region "$REGION" --format=json \
     | jq -r '[.status.traffic[] | select(.percent == 100)][0].revisionName')"
+if [[ -z "$previous_revision" || "$previous_revision" == null ]]; then
+    echo "ERROR: failed to identify the current 100% production revision" >&2
+    exit 2
+fi
 
 echo "Building and scanning $image_tag from $git_sha"
 gcloud builds submit "$REPO_DIR" \
@@ -54,8 +69,30 @@ if [[ -z "$image_digest" || "$image_digest" != *@sha256:* ]]; then
     exit 2
 fi
 
-echo "Deploying candidate from $image_digest"
-gcloud run deploy "$SERVICE" \
+proxy_log="$(mktemp /tmp/trust-center-proxy.XXXXXX)"
+proxy_pid=""
+candidate_created=false
+stop_proxy() {
+    if [[ -n "$proxy_pid" ]] && kill -0 "$proxy_pid" 2>/dev/null; then
+        kill "$proxy_pid" 2>/dev/null || true
+        wait "$proxy_pid" 2>/dev/null || true
+    fi
+    proxy_pid=""
+}
+cleanup() {
+    stop_proxy
+    rm -f "$proxy_log"
+    if [[ "$candidate_created" == true ]]; then
+        gcloud run services delete "$CANDIDATE_SERVICE" \
+            --project "$PROJECT_ID" --region "$REGION" --quiet >/dev/null 2>&1 || \
+            echo "WARNING: failed to delete private candidate service $CANDIDATE_SERVICE" >&2
+    fi
+}
+trap cleanup EXIT
+
+echo "Deploying private candidate service from $image_digest"
+candidate_created=true
+gcloud run deploy "$CANDIDATE_SERVICE" \
     --project "$PROJECT_ID" \
     --region "$REGION" \
     --image "$image_digest" \
@@ -68,36 +105,15 @@ gcloud run deploy "$SERVICE" \
     --min-instances 0 \
     --max-instances 1 \
     --ingress all \
-    --allow-unauthenticated \
-    --no-default-url \
+    --no-allow-unauthenticated \
+    --invoker-iam-check \
+    --default-url \
     --startup-probe 'httpGet.path=/health,httpGet.port=8080,timeoutSeconds=5,periodSeconds=10,failureThreshold=12' \
-    --liveness-probe 'httpGet.path=/health,httpGet.port=8080,initialDelaySeconds=5,timeoutSeconds=5,periodSeconds=30,failureThreshold=3' \
-    --revision-suffix "git-${short_sha}" \
-    --tag "$candidate_tag" \
-    --no-traffic
+    --liveness-probe 'httpGet.path=/health,httpGet.port=8080,initialDelaySeconds=5,timeoutSeconds=5,periodSeconds=30,failureThreshold=3'
 
-candidate_revision="$(gcloud run services describe "$SERVICE" \
+gcloud run services proxy "$CANDIDATE_SERVICE" \
     --project "$PROJECT_ID" --region "$REGION" \
-    --format='value(status.latestCreatedRevisionName)')"
-if [[ -z "$candidate_revision" ]]; then
-    echo "ERROR: Cloud Run did not report a candidate revision" >&2
-    exit 2
-fi
-
-proxy_log="$(mktemp /tmp/trust-center-proxy.XXXXXX)"
-proxy_pid=""
-cleanup() {
-    if [[ -n "$proxy_pid" ]] && kill -0 "$proxy_pid" 2>/dev/null; then
-        kill "$proxy_pid" 2>/dev/null || true
-        wait "$proxy_pid" 2>/dev/null || true
-    fi
-    rm -f "$proxy_log"
-}
-trap cleanup EXIT
-
-gcloud run services proxy "$SERVICE" \
-    --project "$PROJECT_ID" --region "$REGION" \
-    --tag "$candidate_tag" --port "$PROXY_PORT" >"$proxy_log" 2>&1 &
+    --port "$PROXY_PORT" >"$proxy_log" 2>&1 &
 proxy_pid=$!
 
 candidate_url="http://127.0.0.1:${PROXY_PORT}"
@@ -119,17 +135,60 @@ bash "$REPO_DIR/scripts/smoke-test.sh" "$candidate_url"
 bash "$REPO_DIR/scripts/trust-center-conformance.sh" "$candidate_url"
 EXPECTED_BUILD_SHA="$git_sha" bash "$REPO_DIR/scripts/trust-center-drift-check.sh" "$candidate_url"
 
-cleanup
-proxy_pid=""
-trap - EXIT
+stop_proxy
+gcloud run services delete "$CANDIDATE_SERVICE" \
+    --project "$PROJECT_ID" --region "$REGION" --quiet
+candidate_created=false
+rm -f "$proxy_log"
+if gcloud run services describe "$CANDIDATE_SERVICE" \
+    --project "$PROJECT_ID" --region "$REGION" >/dev/null 2>&1; then
+    echo "ERROR: private candidate service still exists after cleanup" >&2
+    exit 1
+fi
 
-# Candidate and live gates together exceed the production 60 rpm ceiling when
-# Cloud Run presents the same proxy peer IP to the in-process limiter. Let the
-# candidate window expire before exercising the promoted revision.
-echo "Waiting for the candidate rate-limit window to expire"
-sleep 30
-echo "Rate-limit reset: 31 seconds remaining"
-sleep 31
+echo "Deploying zero-traffic production revision from tested digest"
+gcloud run services update-traffic "$SERVICE" \
+    --project "$PROJECT_ID" --region "$REGION" --clear-tags
+
+gcloud run deploy "$SERVICE" \
+    --project "$PROJECT_ID" \
+    --region "$REGION" \
+    --image "$image_digest" \
+    --service-account "$RUNTIME_SERVICE_ACCOUNT" \
+    --set-env-vars EPHEMERALML_VERIFIER_MODE=public-trust-center,EPHEMERALML_VERIFIER_RATE_LIMIT=60 \
+    --cpu 1 \
+    --memory 256Mi \
+    --concurrency 20 \
+    --timeout 30 \
+    --min-instances 0 \
+    --max-instances 1 \
+    --ingress all \
+    --allow-unauthenticated \
+    --no-default-url \
+    --startup-probe 'httpGet.path=/health,httpGet.port=8080,timeoutSeconds=5,periodSeconds=10,failureThreshold=12' \
+    --liveness-probe 'httpGet.path=/health,httpGet.port=8080,initialDelaySeconds=5,timeoutSeconds=5,periodSeconds=30,failureThreshold=3' \
+    --revision-suffix "git-${short_sha}" \
+    --no-traffic
+
+candidate_revision="$(gcloud run services describe "$SERVICE" \
+    --project "$PROJECT_ID" --region "$REGION" \
+    --format='value(status.latestCreatedRevisionName)')"
+if [[ -z "$candidate_revision" ]]; then
+    echo "ERROR: Cloud Run did not report a production candidate revision" >&2
+    exit 2
+fi
+
+deployed_image="$(gcloud run revisions describe "$candidate_revision" \
+    --project "$PROJECT_ID" --region "$REGION" \
+    --format='value(spec.containers[0].image)')"
+if [[ "$deployed_image" != "$image_digest" ]]; then
+    echo "ERROR: production candidate does not use the tested image digest" >&2
+    echo "Expected: $image_digest" >&2
+    echo "Actual:   ${deployed_image:-not reported}" >&2
+    exit 2
+fi
+
+trap - EXIT
 
 echo "Promoting $candidate_revision to 100% traffic"
 gcloud run services update-traffic "$SERVICE" \
