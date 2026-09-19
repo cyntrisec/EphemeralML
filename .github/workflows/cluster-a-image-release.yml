@@ -196,7 +196,7 @@ jobs:
 
       - name: Install ORAS
         if: needs.release-tag.outputs.push == 'true'
-        uses: oras-project/setup-oras@v1
+        uses: oras-project/setup-oras@v2
 
       - name: Install cosign
         if: needs.release-tag.outputs.push == 'true'
@@ -686,7 +686,7 @@ jobs:
 
       - name: Install ORAS
         if: needs.release-tag.outputs.push == 'true'
-        uses: oras-project/setup-oras@v1
+        uses: oras-project/setup-oras@v2
 
       - name: Sign EIF blob and push EIF OCI artifact
         if: needs.release-tag.outputs.push == 'true'
