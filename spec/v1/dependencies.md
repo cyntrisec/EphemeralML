@@ -75,7 +75,7 @@ AIR v1 uses these COSE_Sign1 header parameters:
 | iat (Issued At) | 6 | uint | Yes | RFC 8392 — execution_timestamp |
 | cti (CWT ID) | 7 | bstr | Yes | RFC 8392 — receipt_id (UUID v4, 16 bytes) |
 | eat_profile | 265 | tstr | Yes | RFC 9711 — `"https://spec.cyntrisec.com/air/v1"` |
-| eat_nonce | 10 | bstr | Optional | RFC 9711 — challenge nonce for replay resistance |
+| eat_nonce | 10 | bstr (8–64 bytes) | Optional | RFC 9711 — challenge nonce for replay resistance |
 
 ### AIR Private Claims (negative integer keys, range TBD)
 

@@ -7,6 +7,8 @@
 
 Attested Inference Receipt (AIR) v1.0 is the first frozen release of the receipt specification for confidential AI inference. It defines a COSE_Sign1 envelope carrying CWT claims with EAT profile identification, signed with Ed25519.
 
+Accepted post-freeze corrections are tracked in [ERRATA.md](ERRATA.md).
+
 ## What's in this release
 
 ### Normative documents (all FROZEN)

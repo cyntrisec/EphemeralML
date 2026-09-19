@@ -50,7 +50,7 @@ All golden vectors use this deterministic Ed25519 keypair:
 | 1 | iss | tstr | Yes |
 | 6 | iat | uint | Yes |
 | 7 | cti | bstr(16) | Yes |
-| 10 | eat_nonce | bstr | No |
+| 10 | eat_nonce | bstr(8..64) | No |
 | 265 | eat_profile | tstr | Yes — must be `"https://spec.cyntrisec.com/air/v1"` |
 
 ### AIR private claims

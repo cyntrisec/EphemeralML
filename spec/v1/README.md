@@ -5,6 +5,7 @@ A cryptographically signed proof that an ML inference was executed inside a hard
 ## Status
 
 **v1.0:** FROZEN — All normative documents locked. Issue #80 (model_hash_scheme) resolved.
+Accepted post-freeze corrections are recorded in [ERRATA.md](ERRATA.md).
 
 ## Naming and RATS Positioning (Non-Normative)
 
@@ -17,6 +18,7 @@ A cryptographically signed proof that an ML inference was executed inside a hard
 
 | Document | Description |
 |----------|-------------|
+| [ERRATA.md](ERRATA.md) | Accepted corrections to the frozen v1.0 documents |
 | [naming.md](naming.md) | Standard name (AIR) and versioning policy |
 | [scope-v1.md](scope-v1.md) | What v1 defines and what it does not |
 | [dependencies.md](dependencies.md) | Normative references and MTI algorithms |

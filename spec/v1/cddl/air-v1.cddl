@@ -53,7 +53,7 @@ air-claims = {
   6   => uint,               ; iat: issued-at (Unix seconds)
   7   => bstr .size 16,      ; cti: CWT ID (UUID v4, 16 bytes)
   265 => "https://spec.cyntrisec.com/air/v1",  ; eat_profile
-  ? 10 => bstr,              ; eat_nonce: challenge nonce (optional)
+  ? 10 => bstr .size (8..64), ; eat_nonce: challenge nonce (optional)
 
   ; --- AIR private claims ---
   -65537 => tstr,            ; model_id (operator-assigned, opaque)

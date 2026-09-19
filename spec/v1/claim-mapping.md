@@ -88,10 +88,10 @@ These claims use IANA-registered CWT integer keys.
 | Property | Value |
 |----------|-------|
 | CWT key | 10 |
-| CBOR type | bstr |
+| CBOR type | bstr (8–64 bytes) |
 | Required | No (optional) |
 | Semantics | Challenge nonce provided by the client to bind the receipt to a specific request session. |
-| Verification | If the verifier supplied a nonce, it MUST check that eat_nonce matches. Primary replay resistance mechanism when verifier-side cti dedup is not feasible. |
+| Verification | Verifiers MUST reject nonce values outside 8–64 bytes. If the verifier supplied a nonce, it MUST check that eat_nonce matches. Primary replay resistance mechanism when verifier-side cti dedup is not feasible. |
 
 ## 3. AIR Private Claims
 
