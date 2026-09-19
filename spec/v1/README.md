@@ -26,7 +26,7 @@ A cryptographically signed proof that an ML inference was executed inside a hard
 | [cddl/air-v1.cddl](cddl/air-v1.cddl) | CDDL wire schema |
 | [worker-attestation-user-data-v1.md](worker-attestation-user-data-v1.md) | Adjacent worker attestation `user_data` schema |
 | [egress-protocol-v1.md](egress-protocol-v1.md) | Enclave-to-host egress helper protocol schema |
-| [vectors/](vectors/) | Golden test vectors (10 vectors: 2 valid, 8 invalid) |
+| [vectors/](vectors/) | Golden test vectors (19 vectors: 2 valid, 17 invalid) |
 | [interop-kit.md](interop-kit.md) | Quick-start guide for external implementors |
 | [implementation-status.md](implementation-status.md) | Reference implementation status, platform coverage, and known gaps (non-normative) |
 

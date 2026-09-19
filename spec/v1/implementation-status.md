@@ -1,7 +1,7 @@
 # AIR v1 — Implementation Status (Reference Verifier)
 
 **Status:** Active reference implementation (Rust)  
-**Date:** 2026-02-25  
+**Last verified:** 2026-09-19
 **Normative baseline:** AIR v1.0 FROZEN (`m3-spec-frozen`, commit `d7c9d01`)
 
 This document is non-normative. It summarizes what is implemented in the current Rust
@@ -38,7 +38,7 @@ Primary implementation:
 | Four-layer verifier | Implemented | Parse / Crypto / Claims / Policy |
 | Structured failure codes | Implemented | `AirCheckCode` for conformance + diagnostics |
 | Legacy v0.1 conversion | Implemented | `AirReceiptClaims::from_legacy()` |
-| Golden vectors | Implemented | 2 valid + 8 invalid |
+| Golden vectors | Implemented | 2 valid + 17 invalid |
 | CI vector gate | Implemented | Vector conformance checks run in CI |
 
 ### Claim validation coverage (Layer 3)
@@ -67,7 +67,7 @@ Primary implementation:
 Current AIR v1 corpus (`spec/v1/vectors/`):
 
 - **2 valid vectors**
-- **8 invalid vectors**
+- **17 invalid vectors**
 - Coverage across all verifier layers:
   - Layer 1 parse/header
   - Layer 2 signature
@@ -82,6 +82,15 @@ Current AIR v1 corpus (`spec/v1/vectors/`):
 | `valid/v1-tdx-with-nonce.json` | PASS | all |
 | `invalid/v1-wrong-alg.json` | `BAD_ALG` | L1 |
 | `invalid/v1-wrong-key.json` | `SIG_FAILED` | L2 |
+| `invalid/v1-cose-trailing-bytes.json` | `COSE_DECODE_FAILED` | L1 |
+| `invalid/v1-protected-trailing-bytes.json` | `COSE_DECODE_FAILED` | L1 |
+| `invalid/v1-payload-trailing-bytes.json` | `PAYLOAD_NOT_MAP` | L1 |
+| `invalid/v1-duplicate-protected-alg.json` | `COSE_DECODE_FAILED` | L1 |
+| `invalid/v1-duplicate-payload-claim.json` | `PAYLOAD_NOT_MAP` | L1 |
+| `invalid/v1-sig-s-out-of-range.json` | `SIG_FAILED` | L2 |
+| `invalid/v1-sig-small-order-r.json` | `SIG_FAILED` | L2 |
+| `invalid/v1-sig-small-order-a.json` | `SIG_FAILED` | L2 |
+| `invalid/v1-sig-cofactored-only.json` | `SIG_FAILED` | L2 |
 | `invalid/v1-zero-model-hash.json` | `ZERO_MODEL_HASH` | L3 |
 | `invalid/v1-bad-measurement-length.json` | `BAD_MEASUREMENT_LENGTH` | L3 |
 | `invalid/v1-nonce-mismatch.json` | `NONCE_MISMATCH` | L4 |

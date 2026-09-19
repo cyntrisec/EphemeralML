@@ -22,19 +22,20 @@ Attested Inference Receipt (AIR) v1.0 is the first frozen release of the receipt
 | `cddl/air-v1.cddl` | Formal CDDL schema (RFC 8610) |
 | `interop-kit.md` | Quick-start for external implementors |
 
-### Golden test vectors (10 total)
+### Golden test vectors (19 total)
 
 | Category | Count | Description |
 |----------|-------|-------------|
 | Valid | 2 | Nitro (no nonce) + TDX (with nonce) |
-| Invalid — structural | 4 | Wrong key, wrong alg, zero model_hash, bad measurement length |
+| Invalid — structural | 8 | Trailing bytes (cose/protected/payload), duplicate CBOR keys, wrong alg, bad measurement length, zero model_hash |
 | Invalid — policy | 4 | Nonce mismatch, model_hash mismatch, platform mismatch, stale iat |
+| Invalid — signature | 5 | Wrong key, small-order/cofactored R and A, s out of range |
 
 ### Reference implementation
 
 - `ephemeral-ml-common` crate: `build_air_v1()`, `parse_air_v1()`, `verify_air_v1()`
-- 240 tests in `common` (224 unit + 16 conformance vector tests)
-- 574 total tests across the workspace
+- AIR receipt, parser, verifier, and policy regression tests run in CI
+- Golden-vector conformance coverage includes all 19 committed vectors
 
 ## Key decisions
 

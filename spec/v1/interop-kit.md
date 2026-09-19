@@ -93,12 +93,21 @@ Nitro measurements, no nonce. Your verifier MUST accept this receipt with the te
 
 TDX measurements, with `eat_nonce`. Your verifier MUST accept this receipt when the expected nonce matches.
 
-### Invalid vectors (8 total)
+### Invalid vectors (17 total)
 
 | Vector | Expected failure |
 |--------|-----------------|
 | `v1-wrong-key.json` | Signature verification fails |
 | `v1-wrong-alg.json` | Protected header `alg` is not -8 |
+| `v1-cose-trailing-bytes.json` | COSE_Sign1 contains trailing data |
+| `v1-protected-trailing-bytes.json` | Protected header contains trailing data |
+| `v1-payload-trailing-bytes.json` | Payload contains trailing data |
+| `v1-duplicate-protected-alg.json` | Protected header repeats `alg` |
+| `v1-duplicate-payload-claim.json` | Payload repeats a claim key |
+| `v1-sig-s-out-of-range.json` | Ed25519 scalar `S` is out of range |
+| `v1-sig-small-order-r.json` | Ed25519 `R` is a small-order point |
+| `v1-sig-small-order-a.json` | Ed25519 public key `A` is a small-order point |
+| `v1-sig-cofactored-only.json` | Signature passes only the prohibited cofactored equation |
 | `v1-zero-model-hash.json` | model_hash is all zeros |
 | `v1-bad-measurement-length.json` | PCR value is not 48 bytes |
 | `v1-nonce-mismatch.json` | eat_nonce does not match policy |
