@@ -148,7 +148,7 @@ jobs:
             package: cyntrisec-relay-egress
             binaries: cyntrisec-relay-egress cyntrisec-worker-config
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@1.95.0
@@ -278,7 +278,7 @@ jobs:
     if: needs.release-tag.outputs.publish_oci_artifacts == 'true'
     environment: production-release
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - uses: docker/setup-buildx-action@v3
 
@@ -381,7 +381,7 @@ jobs:
     needs: release-tag
     environment: production-release
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Install cfn-lint
         run: python -m pip install --user cfn-lint==1.49.3
@@ -566,7 +566,7 @@ jobs:
     if: needs.release-tag.outputs.publish_oci_artifacts == 'true' && needs.release-tag.outputs.build_enclave_eif == 'true'
     environment: production-release
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - uses: docker/setup-buildx-action@v3
 
