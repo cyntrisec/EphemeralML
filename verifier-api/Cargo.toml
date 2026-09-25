@@ -25,7 +25,7 @@ serde_json = { workspace = true }
 # Crypto
 ed25519-dalek = { workspace = true }
 hex = { workspace = true }
-base64 = "0.22"
+base64 = "0.23"
 sha2 = { workspace = true }
 uuid = { workspace = true }
 
