@@ -25,7 +25,7 @@
 # CUDA_COMPUTE_CAP=90 targets NVIDIA H100 (Hopper architecture).
 # Using CUDA 12.2 to match Confidential Space GPU driver 535.x (cos-gpu-installer v2.5.3).
 # CUDA 12.6 generates PTX that requires driver 560+, causing CUDA_ERROR_UNSUPPORTED_PTX_VERSION.
-FROM nvidia/cuda:12.2.2-devel-ubuntu22.04 AS builder
+FROM nvidia/cuda:13.4.1-devel-ubuntu22.04 AS builder
 
 # Install Rust toolchain + build dependencies
 RUN apt-get update && apt-get install -y \
@@ -67,7 +67,7 @@ RUN cargo build --release \
 # The Confidential Space host provides the GPU driver via tee-install-gpu-driver;
 # this image only needs the CUDA runtime libraries to link against.
 # Must match the CUDA version used in builder stage.
-FROM nvidia/cuda:12.2.2-runtime-ubuntu22.04
+FROM nvidia/cuda:13.4.1-runtime-ubuntu22.04
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates libssl3 \
