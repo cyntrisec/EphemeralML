@@ -22,7 +22,7 @@ bytes = { workspace = true }
 # Web framework
 axum = { version = "0.8", features = ["json"] }
 tokio = { workspace = true }
-tower-http = { version = "0.6", features = ["cors", "trace", "limit"] }
+tower-http = { version = "0.7", features = ["cors", "trace", "limit"] }
 futures = "0.3"
 async-trait = { workspace = true }
 
