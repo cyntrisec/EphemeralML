@@ -263,7 +263,7 @@ jobs:
           JSON
 
       - name: Upload host binary artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: cluster-a-host-binary-${{ matrix.repository }}
           path: |
@@ -369,7 +369,7 @@ jobs:
           JSON
 
       - name: Upload proxy image manifest
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: cluster-a-image-proxy
           path: dist/release-manifests/proxy.json
@@ -551,7 +551,7 @@ jobs:
           JSON
 
       - name: Upload worker template artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: cluster-a-worker-template
           path: |
@@ -712,7 +712,7 @@ jobs:
           cosign sign --yes "$EIF_REF@$EIF_DIGEST"
 
       - name: Upload EIF release artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: cluster-a-enclave-eif
           path: |

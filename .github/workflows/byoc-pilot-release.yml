@@ -278,7 +278,7 @@ jobs:
           cd dist && sha256sum * > SHA256SUMS-${{ matrix.variant }}
 
       - name: Upload variant artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: byoc-pilot-${{ matrix.variant }}
           path: dist/
@@ -394,7 +394,7 @@ jobs:
           # change.
 
       - name: Final artifact upload (signed + attested)
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: byoc-pilot-signed
           path: dist/
