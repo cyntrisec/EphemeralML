@@ -731,7 +731,7 @@ jobs:
     steps:
       - name: Download host binary manifests
         if: needs.release-tag.outputs.publish_oci_artifacts == 'true'
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v7
         with:
           pattern: cluster-a-host-binary-*
           path: release-manifests
@@ -739,21 +739,21 @@ jobs:
 
       - name: Download image manifests
         if: needs.release-tag.outputs.publish_oci_artifacts == 'true'
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v7
         with:
           pattern: cluster-a-image-*
           path: release-manifests
           merge-multiple: true
 
       - name: Download worker template artifact
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v7
         with:
           name: cluster-a-worker-template
           path: release-manifests
 
       - name: Download enclave measurements
         if: needs.enclave-eif.result == 'success'
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v7
         with:
           name: cluster-a-enclave-eif
           path: enclave
