@@ -80,7 +80,7 @@ done
 
 # GPU mode: override machine type, image family, and provisioning model.
 # a3-highgpu-1g = 1x H100 80GB + 26 vCPU + 234 GiB RAM (Intel TDX + NVIDIA CC).
-# Confidential Space GPU images are Preview (confidential-space-preview-cgpu).
+# GPU machines boot the standard Confidential Space image (see CS_IMAGE_FAMILY below).
 # GPU CC requires Spot or Flex-start provisioning — on-demand is not available.
 if $GPU; then
     MACHINE_TYPE="a3-highgpu-1g"
@@ -180,11 +180,14 @@ fi
 SA_EMAIL="${SA_NAME}@${PROJECT}.iam.gserviceaccount.com"
 IMAGE_URI="${REPO_LOCATION}-docker.pkg.dev/${PROJECT}/${REPO_NAME}/enclave:${TAG}"
 
-if $GPU && $DEBUG; then
-    CS_IMAGE_FAMILY="confidential-space-debug-preview-cgpu"
-elif $GPU; then
-    CS_IMAGE_FAMILY="confidential-space-preview-cgpu"
-elif $DEBUG; then
+# GPU machines use the same Confidential Space image families as CPU machines.
+# The former GPU preview families (confidential-space-preview-cgpu and its
+# debug twin) were last updated in July 2025. On 2026-11-18 a machine booted
+# from the preview family was refused a launcher token by Google's attestation
+# service and shut down before the workload started, while the standard family
+# ran the same workload on an H100. The --gpu --debug combination has not been
+# run on the standard family.
+if $DEBUG; then
     CS_IMAGE_FAMILY="confidential-space-debug"
 else
     CS_IMAGE_FAMILY="confidential-space"
