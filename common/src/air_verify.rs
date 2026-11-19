@@ -244,8 +244,10 @@ pub enum AssuranceLevel {
     /// AIR-local checks passed **and** the receipt was bound to a verified
     /// platform attestation document (signing-key binding, attestation-doc-hash
     /// binding, measurement reconciliation, and appraisal against known-good
-    /// measurements). Only the chained verifier can produce this;
-    /// [`verify_air_v1_receipt`] alone always returns [`AssuranceLevel::AirLocal`].
+    /// measurements) **and** the verifier bound a freshness mechanism (its own
+    /// nonce, or `cti` deduplication). Only the chained verifier can produce
+    /// this; [`verify_air_v1_receipt`] alone always returns
+    /// [`AssuranceLevel::AirLocal`].
     TeeProvenance,
 }
 

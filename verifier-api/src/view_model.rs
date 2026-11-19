@@ -31,9 +31,11 @@ pub enum AssuranceLevel {
     AirLocal,
     /// Receipt-local checks plus attestation hash, signing-key binding, and
     /// platform attestation authenticity checks supplied in the request, without
-    /// an explicit runtime measurement allowlist.
+    /// everything TEE provenance needs: a runtime measurement allowlist and a
+    /// freshness mechanism.
     PlatformAttested,
-    /// Platform-attested receipt plus caller-supplied runtime measurement policy.
+    /// Platform-attested receipt plus a caller-supplied runtime measurement
+    /// policy that matches and a verifier nonce that the receipt carries.
     TeeProvenance,
     /// Legacy receipt verification path.
     LegacyLocal,
@@ -136,7 +138,8 @@ pub struct TrustCenterResponse {
     /// Product-level verdict rows for auditor/compliance surfaces.
     pub verdict_matrix: VerdictMatrix,
     /// True only when AIR local verification is paired with attestation hash,
-    /// signing-key binding, and platform attestation authenticity checks.
+    /// signing-key binding, and platform attestation authenticity checks, a
+    /// matching runtime measurement policy, and a bound freshness mechanism.
     pub tee_provenance_verified: bool,
     /// API version.
     pub api_version: &'static str,
@@ -509,10 +512,10 @@ fn platform_attestation_row(response: &TrustCenterResponse) -> VerdictMatrixRow 
             "platform_attestation",
             "Platform attestation",
             CheckStatus::Pass,
-            Some(
-                "platform evidence is authentic, but no runtime PCR allowlist was supplied"
-                    .to_string(),
-            ),
+            Some(format!(
+                "platform evidence is authentic, but {}",
+                platform_attested_gap(response)
+            )),
         );
     }
 
@@ -604,13 +607,35 @@ fn overall_detail(
         return "model identity was not proven".to_string();
     }
     if !matches!(response.assurance_level, AssuranceLevel::TeeProvenance) {
-        return "runtime PCR policy was not supplied; assurance level is not tee_provenance"
-            .to_string();
+        return format!(
+            "{}; assurance level is not tee_provenance",
+            platform_attested_gap(response)
+        );
     }
     if optional_fail {
         return "one optional policy or GPU evidence row failed".to_string();
     }
     "not enough evidence for confidential AI provenance".to_string()
+}
+
+/// What a response that stopped short of `tee_provenance` is missing, read from
+/// its own checks: the runtime PCR allowlist, the freshness mechanism, or both.
+fn platform_attested_gap(response: &TrustCenterResponse) -> &'static str {
+    let skipped = |id: &str| {
+        response
+            .checks
+            .iter()
+            .any(|check| check.id == id && matches!(check.status, CheckStatus::Skip))
+    };
+    match (
+        skipped("runtime_measurement_policy"),
+        skipped("freshness_binding"),
+    ) {
+        (true, true) => "no runtime PCR allowlist and no verifier nonce were supplied",
+        (true, false) => "no runtime PCR allowlist was supplied",
+        (false, true) => "no verifier nonce was supplied, so no freshness mechanism is bound",
+        (false, false) => "the tee_provenance checks did not all pass",
+    }
 }
 
 fn aggregate_row(
@@ -790,6 +815,65 @@ mod tests {
             response.verdict_matrix.overall_confidential_ai.status,
             CheckStatus::Pass
         ));
+    }
+
+    #[test]
+    fn platform_attested_rows_say_what_is_missing() {
+        // An authentic, key-bound document whose measurements match the
+        // caller's allowlist, verified without a verifier nonce: the rows must
+        // name the nonce, not the allowlist.
+        let mut response = sample_air_response();
+        response.add_check(test_check("SIG", CheckStatus::Pass));
+        response.add_check(test_check("MHASH_PRESENT", CheckStatus::Pass));
+        response.add_check(test_check("attestation_doc_hash", CheckStatus::Pass));
+        response.add_check(test_check("platform_attestation", CheckStatus::Pass));
+        response.add_check(test_check("signing_key_binding", CheckStatus::Pass));
+        response.add_check(test_check("runtime_measurement_policy", CheckStatus::Pass));
+        response.add_check(test_check("freshness_binding", CheckStatus::Skip));
+        response.set_platform_attested();
+
+        let platform = response
+            .verdict_matrix
+            .platform_attestation
+            .detail
+            .clone()
+            .unwrap_or_default();
+        assert!(platform.contains("verifier nonce"), "{platform}");
+        assert!(!platform.contains("allowlist"), "{platform}");
+
+        assert!(matches!(
+            response.verdict_matrix.overall_confidential_ai.status,
+            CheckStatus::Fail
+        ));
+        let overall = response
+            .verdict_matrix
+            .overall_confidential_ai
+            .detail
+            .clone()
+            .unwrap_or_default();
+        assert!(overall.contains("verifier nonce"), "{overall}");
+        assert!(overall.contains("not tee_provenance"), "{overall}");
+    }
+
+    #[test]
+    fn platform_attested_gap_covers_both_missing_inputs() {
+        let mut response = sample_air_response();
+        response.add_check(test_check("runtime_measurement_policy", CheckStatus::Skip));
+        response.add_check(test_check("freshness_binding", CheckStatus::Skip));
+        let gap = platform_attested_gap(&response);
+        assert!(
+            gap.contains("allowlist") && gap.contains("verifier nonce"),
+            "{gap}"
+        );
+
+        let mut response = sample_air_response();
+        response.add_check(test_check("runtime_measurement_policy", CheckStatus::Skip));
+        response.add_check(test_check("freshness_binding", CheckStatus::Pass));
+        let gap = platform_attested_gap(&response);
+        assert!(
+            gap.contains("allowlist") && !gap.contains("verifier nonce"),
+            "{gap}"
+        );
     }
 
     fn test_check(id: &'static str, status: CheckStatus) -> TrustCenterCheck {

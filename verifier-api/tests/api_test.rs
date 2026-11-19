@@ -196,6 +196,17 @@ async fn test_public_aws_native_poc_evidence_page() {
         text.contains("tee_provenance"),
         "evidence page must state the tee_provenance assurance level"
     );
+    // The packet's label predates the rule that TEE provenance needs appraised
+    // measurements and a freshness mechanism; the page must say what the label
+    // covers instead of leaving it to be read by today's meaning.
+    assert!(
+        text.contains("What that label covers"),
+        "evidence page must qualify the 2026-05-03 tee_provenance label"
+    );
+    assert!(
+        !text.contains("PCR0 binds the EIF measurement"),
+        "evidence page must not claim a measurement check the report does not record"
+    );
     // Unsigned-EIF internal-PoC limitation is prominent
     assert!(
         text.contains("UNSIGNED EIF"),
@@ -1116,6 +1127,66 @@ async fn test_air_v1_upload_attestation_mismatch_rejects_tee_provenance() {
     assert_eq!(check_status(&body, "attestation_doc_hash"), "fail");
     assert_eq!(check_status(&body, "platform_attestation"), "fail");
     assert_eq!(check_status(&body, "signing_key_binding"), "fail");
+}
+
+#[tokio::test]
+async fn test_air_v1_upload_reports_freshness_binding() {
+    // Next to the attestation checks the upload endpoint records whether the
+    // verifier bound a freshness mechanism: its own nonce, carried by the
+    // receipt. Without it no response is reported as tee_provenance. The
+    // attestation file here is not a real document, so the level stays
+    // air_local in every request below; the freshness row is what this pins.
+    let base = require_base!(start_server());
+    let key = ReceiptSigningKey::generate().unwrap();
+    let nonce = vec![0xDE, 0xAD, 0xBE, 0xEF, 0xCA, 0xFE, 0xBA, 0xBE];
+    let receipt_bytes = make_air_v1_receipt_with_nonce(&key, nonce.clone());
+    let public_key_hex = hex::encode(key.public_key_bytes());
+    let client = reqwest::Client::new();
+
+    let upload = |expected_nonce_hex: Option<String>| {
+        let mut form = reqwest::multipart::Form::new()
+            .part(
+                "receipt_file",
+                reqwest::multipart::Part::bytes(receipt_bytes.clone()).file_name("receipt.cbor"),
+            )
+            .text("public_key", public_key_hex.clone())
+            .part(
+                "attestation_file",
+                reqwest::multipart::Part::bytes(vec![0xA0]).file_name("attestation.cbor"),
+            );
+        if let Some(value) = expected_nonce_hex {
+            form = form.text("expected_nonce_hex", value);
+        }
+        client
+            .post(format!("{}/api/v1/verify/upload", base))
+            .multipart(form)
+            .send()
+    };
+
+    // No nonce from the verifier: nothing is bound.
+    let resp = upload(None).await.unwrap();
+    assert_eq!(resp.status(), 200);
+    let body: serde_json::Value = resp.json().await.unwrap();
+    assert_eq!(check_status(&body, "NONCE"), "skip");
+    assert_eq!(check_status(&body, "freshness_binding"), "skip");
+    assert_eq!(body["tee_provenance_verified"], false);
+
+    // The verifier's nonce is the one the receipt carries.
+    let resp = upload(Some(hex::encode(&nonce))).await.unwrap();
+    assert_eq!(resp.status(), 200);
+    let body: serde_json::Value = resp.json().await.unwrap();
+    assert_eq!(check_status(&body, "NONCE"), "pass");
+    assert_eq!(check_status(&body, "freshness_binding"), "pass");
+    assert_eq!(body["assurance_level"], "air_local");
+    assert_eq!(body["tee_provenance_verified"], false);
+
+    // The verifier's nonce is not the one the receipt carries.
+    let resp = upload(Some("0011223344556677".to_string())).await.unwrap();
+    assert_eq!(resp.status(), 200);
+    let body: serde_json::Value = resp.json().await.unwrap();
+    assert_eq!(body["verified"], false);
+    assert_eq!(check_status(&body, "NONCE"), "fail");
+    assert_eq!(check_status(&body, "freshness_binding"), "fail");
 }
 
 #[tokio::test]

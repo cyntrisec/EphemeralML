@@ -6,20 +6,26 @@
 use anyhow::{bail, Context, Result};
 use clap::Parser;
 use ed25519_dalek::VerifyingKey;
+use ephemeral_ml_client::verify_air_v1_receipt_chained;
 use ephemeral_ml_common::air_receipt::parse_air_v1;
-use ephemeral_ml_common::air_verify::{verify_air_v1_receipt, AirCheckStatus, AirVerifyPolicy};
+use ephemeral_ml_common::air_verify::{
+    verify_air_v1_receipt, AirCheckStatus, AirVerifyPolicy, AirVerifyResult, AssuranceLevel,
+    SeenCtiFn,
+};
 use ephemeral_ml_common::receipt_verify::{
     verify_receipt, CheckStatus as LegacyStatus, VerifyOptions,
 };
 use ephemeral_ml_common::ui::{air_check_meta, legacy_check_meta};
 use ephemeral_ml_common::{
     default_verification_limitations, CloudCorrelation, EvidenceBundleSummary, FileDigest,
-    Limitation, PolicySummary, ReceiptEvidenceSummary, ReportCheck, ReportCheckStatus,
-    ReportStatus, ReportType, RuntimePassportRef, RuntimePassportV1, VerificationReportV1,
-    VerifierSummary, VERIFICATION_REPORT_V1,
+    Limitation, PcrMeasurements, PolicySummary, ReceiptEvidenceSummary, ReportCheck,
+    ReportCheckStatus, ReportStatus, ReportType, RuntimePassportRef, RuntimePassportV1,
+    VerificationReportV1, VerifierSummary, VERIFICATION_REPORT_V1,
 };
 use sha2::{Digest, Sha256};
+use std::collections::HashSet;
 use std::fs;
+use std::io::Write;
 use std::path::{Component, Path, PathBuf};
 
 #[derive(Parser, Debug)]
@@ -40,9 +46,12 @@ struct Args {
     #[arg(long, conflicts_with = "public_key")]
     public_key_file: Option<PathBuf>,
 
-    /// Optional attestation document. If present, AIR reports enforce
-    /// attestation_doc_hash and derive the receipt signing key if no public
-    /// key was supplied.
+    /// Optional attestation document. If present, AIR reports authenticate
+    /// it, enforce attestation_doc_hash, reconcile the receipt's measurements
+    /// against it and derive the receipt signing key if no public key was
+    /// supplied. A report is labelled tee_provenance only when reference
+    /// measurements (--expected-pcr0/1/2) and a freshness mechanism
+    /// (--expected-nonce or --seen-cti-file) are supplied as well.
     #[arg(long)]
     attestation: Option<PathBuf>,
 
@@ -85,6 +94,36 @@ struct Args {
     /// Expected measurement type: nitro-pcr, tdx-mrtd-rtmr, or any.
     #[arg(long, default_value = "any")]
     measurement_type: String,
+
+    /// Reference (known-good) PCR0 of the enclave image as 96 hex chars.
+    /// Supply together with --expected-pcr1, --expected-pcr2 and
+    /// --attestation. Without reference measurements a report is never
+    /// labelled tee_provenance.
+    #[arg(long)]
+    expected_pcr0: Option<String>,
+
+    /// Reference (known-good) PCR1 as 96 hex chars.
+    #[arg(long)]
+    expected_pcr1: Option<String>,
+
+    /// Reference (known-good) PCR2 as 96 hex chars.
+    #[arg(long)]
+    expected_pcr2: Option<String>,
+
+    /// Verifier nonce that was sent with the inference request, as hex
+    /// (8 to 64 bytes). The receipt must carry it in eat_nonce. Without a
+    /// freshness mechanism (this, or --seen-cti-file) a report is never
+    /// labelled tee_provenance.
+    #[arg(long)]
+    expected_nonce: Option<String>,
+
+    /// Ledger of the receipt identifiers (cti) this verifier has already
+    /// accepted: one 32-hex-char value per line, created if missing. A
+    /// receipt whose cti is listed is rejected as a replay, and the cti of a
+    /// receipt whose report passes is appended. This is cti deduplication,
+    /// the freshness mechanism for receipts that carry no verifier nonce.
+    #[arg(long)]
+    seen_cti_file: Option<PathBuf>,
 
     /// Optional evidence bundle directory containing manifest.json and/or SHA256SUMS.
     #[arg(long)]
@@ -194,6 +233,18 @@ fn main() -> Result<()> {
         ],
     )?;
 
+    // Record an accepted receipt in the ledger only now, after the report
+    // files exist: a run that failed or stopped early leaves the ledger as it
+    // was, so the same receipt can be checked again.
+    let accepted = matches!(report.overall_status, ReportStatus::Pass);
+    if let (true, Some(ledger), Ok(parsed)) = (
+        accepted,
+        args.seen_cti_file.as_deref(),
+        parse_air_v1(&receipt_bytes),
+    ) {
+        record_seen_cti(ledger, &parsed.claims.cti)?;
+    }
+
     println!("Verification report generated: {}", json_path.display());
     if let Some(hash) = &report.report_sha256 {
         println!("report_sha256: {}", hash);
@@ -204,6 +255,17 @@ fn main() -> Result<()> {
 fn validate_args(args: &Args) -> Result<()> {
     if args.expected_security_mode != "production" {
         bail!("expected-security-mode must be 'production' for this production report generator");
+    }
+    let reference_measurements = parse_expected_measurements(args)?;
+    if reference_measurements.is_some() && args.attestation.is_none() {
+        bail!(
+            "--expected-pcr0, --expected-pcr1 and --expected-pcr2 need --attestation: reference \
+             measurements are appraised against the attestation document"
+        );
+    }
+    parse_nonce(args.expected_nonce.as_deref())?;
+    if let Some(ledger) = args.seen_cti_file.as_deref() {
+        load_seen_cti(ledger)?;
     }
     Ok(())
 }
@@ -247,15 +309,14 @@ fn parse_public_key_hex(hex_key: &str) -> Result<VerifyingKey> {
     VerifyingKey::from_bytes(&arr).context("invalid Ed25519 public key")
 }
 
-fn build_air_report(
+/// The AIR policy for this run. `expected_attestation_doc_hash` is passed only
+/// for the receipt-local fallback; the chained verifier pins the supplied
+/// document's hash itself.
+fn air_policy(
     args: &Args,
-    receipt_bytes: &[u8],
-    receipt_sha256: &str,
-    public_key: &VerifyingKey,
-    attestation: Option<&[u8]>,
-) -> Result<VerificationReportV1> {
-    let expected_attestation_doc_hash = attestation.map(|bytes| Sha256::digest(bytes).into());
-    let policy = AirVerifyPolicy {
+    expected_attestation_doc_hash: Option<[u8; 32]>,
+) -> Result<AirVerifyPolicy> {
+    Ok(AirVerifyPolicy {
         max_age_secs: args.max_age,
         clock_skew_secs: 30,
         expected_model_hash: parse_hash32(
@@ -271,7 +332,7 @@ fn build_air_report(
             "expected-response-hash",
         )?,
         expected_attestation_doc_hash,
-        expected_measurements: None,
+        expected_measurements: parse_expected_measurements(args)?,
         expected_model_id: args.expected_model.clone(),
         expected_security_mode: Some(args.expected_security_mode.clone()),
         allow_evaluation_mode: false,
@@ -280,12 +341,107 @@ fn build_air_report(
         } else {
             Some(args.measurement_type.clone())
         },
-        expected_nonce: None,
+        expected_nonce: parse_nonce(args.expected_nonce.as_deref())?,
         require_nonce: false,
-        seen_cti: None,
+        seen_cti: seen_cti_hook(args)?,
         require_model_hash_scheme: false,
+    })
+}
+
+/// The assurance level a report states.
+///
+/// `tee_provenance` only when the chained verifier established it for a
+/// receipt that verified and the caller's key is the document's key. The
+/// chained verifier is the one place that decides TEE provenance: an
+/// authenticated document, the receipt bound to it, reconciled and appraised
+/// measurements and a bound freshness mechanism. Everything else is
+/// `air_local`.
+fn air_assurance_level(
+    chained_level: Option<AssuranceLevel>,
+    verified: bool,
+    signing_key_bound: bool,
+) -> &'static str {
+    match chained_level {
+        Some(AssuranceLevel::TeeProvenance) if verified && signing_key_bound => "tee_provenance",
+        _ => "air_local",
+    }
+}
+
+/// Why a report with an authenticated attestation sidecar stopped short of
+/// `tee_provenance`, in terms of the options that were not supplied.
+fn provenance_gap_warning(result: &AirVerifyResult) -> Option<String> {
+    let skipped = |name: &str| {
+        result
+            .checks
+            .iter()
+            .any(|check| check.name == name && matches!(check.status, AirCheckStatus::Skip))
     };
-    let result = verify_air_v1_receipt(receipt_bytes, public_key, &policy);
+    let mut missing = Vec::new();
+    if skipped("MEAS_APPRAISE") {
+        missing.push(
+            "no reference measurements were supplied (--expected-pcr0, --expected-pcr1, \
+             --expected-pcr2)",
+        );
+    }
+    if skipped("FRESH_BINDING") {
+        missing.push(
+            "no freshness mechanism was bound (--expected-nonce, or --seen-cti-file for receipts \
+             that carry no nonce)",
+        );
+    }
+    if missing.is_empty() {
+        return None;
+    }
+    Some(format!(
+        "TEE provenance was not asserted: {}. The assurance level is air_local.",
+        missing.join("; ")
+    ))
+}
+
+fn build_air_report(
+    args: &Args,
+    receipt_bytes: &[u8],
+    receipt_sha256: &str,
+    public_key: &VerifyingKey,
+    attestation: Option<&[u8]>,
+) -> Result<VerificationReportV1> {
+    // With an attestation sidecar the receipt goes through the client library's
+    // chained verifier: it authenticates the document, takes the receipt-signing
+    // key from it, binds the receipt to it, reconciles the receipt's
+    // measurements against it, appraises them against the reference values and
+    // records whether a freshness mechanism is bound. If the document cannot be
+    // authenticated, the receipt is still checked on its own against the key
+    // the caller supplied, and the report fails.
+    let (result, chained_level, document_error) = match attestation {
+        Some(attestation_bytes) => match verify_air_v1_receipt_chained(
+            receipt_bytes,
+            attestation_bytes,
+            air_policy(args, None)?,
+            false,
+        ) {
+            Ok(result) => {
+                let level = result.assurance_level;
+                (result, Some(level), None)
+            }
+            Err(err) => {
+                let doc_hash: [u8; 32] = Sha256::digest(attestation_bytes).into();
+                let policy = air_policy(args, Some(doc_hash))?;
+                (
+                    verify_air_v1_receipt(receipt_bytes, public_key, &policy),
+                    None,
+                    Some(format!("{err:#}")),
+                )
+            }
+        },
+        None => {
+            let policy = air_policy(args, None)?;
+            (
+                verify_air_v1_receipt(receipt_bytes, public_key, &policy),
+                None,
+                None,
+            )
+        }
+    };
     let parsed = parse_air_v1(receipt_bytes).ok();
     let adhash_pass = result
         .checks
@@ -307,20 +463,27 @@ fn build_air_report(
                     AirCheckStatus::Skip => ReportCheckStatus::Skip,
                 },
                 detail: check.detail.clone(),
-                evidence_ref: Some("receipt.cbor".to_string()),
+                evidence_ref: Some(
+                    match check.name {
+                        "MEAS_RECONCILE" | "MEAS_APPRAISE" => "attestation.cbor",
+                        _ => "receipt.cbor",
+                    }
+                    .to_string(),
+                ),
             }
         })
         .collect();
 
-    let signing_key_bound = match attestation {
-        Some(attestation_bytes) => {
+    let signing_key_bound = match (attestation, document_error.as_deref()) {
+        (Some(attestation_bytes), None) => {
             checks.push(ReportCheck {
                 id: "platform_attestation".to_string(),
                 label: "Platform attestation sidecar".to_string(),
                 layer: "runtime".to_string(),
                 status: ReportCheckStatus::Pass,
                 detail: Some(
-                    "attestation sidecar supplied; AIR ADHASH check binds the receipt to this sidecar"
+                    "attestation sidecar signature and certificate chain verified; the AIR \
+                     ADHASH check ties the receipt to this sidecar"
                         .to_string(),
                 ),
                 evidence_ref: Some("attestation.cbor".to_string()),
@@ -372,7 +535,31 @@ fn build_air_report(
                 }
             }
         }
-        None => {
+        (Some(_), Some(error)) => {
+            checks.push(ReportCheck {
+                id: "platform_attestation".to_string(),
+                label: "Platform attestation sidecar".to_string(),
+                layer: "runtime".to_string(),
+                status: ReportCheckStatus::Fail,
+                detail: Some(format!(
+                    "attestation sidecar could not be authenticated: {error}"
+                )),
+                evidence_ref: Some("attestation.cbor".to_string()),
+            });
+            checks.push(ReportCheck {
+                id: "signing_key_binding".to_string(),
+                label: "Receipt signing key binding".to_string(),
+                layer: "runtime".to_string(),
+                status: ReportCheckStatus::Fail,
+                detail: Some(
+                    "no authenticated receipt signing key: the attestation sidecar was not verified"
+                        .to_string(),
+                ),
+                evidence_ref: Some("attestation.cbor".to_string()),
+            });
+            false
+        }
+        (None, _) => {
             checks.push(ReportCheck {
                 id: "tee_provenance".to_string(),
                 label: "TEE provenance".to_string(),
@@ -393,26 +580,38 @@ fn build_air_report(
     } else {
         ReportStatus::Fail
     };
-    let tee_provenance =
-        attestation.is_some() && result.verified && adhash_pass && signing_key_bound;
+    let assurance_level = air_assurance_level(chained_level, result.verified, signing_key_bound);
 
-    let warnings = if attestation.is_none() {
-        vec![
+    let mut warnings = Vec::new();
+    if attestation.is_none() {
+        warnings.push(
             "TEE provenance was not verified because no attestation sidecar was supplied."
                 .to_string(),
-        ]
-    } else {
-        vec![]
-    };
+        );
+    } else if document_error.is_some() {
+        warnings.push(
+            "TEE provenance was not verified because the attestation sidecar could not be \
+             authenticated."
+                .to_string(),
+        );
+    } else if assurance_level != "tee_provenance" {
+        warnings.extend(provenance_gap_warning(&result));
+    }
+
+    // The report requires TEE provenance when the operator gave it everything
+    // TEE provenance needs. Then either the level is tee_provenance or one of
+    // the supplied values did not match and the report fails.
+    let freshness_requested =
+        parse_nonce(args.expected_nonce.as_deref())?.is_some() || args.seen_cti_file.is_some();
+    let require_tee_provenance = attestation.is_some()
+        && parse_expected_measurements(args)?.is_some()
+        && freshness_requested;
 
     Ok(base_report(
         args,
         report_status,
-        if tee_provenance {
-            "tee_provenance"
-        } else {
-            "air_local"
-        },
+        assurance_level,
+        require_tee_provenance,
         parsed.map(|p| ReceiptEvidenceSummary {
             receipt_id: Some(format_uuid(&p.claims.cti)),
             receipt_sha256: Some(receipt_sha256.to_string()),
@@ -477,6 +676,7 @@ fn build_legacy_report(
             ReportStatus::Fail
         },
         "legacy_local",
+        false,
         Some(receipt_summary),
         checks,
         result.warnings,
@@ -487,6 +687,7 @@ fn base_report(
     args: &Args,
     status: ReportStatus,
     assurance_level: &str,
+    require_tee_provenance: bool,
     receipt: Option<ReceiptEvidenceSummary>,
     checks: Vec<ReportCheck>,
     warnings: Vec<String>,
@@ -511,7 +712,7 @@ fn base_report(
             max_age_secs: Some(args.max_age),
             expected_model_id: args.expected_model.clone(),
             expected_model_hash: args.expected_model_hash.clone(),
-            require_tee_provenance: args.attestation.is_some(),
+            require_tee_provenance,
             require_runtime_passport: args.runtime_passport.is_some(),
             require_cloud_correlation: args.evidence_uri.is_some(),
         },
@@ -568,6 +769,96 @@ fn parse_hash32(value: Option<&str>, name: &str) -> Result<Option<[u8; 32]>> {
         .try_into()
         .map_err(|_| anyhow::anyhow!("{name} must decode to exactly 32 bytes"))?;
     Ok(Some(arr))
+}
+
+/// Reference measurements from `--expected-pcr0/1/2`: all three or none.
+fn parse_expected_measurements(args: &Args) -> Result<Option<PcrMeasurements>> {
+    let pcr0 = parse_hash48(args.expected_pcr0.as_deref(), "expected-pcr0")?;
+    let pcr1 = parse_hash48(args.expected_pcr1.as_deref(), "expected-pcr1")?;
+    let pcr2 = parse_hash48(args.expected_pcr2.as_deref(), "expected-pcr2")?;
+    match (pcr0, pcr1, pcr2) {
+        (None, None, None) => Ok(None),
+        (Some(pcr0), Some(pcr1), Some(pcr2)) => Ok(Some(PcrMeasurements::new(pcr0, pcr1, pcr2))),
+        _ => {
+            bail!("--expected-pcr0, --expected-pcr1 and --expected-pcr2 must be supplied together")
+        }
+    }
+}
+
+fn parse_hash48(value: Option<&str>, name: &str) -> Result<Option<Vec<u8>>> {
+    let Some(value) = value.map(str::trim).filter(|v| !v.is_empty()) else {
+        return Ok(None);
+    };
+    let bytes = hex::decode(value).with_context(|| format!("{name} must be hex"))?;
+    if bytes.len() != 48 {
+        bail!(
+            "{name} must decode to exactly 48 bytes, got {}",
+            bytes.len()
+        );
+    }
+    Ok(Some(bytes))
+}
+
+/// The verifier nonce from `--expected-nonce` (RFC 9711: 8 to 64 bytes).
+fn parse_nonce(value: Option<&str>) -> Result<Option<Vec<u8>>> {
+    let Some(value) = value.map(str::trim).filter(|v| !v.is_empty()) else {
+        return Ok(None);
+    };
+    let bytes = hex::decode(value).context("expected-nonce must be hex")?;
+    if !(8..=64).contains(&bytes.len()) {
+        bail!(
+            "expected-nonce must decode to between 8 and 64 bytes (RFC 9711), got {}",
+            bytes.len()
+        );
+    }
+    Ok(Some(bytes))
+}
+
+/// Receipt identifiers this verifier has already accepted, from
+/// `--seen-cti-file`. A missing file is an empty ledger.
+fn load_seen_cti(path: &Path) -> Result<HashSet<[u8; 16]>> {
+    let mut seen = HashSet::new();
+    if !path.exists() {
+        return Ok(seen);
+    }
+    let text =
+        fs::read_to_string(path).with_context(|| format!("failed to read {}", path.display()))?;
+    for (idx, line) in text.lines().enumerate() {
+        let line = line.trim();
+        if line.is_empty() {
+            continue;
+        }
+        let bytes = hex::decode(line)
+            .with_context(|| format!("{} line {} is not hex", path.display(), idx + 1))?;
+        let cti: [u8; 16] = bytes.try_into().map_err(|_| {
+            anyhow::anyhow!("{} line {} is not a 16-byte cti", path.display(), idx + 1)
+        })?;
+        seen.insert(cti);
+    }
+    Ok(seen)
+}
+
+/// The replay hook for the AIR policy: true when the receipt's cti is already
+/// in the ledger. The hook only reads; `record_seen_cti` writes, and only after
+/// a report has passed.
+fn seen_cti_hook(args: &Args) -> Result<Option<SeenCtiFn>> {
+    let Some(path) = args.seen_cti_file.as_deref() else {
+        return Ok(None);
+    };
+    let seen = load_seen_cti(path)?;
+    let hook: SeenCtiFn = Box::new(move |cti: &[u8; 16]| seen.contains(cti));
+    Ok(Some(hook))
+}
+
+/// Append an accepted receipt's cti to the ledger.
+fn record_seen_cti(path: &Path, cti: &[u8; 16]) -> Result<()> {
+    let mut file = fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(path)
+        .with_context(|| format!("failed to open {}", path.display()))?;
+    writeln!(file, "{}", hex::encode(cti))
+        .with_context(|| format!("failed to write {}", path.display()))
 }
 
 fn evidence_bundle_summary(
@@ -1022,4 +1313,350 @@ fn format_uuid(bytes: &[u8; 16]) -> String {
             | ((bytes[14] as u64) << 8)
             | (bytes[15] as u64),
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use ephemeral_ml_common::air_receipt::{build_air_v1, AirReceiptClaims};
+    use ephemeral_ml_common::receipt_signing::ReceiptSigningKey;
+    use ephemeral_ml_common::{EnclaveMeasurements, WorkerAttestationUserData};
+
+    const NONCE_HEX: &str = "deadbeefcafebabe";
+
+    fn nonce() -> Vec<u8> {
+        vec![0xDE, 0xAD, 0xBE, 0xEF, 0xCA, 0xFE, 0xBA, 0xBE]
+    }
+
+    fn args(extra: &[&str]) -> Args {
+        let mut argv = vec![
+            "ephemeralml-report",
+            "--receipt",
+            "receipt.cbor",
+            "--output-dir",
+            "out",
+        ];
+        argv.extend_from_slice(extra);
+        Args::parse_from(argv)
+    }
+
+    fn air_receipt(
+        key: &ReceiptSigningKey,
+        eat_nonce: Option<Vec<u8>>,
+        attestation_doc_hash: [u8; 32],
+    ) -> Vec<u8> {
+        let claims = AirReceiptClaims {
+            iss: "cyntrisec.com".to_string(),
+            iat: ephemeral_ml_common::current_timestamp().unwrap(),
+            cti: *uuid::Uuid::new_v4().as_bytes(),
+            eat_nonce,
+            model_id: "minilm-l6-v2".to_string(),
+            model_version: "1.0.0".to_string(),
+            model_hash: [0xAA; 32],
+            request_hash: [0xBB; 32],
+            response_hash: [0xCC; 32],
+            attestation_doc_hash,
+            enclave_measurements: EnclaveMeasurements::new(
+                vec![1u8; 48],
+                vec![2u8; 48],
+                vec![3u8; 48],
+            ),
+            policy_version: "policy-v1".to_string(),
+            sequence_number: 1,
+            execution_time_ms: 10,
+            memory_peak_mb: 64,
+            security_mode: "production".to_string(),
+            model_hash_scheme: Some("sha256-single".to_string()),
+        };
+        build_air_v1(&claims, key).unwrap()
+    }
+
+    /// A mock (plain CBOR map) attestation document carrying `pubkey`. This
+    /// program refuses the format; the tests use it for exactly that, and to
+    /// obtain the chained verifier's own rows.
+    fn mock_attestation_doc(pubkey: [u8; 32]) -> Vec<u8> {
+        let user_data = WorkerAttestationUserData::new(pubkey, "minilm-l6-v2", [0xAA; 32])
+            .to_cbor()
+            .unwrap();
+        let map = ciborium::Value::Map(vec![(
+            ciborium::Value::Text("user_data".to_string()),
+            ciborium::Value::Bytes(user_data),
+        )]);
+        ephemeral_ml_common::cbor::value_to_vec(&map).unwrap()
+    }
+
+    fn check_status<'a>(
+        report: &'a VerificationReportV1,
+        id: &str,
+    ) -> Option<&'a ReportCheckStatus> {
+        report
+            .checks
+            .iter()
+            .find(|check| check.id == id)
+            .map(|check| &check.status)
+    }
+
+    #[test]
+    fn report_level_follows_the_chained_verifier() {
+        // Arguments: the level the chained verifier reached, whether the
+        // receipt verified, whether the caller's key is the document's key.
+        assert_eq!(
+            air_assurance_level(Some(AssuranceLevel::TeeProvenance), true, true),
+            "tee_provenance"
+        );
+        // The chained verifier stops at AIR-local when reference measurements
+        // or a freshness mechanism are missing. Attestation-hash and key
+        // binding alone used to be reported as tee_provenance here.
+        assert_eq!(
+            air_assurance_level(Some(AssuranceLevel::AirLocal), true, true),
+            "air_local"
+        );
+        // No attestation sidecar, or one that could not be authenticated.
+        assert_eq!(air_assurance_level(None, true, true), "air_local");
+        // A key other than the document's, or a receipt that failed.
+        assert_eq!(
+            air_assurance_level(Some(AssuranceLevel::TeeProvenance), true, false),
+            "air_local"
+        );
+        assert_eq!(
+            air_assurance_level(Some(AssuranceLevel::TeeProvenance), false, true),
+            "air_local"
+        );
+    }
+
+    #[test]
+    fn report_without_attestation_is_air_local() {
+        let key = ReceiptSigningKey::generate().unwrap();
+        let receipt = air_receipt(&key, None, [0xDD; 32]);
+        let report = build_air_report(&args(&[]), &receipt, "00", &key.public_key, None).unwrap();
+
+        assert!(matches!(report.overall_status, ReportStatus::Pass));
+        assert_eq!(report.assurance_level, "air_local");
+        assert!(!report.policy.require_tee_provenance);
+        assert!(report
+            .warnings
+            .iter()
+            .any(|warning| warning.contains("no attestation sidecar")));
+    }
+
+    #[test]
+    fn unauthenticated_attestation_fails_the_report() {
+        let key = ReceiptSigningKey::generate().unwrap();
+        let doc = mock_attestation_doc(key.public_key.to_bytes());
+        let doc_hash: [u8; 32] = Sha256::digest(&doc).into();
+        // The receipt names this document and the key is the right one, so
+        // attestation-hash binding holds. The document itself carries no
+        // signature: the report must fail and stay AIR-local.
+        let receipt = air_receipt(&key, None, doc_hash);
+        let report =
+            build_air_report(&args(&[]), &receipt, "00", &key.public_key, Some(&doc[..])).unwrap();
+
+        assert!(matches!(report.overall_status, ReportStatus::Fail));
+        assert_eq!(report.assurance_level, "air_local");
+        assert!(matches!(
+            check_status(&report, "ADHASH"),
+            Some(ReportCheckStatus::Pass)
+        ));
+        assert!(matches!(
+            check_status(&report, "platform_attestation"),
+            Some(ReportCheckStatus::Fail)
+        ));
+        assert!(matches!(
+            check_status(&report, "signing_key_binding"),
+            Some(ReportCheckStatus::Fail)
+        ));
+        assert!(report
+            .warnings
+            .iter()
+            .any(|warning| warning.contains("could not be authenticated")));
+    }
+
+    #[test]
+    fn verifier_nonce_is_checked_against_the_receipt() {
+        let key = ReceiptSigningKey::generate().unwrap();
+        let receipt = air_receipt(&key, Some(nonce()), [0xDD; 32]);
+
+        let matching = args(&["--expected-nonce", NONCE_HEX]);
+        let report = build_air_report(&matching, &receipt, "00", &key.public_key, None).unwrap();
+        assert!(matches!(report.overall_status, ReportStatus::Pass));
+        assert!(matches!(
+            check_status(&report, "NONCE"),
+            Some(ReportCheckStatus::Pass)
+        ));
+        // A nonce alone is not provenance: there is no attestation document.
+        assert_eq!(report.assurance_level, "air_local");
+
+        let other = args(&["--expected-nonce", "0011223344556677"]);
+        let report = build_air_report(&other, &receipt, "00", &key.public_key, None).unwrap();
+        assert!(matches!(report.overall_status, ReportStatus::Fail));
+        assert!(matches!(
+            check_status(&report, "NONCE"),
+            Some(ReportCheckStatus::Fail)
+        ));
+    }
+
+    #[test]
+    fn gap_warning_names_the_missing_inputs() {
+        let key = ReceiptSigningKey::generate().unwrap();
+        let doc = mock_attestation_doc(key.public_key.to_bytes());
+        let doc_hash: [u8; 32] = Sha256::digest(&doc).into();
+        let receipt = air_receipt(&key, Some(nonce()), doc_hash);
+
+        // Neither reference measurements nor a verifier nonce.
+        let result =
+            verify_air_v1_receipt_chained(&receipt, &doc, AirVerifyPolicy::default(), true)
+                .unwrap();
+        let warning = provenance_gap_warning(&result).unwrap();
+        assert!(warning.contains("--expected-pcr0"), "{warning}");
+        assert!(warning.contains("--expected-nonce"), "{warning}");
+        assert!(warning.contains("--seen-cti-file"), "{warning}");
+
+        // The verifier's nonce is bound; only the measurements are missing.
+        let policy = AirVerifyPolicy {
+            expected_nonce: Some(nonce()),
+            ..AirVerifyPolicy::default()
+        };
+        let result = verify_air_v1_receipt_chained(&receipt, &doc, policy, true).unwrap();
+        let warning = provenance_gap_warning(&result).unwrap();
+        assert!(warning.contains("--expected-pcr0"), "{warning}");
+        assert!(!warning.contains("--expected-nonce"), "{warning}");
+    }
+
+    fn temp_ledger() -> PathBuf {
+        std::env::temp_dir().join(format!(
+            "ephemeralml-report-seen-cti-{}.txt",
+            uuid::Uuid::new_v4()
+        ))
+    }
+
+    #[test]
+    fn seen_cti_ledger_accepts_once_and_rejects_a_replay() {
+        let key = ReceiptSigningKey::generate().unwrap();
+        let receipt = air_receipt(&key, None, [0xDD; 32]);
+        let ledger = temp_ledger();
+        let ledger_arg = ledger.to_str().unwrap().to_string();
+        let with_ledger = args(&["--seen-cti-file", ledger_arg.as_str()]);
+
+        // First sight: the replay check passes. Building a report does not
+        // write the ledger; only `record_seen_cti` does, after a report passed.
+        let report = build_air_report(&with_ledger, &receipt, "00", &key.public_key, None).unwrap();
+        assert!(matches!(report.overall_status, ReportStatus::Pass));
+        assert!(matches!(
+            check_status(&report, "REPLAY"),
+            Some(ReportCheckStatus::Pass)
+        ));
+        assert!(!ledger.exists());
+
+        let cti = parse_air_v1(&receipt).unwrap().claims.cti;
+        record_seen_cti(&ledger, &cti).unwrap();
+        assert_eq!(load_seen_cti(&ledger).unwrap().len(), 1);
+
+        // The same receipt presented again is a replay.
+        let report = build_air_report(&with_ledger, &receipt, "00", &key.public_key, None).unwrap();
+        assert!(matches!(report.overall_status, ReportStatus::Fail));
+        assert!(matches!(
+            check_status(&report, "REPLAY"),
+            Some(ReportCheckStatus::Fail)
+        ));
+
+        // Another receipt is not affected.
+        let other = air_receipt(&key, None, [0xDD; 32]);
+        let report = build_air_report(&with_ledger, &other, "00", &key.public_key, None).unwrap();
+        assert!(matches!(report.overall_status, ReportStatus::Pass));
+
+        let _ = fs::remove_file(&ledger);
+    }
+
+    #[test]
+    fn seen_cti_ledger_counts_as_a_bound_freshness_mechanism() {
+        let key = ReceiptSigningKey::generate().unwrap();
+        let doc = mock_attestation_doc(key.public_key.to_bytes());
+        let doc_hash: [u8; 32] = Sha256::digest(&doc).into();
+        let receipt = air_receipt(&key, None, doc_hash);
+        let ledger = temp_ledger();
+        let ledger_arg = ledger.to_str().unwrap().to_string();
+        let with_ledger = args(&["--seen-cti-file", ledger_arg.as_str()]);
+
+        // The chained verifier sees a replay hook in the policy: freshness is
+        // bound, so only the reference measurements are named as missing.
+        let policy = air_policy(&with_ledger, None).unwrap();
+        let result = verify_air_v1_receipt_chained(&receipt, &doc, policy, true).unwrap();
+        assert!(result
+            .checks
+            .iter()
+            .any(|c| c.name == "FRESH_BINDING" && matches!(c.status, AirCheckStatus::Pass)));
+        let warning = provenance_gap_warning(&result).unwrap();
+        assert!(warning.contains("--expected-pcr0"), "{warning}");
+        assert!(!warning.contains("--seen-cti-file"), "{warning}");
+    }
+
+    #[test]
+    fn seen_cti_ledger_refuses_malformed_lines() {
+        let ledger = temp_ledger();
+
+        fs::write(&ledger, "not-hex\n").unwrap();
+        assert!(load_seen_cti(&ledger).is_err());
+
+        // Hex, but not 16 bytes.
+        fs::write(&ledger, "00112233\n").unwrap();
+        assert!(load_seen_cti(&ledger).is_err());
+
+        // Blank lines are ignored; a missing file is an empty ledger.
+        fs::write(&ledger, "\n000102030405060708090a0b0c0d0e0f\n\n").unwrap();
+        assert_eq!(load_seen_cti(&ledger).unwrap().len(), 1);
+        fs::remove_file(&ledger).unwrap();
+        assert!(load_seen_cti(&ledger).unwrap().is_empty());
+    }
+
+    #[test]
+    fn reference_measurements_are_all_or_none_and_need_an_attestation() {
+        let pcr = "11".repeat(48);
+        let pcr = pcr.as_str();
+
+        // One register alone is refused.
+        assert!(parse_expected_measurements(&args(&["--expected-pcr0", pcr])).is_err());
+
+        // All three parse.
+        let all = args(&[
+            "--expected-pcr0",
+            pcr,
+            "--expected-pcr1",
+            pcr,
+            "--expected-pcr2",
+            pcr,
+        ]);
+        assert_eq!(
+            parse_expected_measurements(&all).unwrap(),
+            Some(PcrMeasurements::new(
+                vec![0x11; 48],
+                vec![0x11; 48],
+                vec![0x11; 48]
+            ))
+        );
+        // Without an attestation document there is nothing to appraise them
+        // against, so the run is refused instead of ignoring them.
+        assert!(validate_args(&all).is_err());
+
+        // A register of the wrong length is refused.
+        let short = "11".repeat(32);
+        assert!(parse_expected_measurements(&args(&[
+            "--expected-pcr0",
+            short.as_str(),
+            "--expected-pcr1",
+            pcr,
+            "--expected-pcr2",
+            pcr,
+        ]))
+        .is_err());
+    }
+
+    #[test]
+    fn verifier_nonce_must_be_8_to_64_bytes() {
+        assert_eq!(parse_nonce(None).unwrap(), None);
+        assert_eq!(parse_nonce(Some(NONCE_HEX)).unwrap(), Some(nonce()));
+        assert!(parse_nonce(Some("deadbeef")).is_err());
+        let too_long = "11".repeat(65);
+        assert!(parse_nonce(Some(too_long.as_str())).is_err());
+        assert!(parse_nonce(Some("not-hex")).is_err());
+    }
 }
