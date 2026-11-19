@@ -206,7 +206,7 @@ Expected output with Llama 3 8B Q4_K_M (4.6GB GGUF):
 
 ## Production Mode (AWS)
 
-See `infra/hello-enclave/HELLO_ENCLAVE_RUNBOOK.md` for a step-by-step guide to deploying on AWS Nitro Enclaves.
+See [`docs/pilot-deployment-runbook.md`](docs/pilot-deployment-runbook.md) for deploying on AWS Nitro Enclaves. `infra/hello-enclave/HELLO_ENCLAVE_RUNBOOK.md` is only a hello-world that proves the enclave launch loop (boot, build, launch, vsock ping).
 
 ## Security Defaults (Fail-Closed)
 

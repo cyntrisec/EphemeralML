@@ -15,8 +15,8 @@ It does not parse plaintext, OpenAI JSON, TLS, policies, receipts, or manifests.
 | `--idle-timeout-secs` | `CYNTRISEC_RELAY_IDLE_SECS` | `300` |
 | `--log-format` | `CYNTRISEC_RELAY_LOG_FORMAT` | `json` |
 
-## Future Egress Helper
+## Egress Helper
 
 KMS Decrypt and S3 PutObject egress are intentionally not part of this relay. They require AWS SDK dependencies, IAM policy, request authorization, and a real protocol surface.
 
-That work should land as a separate slice, preferably a separate binary such as `cyntrisec-relay-egress`, on a different vsock port.
+That work lives in a separate binary, `cyntrisec-relay-egress` (`host/relay-egress`), on a different vsock port.
