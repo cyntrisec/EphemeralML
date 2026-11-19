@@ -167,19 +167,29 @@ Wait ~60s for the container to start. The Launcher pulls the image, verifies it,
 ## Step 7: Run Inference
 
 ```bash
-EXTERNAL_IP=$(gcloud compute instances describe ephemeralml-cvm \
-    --zone=us-central1-a --format='value(networkInterfaces[0].accessConfigs[0].natIP)')
-
-cargo run --release --no-default-features --features gcp -p ephemeral-ml-client -- \
-    infer --server "$EXTERNAL_IP:9000" --text "Hello world"
+bash scripts/gcp/verify.sh
 ```
 
-Expected output: 384-dimensional embedding vector + signed receipt.
+The script finds the instance's address (pass `--ip <address>` to set it),
+waits for the workload, runs one inference through the attested channel with
+the `ephemeral-ml-client` program, and saves the receipt to
+`/tmp/ephemeralml-receipt.json` with its public key in
+`/tmp/ephemeralml-receipt.json.pubkey`. It needs the workload identity pool
+audience, which `setup-kms` saves to `.env.gcp`; `--allow-unpinned-audience`
+skips that pin, for development only.
+`--image-digest sha256:...` also pins the deployed container image.
+
+Expected output: `Inference succeeded: 384 floats returned`, and a signed receipt.
 
 ## Step 8: Verify Receipt
 
+`verify.sh` verifies the receipt as its last step. To run the verifier by hand:
+
 ```bash
-cargo run --release -p ephemeral-ml-client --bin ephemeralml-verify -- receipt.json
+cargo run --release --no-default-features --features gcp --bin ephemeralml-verify -- \
+    /tmp/ephemeralml-receipt.json \
+    --public-key "$(tr -d '[:space:]' < /tmp/ephemeralml-receipt.json.pubkey)" \
+    --max-age 0
 ```
 
 The verifier checks:

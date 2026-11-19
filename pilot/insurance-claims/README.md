@@ -7,13 +7,15 @@ This pilot has **two modes**:
 | Mode | What it proves | AIR v1 receipts? |
 |------|---------------|-----------------|
 | **Local mock** | API flow, error handling, output structure | No — mock attestation only |
-| **GCP TDX** | Full evidence path with hardware attestation | Yes — Ed25519-signed COSE_Sign1 |
+| **GCP TDX** | The receipt path on Confidential Space, with a fixed test input (see below) | Yes — Ed25519-signed COSE_Sign1 |
 
 ## Scenario
 
 An insurance company uses a language model to triage incoming claims. For each claim, the model classifies the claim type, extracts risk flags, produces a recommendation, and generates an explanation for the adjuster.
 
 **On GCP TDX**, every inference produces a signed AIR v1 receipt that cryptographically binds the model identity, input/output hashes, and TEE attestation evidence.
+
+**What the GCP script actually sends.** `scripts/run-gcp-pilot.sh` does not send the claims. It runs the stock client (`ephemeral-ml-client`), which sends a fixed test input, once per claim id, and uses `data/claims.json` only to name the output files. The claim text is processed only in local mock mode. The script's verification step, like `scripts/verify-receipts.sh`, checks receipt structure; it does not check signatures. On Confidential Space the receipt's measurement fields are placeholders (see `docs/MULTICLOUD_E2E_STATUS.md`), so the "Where it ran" row below describes what the receipt format carries, not something this kit demonstrates.
 
 **In local mock mode**, every inference returns receipt metadata (receipt_id, attestation_mode) but does not produce cryptographic AIR v1 receipts. Mock mode is a rehearsal path for validating API integration before a real deployment.
 
@@ -119,11 +121,11 @@ All 8 claims processed sequentially. Validates:
 - Stable output structure
 - Consistent latency under warm conditions
 
-### D. GCP TDX Confidential Run (3 claims)
-Three claims are processed sequentially through the direct confidential path. Validates:
+### D. GCP TDX Confidential Run (3 requests)
+Three requests are sent sequentially through the direct confidential path, one per claim id, each with the stock client's fixed test input. Validates:
 - Sequential secure client sessions against the same deployed workload
 - Receipt generation on every confidential request
-- Offline verification outputs for each collected receipt
+- Offline structural checks for each collected receipt
 
 ### C. Failure Paths (5 tests)
 - **Wrong API key** — should reject with 401

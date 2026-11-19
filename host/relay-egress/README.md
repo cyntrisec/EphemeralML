@@ -28,7 +28,7 @@ the relay refuses out-of-scope bucket or key requests before reaching AWS.
 
 ## Deployment Notes
 
-The future worker CloudFormation template should run both parent-side services:
+The worker CloudFormation template (`deploy/aws/v1/worker.yaml`) runs both parent-side services:
 
 - `cyntrisec-relay` on vsock port 5000 for SecureChannel worker traffic
 - `cyntrisec-relay-egress` on vsock port 5001 for KMS/S3 egress

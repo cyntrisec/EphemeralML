@@ -55,9 +55,10 @@ proxy, waits for `/health`, and prints the exact
 `scripts/aws/customer_openai_e2e.sh` command to run next. You still need to run
 the batch E2E command and the cleanup steps below.
 
-1. Open the CloudFormation launch URL produced by the website's Deploy to AWS
-   button.
-2. Confirm the URL includes:
+1. In the CloudFormation console, create a stack from the release template's S3
+   URL, or build a Quick Create link with the values below. (The website has no
+   Deploy to AWS button.)
+2. Use these values:
    - `templateURL=https://s3.us-east-1.amazonaws.com/cyntrisec-public-templates-us-east-1/aws/v1.6/worker.yaml`
    - `param_ReleaseTag=v1.6` or the template default `ReleaseTag=v1.6`
    - `param_EnclaveImageSha384=<from enclave-measurements.json>`

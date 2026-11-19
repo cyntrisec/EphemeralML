@@ -135,7 +135,7 @@ If you previously used `encrypt_model.sh`:
 
 1. Your existing 4 artifacts remain valid
 2. Run `package_model.sh` with the same model directory — it re-encrypts and adds `manifest.json`
-3. The enclave is backwards-compatible: if `manifest.json` is missing in GCS, it logs a warning but continues
+3. A deployment without `manifest.json` no longer starts by default: the enclave requires a signed manifest. Setting `EPHEMERALML_ALLOW_UNSIGNED_MODELS=I_UNDERSTAND` makes it log a warning and continue, for internal proofs of concept only
 
 To add a manifest to an existing deployment without re-encrypting:
 1. Compute the plaintext hash: `sha256sum model.safetensors`
