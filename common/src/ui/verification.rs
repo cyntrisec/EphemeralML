@@ -140,6 +140,10 @@ pub fn air_check_meta(name: &str) -> VerificationCheckMeta {
             label: "Known-good measurement appraisal",
             layer: Some("attestation"),
         },
+        "FRESH_BINDING" => VerificationCheckMeta {
+            label: "Freshness mechanism bound",
+            layer: Some("attestation"),
+        },
         "NONCE" => VerificationCheckMeta {
             label: "Nonce match",
             layer: Some("policy"),
