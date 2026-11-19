@@ -82,7 +82,8 @@ fn bind_attestation(att_bytes: &[u8], allow_mock: bool) -> Result<DocBinding> {
 /// TEE provenance requires a cryptographically verified document, successful
 /// measurement reconciliation (the receipt did not lie about the document's
 /// registers), successful measurement *appraisal* (the document's registers
-/// match the caller's reference / known-good set), a passing AIR-local
+/// match the caller's reference / known-good set), a freshness mechanism bound
+/// by the verifier (its own nonce, or `cti` deduplication), a passing AIR-local
 /// verification, and a production-labeled receipt. The self-asserted
 /// `security_mode` carries no positive weight by itself; it is only a
 /// fail-closed floor after the cryptographic and appraisal checks. Anything
@@ -91,10 +92,17 @@ fn assurance_from(
     doc_verified: bool,
     reconciled: bool,
     appraised: bool,
+    freshness_bound: bool,
     air_verified: bool,
     production_labeled: bool,
 ) -> AssuranceLevel {
-    if doc_verified && reconciled && appraised && air_verified && production_labeled {
+    if doc_verified
+        && reconciled
+        && appraised
+        && freshness_bound
+        && air_verified
+        && production_labeled
+    {
         AssuranceLevel::TeeProvenance
     } else {
         AssuranceLevel::AirLocal
@@ -150,13 +158,17 @@ fn appraise_measurements(
 ///    match; any pcr3/pcr4/pcr8 present in the receipt fails closed because the
 ///    attestation identity exposes only PCR0/1/2. A mismatch fails verification;
 ///    an unverifiable/mock document is `Skip`.
-/// 5. Report [`AssuranceLevel::TeeProvenance`] only when the document was
+/// 5. Record whether the policy binds a freshness mechanism: a verifier nonce
+///    (`expected_nonce`) or `cti` deduplication (`seen_cti`), as a
+///    `FRESH_BINDING` check. The AIR draft requires one before TEE provenance
+///    is asserted; without it a pre-signed receipt can be replayed.
+/// 6. Report [`AssuranceLevel::TeeProvenance`] only when the document was
 ///    cryptographically verified, reconciliation passed, the measurements were
 ///    appraised against the policy's reference values
-///    (`expected_measurements`), AIR-local verification passed, and the receipt
-///    is production-labeled; otherwise [`AssuranceLevel::AirLocal`]. The label
-///    grants no positive weight by itself; evaluation receipts are never TEE
-///    provenance.
+///    (`expected_measurements`), a freshness mechanism is bound, AIR-local
+///    verification passed, and the receipt is production-labeled; otherwise
+///    [`AssuranceLevel::AirLocal`]. The label grants no positive weight by
+///    itself; evaluation receipts are never TEE provenance.
 ///
 /// `TeeProvenance` asserts *platform* provenance (a verified, measured TEE) plus
 /// PCR0/1/2 reconciliation — not that the *expected model or session* ran. To
@@ -259,6 +271,29 @@ pub fn verify_air_v1_receipt_chained(
         result.skipped_identity_checks.push("MEAS_APPRAISE");
     }
 
+    // Freshness binding. The AIR draft (Validator Behavior) requires a validator
+    // to bind at least one freshness mechanism -- a verifier-supplied `eat_nonce`
+    // or `cti` deduplication -- before asserting TEE provenance. `require_nonce`
+    // alone does not count: it accepts any nonce, not the verifier's own.
+    let freshness_bound = policy.expected_nonce.is_some() || policy.seen_cti.is_some();
+    result.checks.push(AirCheck {
+        name: "FRESH_BINDING",
+        status: if freshness_bound {
+            AirCheckStatus::Pass
+        } else {
+            AirCheckStatus::Skip
+        },
+        code: None,
+        detail: (!freshness_bound).then(|| {
+            "policy sets neither expected_nonce nor seen_cti; without a freshness \
+             mechanism TEE provenance is not asserted"
+                .to_string()
+        }),
+    });
+    if !freshness_bound && !result.skipped_identity_checks.contains(&"FRESH_BINDING") {
+        result.skipped_identity_checks.push("FRESH_BINDING");
+    }
+
     // Fail closed on the exact production label. This claim grants no assurance
     // by itself, but evaluation or any future mode must not inherit production
     // provenance accidentally.
@@ -271,6 +306,7 @@ pub fn verify_air_v1_receipt_chained(
         binding.doc_verified,
         reconciled,
         appraised,
+        freshness_bound,
         result.verified,
         production_labeled,
     );
@@ -347,33 +383,66 @@ mod tests {
 
     #[test]
     fn assurance_requires_appraisal_and_production_label() {
-        // Signature: (doc_verified, reconciled, appraised, air_verified, production_labeled).
+        // Signature: (doc_verified, reconciled, appraised, freshness_bound,
+        // air_verified, production_labeled).
         assert_eq!(
-            assurance_from(true, true, true, true, true),
+            assurance_from(true, true, true, true, true, true),
             AssuranceLevel::TeeProvenance
         );
         // A verified, reconciled document that is not appraised against known-good
         // measurements does not get provenance.
         assert_eq!(
-            assurance_from(true, true, false, true, true),
+            assurance_from(true, true, false, true, true, true),
             AssuranceLevel::AirLocal
         );
         assert_eq!(
-            assurance_from(false, true, true, true, true),
+            assurance_from(false, true, true, true, true, true),
             AssuranceLevel::AirLocal
         ); // mock / unverified document
         assert_eq!(
-            assurance_from(true, false, true, true, true),
+            assurance_from(true, false, true, true, true, true),
             AssuranceLevel::AirLocal
         ); // reconcile mismatch
         assert_eq!(
-            assurance_from(true, true, true, false, true),
+            assurance_from(true, true, true, false, true, true),
+            AssuranceLevel::AirLocal
+        ); // no freshness mechanism bound
+        assert_eq!(
+            assurance_from(true, true, true, true, false, true),
             AssuranceLevel::AirLocal
         ); // air-local failed
         assert_eq!(
-            assurance_from(true, true, true, true, false),
+            assurance_from(true, true, true, true, true, false),
             AssuranceLevel::AirLocal
         ); // evaluation receipt
+    }
+
+    #[test]
+    fn chained_verify_reports_whether_freshness_is_bound() {
+        let key = ReceiptSigningKey::generate().unwrap();
+        let att = mock_attestation_doc(key.public_key.to_bytes(), [0xAA; 32]);
+        let receipt = receipt_bound_to(&att, &key);
+
+        // No verifier nonce and no cti store: the check is skipped and listed.
+        let result =
+            verify_air_v1_receipt_chained(&receipt, &att, AirVerifyPolicy::unbounded(), true)
+                .unwrap();
+        assert!(result
+            .checks
+            .iter()
+            .any(|c| c.name == "FRESH_BINDING" && matches!(c.status, AirCheckStatus::Skip)));
+        assert!(result.skipped_identity_checks.contains(&"FRESH_BINDING"));
+
+        // With cti deduplication configured, a freshness mechanism is bound.
+        let seen: ephemeral_ml_common::air_verify::SeenCtiFn = Box::new(|_cti: &[u8; 16]| false);
+        let mut policy = AirVerifyPolicy::unbounded();
+        policy.seen_cti = Some(seen);
+        let result = verify_air_v1_receipt_chained(&receipt, &att, policy, true).unwrap();
+        assert!(result
+            .checks
+            .iter()
+            .any(|c| c.name == "FRESH_BINDING" && matches!(c.status, AirCheckStatus::Pass)));
+        assert!(!result.skipped_identity_checks.contains(&"FRESH_BINDING"));
     }
 
     #[test]
