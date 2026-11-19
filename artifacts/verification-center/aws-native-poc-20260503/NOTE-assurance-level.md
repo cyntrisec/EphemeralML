@@ -23,8 +23,9 @@ reference values, and that the verifier binds a freshness mechanism: its own
 nonce, or `cti` deduplication. The program now takes its level from the client
 library's chained verifier, which applies those rules, and reports
 `tee_provenance` only when it is given reference measurements
-(`--expected-pcr0`, `--expected-pcr1`, `--expected-pcr2`) and a verifier nonce
-(`--expected-nonce`) that the receipt carries.
+(`--expected-pcr0`, `--expected-pcr1`, `--expected-pcr2`) and a freshness
+mechanism: a verifier nonce that the receipt carries (`--expected-nonce`), or a
+ledger of the receipts it has already accepted (`--seen-cti-file`).
 
 Read this packet's label accordingly: it shows that the receipt names the
 supplied Nitro attestation document and was signed by the key that document

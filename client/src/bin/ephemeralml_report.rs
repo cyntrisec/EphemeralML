@@ -10,6 +10,7 @@ use ephemeral_ml_client::verify_air_v1_receipt_chained;
 use ephemeral_ml_common::air_receipt::parse_air_v1;
 use ephemeral_ml_common::air_verify::{
     verify_air_v1_receipt, AirCheckStatus, AirVerifyPolicy, AirVerifyResult, AssuranceLevel,
+    SeenCtiFn,
 };
 use ephemeral_ml_common::receipt_verify::{
     verify_receipt, CheckStatus as LegacyStatus, VerifyOptions,
@@ -22,7 +23,9 @@ use ephemeral_ml_common::{
     VerificationReportV1, VerifierSummary, VERIFICATION_REPORT_V1,
 };
 use sha2::{Digest, Sha256};
+use std::collections::HashSet;
 use std::fs;
+use std::io::Write;
 use std::path::{Component, Path, PathBuf};
 
 #[derive(Parser, Debug)]
@@ -47,8 +50,8 @@ struct Args {
     /// it, enforce attestation_doc_hash, reconcile the receipt's measurements
     /// against it and derive the receipt signing key if no public key was
     /// supplied. A report is labelled tee_provenance only when reference
-    /// measurements (--expected-pcr0/1/2) and a verifier nonce
-    /// (--expected-nonce) are supplied as well.
+    /// measurements (--expected-pcr0/1/2) and a freshness mechanism
+    /// (--expected-nonce or --seen-cti-file) are supplied as well.
     #[arg(long)]
     attestation: Option<PathBuf>,
 
@@ -109,9 +112,18 @@ struct Args {
 
     /// Verifier nonce that was sent with the inference request, as hex
     /// (8 to 64 bytes). The receipt must carry it in eat_nonce. Without a
-    /// freshness mechanism a report is never labelled tee_provenance.
+    /// freshness mechanism (this, or --seen-cti-file) a report is never
+    /// labelled tee_provenance.
     #[arg(long)]
     expected_nonce: Option<String>,
+
+    /// Ledger of the receipt identifiers (cti) this verifier has already
+    /// accepted: one 32-hex-char value per line, created if missing. A
+    /// receipt whose cti is listed is rejected as a replay, and the cti of a
+    /// receipt whose report passes is appended. This is cti deduplication,
+    /// the freshness mechanism for receipts that carry no verifier nonce.
+    #[arg(long)]
+    seen_cti_file: Option<PathBuf>,
 
     /// Optional evidence bundle directory containing manifest.json and/or SHA256SUMS.
     #[arg(long)]
@@ -221,6 +233,18 @@ fn main() -> Result<()> {
         ],
     )?;
 
+    // Record an accepted receipt in the ledger only now, after the report
+    // files exist: a run that failed or stopped early leaves the ledger as it
+    // was, so the same receipt can be checked again.
+    let accepted = matches!(report.overall_status, ReportStatus::Pass);
+    if let (true, Some(ledger), Ok(parsed)) = (
+        accepted,
+        args.seen_cti_file.as_deref(),
+        parse_air_v1(&receipt_bytes),
+    ) {
+        record_seen_cti(ledger, &parsed.claims.cti)?;
+    }
+
     println!("Verification report generated: {}", json_path.display());
     if let Some(hash) = &report.report_sha256 {
         println!("report_sha256: {}", hash);
@@ -240,6 +264,9 @@ fn validate_args(args: &Args) -> Result<()> {
         );
     }
     parse_nonce(args.expected_nonce.as_deref())?;
+    if let Some(ledger) = args.seen_cti_file.as_deref() {
+        load_seen_cti(ledger)?;
+    }
     Ok(())
 }
 
@@ -316,7 +343,7 @@ fn air_policy(
         },
         expected_nonce: parse_nonce(args.expected_nonce.as_deref())?,
         require_nonce: false,
-        seen_cti: None,
+        seen_cti: seen_cti_hook(args)?,
         require_model_hash_scheme: false,
     })
 }
@@ -358,7 +385,8 @@ fn provenance_gap_warning(result: &AirVerifyResult) -> Option<String> {
     }
     if skipped("FRESH_BINDING") {
         missing.push(
-            "no verifier nonce was supplied (--expected-nonce), so no freshness mechanism is bound",
+            "no freshness mechanism was bound (--expected-nonce, or --seen-cti-file for receipts \
+             that carry no nonce)",
         );
     }
     if missing.is_empty() {
@@ -573,9 +601,11 @@ fn build_air_report(
     // The report requires TEE provenance when the operator gave it everything
     // TEE provenance needs. Then either the level is tee_provenance or one of
     // the supplied values did not match and the report fails.
+    let freshness_requested =
+        parse_nonce(args.expected_nonce.as_deref())?.is_some() || args.seen_cti_file.is_some();
     let require_tee_provenance = attestation.is_some()
         && parse_expected_measurements(args)?.is_some()
-        && parse_nonce(args.expected_nonce.as_deref())?.is_some();
+        && freshness_requested;
 
     Ok(base_report(
         args,
@@ -782,6 +812,53 @@ fn parse_nonce(value: Option<&str>) -> Result<Option<Vec<u8>>> {
         );
     }
     Ok(Some(bytes))
+}
+
+/// Receipt identifiers this verifier has already accepted, from
+/// `--seen-cti-file`. A missing file is an empty ledger.
+fn load_seen_cti(path: &Path) -> Result<HashSet<[u8; 16]>> {
+    let mut seen = HashSet::new();
+    if !path.exists() {
+        return Ok(seen);
+    }
+    let text =
+        fs::read_to_string(path).with_context(|| format!("failed to read {}", path.display()))?;
+    for (idx, line) in text.lines().enumerate() {
+        let line = line.trim();
+        if line.is_empty() {
+            continue;
+        }
+        let bytes = hex::decode(line)
+            .with_context(|| format!("{} line {} is not hex", path.display(), idx + 1))?;
+        let cti: [u8; 16] = bytes.try_into().map_err(|_| {
+            anyhow::anyhow!("{} line {} is not a 16-byte cti", path.display(), idx + 1)
+        })?;
+        seen.insert(cti);
+    }
+    Ok(seen)
+}
+
+/// The replay hook for the AIR policy: true when the receipt's cti is already
+/// in the ledger. The hook only reads; `record_seen_cti` writes, and only after
+/// a report has passed.
+fn seen_cti_hook(args: &Args) -> Result<Option<SeenCtiFn>> {
+    let Some(path) = args.seen_cti_file.as_deref() else {
+        return Ok(None);
+    };
+    let seen = load_seen_cti(path)?;
+    let hook: SeenCtiFn = Box::new(move |cti: &[u8; 16]| seen.contains(cti));
+    Ok(Some(hook))
+}
+
+/// Append an accepted receipt's cti to the ledger.
+fn record_seen_cti(path: &Path, cti: &[u8; 16]) -> Result<()> {
+    let mut file = fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(path)
+        .with_context(|| format!("failed to open {}", path.display()))?;
+    writeln!(file, "{}", hex::encode(cti))
+        .with_context(|| format!("failed to write {}", path.display()))
 }
 
 fn evidence_bundle_summary(
@@ -1432,6 +1509,7 @@ mod tests {
         let warning = provenance_gap_warning(&result).unwrap();
         assert!(warning.contains("--expected-pcr0"), "{warning}");
         assert!(warning.contains("--expected-nonce"), "{warning}");
+        assert!(warning.contains("--seen-cti-file"), "{warning}");
 
         // The verifier's nonce is bound; only the measurements are missing.
         let policy = AirVerifyPolicy {
@@ -1442,6 +1520,92 @@ mod tests {
         let warning = provenance_gap_warning(&result).unwrap();
         assert!(warning.contains("--expected-pcr0"), "{warning}");
         assert!(!warning.contains("--expected-nonce"), "{warning}");
+    }
+
+    fn temp_ledger() -> PathBuf {
+        std::env::temp_dir().join(format!(
+            "ephemeralml-report-seen-cti-{}.txt",
+            uuid::Uuid::new_v4()
+        ))
+    }
+
+    #[test]
+    fn seen_cti_ledger_accepts_once_and_rejects_a_replay() {
+        let key = ReceiptSigningKey::generate().unwrap();
+        let receipt = air_receipt(&key, None, [0xDD; 32]);
+        let ledger = temp_ledger();
+        let ledger_arg = ledger.to_str().unwrap().to_string();
+        let with_ledger = args(&["--seen-cti-file", ledger_arg.as_str()]);
+
+        // First sight: the replay check passes. Building a report does not
+        // write the ledger; only `record_seen_cti` does, after a report passed.
+        let report = build_air_report(&with_ledger, &receipt, "00", &key.public_key, None).unwrap();
+        assert!(matches!(report.overall_status, ReportStatus::Pass));
+        assert!(matches!(
+            check_status(&report, "REPLAY"),
+            Some(ReportCheckStatus::Pass)
+        ));
+        assert!(!ledger.exists());
+
+        let cti = parse_air_v1(&receipt).unwrap().claims.cti;
+        record_seen_cti(&ledger, &cti).unwrap();
+        assert_eq!(load_seen_cti(&ledger).unwrap().len(), 1);
+
+        // The same receipt presented again is a replay.
+        let report = build_air_report(&with_ledger, &receipt, "00", &key.public_key, None).unwrap();
+        assert!(matches!(report.overall_status, ReportStatus::Fail));
+        assert!(matches!(
+            check_status(&report, "REPLAY"),
+            Some(ReportCheckStatus::Fail)
+        ));
+
+        // Another receipt is not affected.
+        let other = air_receipt(&key, None, [0xDD; 32]);
+        let report = build_air_report(&with_ledger, &other, "00", &key.public_key, None).unwrap();
+        assert!(matches!(report.overall_status, ReportStatus::Pass));
+
+        let _ = fs::remove_file(&ledger);
+    }
+
+    #[test]
+    fn seen_cti_ledger_counts_as_a_bound_freshness_mechanism() {
+        let key = ReceiptSigningKey::generate().unwrap();
+        let doc = mock_attestation_doc(key.public_key.to_bytes());
+        let doc_hash: [u8; 32] = Sha256::digest(&doc).into();
+        let receipt = air_receipt(&key, None, doc_hash);
+        let ledger = temp_ledger();
+        let ledger_arg = ledger.to_str().unwrap().to_string();
+        let with_ledger = args(&["--seen-cti-file", ledger_arg.as_str()]);
+
+        // The chained verifier sees a replay hook in the policy: freshness is
+        // bound, so only the reference measurements are named as missing.
+        let policy = air_policy(&with_ledger, None).unwrap();
+        let result = verify_air_v1_receipt_chained(&receipt, &doc, policy, true).unwrap();
+        assert!(result
+            .checks
+            .iter()
+            .any(|c| c.name == "FRESH_BINDING" && matches!(c.status, AirCheckStatus::Pass)));
+        let warning = provenance_gap_warning(&result).unwrap();
+        assert!(warning.contains("--expected-pcr0"), "{warning}");
+        assert!(!warning.contains("--seen-cti-file"), "{warning}");
+    }
+
+    #[test]
+    fn seen_cti_ledger_refuses_malformed_lines() {
+        let ledger = temp_ledger();
+
+        fs::write(&ledger, "not-hex\n").unwrap();
+        assert!(load_seen_cti(&ledger).is_err());
+
+        // Hex, but not 16 bytes.
+        fs::write(&ledger, "00112233\n").unwrap();
+        assert!(load_seen_cti(&ledger).is_err());
+
+        // Blank lines are ignored; a missing file is an empty ledger.
+        fs::write(&ledger, "\n000102030405060708090a0b0c0d0e0f\n\n").unwrap();
+        assert_eq!(load_seen_cti(&ledger).unwrap().len(), 1);
+        fs::remove_file(&ledger).unwrap();
+        assert!(load_seen_cti(&ledger).unwrap().is_empty());
     }
 
     #[test]

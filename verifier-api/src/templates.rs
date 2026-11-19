@@ -1648,7 +1648,7 @@ pub const AWS_NATIVE_POC_HTML: &str = r##"<!DOCTYPE html>
           <dt>Assurance level</dt>
           <dd class="mono"><strong style="color:var(--accent)">tee_provenance</strong></dd>
           <dt>What that label covers</dt>
-          <dd>As recorded in this report: attestation-hash binding (<code>ADHASH</code>) and signing-key binding. Its <code>NONCE</code> and <code>REPLAY</code> checks are <code>skip</code>, and it has no check that appraises the measurements against reference values. The report generator of 2026-05-03 labelled a report <code>tee_provenance</code> on those two bindings alone. The current generator and this verifier use the label only when reference measurements match and a verifier nonce is bound as well.</dd>
+          <dd>As recorded in this report: attestation-hash binding (<code>ADHASH</code>) and signing-key binding. Its <code>NONCE</code> and <code>REPLAY</code> checks are <code>skip</code>, and it has no check that appraises the measurements against reference values. The report generator of 2026-05-03 labelled a report <code>tee_provenance</code> on those two bindings alone. The current generator and this verifier use the label only when reference measurements match and a freshness mechanism is bound as well.</dd>
           <dt>Attestation provenance</dt>
           <dd><code>bundle</code> (sidecar is part of the hashed evidence bundle, not an unaudited loose file)</dd>
           <dt>Platform attestation</dt>
