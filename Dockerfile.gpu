@@ -16,7 +16,7 @@
 #     --maintenance-policy=TERMINATE \
 #     --shielded-secure-boot \
 #     --image-project=confidential-space-images \
-#     --image-family=confidential-space-preview-cgpu \
+#     --image-family=confidential-space \
 #     --boot-disk-size=30GB \
 #     --metadata="tee-install-gpu-driver=true,tee-image-reference=REGION-docker.pkg.dev/PROJECT/REPO/ephemeralml-gpu:TAG,tee-restart-policy=Never"
 
