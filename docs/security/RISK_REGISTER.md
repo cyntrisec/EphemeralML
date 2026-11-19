@@ -1,10 +1,17 @@
 # Security Risk Register (Public Summary)
 
-Last updated: 2026-09-19
+Last updated: 2026-11-19
 
 This public summary tracks known third-party advisories relevant to the repository. Internal ownership, review cadence, and operational follow-up are maintained outside the public repo.
 
 ## Recently Closed
+
+### Advisories reported against the September 2026 lockfile (26)
+
+- **Affected crates:** `rustls 0.23.45` (RUSTSEC-2026-0346, -0347, -0348, -0349), `rustls-webpki 0.103.15` (RUSTSEC-2026-0382), `webpki-roots 1.0.7` (RUSTSEC-2026-0381), `webpki-root-certs 1.0.6` (RUSTSEC-2026-0383), `quinn-proto 0.11.15` (RUSTSEC-2026-0338, -0339, -0340, -0341, -0342, -0523, -0524), `quinn-udp 0.5.14` (RUSTSEC-2026-0538), `openssl 0.10.79` (RUSTSEC-2026-0477), `ctutils 0.4.2` (RUSTSEC-2026-0385), `crypto-bigint 0.5.5` (RUSTSEC-2026-0387), `zip 7.2.0` (RUSTSEC-2026-0367, -0368, -0369, -0429, -0545, -0546, -0547, -0548).
+- **Resolution:** Three steps on 2026-11-19. (1) A lockfile update moved `rustls`, `rustls-webpki`, `webpki-roots`, `webpki-root-certs`, `quinn-proto`, `quinn-udp`, `openssl` and `ctutils` to fixed releases. (2) `hpke` is now declared with `default-features = false`: after the update its default `p256` feature was the only remaining path to `crypto-bigint 0.5.5`, and the code uses only the X25519 KEM. (3) Candle moved from 0.9 to 0.11: `candle-core 0.9.2` was the only path to `zip 7`, and 0.11.1 uses `zip 9`.
+- **Also gone after the update:** the unsoundness warnings for `rustix 1.1.3` (RUSTSEC-2026-0486) and `tokio 1.52.3` (RUSTSEC-2026-0386), and the yanked `spin 0.9.8` / `spin 0.10.0` releases (the lockfile now resolves `spin 0.9.9` / `spin 0.10.1`).
+- **Public status:** Closed for this repository's dependency graph (verified via `cargo audit` on the 561-package lockfile). The GPU build (`--features gcp,cuda`) has not been rebuilt with Candle 0.11.
 
 ### RUSTSEC-2026-0098 / RUSTSEC-2026-0099 / RUSTSEC-2026-0104 — `rustls-webpki 0.101.7`
 
@@ -43,11 +50,23 @@ This public summary tracks known third-party advisories relevant to the reposito
 - **Impact in this repo:** Transitive dependency through `aws-nitro-enclaves-nsm-api`; EphemeralML uses `ciborium` directly for its own CBOR handling.
 - **Public status:** Monitored until upstream dependency chain changes.
 
-### Yanked `spin 0.9.8` / `spin 0.10.0`
+### RUSTSEC-2026-0543 — `chrono 0.4.45`
 
-- **Type:** Yanked upstream releases; no RustSec vulnerability advisory reported.
-- **Impact in this repo:** `spin 0.9.8` is transitive through `multer` / `axum`; `spin 0.10.0` is transitive through `crc-fast` / AWS checksums. The dependent version constraints currently select these releases.
-- **Public status:** Monitored until `multer` and `crc-fast` move to non-yanked compatible releases. Treat this as dependency hygiene, not evidence of an active exploit.
+- **Type:** Unmaintained
+- **Impact in this repo:** Direct dependency of `client`, `compliance`, `ephemeralml-doctor` and `ephemeralml-smoke-test`, used for UTC timestamps. No vulnerability advisory is attached.
+- **Public status:** Monitored. Replacing it is a code change, not a lockfile update.
+
+### RUSTSEC-2026-0441 — `pin-utils 0.1.1`
+
+- **Type:** Unmaintained
+- **Impact in this repo:** Transitive through `nix` → `aws-nitro-enclaves-nsm-api` → `confidential-ml-transport`. No vulnerability advisory is attached.
+- **Public status:** Monitored until the upstream dependency chain changes.
+
+### RUSTSEC-2024-0449 — `unsafe-libyaml 0.2.11`
+
+- **Type:** Unmaintained
+- **Impact in this repo:** Transitive through `serde_yaml 0.9.34+deprecated`, a direct dependency of `ephemeralml-doctor` only (one call that parses the Nitro allocator configuration). No vulnerability advisory is attached.
+- **Public status:** Monitored until the doctor tool moves to another YAML parser.
 
 ## Operationally Closed
 
