@@ -24,7 +24,7 @@ COPY ephemeralml-smoke-test/ ephemeralml-smoke-test/
 
 RUN cargo build --release --locked -p ephemeralml-verifier-api
 
-FROM gcr.io/distroless/cc-debian13:nonroot@sha256:54df941ed0d06a1bd95ef5e0ce391fd8d9f94b64782dc9a60062727849ee3f97
+FROM gcr.io/distroless/cc-debian13:nonroot@sha256:cb87acc574abe719b6e5c547384defa2f7b1f24af9605d3f618cf852495d8be2
 ARG CYNTRISEC_BUILD_SHA=unknown
 LABEL org.opencontainers.image.title="Cyntrisec Verification Center" \
       org.opencontainers.image.source="https://github.com/cyntrisec/EphemeralML" \
