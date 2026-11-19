@@ -75,7 +75,13 @@ pub async fn verify_json(
 
     let mut response = verify_dispatch::verify_json_value(&body.receipt, &public_key, &policy)
         .map_err(bad_request)?;
-    annotate_air_provenance(&mut response, None, None, policy.expected_pcrs.as_ref());
+    annotate_air_provenance(
+        &mut response,
+        None,
+        None,
+        policy.expected_pcrs.as_ref(),
+        policy.expected_nonce.is_some(),
+    );
 
     Ok(Json(response))
 }
@@ -286,6 +292,7 @@ pub async fn verify_upload(
         Some(&public_key),
         attestation_bytes.as_deref(),
         policy.expected_pcrs.as_ref(),
+        policy.expected_nonce.is_some(),
     );
 
     Ok(Json(response))
@@ -304,11 +311,96 @@ fn parse_attestation_public_key(
     )
 }
 
+/// What the provenance checks of one request support.
+#[derive(Debug, PartialEq, Eq)]
+enum ProvenanceLevel {
+    /// The attestation checks did not all pass; the response keeps the level
+    /// it already had.
+    NotEstablished,
+    /// An authentic attestation document is bound to the receipt, without
+    /// everything TEE provenance needs.
+    PlatformAttested,
+    /// `PlatformAttested` plus a matching runtime measurement policy and a
+    /// bound freshness mechanism.
+    TeeProvenance,
+}
+
+/// Decide the level from the outcome of the provenance checks.
+///
+/// `attested` is the conjunction of: the receipt verified, its
+/// `attestation_doc_hash` matches the supplied document, the document is
+/// authentic, the signing key is bound to it and the receipt's measurements
+/// reconcile against it. TEE provenance additionally needs the caller's runtime
+/// measurement policy to match (appraisal) and a freshness mechanism to be
+/// bound; the AIR draft (Validator Behavior) requires both before a validator
+/// asserts end-to-end TEE provenance. With either missing the result is
+/// platform-attested only.
+fn provenance_level(
+    attested: bool,
+    runtime_policy_ok: bool,
+    freshness_bound: bool,
+) -> ProvenanceLevel {
+    if !attested {
+        ProvenanceLevel::NotEstablished
+    } else if runtime_policy_ok && freshness_bound {
+        ProvenanceLevel::TeeProvenance
+    } else {
+        ProvenanceLevel::PlatformAttested
+    }
+}
+
+/// Name what a platform-attested result lacks for TEE provenance.
+fn tee_provenance_gap(runtime_policy_ok: bool, freshness_bound: bool) -> &'static str {
+    match (runtime_policy_ok, freshness_bound) {
+        (false, false) => "no runtime measurement policy and no verifier nonce were supplied",
+        (false, true) => "no runtime measurement policy was supplied",
+        (true, false) => "no verifier nonce was supplied, so no freshness mechanism is bound",
+        (true, true) => "nothing is missing",
+    }
+}
+
+/// Freshness binding for TEE provenance.
+///
+/// The AIR draft (Validator Behavior) requires a validator to bind at least
+/// one freshness mechanism -- a verifier-supplied `eat_nonce` or `cti`
+/// deduplication -- before asserting TEE provenance; without one a pre-signed
+/// receipt can be replayed. This service keeps no record of the receipts it
+/// has seen, so the only mechanism it can bind is the caller's own nonce:
+/// `expected_nonce_hex` supplied and matched by the receipt's `eat_nonce`,
+/// which the AIR-local `NONCE` check has already decided.
+fn freshness_binding(
+    verifier_nonce_supplied: bool,
+    nonce_check: Option<&CheckStatus>,
+) -> (CheckStatus, Option<String>) {
+    if !verifier_nonce_supplied {
+        return (
+            CheckStatus::Skip,
+            Some(
+                "no expected_nonce_hex supplied; without a verifier nonce carried by the \
+                 receipt, a pre-signed receipt can be replayed"
+                    .to_string(),
+            ),
+        );
+    }
+    match nonce_check {
+        Some(CheckStatus::Pass) => (CheckStatus::Pass, None),
+        Some(CheckStatus::Fail) => (
+            CheckStatus::Fail,
+            Some("the receipt does not carry the supplied verifier nonce (see NONCE)".to_string()),
+        ),
+        _ => (
+            CheckStatus::Skip,
+            Some("the nonce check did not run (see the receipt checks)".to_string()),
+        ),
+    }
+}
+
 fn annotate_air_provenance(
     response: &mut TrustCenterResponse,
     public_key: Option<&VerifyingKey>,
     attestation: Option<&[u8]>,
     expected_pcrs: Option<&ExpectedPcrs>,
+    verifier_nonce_supplied: bool,
 ) {
     if !matches!(response.format, ReceiptFormat::AirV1) {
         return;
@@ -556,28 +648,37 @@ fn annotate_air_provenance(
         }
     }
 
-    if response.verified
-        && hash_ok
-        && platform_ok
-        && key_binding_ok
-        && measurement_consistency_ok
-        && runtime_policy_ok
-    {
-        response.set_tee_provenance_verified();
-    } else if response.verified
-        && hash_ok
-        && platform_ok
-        && key_binding_ok
-        && measurement_consistency_ok
-    {
-        response.set_platform_attested();
-        response.add_warning(
-            "Platform attestation and signing-key binding were verified, but no runtime measurement policy was supplied; assurance_level is platform_attested, not tee_provenance.",
-        );
-    } else {
-        response.add_warning(
+    let nonce_status = response
+        .checks
+        .iter()
+        .find(|check| check.id == "NONCE")
+        .map(|check| check.status.clone());
+    let (freshness_status, freshness_detail) =
+        freshness_binding(verifier_nonce_supplied, nonce_status.as_ref());
+    let freshness_bound = matches!(freshness_status, CheckStatus::Pass);
+    response.add_check(provenance_check(
+        "freshness_binding",
+        "Freshness mechanism",
+        freshness_status,
+        "tee_provenance",
+        freshness_detail,
+    ));
+
+    let attested =
+        response.verified && hash_ok && platform_ok && key_binding_ok && measurement_consistency_ok;
+    match provenance_level(attested, runtime_policy_ok, freshness_bound) {
+        ProvenanceLevel::TeeProvenance => response.set_tee_provenance_verified(),
+        ProvenanceLevel::PlatformAttested => {
+            response.set_platform_attested();
+            response.add_warning(format!(
+                "Platform attestation and signing-key binding were verified, but {}; \
+                 assurance_level is platform_attested, not tee_provenance.",
+                tee_provenance_gap(runtime_policy_ok, freshness_bound)
+            ));
+        }
+        ProvenanceLevel::NotEstablished => response.add_warning(
             "TEE provenance was requested but not fully verified; see tee_provenance checks.",
-        );
+        ),
     }
 }
 
@@ -917,5 +1018,66 @@ mod tests {
         let detail = enclave_measurements_mismatch_detail(&receipt, &attested(1, 2, 3))
             .expect("pcr8 must not be silently accepted");
         assert!(detail.contains("pcr8 is present"));
+    }
+
+    #[test]
+    fn tee_provenance_needs_measurement_policy_and_freshness() {
+        // Signature: (attested, runtime_policy_ok, freshness_bound).
+        assert_eq!(
+            provenance_level(true, true, true),
+            ProvenanceLevel::TeeProvenance
+        );
+        // An authentic, key-bound, reconciled document whose measurements match
+        // the caller's policy is still not TEE provenance without a freshness
+        // mechanism: a pre-signed receipt could be replayed.
+        assert_eq!(
+            provenance_level(true, true, false),
+            ProvenanceLevel::PlatformAttested
+        );
+        assert_eq!(
+            provenance_level(true, false, true),
+            ProvenanceLevel::PlatformAttested
+        );
+        assert_eq!(
+            provenance_level(true, false, false),
+            ProvenanceLevel::PlatformAttested
+        );
+        // Without the attestation checks nothing above AIR-local is reported,
+        // whatever else was supplied.
+        assert_eq!(
+            provenance_level(false, true, true),
+            ProvenanceLevel::NotEstablished
+        );
+    }
+
+    #[test]
+    fn tee_provenance_gap_names_what_is_missing() {
+        assert!(tee_provenance_gap(false, false).contains("measurement policy"));
+        assert!(tee_provenance_gap(false, false).contains("verifier nonce"));
+        assert!(tee_provenance_gap(false, true).contains("measurement policy"));
+        assert!(!tee_provenance_gap(false, true).contains("verifier nonce"));
+        assert!(tee_provenance_gap(true, false).contains("verifier nonce"));
+        assert!(!tee_provenance_gap(true, false).contains("measurement policy"));
+    }
+
+    #[test]
+    fn freshness_binding_follows_the_verifier_nonce() {
+        // No nonce from the verifier: nothing to bind, whatever the receipt has.
+        let (status, detail) = freshness_binding(false, Some(&CheckStatus::Skip));
+        assert!(matches!(status, CheckStatus::Skip));
+        assert!(detail.unwrap().contains("expected_nonce_hex"));
+
+        // The verifier's nonce is in the receipt.
+        let (status, detail) = freshness_binding(true, Some(&CheckStatus::Pass));
+        assert!(matches!(status, CheckStatus::Pass));
+        assert!(detail.is_none());
+
+        // The verifier's nonce is not in the receipt.
+        let (status, _) = freshness_binding(true, Some(&CheckStatus::Fail));
+        assert!(matches!(status, CheckStatus::Fail));
+
+        // The receipt was rejected before its claims were read.
+        let (status, _) = freshness_binding(true, None);
+        assert!(matches!(status, CheckStatus::Skip));
     }
 }

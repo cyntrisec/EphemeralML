@@ -36,7 +36,8 @@ pub struct VerifyRequest {
     #[serde(default)]
     pub expected_image_digest: Option<String>,
     /// Expected Nitro PCR0 measurement as 96-character hex. Must be supplied
-    /// with expected_pcr1_hex and expected_pcr2_hex to claim tee_provenance.
+    /// with expected_pcr1_hex and expected_pcr2_hex. tee_provenance needs this
+    /// policy to match and, in addition, expected_nonce_hex.
     #[serde(default)]
     pub expected_pcr0_hex: Option<String>,
     /// Expected Nitro PCR1 measurement as 96-character hex.
@@ -46,8 +47,10 @@ pub struct VerifyRequest {
     #[serde(default)]
     pub expected_pcr2_hex: Option<String>,
     /// Optional expected AIR `eat_nonce` challenge as a hex string
-    /// (RFC 9711: 8..=64 bytes). When set, a receipt whose `eat_nonce`
-    /// does not match is rejected.
+    /// (RFC 9711: 8..=64 bytes): the nonce the verifier sent with the
+    /// inference request. When set, a receipt whose `eat_nonce` does not
+    /// match is rejected. It is the freshness mechanism this service binds;
+    /// without it no response is reported as tee_provenance.
     #[serde(default)]
     pub expected_nonce_hex: Option<String>,
 }

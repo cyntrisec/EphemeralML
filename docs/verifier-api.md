@@ -105,7 +105,7 @@ This limiter is a local guardrail, not a replacement for edge abuse controls. Pu
 | `expected_model_hash_hex` | string | No | skip | Expected AIR `model_hash` (32-byte hex) |
 | `expected_request_hash_hex` | string | No | skip | Expected AIR `request_hash` (32-byte hex) |
 | `expected_response_hash_hex` | string | No | skip | Expected AIR `response_hash` (32-byte hex) |
-| `expected_nonce_hex` | string | No | skip | Expected AIR `eat_nonce` (8–64 bytes encoded as hex) |
+| `expected_nonce_hex` | string | No | skip | Expected AIR `eat_nonce` (8–64 bytes encoded as hex): the nonce the verifier sent with the inference request |
 | `expected_security_mode` | string | No | skip | Expected AIR `security_mode`; this production verifier accepts only `production` |
 | `max_age_secs` | u64 | No | `0` (skip) | Max receipt age |
 | `measurement_type` | string | No | `"any"` | Expected measurement type |
@@ -154,10 +154,12 @@ For AIR v1, `verified=true` means the receipt-local signature, structure, and co
 Assurance levels are intentionally separated:
 
 - `air_local`: receipt-local signature, structure, and configured policy checks only.
-- `platform_attested`: `air_local` plus an authentic platform attestation sidecar, matching `attestation_doc_hash`, and signing-key binding.
-- `tee_provenance`: `platform_attested` plus caller-supplied runtime measurement policy (`expected_pcr0_hex`, `expected_pcr1_hex`, and `expected_pcr2_hex`) that matches the attested PCRs.
+- `platform_attested`: `air_local` plus an authentic platform attestation sidecar, matching `attestation_doc_hash`, signing-key binding, and receipt measurements that reconcile against the sidecar.
+- `tee_provenance`: `platform_attested` plus two things the caller supplies: a runtime measurement policy (`expected_pcr0_hex`, `expected_pcr1_hex`, and `expected_pcr2_hex`) that matches the attested PCRs, and a verifier nonce (`expected_nonce_hex`) that the receipt carries in `eat_nonce`.
 
-When no attestation is supplied, the response reports `assurance_level: "air_local"`, `tee_provenance_verified: false`, and skipped `tee_provenance` checks. When an attestation is supplied without PCR policy, the response can report `assurance_level: "platform_attested"`, but `tee_provenance_verified` remains `false`.
+When no attestation is supplied, the response reports `assurance_level: "air_local"`, `tee_provenance_verified: false`, and skipped `tee_provenance` checks. When an attestation is supplied without the PCR policy or without the nonce, the response can report `assurance_level: "platform_attested"`, but `tee_provenance_verified` remains `false`; the `freshness_binding` and `runtime_measurement_policy` checks and a warning say which one is missing.
+
+The nonce is the freshness mechanism. The AIR draft requires a validator to bind one (a verifier-supplied `eat_nonce` or `cti` deduplication) before it asserts TEE provenance, because a receipt signed earlier can otherwise be presented again. This service keeps no record of the receipts it has seen, so it cannot deduplicate `cti`; the nonce is the only mechanism it can bind. A caller gets one by sending its own nonce with the inference request (the gateway reads it from the `X-Cyntrisec-Air-Nonce` header and the enclave signs it into the receipt) and passing the same value here.
 
 The JSON endpoint does not accept an attestation sidecar, so it cannot upgrade a
 receipt to `platform_attested` or `tee_provenance`. Use the multipart upload
@@ -181,6 +183,7 @@ TEE-provenance verification.
 | `expected_request_hash_hex` | text | No | Expected AIR `request_hash` |
 | `expected_response_hash_hex` | text | No | Expected AIR `response_hash` |
 | `expected_security_mode` | text | No | Expected AIR `security_mode`; this production verifier accepts only `production` |
+| `expected_nonce_hex` | text | No | Expected AIR `eat_nonce` (8–64 bytes as hex): the nonce the verifier sent with the inference request; needed for `tee_provenance` |
 | `expected_pcr0_hex` | text | No | Expected Nitro PCR0 measurement, 96 hex chars; must be supplied with PCR1/PCR2 |
 | `expected_pcr1_hex` | text | No | Expected Nitro PCR1 measurement, 96 hex chars; must be supplied with PCR0/PCR2 |
 | `expected_pcr2_hex` | text | No | Expected Nitro PCR2 measurement, 96 hex chars; must be supplied with PCR0/PCR1 |

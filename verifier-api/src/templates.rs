@@ -680,6 +680,10 @@ pub const LANDING_HTML: &str = r##"<!DOCTYPE html>
               <input type="text" id="expectedPcr1Hex" placeholder="expected_pcr1_hex" class="mono" style="margin-top:8px"/>
               <input type="text" id="expectedPcr2Hex" placeholder="expected_pcr2_hex" class="mono" style="margin-top:8px"/>
             </div>
+            <div class="field-group">
+              <label class="field-label">Verifier nonce sent with the request (optional, 16 to 128 hex chars)</label>
+              <input type="text" id="expectedNonceHex" placeholder="expected_nonce_hex" class="mono"/>
+            </div>
             <div class="verify-actions">
               <button type="submit" class="btn-verify">Verify</button>
             </div>
@@ -702,7 +706,7 @@ pub const LANDING_HTML: &str = r##"<!DOCTYPE html>
             <ul>
               <li>Confirms the receipt is correctly signed and structurally valid.</li>
               <li>Can derive the receipt key from a supplied attestation document and check AIR attestation hash binding when the sidecar is supplied.</li>
-              <li><code>platform_attested</code> means the attestation is authentic and key-bound; <code>tee_provenance</code> additionally requires caller-supplied runtime PCR policy.</li>
+              <li><code>platform_attested</code> means the attestation is authentic and key-bound; <code>tee_provenance</code> additionally requires a caller-supplied runtime PCR policy that matches and a verifier nonce (<code>expected_nonce_hex</code>) that the receipt carries.</li>
               <li>Does not prove data was deleted after processing.</li>
               <li>Does not constitute a compliance determination.</li>
               <li>Deployment-specific trust policy depends on expected measurements, model allowlist, and freshness inputs.</li>
@@ -798,6 +802,7 @@ async function verifyUpload(e) {
   const expectedPcr0 = document.getElementById('expectedPcr0Hex').value.trim();
   const expectedPcr1 = document.getElementById('expectedPcr1Hex').value.trim();
   const expectedPcr2 = document.getElementById('expectedPcr2Hex').value.trim();
+  const expectedNonce = document.getElementById('expectedNonceHex').value.trim();
   if (!fileInput.files.length) return alert('Select a receipt file.');
   if (!keyHex && !keyFile.files.length && !attestationFile.files.length) {
     return alert('Provide a public key or attestation file.');
@@ -812,6 +817,7 @@ async function verifyUpload(e) {
     form.append('expected_pcr1_hex', expectedPcr1);
     form.append('expected_pcr2_hex', expectedPcr2);
   }
+  if (expectedNonce) form.append('expected_nonce_hex', expectedNonce);
   showSpinner(true);
   try {
     const resp = await fetch('/api/v1/verify/upload', {method: 'POST', body: form});
@@ -1559,7 +1565,7 @@ pub const AWS_NATIVE_POC_HTML: &str = r##"<!DOCTYPE html>
     <span class="panel-num">001</span>
     <div class="eyebrow">REDACTED EVIDENCE / INTERNAL POC</div>
     <h1>AWS-NATIVE<br><span class="stroke">NITRO PoC</span><br><span class="accent">EVIDENCE.</span></h1>
-    <p class="lead">Redacted Verification Center packet generated from the AWS Nitro smoke-test bundle uploaded on 2026-05-03. The packet contains a Runtime Passport for the deployment, a linked Execution Report with <code>tee_provenance</code> assurance, and the bundle SHA256SUMS. This is technical execution evidence, not a compliance determination.</p>
+    <p class="lead">Redacted Verification Center packet generated from the AWS Nitro smoke-test bundle uploaded on 2026-05-03. The packet contains a Runtime Passport for the deployment, a linked Execution Report that the report generator of that date labelled <code>tee_provenance</code> (panel 004 says what that label covers), and the bundle SHA256SUMS. This is technical execution evidence, not a compliance determination.</p>
 
     <div class="meta-strip" aria-label="run summary">
       <div class="meta-cell"><span>Status</span><strong class="ok">PASS</strong></div>
@@ -1641,10 +1647,12 @@ pub const AWS_NATIVE_POC_HTML: &str = r##"<!DOCTYPE html>
           <dd><code>d84be7201028379afcae6fe2c5d22523046829bfe815c10041725d7ffcf6be48</code></dd>
           <dt>Assurance level</dt>
           <dd class="mono"><strong style="color:var(--accent)">tee_provenance</strong></dd>
+          <dt>What that label covers</dt>
+          <dd>As recorded in this report: attestation-hash binding (<code>ADHASH</code>) and signing-key binding. Its <code>NONCE</code> and <code>REPLAY</code> checks are <code>skip</code>, and it has no check that appraises the measurements against reference values. The report generator of 2026-05-03 labelled a report <code>tee_provenance</code> on those two bindings alone. The current generator and this verifier use the label only when reference measurements match and a verifier nonce is bound as well.</dd>
           <dt>Attestation provenance</dt>
           <dd><code>bundle</code> (sidecar is part of the hashed evidence bundle, not an unaudited loose file)</dd>
           <dt>Platform attestation</dt>
-          <dd><span class="ok">PASS</span> (Nitro PCR0 binds the EIF measurement carried by the receipt)</dd>
+          <dd><span class="ok">PASS</span> (as the report words it: attestation sidecar supplied; the AIR <code>ADHASH</code> check binds the receipt to this sidecar)</dd>
           <dt>Signing-key binding</dt>
           <dd><span class="ok">PASS</span> (receipt public key matches the public key carried by the attestation sidecar)</dd>
           <dt>Receipt SHA-256</dt>
