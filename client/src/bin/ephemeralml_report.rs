@@ -31,7 +31,8 @@ use std::path::{Component, Path, PathBuf};
 #[derive(Parser, Debug)]
 #[command(
     name = "ephemeralml-report",
-    about = "Generate durable Cyntrisec Verification Center reports offline"
+    about = "Generate durable Cyntrisec Verification Center reports offline",
+    after_help = "Exit status:\n  0  the report was written and its overall_status is pass\n  3  the report was written and its overall_status is not pass\n  1  no report was written (unreadable input, values that do not parse)\n  2  the command line itself was not understood"
 )]
 struct Args {
     /// Path to receipt file (AIR v1 COSE_Sign1 CBOR or legacy receipt).
@@ -249,7 +250,34 @@ fn main() -> Result<()> {
     if let Some(hash) = &report.report_sha256 {
         println!("report_sha256: {}", hash);
     }
+
+    // The report is on disk either way. Say in the exit status whether it
+    // passed, so a caller that reads only the status cannot take a rejected
+    // receipt for an accepted one.
+    let code = report_exit_code(&report.overall_status);
+    if code != 0 {
+        eprintln!(
+            "Verification did not pass: overall_status is {:?}; the report lists the failed checks",
+            report.overall_status
+        );
+        std::process::exit(code);
+    }
     Ok(())
+}
+
+/// Exit status when a report was written and did not pass. The other non-zero
+/// statuses keep their meaning: 1, no report was written (unreadable input,
+/// values that do not parse); 2, the argument parser's own usage error.
+const EXIT_REPORT_NOT_PASSED: i32 = 3;
+
+/// 0 when the report passed, [`EXIT_REPORT_NOT_PASSED`] otherwise. The program
+/// used to exit 0 whenever it managed to write a report, whatever the report
+/// said.
+fn report_exit_code(status: &ReportStatus) -> i32 {
+    match status {
+        ReportStatus::Pass => 0,
+        _ => EXIT_REPORT_NOT_PASSED,
+    }
 }
 
 fn validate_args(args: &Args) -> Result<()> {
@@ -1394,6 +1422,14 @@ mod tests {
             .iter()
             .find(|check| check.id == id)
             .map(|check| &check.status)
+    }
+
+    #[test]
+    fn exit_status_follows_the_report() {
+        assert_eq!(report_exit_code(&ReportStatus::Pass), 0);
+        assert_eq!(report_exit_code(&ReportStatus::Fail), 3);
+        assert_eq!(report_exit_code(&ReportStatus::Partial), 3);
+        assert_eq!(report_exit_code(&ReportStatus::Unknown), 3);
     }
 
     #[test]
