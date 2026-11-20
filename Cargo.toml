@@ -52,7 +52,7 @@ aws-config = { version = "1.8.15", default-features = false, features = ["behavi
 
 # Error handling and utilities
 anyhow = "1.0"
-thiserror = "1.0"
+thiserror = "2.0"
 uuid = { version = "1.22", features = ["v4"] }
 sha2 = "0.10"
 

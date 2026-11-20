@@ -1954,7 +1954,7 @@ dependencies = [
  "serde_bytes",
  "serde_json",
  "sha2 0.10.9",
- "thiserror 1.0.69",
+ "thiserror 2.0.21",
  "tokio",
  "tracing-subscriber",
  "uuid",
@@ -1983,7 +1983,7 @@ dependencies = [
  "serde_bytes",
  "serde_json",
  "sha2 0.10.9",
- "thiserror 1.0.69",
+ "thiserror 2.0.21",
  "tokenizers 0.22.2",
  "tokio",
  "uuid",
@@ -2004,7 +2004,7 @@ dependencies = [
  "serde",
  "serde_json",
  "sha2 0.10.9",
- "thiserror 1.0.69",
+ "thiserror 2.0.21",
  "uuid",
 ]
 
@@ -2027,7 +2027,7 @@ dependencies = [
  "serde_yaml",
  "sha2 0.10.9",
  "tempfile",
- "thiserror 1.0.69",
+ "thiserror 2.0.21",
  "tokio",
  "ureq",
 ]
@@ -2119,7 +2119,7 @@ dependencies = [
  "serde",
  "serde_json",
  "sha2 0.10.9",
- "thiserror 1.0.69",
+ "thiserror 2.0.21",
  "tokio",
  "uuid",
 ]
