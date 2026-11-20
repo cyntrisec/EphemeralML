@@ -1936,7 +1936,7 @@ version = "0.2.9"
 dependencies = [
  "anyhow",
  "async-trait",
- "base64 0.22.1",
+ "base64 0.23.1",
  "bytes",
  "chrono",
  "ciborium",
@@ -2041,7 +2041,7 @@ dependencies = [
  "aws-config",
  "aws-nitro-enclaves-nsm-api 0.5.2",
  "aws-sdk-kms",
- "base64 0.22.1",
+ "base64 0.23.1",
  "bytes",
  "candle-core",
  "candle-nn",
@@ -2131,7 +2131,7 @@ dependencies = [
  "anyhow",
  "async-trait",
  "axum",
- "base64 0.22.1",
+ "base64 0.23.1",
  "bytes",
  "clap",
  "confidential-ml-transport",
@@ -2162,7 +2162,7 @@ name = "ephemeralml-verifier-api"
 version = "0.2.9"
 dependencies = [
  "axum",
- "base64 0.22.1",
+ "base64 0.23.1",
  "clap",
  "ed25519-dalek",
  "ephemeral-ml-client",
