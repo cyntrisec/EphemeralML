@@ -854,7 +854,7 @@ function showResult(data) {
   let rows = '';
   const add = (k, v) => { if (v != null && v !== '') rows += `<tr><td>${esc(k)}</td><td>${esc(String(v))}</td></tr>`; };
   add('Receipt ID', r.receipt_id);
-  add('Model', r.model_id ? r.model_id + (r.model_version ? ' v' + r.model_version : '') : null);
+  add('Model', r.model_id ? r.model_id + (r.model_version ? ' ' + (/^v/i.test(r.model_version) ? r.model_version : 'v' + r.model_version) : '') : null);
   add('Platform', r.platform);
   add('Issuer', r.issuer);
   add('Security', r.security_mode);
