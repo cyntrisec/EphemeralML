@@ -174,7 +174,7 @@ jobs:
 
       - name: Configure AWS credentials
         if: needs.release-tag.outputs.push == 'true'
-        uses: aws-actions/configure-aws-credentials@v4
+        uses: aws-actions/configure-aws-credentials@v5
         with:
           role-to-assume: ${{ secrets.AWS_RELEASE_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
@@ -284,7 +284,7 @@ jobs:
 
       - name: Configure AWS credentials
         if: needs.release-tag.outputs.push == 'true'
-        uses: aws-actions/configure-aws-credentials@v4
+        uses: aws-actions/configure-aws-credentials@v5
         with:
           role-to-assume: ${{ secrets.AWS_RELEASE_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
@@ -447,7 +447,7 @@ jobs:
 
       - name: Configure AWS credentials for template publish
         if: needs.release-tag.outputs.push == 'true' && needs.release-tag.outputs.publish_template_to_s3 == 'true'
-        uses: aws-actions/configure-aws-credentials@v4
+        uses: aws-actions/configure-aws-credentials@v5
         with:
           role-to-assume: ${{ secrets.AWS_RELEASE_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
@@ -580,7 +580,7 @@ jobs:
 
       - name: Configure AWS credentials
         if: needs.release-tag.outputs.push == 'true'
-        uses: aws-actions/configure-aws-credentials@v4
+        uses: aws-actions/configure-aws-credentials@v5
         with:
           role-to-assume: ${{ secrets.AWS_RELEASE_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
